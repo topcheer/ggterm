@@ -15,22 +15,57 @@ use ggterm_render::theme::RenderTheme;
 use ggterm_render::{CursorState, Renderer};
 use glyphon::{
     Attrs, AttrsList, Buffer, BufferLine, Cache as GlyphonCache, Color as GlyphonColor, Family,
-    FontSystem, Metrics, Resolution, Shaping, SwashCache, TextAtlas, TextBounds, TextArea,
-    TextRenderer, Viewport,
+    FontSystem, Metrics, PrepareError, RenderError as GlyphonRenderError, Resolution, Shaping,
+    SwashCache, TextAtlas, TextBounds, TextArea, TextRenderer, Viewport,
 };
-use glyphon::RenderError;
 use glyphon::cosmic_text::LineEnding;
+
+/// Unified error type for GPU text rendering operations.
+#[derive(Debug)]
+pub enum RenderError {
+    /// Failed to prepare text (shaping, atlas allocation).
+    Prepare(PrepareError),
+    /// Failed to render text quads into the render pass.
+    Render(GlyphonRenderError),
+}
+
+impl std::fmt::Display for RenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RenderError::Prepare(e) => write!(f, "prepare error: {e}"),
+            RenderError::Render(e) => write!(f, "render error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for RenderError {}
+
+impl From<PrepareError> for RenderError {
+    fn from(e: PrepareError) -> Self {
+        RenderError::Prepare(e)
+    }
+}
+
+impl From<GlyphonRenderError> for RenderError {
+    fn from(e: GlyphonRenderError) -> Self {
+        RenderError::Render(e)
+    }
+}
 
 const DEFAULT_FONT_SIZE: f32 = 15.0;
 const DEFAULT_LINE_HEIGHT: f32 = 20.0;
 
 /// GPU-accelerated terminal renderer using wgpu + glyphon.
-#[allow(dead_code)]
+///
+/// Created with an externally-managed `wgpu::Device` and `wgpu::Queue` (typically
+/// from the winit event loop in P1-F3). The renderer does NOT own a surface —
+/// the app layer manages `surface.get_current_texture()` and creates the
+/// `wgpu::RenderPass`, then calls [`render_to_pass()`](GlyphonRenderer::render_to_pass).
 pub struct GlyphonRenderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
-    #[allow(dead_code)]
     /// Glyphon cache — kept alive for the lifetime of the renderer.
+    #[allow(dead_code)]
     #[allow(dead_code)]
     cache: GlyphonCache,
     atlas: TextAtlas,
@@ -45,6 +80,13 @@ pub struct GlyphonRenderer {
 
 impl GlyphonRenderer {
     /// Create a new GlyphonRenderer.
+    ///
+    /// # Arguments
+    /// * `device` — wgpu device (from adapter request)
+    /// * `queue` — wgpu queue (from adapter request)
+    /// * `surface_format` — texture format from `surface.get_capabilities(&adapter)`
+    /// * `cols` — initial terminal width in cells
+    /// * `rows` — initial terminal height in cells
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -101,36 +143,32 @@ impl GlyphonRenderer {
         self.line_height.ceil() as u32
     }
 
-    /// Prepare and render the grid into a wgpu render pass.
+    /// Prepare text rendering: Grid → glyphon buffers → shape → prepare().
     ///
-    /// This is the main entry point for GPU rendering. The caller (typically
-    /// the winit event loop in P1-F3) provides the wgpu device, queue, and
-    /// an active render pass from the surface texture.
-    pub fn render_to_pass(
+    /// Call this before [`draw()`](Self::draw). Separating prepare/draw lets
+    /// the app layer manage the wgpu render pass.
+    pub fn prepare_grid(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         grid: &Grid,
         cursor: &CursorState,
-        render_pass: &mut wgpu::RenderPass<'_>,
-    ) -> Result<(), glyphon::RenderError> {
-        self.render_to_pass_with_dirty(device, queue, grid, cursor, None, render_pass)
+    ) -> Result<(), RenderError> {
+        self.prepare_grid_with_dirty(device, queue, grid, cursor, None)
     }
 
-    /// Prepare and render with dirty rect optimization.
+    /// Prepare with dirty rect optimization.
     ///
     /// When `dirty` is `Some(rect)`, only the affected rows are rebuilt.
     /// When `None`, all rows are rebuilt (full repaint).
-    #[allow(clippy::too_many_arguments)]
-    pub fn render_to_pass_with_dirty(
+    pub fn prepare_grid_with_dirty(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         grid: &Grid,
         cursor: &CursorState,
         dirty: Option<&DirtyRect>,
-        render_pass: &mut wgpu::RenderPass<'_>,
-    ) -> Result<(), glyphon::RenderError> {
+    ) -> Result<(), RenderError> {
         // Update viewport resolution
         self.viewport.update(queue, self.resolution);
 
@@ -144,7 +182,7 @@ impl GlyphonRenderer {
             None => (0, grid.height()),
         };
 
-        // Build glyphon buffers for each visible row
+        // Build one glyphon Buffer per visible row
         let mut buffers: Vec<Buffer> = Vec::with_capacity(row_end - row_start);
 
         for row_idx in row_start..row_end {
@@ -182,11 +220,11 @@ impl GlyphonRenderer {
                 attrs_list,
                 Shaping::Advanced,
             )];
-            buffer.shape();
+            buffer.shape_until_scroll(&mut self.font_system, false);
             buffers.push(buffer);
         }
 
-        // Build TextArea references — each buffer is positioned at its absolute row
+        // Build TextArea references — each buffer positioned at its absolute row
         let text_areas: Vec<TextArea> = buffers
             .iter()
             .enumerate()
@@ -209,23 +247,86 @@ impl GlyphonRenderer {
             })
             .collect();
 
-        // Prepare text renderer (shape + rasterize glyphs into atlas)
-        self.text_renderer
-            .prepare(
-                device,
-                queue,
-                &mut self.font_system,
-                &mut self.atlas,
-                &self.viewport,
-                text_areas,
-                &mut self.swash_cache,
-            )
-            .map_err(|_| glyphon::RenderError::RemovedFromAtlas)?;;
+        // Prepare text renderer — shape + rasterize glyphs into GPU atlas
+        self.text_renderer.prepare(
+            device,
+            queue,
+            &mut self.font_system,
+            &mut self.atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        )?;
 
-        // Render text quads into the wgpu render pass
-        self.text_renderer
-            .render(&self.atlas, &self.viewport, render_pass)?;
+        Ok(())
+    }
 
+    /// Draw previously-prepared text into a wgpu render pass.
+    ///
+    /// Call [`prepare_grid()`](Self::prepare_grid) first, then this method
+    /// inside your render pass.
+    pub fn draw(
+        &self,
+        render_pass: &mut wgpu::RenderPass<'_>,
+    ) -> Result<(), GlyphonRenderError> {
+        self.text_renderer
+            .render(&self.atlas, &self.viewport, render_pass)
+    }
+
+    /// Full render cycle: prepare grid + draw into render pass.
+    ///
+    /// Convenience method combining [`prepare_grid()`](Self::prepare_grid) and
+    /// [`draw()`](Self::draw). The caller creates the render pass from the
+    /// surface texture view.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let frame = surface.get_current_texture()?;
+    /// let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    /// let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    /// {
+    ///     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+    ///         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+    ///             view: &view,
+    ///             resolve_target: None,
+    ///             ops: wgpu::Operations {
+    ///                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+    ///                 store: wgpu::StoreOp::Store,
+    ///             },
+    ///         })],
+    ///         ..Default::default()
+    ///     });
+    ///     renderer.render_to_pass(&device, &queue, &grid, &cursor, &mut pass)?;
+    /// }
+    /// queue.submit(std::iter::once(encoder.finish()));
+    /// frame.present();
+    /// ```
+    pub fn render_to_pass(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        grid: &Grid,
+        cursor: &CursorState,
+        render_pass: &mut wgpu::RenderPass<'_>,
+    ) -> Result<(), RenderError> {
+        self.prepare_grid(device, queue, grid, cursor)?;
+        self.draw(render_pass)?;
+        Ok(())
+    }
+
+    /// Full render with dirty rect optimization.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_to_pass_with_dirty(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        grid: &Grid,
+        cursor: &CursorState,
+        dirty: Option<&DirtyRect>,
+        render_pass: &mut wgpu::RenderPass<'_>,
+    ) -> Result<(), RenderError> {
+        self.prepare_grid_with_dirty(device, queue, grid, cursor, dirty)?;
+        self.draw(render_pass)?;
         Ok(())
     }
 }
@@ -262,8 +363,6 @@ mod tests {
     use ggterm_core::{Grid, Cell};
 
     /// Verify that Grid → TextRun conversion produces correct text content.
-    /// This test doesn't require a GPU — it validates the rendering pipeline's
-    /// data transformation layer.
     #[test]
     fn test_grid_to_text_runs_basic() {
         let mut grid = Grid::new(10, 2);
@@ -302,8 +401,6 @@ mod tests {
     /// Verify that cell dimensions are computed correctly.
     #[test]
     fn test_cell_dimensions() {
-        // We can't create a GlyphonRenderer without a GPU device,
-        // but we can verify the constant-based calculation.
         let font_size = DEFAULT_FONT_SIZE;
         let line_height = DEFAULT_LINE_HEIGHT;
         let cell_w = (font_size * 0.6).ceil() as u32;
@@ -311,5 +408,14 @@ mod tests {
         assert!(cell_w > 0);
         assert!(cell_h > 0);
         assert!(cell_h >= cell_w, "line height should be >= cell width");
+    }
+
+    /// Verify RenderError Display formatting.
+    #[test]
+    fn test_render_error_display() {
+        let err = RenderError::Prepare(PrepareError::AtlasFull);
+        let msg = format!("{err}");
+        assert!(msg.contains("prepare error"), "got: {msg}");
+        assert!(msg.contains("atlas"), "got: {msg}");
     }
 }
