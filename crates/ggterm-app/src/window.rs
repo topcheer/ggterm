@@ -16,10 +16,10 @@
 //! │  (std::thread)  │   AppEvent::PtyBytes  │  (winit event    │
 //! └─────────────────┘                       │   poll)          │
 //!                                           │                  │
-//!                                           │  Parser.feed()   │
-//!                                           │  Terminal        │
-//!                                           │  GlyphonRenderer │
-//!                                           │  Surface present │
+//! ┌─────────────────┐                       │  Parser.feed()   │
+//! │  Keyboard (IO)  │ ──── encode ────────▶ │  Terminal        │
+//! │  winit events   │                       │  GlyphonRenderer │
+//! └─────────────────┘                       │  Surface present │
 //!                                           └──────────────────┘
 //! ```
 //!
@@ -27,19 +27,13 @@
 //! The reader thread only reads raw bytes from the PTY and sends them
 //! as `AppEvent::PtyBytes(Vec<u8>)`.
 
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use ggterm_core::pty::PtySession;
-use ggterm_core::term::Terminal;
-use ggterm_core::vte::Parser;
+
 use ggterm_render::theme::RenderTheme;
-use ggterm_render::CursorState;
 
 use crate::app::App;
-use crate::event::{spawn_pty_reader, AppEvent, EventSender};
-use crate::input::{InputEncoder, KeyModifiers};
+use crate::event::{spawn_pty_reader, AppEvent};
+use crate::input::KeyModifiers;
 
 /// Configuration for the desktop terminal window.
 #[derive(Debug, Clone)]
@@ -112,17 +106,16 @@ impl DesktopConfig {
     }
 }
 
-/// The desktop application: owns the winit window, wgpu device, and
-/// the headless `App` (Terminal + Parser + Renderer).
+/// The desktop application: owns the PTY session and the headless `App`
+/// (Terminal + Parser + Renderer).
 ///
-/// Created via [`DesktopApp::run`], which blocks on the winit event loop.
+/// Created via [`DesktopApp::run`], which blocks on the event loop.
+/// In the full implementation this will be driven by winit's event loop.
 pub struct DesktopApp {
     /// The headless application core (Terminal + Parser + InputEncoder).
     app: App,
-    /// PTY session (owned, writer accessible via shared handle).
-    pty: Arc<Mutex<PtySession>>,
-    /// Event sender for the PTY reader thread.
-    event_tx: EventSender,
+    /// PTY session (owned — kept alive for the lifetime of the app).
+    pty: PtySession,
     /// Current key modifiers state (updated by ModifiersChanged events).
     mods: KeyModifiers,
     /// Configuration.
@@ -132,94 +125,89 @@ pub struct DesktopApp {
 }
 
 impl DesktopApp {
-    /// Launch the desktop terminal: create window, GPU device, PTY, and
-    /// block on the winit event loop.
+    /// Launch the desktop terminal: create PTY, wire up the reader thread,
+    /// and block on the event loop.
     ///
     /// This function does not return until the window is closed or the
     /// user presses Ctrl+C / the shell exits.
     pub fn run(config: DesktopConfig) -> Result<(), Box<dyn std::error::Error>> {
-        // 1. Create PTY session
         let (cols, rows) = (config.cols, config.rows);
-        let pty = PtySession::open_with_shell(cols, rows, config.shell.as_deref())?;
-        let pty = Arc::new(Mutex::new(pty));
+
+        // 1. Create PTY session
+        let mut pty = PtySession::open_with_shell(cols, rows, config.shell.as_deref())?;
 
         // 2. Create the headless App (Terminal + Parser + ConsoleRenderer)
-        let (mut app, event_rx) = App::new(cols as usize, rows as usize);
+        let (mut app, event_tx) = App::new(cols as usize, rows as usize);
 
-        // 3. Spawn PTY reader thread → pump bytes into event channel
-        {
-            let pty_guard = pty.lock().unwrap();
-            let reader = pty_guard.try_clone_reader();
-            let writer = pty_guard.try_clone_writer();
+        // 3. PTY reader thread → pump bytes into event channel
+        let reader = pty.try_clone_reader()?;
+        spawn_pty_reader(reader, event_tx);
+
+        // 4. Wire keyboard input → PTY (via App's pty_writer)
+        //    take_writer() extracts a writer handle; App routes Keyboard events to it.
+        if let Some(writer) = pty.take_writer() {
             app.set_pty_writer(writer);
-
-            if let Some(reader) = reader {
-                spawn_pty_reader(reader, app.event_sender().clone());
-            }
         }
 
-        // 4. Poll events from the channel (non-blocking pump)
-        //    The real winit event loop will be added in the next step.
-        //    For now we drain the channel and process events.
+        // 5. Build DesktopApp and run event loop
         let mut desktop = DesktopApp {
             app,
             pty,
-            event_tx: mpsc::channel::<AppEvent>().0, // placeholder
             mods: KeyModifiers::default(),
-            config: config.clone(),
+            config,
             quit: false,
         };
 
-        desktop.event_loop(event_rx)?;
+        desktop.event_loop()?;
         Ok(())
     }
 
-    /// The main event loop. Pumps events from the PTY reader channel,
-    /// feeds them through the Terminal, and renders.
+    /// The main event loop.
+    ///
+    /// Pumps events from the PTY reader channel (via `App::pump()`),
+    /// and checks for PTY exit.
     ///
     /// In the full implementation this will be driven by winit's event loop.
-    /// For now it's a simple blocking loop on the mpsc channel.
-    fn event_loop(&mut self, rx: mpsc::Receiver<AppEvent>) -> Result<(), Box<dyn std::error::Error>> {
-        use std::io::Write;
-
+    fn event_loop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         while !self.quit {
-            match rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                Ok(AppEvent::PtyBytes(bytes)) => {
-                    self.app.handle_event(AppEvent::PtyBytes(bytes));
-                }
-                Ok(AppEvent::Resize { cols, rows }) => {
-                    self.app.handle_event(AppEvent::Resize { cols, rows });
-                    // Resize the PTY
-                    if let Ok(mut pty) = self.pty.lock() {
-                        let _ = pty.resize(cols, rows);
-                    }
-                }
-                Ok(AppEvent::Keyboard(key_bytes)) => {
-                    // Write keyboard input to PTY
-                    if let Ok(mut pty) = self.pty.lock() {
-                        let _ = pty.write(&key_bytes);
-                    }
-                }
-                Ok(AppEvent::PtyExit) => {
-                    log::info!("PTY process exited");
-                    self.quit = true;
-                }
-                Ok(AppEvent::Quit) => {
-                    self.quit = true;
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // No events — continue. In a real winit loop this is where
-                    // we'd poll window events.
-                    continue;
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    log::info!("Event channel disconnected — PTY reader exited");
-                    self.quit = true;
-                }
+            // Process all pending PTY events.
+            self.app.pump();
+
+            // Check if App received PtyExit or Quit.
+            if !self.app.is_running() {
+                log::info!("App signaled exit");
+                self.quit = true;
+                break;
             }
+
+            // Also check PTY process liveness directly.
+            if !self.pty.is_alive() {
+                log::info!("PTY process exited");
+                self.quit = true;
+                break;
+            }
+
+            // Brief sleep to avoid busy-loop.
+            // In a real winit loop, winit::event_loop::EventLoop::run()
+            // handles this via the OS event system.
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
         Ok(())
+    }
+
+    /// Send keyboard input to the PTY.
+    ///
+    /// Encodes the raw key bytes and writes them to the PTY.
+    pub fn send_input(&mut self, data: &[u8]) -> std::io::Result<()> {
+        self.pty.write(data)?;
+        Ok(())
+    }
+
+    /// Resize the terminal and PTY.
+    pub fn resize(&mut self, cols: u16, rows: u16) {
+        self.app.handle_event(AppEvent::Resize { cols, rows });
+        let _ = self.pty.resize(cols, rows);
     }
 
     /// Get a reference to the headless App.

@@ -219,7 +219,6 @@ impl GlyphonRenderer {
                 attrs_list,
                 Shaping::Advanced,
             )];
-            buffer.shape_until_scroll(&mut self.font_system, false);
             buffers.push(buffer);
         }
 
