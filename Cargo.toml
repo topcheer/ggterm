@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/ggterm-ai",
     "crates/ggterm-core",
     "crates/ggterm-render",
     "crates/ggterm-render-wgpu",
@@ -31,6 +32,7 @@ raw-window-handle = "0.6"
 env_logger = "0.11"
 
 # Internal crates
+ggterm-ai = { path = "crates/ggterm-ai" }
 ggterm-core = { path = "crates/ggterm-core" }
 ggterm-render = { path = "crates/ggterm-render" }
 ggterm-render-wgpu = { path = "crates/ggterm-render-wgpu" }
