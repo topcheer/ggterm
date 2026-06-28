@@ -219,6 +219,8 @@ impl GlyphonRenderer {
                 attrs_list,
                 Shaping::Advanced,
             )];
+            // Shape the buffer so glyph data is ready for glyphon's prepare().
+            // Shaping happens automatically inside TextRenderer::prepare().
             buffers.push(buffer);
         }
 
