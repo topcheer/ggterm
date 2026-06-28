@@ -26,6 +26,87 @@ impl Default for Cursor {
     }
 }
 
+/// OSC 133 command mark kind (Shell Integration protocol).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandMarkKind {
+    /// `OSC 133;A` — prompt start.
+    PromptStart,
+    /// `OSC 133;B` — command start (user typed Enter).
+    CommandStart,
+    /// `OSC 133;C` — output start (command begins producing output).
+    OutputStart,
+    /// `OSC 133;D[;exitcode]` — command end.
+    CommandEnd,
+}
+
+/// A shell-integration command mark (OSC 133).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandMark {
+    /// What kind of mark this is.
+    pub kind: CommandMarkKind,
+    /// Row at which the mark was emitted (cursor Y).
+    pub row: usize,
+    /// Exit code, only meaningful for `CommandEnd` marks.
+    pub exit_code: Option<i32>,
+}
+
+/// Character set designation (G0 or G1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Charset {
+    /// US ASCII (default).
+    #[default]
+    Ascii,
+    /// DEC Special Graphics (line drawing, block elements).
+    DecSpecial,
+}
+
+impl Charset {
+    /// Translate a character through this charset.
+    /// Only ASCII range 0x5F–0x7E is affected by DEC Special Graphics.
+    /// Returns the original character if no translation applies.
+    fn translate(self, ch: char) -> char {
+        if self != Charset::DecSpecial {
+            return ch;
+        }
+        // DEC Special Graphics mapping for 0x5F-0x7E
+        match ch {
+            '_' => ' ',    // blank
+            '`' => '\u{25C6}', // ◆
+            'a' => '\u{2592}', // ▒
+            'b' => '\u{2409}', // HT symbol
+            'c' => '\u{240C}', // FF symbol
+            'd' => '\u{240D}', // CR symbol
+            'e' => '\u{240A}', // LF symbol
+            'f' => '\u{00B0}', // °
+            'g' => '\u{00B1}', // ±
+            'h' => '\u{2424}', // NL symbol
+            'i' => '\u{240B}', // VT symbol
+            'j' => '\u{2518}', // ┘
+            'k' => '\u{2510}', // ┐
+            'l' => '\u{250C}', // ┌
+            'm' => '\u{2514}', // └
+            'n' => '\u{253C}', // ┼
+            'o' => '\u{23BA}', // ⎺
+            'p' => '\u{23BB}', // ⎻
+            'q' => '\u{2500}', // ─
+            'r' => '\u{23BC}', // ⎼
+            's' => '\u{23BD}', // ⎽
+            't' => '\u{251C}', // ├
+            'u' => '\u{2524}', // ┤
+            'v' => '\u{2534}', // ┴
+            'w' => '\u{252C}', // ┬
+            'x' => '\u{2502}', // │
+            'y' => '\u{2264}', // ≤
+            'z' => '\u{2265}', // ≥
+            '{' => '\u{03C0}', // π
+            '|' => '\u{2260}', // ≠
+            '}' => '\u{00A3}', // £
+            '~' => '\u{00B7}', // ·
+            _ => ch,
+        }
+    }
+}
+
 /// Terminal mode flags.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Modes {
@@ -52,6 +133,26 @@ impl Modes {
     }
 }
 
+/// Cursor display style (DECSCUSR).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CursorStyle {
+    /// Default cursor style (usually blinking block).
+    #[default]
+    Default,
+    /// Blinking block.
+    BlinkBlock,
+    /// Steady (non-blinking) block.
+    SteadyBlock,
+    /// Blinking underline.
+    BlinkUnderline,
+    /// Steady underline.
+    SteadyUnderline,
+    /// Blinking bar (vertical line).
+    BlinkBar,
+    /// Steady bar.
+    SteadyBar,
+}
+
 /// The terminal state machine.
 ///
 /// Connects the VTE parser to the Grid model via the [`Perform`] trait.
@@ -64,9 +165,23 @@ pub struct Terminal {
     bg: Color,
     flags: CellFlags,
     tab_stops: Vec<bool>,
+    /// OSC 133 command marks for shell integration.
+    command_marks: Vec<CommandMark>,
     title: String,
     /// UTF-8 byte buffer for reassembling multi-byte sequences.
     utf8_buf: Vec<u8>,
+    /// Active G0 character set.
+    g0_charset: Charset,
+    /// Active G1 character set.
+    g1_charset: Charset,
+    /// Active charset: false = G0, true = G1 (via ShiftOut).
+    active_g1: bool,
+    /// Last printed character (for REP — CSI Ps b).
+    last_printed_char: Option<char>,
+    /// Cursor style (DECSCUSR — CSI Ps SP q).
+    cursor_style: CursorStyle,
+    /// Device response buffer for DA/DSR replies.
+    response_buffer: Vec<u8>,
 }
 
 impl Terminal {
@@ -87,8 +202,15 @@ impl Terminal {
             bg: Color::Default,
             flags: CellFlags::empty(),
             tab_stops,
+            command_marks: Vec::new(),
             title: String::new(),
             utf8_buf: Vec::with_capacity(4),
+            g0_charset: Charset::default(),
+            g1_charset: Charset::default(),
+            active_g1: false,
+            last_printed_char: None,
+            cursor_style: CursorStyle::default(),
+            response_buffer: Vec::new(),
         }
     }
 
@@ -98,7 +220,28 @@ impl Terminal {
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
     pub fn cursor(&self) -> (usize, usize) { (self.cursor.x, self.cursor.y) }
     pub fn cursor_visible(&self) -> bool { self.modes.cursor_visible }
+    pub fn cursor_style(&self) -> CursorStyle { self.cursor_style }
     pub fn title(&self) -> &str { &self.title }
+
+    /// Return the device response buffer (DA/DSR replies).
+    pub fn response_buffer(&self) -> &[u8] { &self.response_buffer }
+
+    /// Take the device response buffer, clearing it.
+    pub fn take_response(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.response_buffer)
+    }
+
+    /// Return the active G0 character set.
+    pub fn g0_charset(&self) -> Charset { self.g0_charset }
+    /// Return the active G1 character set.
+    pub fn g1_charset(&self) -> Charset { self.g1_charset }
+    /// Return true if G1 is the currently active charset (via SO/ShiftOut).
+    pub fn active_g1(&self) -> bool { self.active_g1 }
+
+    /// Return all OSC 133 command marks collected so far.
+    pub fn command_marks(&self) -> &[CommandMark] {
+        &self.command_marks
+    }
 
     pub fn resize(&mut self, width: usize, height: usize) {
         self.grid.resize(width, height);
@@ -152,6 +295,9 @@ impl Terminal {
             return;
         }
 
+        // Track for REP (CSI Ps b)
+        self.last_printed_char = Some(ch);
+
         // Handle deferred wrap (DECAWM) before writing
         if self.cursor.pending_wrap && self.modes.auto_wrap {
             self.cursor.x = 0;
@@ -175,6 +321,14 @@ impl Terminal {
         if self.modes.insert {
             self.grid.insert_char(self.cursor.x, self.cursor.y, w);
         }
+
+        // Apply character set translation for ASCII range
+        let ch = if ch.is_ascii() {
+            let cs = if self.active_g1 { self.g1_charset } else { self.g0_charset };
+            cs.translate(ch)
+        } else {
+            ch
+        };
 
         // Write the character (grid.put_char handles wide char + spacer mechanics)
         let consumed = self.grid.put_char(self.cursor.x, self.cursor.y, ch);
@@ -357,6 +511,8 @@ impl Perform for Terminal {
             }
             0x0a | 0x0b | 0x0c => { self.line_feed(); }
             0x0d => { self.cursor.x = 0; self.cursor.pending_wrap = false; }
+            0x0e => { self.active_g1 = true; }  // SO (Shift Out) — activate G1
+            0x0f => { self.active_g1 = false; } // SI (Shift In)  — activate G0
             _ => {}
         }
     }
@@ -371,14 +527,26 @@ impl Perform for Terminal {
             b'E' => { let n = Self::param(params,0,1) as usize; let (_,bottom) = self.grid.scroll_region(); self.cursor.y = (self.cursor.y+n).min(bottom.saturating_sub(1)); self.cursor.x = 0; self.cursor.pending_wrap = false; }
             b'F' => { let n = Self::param(params,0,1) as usize; let (top,_) = self.grid.scroll_region(); self.cursor.y = self.cursor.y.saturating_sub(n).max(top); self.cursor.x = 0; self.cursor.pending_wrap = false; }
             b'G' => { let col = Self::param(params,0,1) as usize; self.set_cursor(col.saturating_sub(1), self.cursor.y); }
-            b'H' | b'f' => { let row = Self::param(params,0,1) as usize; let col = Self::param(params,1,1) as usize; self.set_cursor(col.saturating_sub(1), row.saturating_sub(1)); }
+            b'H' | b'f' => {
+                let row = Self::param(params,0,1) as usize;
+                let col = Self::param(params,1,1) as usize;
+                // Origin mode: CUP is relative to scroll region top
+                let actual_row = if self.modes.origin {
+                    let (top, _) = self.grid.scroll_region();
+                    top + row.saturating_sub(1)
+                } else {
+                    row.saturating_sub(1)
+                };
+                self.set_cursor(col.saturating_sub(1), actual_row);
+            }
             b'd' => { let row = Self::param(params,0,1) as usize; self.set_cursor(self.cursor.x, row.saturating_sub(1)); }
             b'J' => {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     0 => { self.grid.clear_line_from(self.cursor.x, self.cursor.y); for r in (self.cursor.y+1)..self.grid.height() { self.grid.clear_line(r); } }
                     1 => { for r in 0..self.cursor.y { self.grid.clear_line(r); } self.grid.clear_line_to(self.cursor.x+1, self.cursor.y); }
-                    2 | 3 => { self.grid.clear(); }
+                    2 => { self.grid.clear(); }
+                    3 => { self.grid.clear(); self.grid.clear_scrollback(); }
                     _ => {}
                 }
             }
@@ -394,11 +562,19 @@ impl Perform for Terminal {
             b'S' => { let n = Self::param(params,0,1) as usize; self.grid.scroll_up(n); }
             b'T' => { let n = Self::param(params,0,1) as usize; self.grid.scroll_down(n); }
             b'r' if !is_private => {
-                let top = Self::param(params,0,1) as usize;
-                let bottom = params.get(1).copied().unwrap_or(self.grid.height() as u16).max(1) as usize;
-                if top < bottom && bottom <= self.grid.height() {
-                    self.grid.set_scroll_region(top.saturating_sub(1), bottom);
+                // CSI r (no params) or CSI 0;0r → reset to full screen
+                if params.is_empty() || params.iter().all(|&p| p == 0) {
+                    self.grid.set_scroll_region(0, self.grid.height());
                     self.set_cursor(0, 0);
+                } else {
+                    let top = Self::param(params,0,1) as usize;
+                    let bottom = params.get(1).copied().unwrap_or(self.grid.height() as u16).max(1) as usize;
+                    if top < bottom && bottom <= self.grid.height() {
+                        self.grid.set_scroll_region(top.saturating_sub(1), bottom);
+                        // In origin mode, cursor goes to scroll region top
+                        let (st, _) = self.grid.scroll_region();
+                        self.set_cursor(0, if self.modes.origin { st } else { 0 });
+                    }
                 }
             }
             b'm' => self.sgr(params),
@@ -414,11 +590,112 @@ impl Perform for Terminal {
             b'l' if is_private => { self.set_dec_mode(params.first().copied().unwrap_or(0), false); }
             b'h' => { let m = params.first().copied().unwrap_or(0); if m == 4 { self.modes.insert = true; } }
             b'l' => { let m = params.first().copied().unwrap_or(0); if m == 4 { self.modes.insert = false; } }
+            // REP — repeat preceding printable character N times
+            b'b' => {
+                let n = Self::param(params,0,1) as usize;
+                if let Some(ch) = self.last_printed_char {
+                    for _ in 0..n {
+                        self.put_printable_char(ch);
+                    }
+                }
+            }
+            // DA1 — primary device attributes
+            b'c' if !intermediates.contains(&b'>') => {
+                // Respond: CSI ? 62 ; 1 ; 2 ; 4 ; 6 ; 9 ; 15 ; 16 ; 22 c
+                // VT220-level, with basic capabilities
+                self.response_buffer.extend_from_slice(b"\x1b[?62;1;2;4;6;9;15;16;22c");
+            }
+            // DA2 — secondary device attributes (CSI > c)
+            b'c' if intermediates.contains(&b'>') => {
+                // Respond: CSI > 41 ; 0 ; 0 c (VT220)
+                self.response_buffer.extend_from_slice(b"\x1b[>41;0;0c");
+            }
+            // DSR — device status report (CSI 6 n → cursor position)
+            b'n' => {
+                let mode = params.first().copied().unwrap_or(0);
+                match mode {
+                    5 => {
+                        // Operating status: OK
+                        self.response_buffer.extend_from_slice(b"\x1b[0n");
+                    }
+                    6 => {
+                        // Cursor position report: CSI row;col R (1-based)
+                        let (cx, cy) = (self.cursor.x + 1, self.cursor.y + 1);
+                        let resp = format!("\x1b[{};{}R", cy, cx);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    _ => {}
+                }
+            }
+            // SCP — save cursor position (legacy ANSI.SYS)
+            b's' => { self.saved_cursor = self.cursor; }
+            // RCP — restore cursor position (legacy ANSI.SYS)
+            b'u' => { self.cursor = self.saved_cursor; self.cursor.pending_wrap = false; }
+            // DECSCUSR — cursor style (CSI Ps SP q)
+            b'q' if intermediates.contains(&b' ') => {
+                let style = params.first().copied().unwrap_or(0);
+                self.cursor_style = match style {
+                    0 => CursorStyle::Default,
+                    1 => CursorStyle::BlinkBlock,
+                    2 => CursorStyle::SteadyBlock,
+                    3 => CursorStyle::BlinkUnderline,
+                    4 => CursorStyle::SteadyUnderline,
+                    5 => CursorStyle::BlinkBar,
+                    6 => CursorStyle::SteadyBar,
+                    _ => self.cursor_style,
+                };
+            }
+            // DECSTR — soft terminal reset (CSI ! p)
+            b'p' if intermediates.contains(&b'!') => {
+                let w = self.grid.width();
+                let h = self.grid.height();
+                *self = Terminal::new(w, h);
+            }
             _ => {}
         }
     }
 
-    fn esc(&mut self, _intermediates: &[u8], final_byte: u8) {
+    fn esc(&mut self, intermediates: &[u8], final_byte: u8) {
+        // SCS: ESC ( <final> — designate G0 character set
+        if intermediates.contains(&b'(') {
+            match final_byte {
+                b'B' => self.g0_charset = Charset::Ascii,       // US ASCII
+                b'0' => self.g0_charset = Charset::DecSpecial,   // DEC Special Graphics
+                _ => {}  // Other charsets ignored (UK, etc.)
+            }
+            return;
+        }
+        // SCS: ESC ) <final> — designate G1 character set
+        if intermediates.contains(&b')') {
+            match final_byte {
+                b'B' => self.g1_charset = Charset::Ascii,
+                b'0' => self.g1_charset = Charset::DecSpecial,
+                _ => {}
+            }
+            return;
+        }
+        // Handle intermediate-byte escape sequences (e.g. DECALN = ESC # 8).
+        if intermediates.contains(&b'#') {
+            match final_byte {
+                b'8' => {
+                    // DECALN — fill the entire screen with 'E' for alignment testing.
+                    // This also tests that scroll regions are NOT affected (they stay set).
+                    for row in 0..self.grid.height() {
+                        for col in 0..self.grid.width() {
+                            if let Some(c) = self.grid.cell_mut(col, row) {
+                                c.ch = 'E';
+                                c.fg = Color::Default;
+                                c.bg = Color::Default;
+                                c.flags = CellFlags::empty();
+                            }
+                        }
+                    }
+                    self.grid.mark_all_dirty();
+                }
+                _ => {}
+            }
+            return;
+        }
         match final_byte {
             b'7' => self.saved_cursor = self.cursor,
             b'8' => self.cursor = self.saved_cursor,
@@ -437,6 +714,24 @@ impl Perform for Terminal {
         let cmd = parts.next().and_then(|s| s.parse::<u16>().ok());
         match cmd {
             Some(0) | Some(2) => { self.title = parts.next().unwrap_or("").to_string(); }
+            Some(133) => {
+                let payload = parts.next().unwrap_or("");
+                let mut sub_parts = payload.splitn(2, ';');
+                let mark_char = sub_parts.next().unwrap_or("");
+                let exit_code = sub_parts.next().and_then(|code| code.parse::<i32>().ok());
+                let (kind, has_exit) = match mark_char.chars().next() {
+                    Some('A') => (CommandMarkKind::PromptStart, false),
+                    Some('B') => (CommandMarkKind::CommandStart, false),
+                    Some('C') => (CommandMarkKind::OutputStart, false),
+                    Some('D') => (CommandMarkKind::CommandEnd, true),
+                    _ => return,
+                };
+                self.command_marks.push(CommandMark {
+                    kind,
+                    row: self.cursor.y,
+                    exit_code: if has_exit { exit_code } else { None },
+                });
+            }
             _ => {}
         }
     }
@@ -1034,5 +1329,641 @@ mod tests {
         // Cell (0,0) should have U+FFFD, cell (1,0) should have 'A'
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{FFFD}');
         assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+    }
+
+    // ==================================================================
+    // P2-3: DECALN (ESC # 8) + Scroll Region + Tab Stop edge cases
+    // ==================================================================
+
+    #[test]
+    fn t_decaln_fills_screen_with_e() {
+        let mut t = Terminal::new(10, 5);
+        // Write some content first
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"\x1b#8"); // DECALN
+        for y in 0..5 {
+            for x in 0..10 {
+                assert_eq!(t.grid().cell(x, y).unwrap().ch, 'E',
+                    "cell ({},{}) should be 'E' after DECALN", x, y);
+            }
+        }
+    }
+
+    #[test]
+    fn t_decaln_resets_attributes() {
+        let mut t = Terminal::new(10, 3);
+        // Set bold + colors, then DECALN
+        feed(&mut t, b"\x1b[1;31m");
+        feed(&mut t, b"\x1b#8");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(!cell.flags.contains(CellFlags::BOLD), "DECALN should reset attributes");
+        assert_eq!(cell.fg, Color::Default, "DECALN should reset fg");
+        assert_eq!(cell.bg, Color::Default, "DECALN should reset bg");
+    }
+
+    #[test]
+    fn t_decaln_preserves_scroll_region() {
+        let mut t = Terminal::new(10, 6);
+        // Set scroll region to rows 1-4 (0-based)
+        feed(&mut t, b"\x1b[2;5r");
+        // DECALN fills entire screen regardless of scroll region
+        feed(&mut t, b"\x1b#8");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 1, "scroll region top preserved after DECALN");
+        assert_eq!(bottom, 5, "scroll region bottom preserved after DECALN");
+    }
+
+    #[test]
+    fn t_decstbm_reset_no_params() {
+        let mut t = Terminal::new(80, 24);
+        // Set scroll region
+        feed(&mut t, b"\x1b[5;15r");
+        assert_eq!(t.grid().scroll_region(), (4, 15));
+        // Reset with no params: CSI r → full screen
+        feed(&mut t, b"\x1b[r");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "DECSTBM reset: top should be 0");
+        assert_eq!(bottom, 24, "DECSTBM reset: bottom should be height");
+    }
+
+    #[test]
+    fn t_decstbm_invalid_params_ignored() {
+        let mut t = Terminal::new(80, 24);
+        // top >= bottom → ignored (reset to full screen)
+        feed(&mut t, b"\x1b[15;5r");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0);
+        assert_eq!(bottom, 24);
+    }
+
+    #[test]
+    fn t_decstbm_bottom_exceeds_height() {
+        let mut t = Terminal::new(80, 24);
+        // bottom > height → reset to full screen
+        feed(&mut t, b"\x1b[5;30r");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0);
+        assert_eq!(bottom, 24);
+    }
+
+    #[test]
+    fn t_scroll_region_isolation() {
+        // Scrolling inside the region should not affect rows outside.
+        let mut t = Terminal::new(10, 6);
+        // Fill all rows
+        for row in 0..6 {
+            feed(&mut t, format!("R{}\n", row).as_bytes());
+        }
+        // Set scroll region to rows 2-4 (0-indexed: 1-3)
+        feed(&mut t, b"\x1b[2;4r");
+        // Move cursor inside region and scroll up
+        feed(&mut t, b"\x1b[2;1H"); // row 2, col 1
+        feed(&mut t, b"\x1b[S"); // scroll up 1
+        // Row 0 and row 5 should be unaffected
+        // (Content may shift inside region but rows outside stay)
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 1);
+        assert_eq!(bottom, 4);
+    }
+
+    #[test]
+    fn t_tab_at_last_column_no_panic() {
+        // HT at last column should not panic or go out of bounds.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;10H"); // move to last column
+        feed(&mut t, b"\t"); // HT
+        assert!(t.cursor().0 < 10, "cursor should not exceed width");
+    }
+
+    #[test]
+    fn t_cbt_at_first_column_no_panic() {
+        // CBT (reverse tab) at column 0 should not panic.
+        let mut t = Terminal::new(10, 3);
+        // cursor at (0,0)
+        feed(&mut t, b"\x1b[Z"); // CBT
+        assert_eq!(t.cursor().0, 0, "CBT at column 0 stays at 0");
+    }
+
+    #[test]
+    fn t_tbc_clear_all_tab_stops() {
+        let mut t = Terminal::new(40, 3);
+        // Set some tab stops
+        feed(&mut t, b"\x1b[1;5H\x1bH"); // HTS at column 5
+        feed(&mut t, b"\x1b[1;15H\x1bH"); // HTS at column 15
+        // Clear all
+        feed(&mut t, b"\x1b[3g");
+        // Tab should now only stop at default positions (or none)
+        // After TBC 3, all tab stops are cleared
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\t");
+        // With no tab stops, tab should move to end of line
+        assert!(t.cursor().0 <= 40);
+    }
+
+    #[test]
+    fn t_decstbm_moves_cursor_home() {
+        // After DECSTBM, cursor should move to (0,0) of the screen
+        // (or origin of scroll region if origin mode is on).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[10;10H"); // move cursor away
+        feed(&mut t, b"\x1b[5;15r"); // set scroll region
+        // Per VT spec, DECSTBM moves cursor to home position
+        assert_eq!(t.cursor(), (0, 0), "DECSTBM should home cursor");
+    }
+
+    // ==================================================================
+    // P3-A: OSC 133 Shell Integration (Command Marks)
+    // ==================================================================
+
+    #[test]
+    fn t_osc133_prompt_start() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // BEL terminated
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::PromptStart);
+        assert_eq!(marks[0].row, 0);
+        assert_eq!(marks[0].exit_code, None);
+    }
+
+    #[test]
+    fn t_osc133_command_start() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;B\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::CommandStart);
+    }
+
+    #[test]
+    fn t_osc133_output_start() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;C\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::OutputStart);
+    }
+
+    #[test]
+    fn t_osc133_command_end() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::CommandEnd);
+        assert_eq!(marks[0].exit_code, None, "D without exit code → None");
+    }
+
+    #[test]
+    fn t_osc133_command_end_with_exit_code_zero() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;0\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::CommandEnd);
+        assert_eq!(marks[0].exit_code, Some(0));
+    }
+
+    #[test]
+    fn t_osc133_command_end_with_error_code() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;127\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks[0].kind, CommandMarkKind::CommandEnd);
+        assert_eq!(marks[0].exit_code, Some(127));
+    }
+
+    #[test]
+    fn t_osc133_st_terminated() {
+        // ST = ESC \ (0x1b 0x5c)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x1b\\");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::PromptStart);
+    }
+
+    #[test]
+    fn t_osc133_full_cycle() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // prompt start at row 0
+        feed(&mut t, b"ls -la\r\n");
+        feed(&mut t, b"\x1b]133;B\x07"); // command start (Enter pressed)
+        feed(&mut t, b"\x1b]133;C\x07"); // output start
+        feed(&mut t, b"file1 file2\r\n");
+        feed(&mut t, b"\x1b]133;D;0\x07"); // command end, exit 0
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 4);
+        assert_eq!(marks[0].kind, CommandMarkKind::PromptStart);
+        assert_eq!(marks[1].kind, CommandMarkKind::CommandStart);
+        assert_eq!(marks[2].kind, CommandMarkKind::OutputStart);
+        assert_eq!(marks[3].kind, CommandMarkKind::CommandEnd);
+        assert_eq!(marks[3].exit_code, Some(0));
+    }
+
+    #[test]
+    fn t_osc133_truncated_command_new_prompt() {
+        // A → B → A without D (user Ctrl+C'd then new prompt)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // prompt
+        feed(&mut t, b"\x1b]133;B\x07"); // command start
+        feed(&mut t, b"\x1b]133;A\x07"); // new prompt (no D for previous)
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 3);
+        assert_eq!(marks[0].kind, CommandMarkKind::PromptStart);
+        assert_eq!(marks[1].kind, CommandMarkKind::CommandStart);
+        assert_eq!(marks[2].kind, CommandMarkKind::PromptStart);
+    }
+
+    #[test]
+    fn t_osc133_row_tracking() {
+        // Command marks should record the cursor row.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // row 0
+        feed(&mut t, b"\n\n"); // cursor now at row 2
+        feed(&mut t, b"\x1b]133;C\x07"); // row 2
+        let marks = t.command_marks();
+        assert_eq!(marks[0].row, 0);
+        assert_eq!(marks[1].row, 2);
+    }
+
+    #[test]
+    fn t_osc133_unknown_subcommand_ignored() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;X\x07"); // unknown subcommand
+        assert_eq!(t.command_marks().len(), 0, "unknown subcommand should be ignored");
+    }
+
+    #[test]
+    fn t_osc133_empty_payload() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133\x07"); // OSC 133 with no sub-mark
+        assert_eq!(t.command_marks().len(), 0, "OSC 133 with empty payload should be ignored");
+    }
+
+    #[test]
+    fn t_osc133_negative_exit_code() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;-1\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks[0].exit_code, Some(-1));
+    }
+
+    // -- P2-2: CSI extensions tests --
+
+    #[test]
+    fn t_rep_basic() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"A");
+        feed(&mut t, b"\x1b[3b"); // REP 3 times → total "AAAA"
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'A');
+        assert_eq!(t.cursor().0, 4);
+    }
+
+    #[test]
+    fn t_rep_default_count() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"X");
+        feed(&mut t, b"\x1b[b"); // REP with default = 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X');
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_rep_no_preceding_char() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5b"); // REP without preceding char → no-op
+        assert_eq!(t.cursor().0, 0);
+    }
+
+    #[test]
+    fn t_dsr_cursor_position() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello\x1b[6n"); // cursor at col 5, row 0
+        let resp = t.take_response();
+        let expected = b"\x1b[1;6R"; // row 1, col 6 (1-based)
+        assert_eq!(resp, expected);
+    }
+
+    #[test]
+    fn t_dsr_device_status() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5n"); // device status report
+        let resp = t.take_response();
+        assert_eq!(resp, b"\x1b[0n"); // OK
+    }
+
+    #[test]
+    fn t_da1_primary() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[c"); // primary DA
+        let resp = t.take_response();
+        assert!(resp.starts_with(b"\x1b[?"));
+        assert!(resp.ends_with(b"c"));
+    }
+
+    #[test]
+    fn t_da2_secondary() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>c"); // secondary DA
+        let resp = t.take_response();
+        assert!(resp.starts_with(b"\x1b[>"));
+    }
+
+    #[test]
+    fn t_decscusr_steady_block() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[2 q"); // steady block
+        assert_eq!(t.cursor_style(), CursorStyle::SteadyBlock);
+    }
+
+    #[test]
+    fn t_decscusr_blinking_underline() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[3 q"); // blinking underline
+        assert_eq!(t.cursor_style(), CursorStyle::BlinkUnderline);
+    }
+
+    #[test]
+    fn t_decscusr_steady_bar() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[6 q"); // steady bar
+        assert_eq!(t.cursor_style(), CursorStyle::SteadyBar);
+    }
+
+    #[test]
+    fn t_decscusr_default() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[2 q"); // change first
+        feed(&mut t, b"\x1b[0 q"); // reset to default
+        assert_eq!(t.cursor_style(), CursorStyle::Default);
+    }
+
+    #[test]
+    fn t_scp_rcp() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;10H"); // move to row 5, col 10
+        feed(&mut t, b"\x1b[s"); // SCP — save position
+        feed(&mut t, b"\x1b[1;1H"); // move to home
+        feed(&mut t, b"\x1b[u"); // RCP — restore
+        assert_eq!(t.cursor(), (9, 4)); // 0-based: col 9, row 4
+    }
+
+    #[test]
+    fn t_decstr_soft_reset() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;10H"); // move cursor
+        feed(&mut t, b"\x1b[31m"); // set color
+        feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
+        assert_eq!(t.cursor(), (0, 0));
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_origin_mode_cup() {
+        let mut t = Terminal::new(80, 24);
+        // Set scroll region to rows 5-15 (0-based: 4-14)
+        feed(&mut t, b"\x1b[5;15r");
+        // Enable origin mode
+        feed(&mut t, b"\x1b[?6h");
+        // CUP to row 1, col 1 → should be relative to scroll region top
+        feed(&mut t, b"\x1b[1;1H");
+        assert_eq!(t.cursor().1, 4); // row 4 (0-based) = scroll top
+    }
+
+    #[test]
+    fn t_origin_mode_disabled_cup() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;15r"); // set scroll region
+        // Origin mode NOT enabled
+        feed(&mut t, b"\x1b[1;1H");
+        assert_eq!(t.cursor().1, 0); // row 0 (absolute)
+    }
+
+    #[test]
+    fn t_ed_mode3_clear_scrollback() {
+        let mut t = Terminal::new(80, 4);
+        // Fill visible screen, then scroll to create scrollback
+        feed(&mut t, b"AAAA\r\nBBBB\r\nCCCC\r\nDDDD\r\nEEEE");
+        assert!(t.grid().scrollback_len() > 0);
+        // ED mode 3 — clear scrollback only
+        feed(&mut t, b"\x1b[3J");
+        assert_eq!(t.grid().scrollback_len(), 0);
+    }
+
+    #[test]
+    fn t_decestbm_reset_no_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;15r"); // set region
+        feed(&mut t, b"\x1b[r"); // reset with no params
+        feed(&mut t, b"\x1b[1;1H");
+        assert_eq!(t.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn t_decestbm_reset_zero_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;15r"); // set region
+        feed(&mut t, b"\x1b[0;0r"); // reset with 0;0
+        feed(&mut t, b"\x1b[1;1H");
+        assert_eq!(t.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn t_response_buffer_drain() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[6n"); // DSR
+        assert!(!t.response_buffer().is_empty());
+        let drained = t.take_response();
+        assert!(!drained.is_empty());
+        assert!(t.response_buffer().is_empty()); // drained
+    }
+
+    #[test]
+    fn t_cursor_style_default() {
+        let t = Terminal::new(80, 24);
+        assert_eq!(t.cursor_style(), CursorStyle::Default);
+    }
+
+    // ---- P2-4: G0/G1 Character Set tests ----
+
+    #[test]
+    fn t_charset_default_state() {
+        let t = Terminal::new(80, 24);
+        assert_eq!(t.g0_charset(), Charset::Ascii);
+        assert_eq!(t.g1_charset(), Charset::Ascii);
+        assert!(!t.active_g1(), "G0 should be active by default");
+    }
+
+    #[test]
+    fn t_charset_scs_g0_dec_special() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0");  // ESC ( 0
+        assert_eq!(t.g0_charset(), Charset::DecSpecial);
+        assert!(!t.active_g1());
+    }
+
+    #[test]
+    fn t_charset_scs_g0_ascii_restore() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"\x1b(B");
+        assert_eq!(t.g0_charset(), Charset::Ascii);
+    }
+
+    #[test]
+    fn t_charset_scs_g1_dec_special() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b)0");
+        assert_eq!(t.g1_charset(), Charset::DecSpecial);
+    }
+
+    #[test]
+    fn t_charset_scs_g1_ascii_restore() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b)0");
+        feed(&mut t, b"\x1b)B");
+        assert_eq!(t.g1_charset(), Charset::Ascii);
+    }
+
+    #[test]
+    fn t_charset_so_shift_out_activates_g1() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b)0");
+        feed(&mut t, b"\x0e");  // SO
+        assert!(t.active_g1());
+    }
+
+    #[test]
+    fn t_charset_si_shift_in_activates_g0() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b)0\x0e\x0f");
+        assert!(!t.active_g1());
+    }
+
+    #[test]
+    fn t_charset_dec_special_g0_translation() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0q");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2500}'); // ─
+    }
+
+    #[test]
+    fn t_charset_dec_special_g1_via_so() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b)0\x0ex");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2502}'); // │
+    }
+
+    #[test]
+    fn t_charset_dec_special_corner_chars() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0lk mj");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{250C}'); // ┌
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{2510}'); // ┐
+        assert_eq!(t.grid().cell(3,0).unwrap().ch, '\u{2514}'); // └
+        assert_eq!(t.grid().cell(4,0).unwrap().ch, '\u{2518}'); // ┘
+    }
+
+    #[test]
+    fn t_charset_dec_special_cross_tee() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0ntuvw");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{253C}'); // ┼
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{251C}'); // ├
+        assert_eq!(t.grid().cell(2,0).unwrap().ch, '\u{2524}'); // ┤
+        assert_eq!(t.grid().cell(3,0).unwrap().ch, '\u{2534}'); // ┴
+        assert_eq!(t.grid().cell(4,0).unwrap().ch, '\u{252C}'); // ┬
+    }
+
+    #[test]
+    fn t_charset_dec_special_special_chars() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0`afg");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{25C6}'); // ◆
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{2592}'); // ▒
+        assert_eq!(t.grid().cell(2,0).unwrap().ch, '\u{00B0}'); // °
+        assert_eq!(t.grid().cell(3,0).unwrap().ch, '\u{00B1}'); // ±
+    }
+
+    #[test]
+    fn t_charset_ascii_passes_through() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(4,0).unwrap().ch, 'o');
+    }
+
+    #[test]
+    fn t_charset_dec_special_below_range_unchanged() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0A1");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, '1');
+    }
+
+    #[test]
+    fn t_charset_switch_back_to_ascii_restores_text() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0q\x1b(Bq");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'q');
+    }
+
+    #[test]
+    fn t_charset_so_si_toggle() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0\x1b)B");
+        // G0=DEC, G1=ASCII
+        feed(&mut t, b"q");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2500}'); // G0 → ─
+        feed(&mut t, b"\x0eq");  // shift to G1
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'q');         // G1 → q
+        feed(&mut t, b"\x0fq");  // shift to G0
+        assert_eq!(t.grid().cell(2,0).unwrap().ch, '\u{2500}');  // G0 → ─
+    }
+
+    #[test]
+    fn t_charset_ris_resets() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0\x1b)0\x0e");
+        feed(&mut t, b"\x1bc");  // RIS
+        assert_eq!(t.g0_charset(), Charset::Ascii);
+        assert_eq!(t.g1_charset(), Charset::Ascii);
+        assert!(!t.active_g1());
+    }
+
+    #[test]
+    fn t_charset_dec_special_box_drawing() {
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"lqqqk\r");   // ┌───┐
+        feed(&mut t, b"\nx   x\r"); // │   │
+        feed(&mut t, b"\nmqqqj");   // └───┘
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{250C}'); // ┌
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(4,0).unwrap().ch, '\u{2510}'); // ┐
+        assert_eq!(t.grid().cell(0,1).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(4,1).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(0,2).unwrap().ch, '\u{2514}'); // └
+        assert_eq!(t.grid().cell(4,2).unwrap().ch, '\u{2518}'); // ┘
+    }
+
+    #[test]
+    fn t_charset_scs_unknown_final_ignored() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(Z");
+        assert_eq!(t.g0_charset(), Charset::Ascii);
+    }
+
+    #[test]
+    fn t_charset_scs_uk_treated_as_ascii() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(A");
+        assert_eq!(t.g0_charset(), Charset::Ascii);
     }
 }

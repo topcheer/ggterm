@@ -321,6 +321,11 @@ impl Grid {
         self.damage.mark_all(self.height);
     }
 
+    /// Clear the scrollback history (ED mode 3).
+    pub fn clear_scrollback(&mut self) {
+        self.scrollback.clear();
+    }
+
     /// Clear from (col, row) to end of line.
     pub fn clear_line_from(&mut self, col: usize, row: usize) {
         if let Some(r) = self.rows.get_mut(row) {
