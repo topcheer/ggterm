@@ -1,46 +1,45 @@
-//! Placeholder — full parser implementation in task-2
-//! Paul Williams state machine will be implemented here.
+//! VTE parser based on the Paul Williams ANSI parser state machine.
+//!
+//! Reference: https://vt100.net/emu/dec_ansi_parser
+//!
+//! The parser is a byte-driven state machine. Each input byte causes a
+//! state transition and/or invokes a callback on the [`Perform`] trait.
 
 use super::perform::Perform;
 
-/// VTE parser based on the Paul Williams ANSI parser state machine.
+/// VTE parser state machine.
 ///
 /// Feed raw bytes via [`Parser::feed`], and callbacks will be invoked on
-/// the provided [`Perform`] implementation.///
-/// # State Machine Overview
+/// the provided [`Perform`] implementation.
 ///
-/// The parser operates as a byte-driven state machine with these primary states:
+/// # States
 ///
-/// ```text
-/// Ground ──ESC──▶ Escape ──[──▶ CsiEntry ──param──▶ CsiParam ──final──▶ Ground
-///   │                │                                   │
-///   │               P──▶ DcsEntry ──...                  │
-///   │               ]──▶ OscString ──BEL/ST──▶ Ground     │
-///   │               ↑/↓/0x20-0x2F──▶ EscapeIntermediate   │
-///   └────────────────────────────────────────────────────┘
-/// ```
+/// - `Ground`: Normal input (printable chars, control chars, ESC)
+/// - `Escape`: After ESC byte
+/// - `CsiEntry`: After `ESC [`
+/// - `CsiParam`: Accumulating numeric parameters
+/// - `CsiIntermediate`: After params, collecting intermediate bytes
+/// - `OscString`: Inside `ESC ]` ... `BEL`/`ST`
+/// - `Utf8Sequence`: Accumulating a multi-byte UTF-8 character
 pub struct Parser {
-    /// Current state of the parser.
     state: State,
     /// Accumulated intermediate bytes (0x20-0x2F).
     intermediates: [u8; 2],
-    /// Number of valid intermediate bytes.
     intermediate_count: usize,
     /// Accumulated parameters for CSI/DCS sequences.
     params: [u16; 16],
-    /// Number of valid parameters.
     param_count: usize,
     /// True if the current parameter has been explicitly set.
     param_set: bool,
-    /// Accumulator for OSC/DCS string data.
+    /// Accumulator for OSC string data.
     string_buffer: Vec<u8>,
-    /// Whether we're ignoring the current sequence (e.g. malformed).
-    #[allow(dead_code)]
-    ignoring: bool,
+    /// UTF-8 decoding state.
+    utf8_buf: [u8; 4],
+    utf8_len: usize,
+    utf8_expected: usize,
 }
 
 impl Parser {
-    /// Create a new parser in the initial Ground state.
     pub fn new() -> Self {
         Self {
             state: State::Ground,
@@ -50,7 +49,9 @@ impl Parser {
             param_count: 0,
             param_set: false,
             string_buffer: Vec::with_capacity(256),
-            ignoring: false,
+            utf8_buf: [0; 4],
+            utf8_len: 0,
+            utf8_expected: 0,
         }
     }
 
@@ -63,120 +64,284 @@ impl Parser {
 
     /// Process a single byte through the state machine.
     fn advance<P: Perform>(&mut self, byte: u8, perform: &mut P) {
-        // Placeholder: actual state machine transitions in task-2
-        // For now, just pass printable characters through.
         match self.state {
-            State::Ground => {
-                if (0x20..=0x7E).contains(&byte) {
-                    perform.print(byte);
-                } else if byte == 0x1b {
-                    self.state = State::Escape;
-                    self.reset_csi();
-                } else if byte <= 0x17 || byte == 0x19 || byte == 0x1c || byte == 0x1d {
-                    perform.execute(byte);
-                }
-            }
-            State::Escape => {
-                match byte {
-                    b'[' => {
-                        self.state = State::CsiEntry;
-                        self.reset_csi();
-                    }
-                    b']' => {
-                        self.state = State::OscString;
-                        self.string_buffer.clear();
-                    }
-                    0x20..=0x2f => {
-                        self.state = State::EscapeIntermediate;
-                        self.intermediates[0] = byte;
-                        self.intermediate_count = 1;
-                    }
-                    _ => {
-                        perform.esc(&[], byte);
-                        self.state = State::Ground;
-                    }
-                }
-            }
-            State::EscapeIntermediate => {
-                if (0x20..=0x2f).contains(&byte) {
-                    if self.intermediate_count < 2 {
-                        self.intermediates[self.intermediate_count] = byte;
-                        self.intermediate_count += 1;
-                    }
-                } else if (0x30..=0x7e).contains(&byte) {
-                    perform.esc(&self.intermediates[..self.intermediate_count], byte);
-                    self.state = State::Ground;
-                }
-            }
-            State::CsiEntry | State::CsiParam => {
-                match byte {
-                    b'0'..=b'9' => {
-                        self.state = State::CsiParam;
-                        let idx = self.param_count;
-                        if idx < self.params.len() {
-                            self.params[idx] =
-                                self.params[idx].saturating_mul(10).saturating_add((byte - b'0') as u16);
-                        }
-                        self.param_set = true;
-                    }
-                    b';' => {
-                        self.state = State::CsiParam;
-                        if self.param_count < self.params.len() {
-                            self.param_count += 1;
-                        }
-                        self.param_set = false;
-                    }
-                    0x40..=0x7e => {
-                        let count = if self.param_set {
-                            self.param_count + 1
-                        } else {
-                            self.param_count
-                        };
-                        perform.csi(
-                            &self.intermediates[..self.intermediate_count],
-                            &self.params[..count.min(self.params.len())],
-                            byte,
-                        );
-                        self.state = State::Ground;
-                    }
-                    _ => {
-                        // Unhandled CSI byte — for now, ignore
-                    }
-                }
-            }
-            State::OscString => {
-                match byte {
-                    0x07 => {
-                        // BEL terminates OSC
-                        perform.osc(&self.string_buffer);
-                        self.state = State::Ground;
-                    }
-                    0x1b => {
-                        self.state = State::OscEsc;
-                    }
-                    c if c >= 0x20 => {
-                        self.string_buffer.push(byte);
-                    }
-                    _ => {}
-                }
-            }
+            State::Ground => self.ground(byte, perform),
+            State::Escape => self.escape(byte, perform),
+            State::EscapeIntermediate => self.escape_intermediate(byte, perform),
+            State::CsiEntry => self.csi_entry(byte, perform),
+            State::CsiParam => self.csi_param(byte, perform),
+            State::CsiIntermediate => self.csi_intermediate(byte, perform),
+            State::OscString => self.osc_string(byte, perform),
             State::OscEsc => {
                 if byte == b'\\' {
-                    // ST (ESC \\) terminates OSC
                     perform.osc(&self.string_buffer);
+                } else {
+                    // Unexpected byte after ESC in OSC context; abort OSC
                 }
                 self.state = State::Ground;
             }
-            // All states handled above; unknown states reset to Ground
+            State::Utf8Sequence => self.utf8_continue(byte, perform),
         }
     }
 
-    /// Reset CSI parameter accumulation state.
-    fn reset_csi(&mut self) {
+    // -- State handlers ------------------------------------------------------
+
+    fn ground<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        if byte == 0x1b {
+            // ESC — enter escape state
+            self.state = State::Escape;
+            self.reset_seq();
+        } else if byte >= 0x20 && byte <= 0x7e {
+            // Printable ASCII
+            perform.print(byte);
+        } else if byte >= 0x80 {
+            // Possible UTF-8 multi-byte sequence
+            self.utf8_start(byte, perform);
+        } else {
+            // C0 control character (0x00-0x1F), except ESC handled above
+            perform.execute(byte);
+        }
+    }
+
+    fn escape<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            b'[' => {
+                self.state = State::CsiEntry;
+                self.reset_seq();
+            }
+            b']' => {
+                self.state = State::OscString;
+                self.string_buffer.clear();
+            }
+            // 0x20-0x2F: intermediate bytes
+            0x20..=0x2f => {
+                self.state = State::EscapeIntermediate;
+                self.intermediates[0] = byte;
+                self.intermediate_count = 1;
+            }
+            // Final byte (0x30-0x7E): dispatch ESC sequence
+            0x30..=0x7e => {
+                perform.esc(&[], byte);
+                self.state = State::Ground;
+            }
+            // Control char during escape: execute and stay in escape
+            _ if byte < 0x20 => {
+                perform.execute(byte);
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn escape_intermediate<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            // More intermediates
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+            }
+            // Final byte
+            0x30..=0x7e => {
+                let inter = unsafe {
+                    self.intermediates.get_unchecked(..self.intermediate_count)
+                };
+                perform.esc(inter, byte);
+                self.state = State::Ground;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn csi_entry<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            b'0'..=b'9' => {
+                self.state = State::CsiParam;
+                self.param_set = true;
+                if self.param_count < self.params.len() {
+                    self.params[self.param_count] = (byte - b'0') as u16;
+                }
+            }
+            b';' => {
+                self.state = State::CsiParam;
+                self.param_count = self.param_count.saturating_add(1).min(self.params.len() - 1);
+                self.param_set = false;
+            }
+            // Private mode prefixes: ?, <, >, = — treated as intermediates
+            b'?' | b'<' | b'>' | b'=' => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+                self.state = State::CsiParam;
+            }
+            // Intermediate bytes (0x20-0x2F)
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+                self.state = State::CsiIntermediate;
+            }
+            // Final byte (0x40-0x7E)
+            0x40..=0x7e => {
+                self.dispatch_csi(byte, perform);
+                self.state = State::Ground;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn csi_param<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            b'0'..=b'9' => {
+                let idx = self.param_count.min(self.params.len() - 1);
+                self.params[idx] = self.params[idx]
+                    .saturating_mul(10)
+                    .saturating_add((byte - b'0') as u16);
+                self.param_set = true;
+            }
+            b';' => {
+                if self.param_count < self.params.len() - 1 {
+                    self.param_count += 1;
+                }
+                self.param_set = false;
+            }
+            // Intermediate bytes
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+                self.state = State::CsiIntermediate;
+            }
+            // Final byte
+            0x40..=0x7e => {
+                self.dispatch_csi(byte, perform);
+                self.state = State::Ground;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn csi_intermediate<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+            }
+            0x40..=0x7e => {
+                self.dispatch_csi(byte, perform);
+                self.state = State::Ground;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn osc_string<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            0x07 => {
+                // BEL terminates OSC
+                perform.osc(&self.string_buffer);
+                self.state = State::Ground;
+            }
+            0x1b => {
+                self.state = State::OscEsc;
+            }
+            c if c >= 0x20 => {
+                self.string_buffer.push(byte);
+            }
+            _ => {}
+        }
+    }
+
+    // -- Helpers -------------------------------------------------------------
+
+    /// Dispatch a CSI sequence to the Perform callback.
+    fn dispatch_csi<P: Perform>(&mut self, final_byte: u8, perform: &mut P) {
+        let count = if self.param_set {
+            self.param_count + 1
+        } else {
+            self.param_count
+        };
+        let inter = unsafe {
+            self.intermediates.get_unchecked(..self.intermediate_count)
+        };
+        let params = unsafe {
+            self.params.get_unchecked(..count.min(self.params.len()))
+        };
+        perform.csi(inter, params, final_byte);
+    }
+
+    /// Reset sequence accumulation state.
+    fn reset_seq(&mut self) {
         self.intermediate_count = 0;
         self.param_count = 0;
         self.params = [0; 16];
         self.param_set = false;
+    }
+
+    // -- UTF-8 handling ------------------------------------------------------
+
+    fn utf8_start<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        // Determine sequence length from leading byte
+        let expected = if byte & 0xe0 == 0xc0 {
+            2
+        } else if byte & 0xf0 == 0xe0 {
+            3
+        } else if byte & 0xf8 == 0xf0 {
+            4
+        } else {
+            // Invalid UTF-8 leading byte — treat as single byte
+            perform.print(byte);
+            return;
+        };
+
+        self.utf8_buf[0] = byte;
+        self.utf8_len = 1;
+        self.utf8_expected = expected;
+        self.state = State::Utf8Sequence;
+    }
+
+    fn utf8_continue<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        if byte & 0xc0 != 0x80 {
+            // Not a continuation byte — abort, treat first byte as raw
+            // Re-process this byte from Ground state
+            self.state = State::Ground;
+            // Print the bytes we accumulated as-is (fallback)
+            for i in 0..self.utf8_len {
+                perform.print(self.utf8_buf[i]);
+            }
+            self.utf8_len = 0;
+            self.advance(byte, perform);
+            return;
+        }
+
+        self.utf8_buf[self.utf8_len] = byte;
+        self.utf8_len += 1;
+
+        if self.utf8_len == self.utf8_expected {
+            // Complete UTF-8 sequence — decode and print each byte
+            // (Perform trait takes bytes, the Terminal reassembles)
+            let buf = &self.utf8_buf[..self.utf8_len];
+            for &b in buf {
+                perform.print(b);
+            }
+            self.utf8_len = 0;
+            self.state = State::Ground;
+        }
     }
 }
 
@@ -186,7 +351,6 @@ impl Default for Parser {
     }
 }
 
-/// Parser states (simplified subset — full implementation in task-2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Ground,
@@ -194,6 +358,9 @@ enum State {
     EscapeIntermediate,
     CsiEntry,
     CsiParam,
+    CsiIntermediate,
     OscString,
     OscEsc,
+    /// Accumulating a multi-byte UTF-8 character.
+    Utf8Sequence,
 }

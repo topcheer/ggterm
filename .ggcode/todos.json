@@ -1,37 +1,32 @@
 [
   {
-    "id": "1",
-    "content": "Add unicode-width dependency to Cargo.toml",
+    "id": "p1a",
+    "content": "P1-A: Cargo workspace + ggterm-core crate",
     "status": "done"
   },
   {
-    "id": "2",
-    "content": "Enhance Cell with Unicode wide char support (width detection, wide char flags)",
+    "id": "p1b",
+    "content": "P1-B: VTE 解析器完善 (xf_dev) — 等 VTE 完成",
+    "status": "in_progress"
+  },
+  {
+    "id": "p1c",
+    "content": "P1-C: Cell/Grid 模型完善 + 测试 (gg_dev + UltraRaven)",
     "status": "done"
   },
   {
-    "id": "3",
-    "content": "Add Row::insert_char() / Row::delete_char() (ICH/DCH support)",
-    "status": "done"
+    "id": "p1d",
+    "content": "P1-D: Terminal 状态机 (me_pm, 等 P1-B 完成)",
+    "status": "pending"
   },
   {
-    "id": "4",
-    "content": "Add DamageTracker with dirty rect merging",
-    "status": "done"
+    "id": "p1e",
+    "content": "P1-E: PTY 集成 (QuantumStag)",
+    "status": "in_progress"
   },
   {
-    "id": "5",
-    "content": "Add Grid scroll region + insert_line/delete_line (IL/DL) + insert_char_at/delete_char_at",
-    "status": "done"
-  },
-  {
-    "id": "6",
-    "content": "Write 25+ comprehensive tests",
-    "status": "done"
-  },
-  {
-    "id": "7",
-    "content": "cargo build + cargo test pass, commit, notify PM",
-    "status": "done"
+    "id": "p1f",
+    "content": "P1-F: 桌面应用入口 (等 P1-D+E 完成)",
+    "status": "pending"
   }
 ]
