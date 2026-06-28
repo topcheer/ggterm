@@ -1,4 +1,4 @@
-use super::cell::Cell;
+use super::cell::{char_width, Cell, CellFlags};
 
 /// A row of terminal cells.
 ///
@@ -64,6 +64,124 @@ impl Row {
     /// Get the text content of this row as a String (trailing spaces trimmed).
     pub fn text(&self) -> String {
         self.cells.iter().map(|c| c.ch).collect::<String>().trim_end().to_string()
+    }
+
+    // --------------------------------------------------------------------
+    //  Character-level edits (ICH / DCH / ECH)
+    // --------------------------------------------------------------------
+
+    /// Insert `count` blank cells at `col`, shifting cells right.
+    ///
+    /// Cells pushed beyond the row width are lost.
+    /// Simulates ANSI **ICH** (Insert Character, `ESC [ @`).
+    ///
+    /// Wide-character aware: if a insertion point lands on a wide spacer,
+    /// the lead cell is cleared first.
+    pub fn insert_char(&mut self, col: usize, count: usize) {
+        let len = self.cells.len();
+        if col >= len || count == 0 {
+            return;
+        }
+        let count = count.min(len - col);
+        // If inserting on a wide spacer, clear the lead cell to its left
+        if col > 0 && self.cells[col].is_wide_spacer() {
+            self.cells[col - 1].clear();
+            self.cells[col].clear();
+        }
+        // Shift right
+        let src_end = len - count;
+        self.cells.copy_within(col..src_end, col + count);
+        // Fill the gap with blanks
+        for cell in &mut self.cells[col..col + count] {
+            *cell = Cell::blank();
+        }
+    }
+
+    /// Delete `count` cells starting at `col`, shifting cells left.
+    ///
+    /// Blank cells are appended at the right.
+    /// Simulates ANSI **DCH** (Delete Character, `ESC [ P`).
+    ///
+    /// Wide-character aware: if deletion starts on a wide spacer, the
+    /// lead cell is also removed.
+    pub fn delete_char(&mut self, col: usize, count: usize) {
+        let len = self.cells.len();
+        if col >= len || count == 0 {
+            return;
+        }
+        // If starting on a wide spacer, include the lead cell in deletion
+        let actual_col = if col > 0 && self.cells[col].is_wide_spacer() {
+            col - 1
+        } else {
+            col
+        };
+        let count = count.min(len - actual_col);
+        // Shift left
+        self.cells
+            .copy_within(actual_col + count..len, actual_col);
+        // Fill the vacated tail with blanks
+        for cell in &mut self.cells[len - count..] {
+            *cell = Cell::blank();
+        }
+    }
+
+    /// Erase (blank) `count` cells starting at `col`.
+    ///
+    /// Unlike [`delete_char`](Self::delete_char), cells are NOT shifted.
+    /// Simulates ANSI **ECH** (Erase Character, `ESC [ X`).
+    pub fn erase_char(&mut self, col: usize, count: usize) {
+        let len = self.cells.len();
+        if col >= len || count == 0 {
+            return;
+        }
+        let end = (col + count).min(len);
+        for cell in &mut self.cells[col..end] {
+            cell.clear();
+        }
+    }
+
+    /// Place a character at `col`, handling wide characters.
+    ///
+    /// Returns the number of cells consumed (1 for normal, 2 for wide,
+    /// 0 for zero-width combining).
+    /// Automatically marks the trailing cell as `WIDE_SPACER` for
+    /// double-width characters, and clears any existing wide/spacer
+    /// cells that are overwritten.
+    pub fn put_char(&mut self, col: usize, ch: char) -> usize {
+        let len = self.cells.len();
+        if col >= len {
+            return 0;
+        }
+        let w = char_width(ch);
+
+        // Clear existing wide char lead or spacer at col
+        if self.cells[col].is_wide() && col + 1 < len {
+            self.cells[col + 1].clear();
+        }
+        if self.cells[col].is_wide_spacer() && col > 0 {
+            self.cells[col - 1].clear();
+        }
+
+        self.cells[col].clear();
+        self.cells[col].ch = ch;
+
+        if w == 2 {
+            self.cells[col].flags |= CellFlags::WIDE_CHAR;
+            if col + 1 < len {
+                self.cells[col + 1].set_wide_spacer();
+            }
+            return 2;
+        }
+
+        1
+    }
+
+    /// Return an iterator of (col, &Cell) pairs, skipping wide spacers.
+    pub fn visible_cells(&self) -> impl Iterator<Item = (usize, &Cell)> {
+        self.cells
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.is_wide_spacer())
     }
 }
 

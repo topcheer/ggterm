@@ -12,5 +12,5 @@ pub mod grid;
 pub mod vte;
 
 // Re-export key types for convenience
-pub use grid::{Cell, CellFlags, Color, Grid, Row};
+pub use grid::{Cell, CellFlags, Color, DamageTracker, DirtyRect, Grid, Row};
 pub use vte::{Parser, Perform};

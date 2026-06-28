@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use unicode_width::UnicodeWidthChar;
 
 bitflags! {
     /// Text attributes for a terminal cell.
@@ -140,4 +141,49 @@ impl Cell {
     pub fn set_bg(&mut self, color: Color) {
         self.bg = color;
     }
+
+    /// Returns `true` if this cell is the lead cell of a wide character.
+    pub fn is_wide(&self) -> bool {
+        self.flags.contains(CellFlags::WIDE_CHAR)
+    }
+
+    /// Returns `true` if this cell is a continuation (spacer) of a wide character.
+    pub fn is_wide_spacer(&self) -> bool {
+        self.flags.contains(CellFlags::WIDE_SPACER)
+    }
+
+    /// Set the character and update wide-char flags.
+    ///
+    /// If `ch` is double-width (CJK, emoji), sets `WIDE_CHAR`.
+    /// Returns the display width (0, 1, or 2).
+    pub fn set_char(&mut self, ch: char) -> usize {
+        self.ch = ch;
+        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if w == 2 {
+            self.flags |= CellFlags::WIDE_CHAR;
+        } else {
+            self.flags.remove(CellFlags::WIDE_CHAR);
+        }
+        self.flags.remove(CellFlags::WIDE_SPACER);
+        w
+    }
+
+    /// Mark this cell as a wide-character spacer (continuation cell).
+    pub fn set_wide_spacer(&mut self) {
+        self.ch = ' ';
+        self.flags = CellFlags::WIDE_SPACER;
+    }
+}
+
+/// Compute the display width of a character.
+///
+/// Returns 0 (zero-width combining), 1 (normal), or 2 (wide / CJK / emoji).
+pub fn char_width(ch: char) -> usize {
+    UnicodeWidthChar::width(ch).unwrap_or(0)
+}
+
+/// Compute the display width of a string.
+pub fn str_width(s: &str) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    s.width()
 }
