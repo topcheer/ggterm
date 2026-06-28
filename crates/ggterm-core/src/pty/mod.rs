@@ -162,6 +162,28 @@ impl PtySession {
         Ok(data.len())
     }
 
+    /// Clone the PTY reader (stdout/stderr of the child process).
+    ///
+    /// Creates a new reader handle that can be used on a separate thread.
+    /// The original reader remains valid.
+    pub fn try_clone_reader(&self) -> Result<Box<dyn Read + Send>, PtyError> {
+        self.master
+            .try_clone_reader()
+            .map_err(|e| PtyError::Io(io::Error::other(e)))
+    }
+
+    /// Take the writer out of the session.
+    ///
+    /// After calling this, [`write()`](Self::write) will return an error.
+    /// Use this when you need to move the writer to another struct (e.g.
+    /// passing it to `App::set_pty_writer`).
+    pub fn take_writer(&mut self) -> Option<Box<dyn Write + Send>> {
+        // Create a new writer from the master before taking the existing one
+        let new_writer = self.master.take_writer().ok()?;
+        let old = std::mem::replace(&mut self.writer, new_writer);
+        Some(old)
+    }
+
     /// Non-blocking read from the PTY (stdout/stderr of the child).
     ///
     /// Returns the number of bytes read into `buf`.

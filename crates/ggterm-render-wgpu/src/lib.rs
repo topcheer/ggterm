@@ -66,7 +66,6 @@ pub struct GlyphonRenderer {
     swash_cache: SwashCache,
     /// Glyphon cache — kept alive for the lifetime of the renderer.
     #[allow(dead_code)]
-    #[allow(dead_code)]
     cache: GlyphonCache,
     atlas: TextAtlas,
     text_renderer: TextRenderer,
@@ -414,8 +413,8 @@ mod tests {
     #[test]
     fn test_render_error_display() {
         let err = RenderError::Prepare(PrepareError::AtlasFull);
-        let msg = format!("{err}");
-        assert!(msg.contains("prepare error"), "got: {msg}");
-        assert!(msg.contains("atlas"), "got: {msg}");
+        let s = format!("{err}");
+        assert!(s.contains("prepare error"), "got: {s}");
+        assert!(s.contains("atlas"), "got: {s}");
     }
 }
