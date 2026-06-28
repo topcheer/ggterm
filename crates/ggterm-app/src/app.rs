@@ -51,6 +51,16 @@ impl App {
         self.pty_writer = Some(writer);
     }
 
+    /// Mark the app as running.
+    ///
+    /// Call this before using [`pump()`](Self::pump) in a non-blocking
+    /// event loop (e.g. the desktop winit loop).  [`new()`](Self::new)
+    /// leaves `running = false`; this flips it so [`is_running()`](Self::is_running)
+    /// returns `true` until a `PtyExit` or `Quit` event arrives.
+    pub fn start(&mut self) {
+        self.running = true;
+    }
+
     /// Process a single event. Returns `true` if the app should continue running.
     pub fn handle_event(&mut self, event: AppEvent) -> bool {
         match event {

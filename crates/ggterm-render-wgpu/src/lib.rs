@@ -219,8 +219,9 @@ impl GlyphonRenderer {
                 attrs_list,
                 Shaping::Advanced,
             )];
-            // Shape the buffer so glyph data is ready for glyphon's prepare().
-            // Shaping happens automatically inside TextRenderer::prepare().
+            // Shape the buffer so layout_runs() returns glyph data for prepare().
+            // Without this, LayoutRunIter skips lines with shape_opt=None.
+            buffer.shape_until_scroll(&mut self.font_system, false);
             buffers.push(buffer);
         }
 

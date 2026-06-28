@@ -149,7 +149,10 @@ impl DesktopApp {
             app.set_pty_writer(writer);
         }
 
-        // 5. Build DesktopApp and run event loop
+        // 5. Mark app as running (App::new() starts in non-running state).
+        app.start();
+
+        // 6. Build DesktopApp and run event loop
         let mut desktop = DesktopApp {
             app,
             pty,
