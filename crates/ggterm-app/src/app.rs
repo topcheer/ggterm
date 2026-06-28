@@ -142,16 +142,41 @@ impl App {
     /// Send typed text as keyboard input (convenience for testing).
     pub fn send_text(&mut self, text: &str) {
         for ch in text.chars() {
-            let key = crate::input::InputKey {
-                key: ch,
-                modifiers: crate::input::KeyModifiers::default(),
-            };
+            let key = crate::input::InputKey::char(ch);
             let bytes = self.input_encoder.encode(&key);
             if let Some(ref mut writer) = self.pty_writer {
                 let _ = writer.write_all(&bytes);
                 let _ = writer.flush();
             }
         }
+    }
+
+    /// Encode a key press and send to PTY (if attached).
+    pub fn send_key(&mut self, key: &crate::input::InputKey) {
+        let bytes = self.input_encoder.encode(key);
+        if let Some(ref mut writer) = self.pty_writer {
+            let _ = writer.write_all(&bytes);
+            let _ = writer.flush();
+        }
+    }
+
+    /// Get a reference to the input encoder (for mode updates like DECCKM).
+    pub fn input_encoder(&mut self) -> &mut InputEncoder {
+        &mut self.input_encoder
+    }
+
+    /// Encode a key press and send to PTY (if attached).
+    pub fn send_key(&mut self, key: &crate::input::InputKey) {
+        let bytes = self.input_encoder.encode(key);
+        if let Some(ref mut writer) = self.pty_writer {
+            let _ = writer.write_all(&bytes);
+            let _ = writer.flush();
+        }
+    }
+
+    /// Get a reference to the input encoder (for mode updates).
+    pub fn input_encoder(&mut self) -> &mut InputEncoder {
+        &mut self.input_encoder
     }
 }
 
