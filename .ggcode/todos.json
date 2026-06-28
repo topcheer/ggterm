@@ -1,37 +1,37 @@
 [
   {
-    "id": "1",
-    "content": "Fix broken build: remove duplicate methods, add utf8_expected_len, fix print()",
+    "id": "f2-1",
+    "content": "wgpu pipeline skeleton (dd_dev)",
+    "status": "pending"
+  },
+  {
+    "id": "f2-2",
+    "content": "glyphon text rendering integration (ggcxf_dev)",
     "status": "done"
   },
   {
-    "id": "2",
-    "content": "Implement correct flush_utf8() with replacement char on invalid UTF-8",
+    "id": "f2-3",
+    "content": "Fix converter tests (cursor swap, wide spacer)",
     "status": "done"
+  },
+  {
+    "id": "f3-1",
+    "content": "winit window + PTY I/O thread (gg_dev)",
+    "status": "in_progress"
   },
   {
     "id": "3",
-    "content": "Implement correct put_printable_char() with wide char handling + attribute merge",
+    "content": "Set up ggterm-render-wgpu crate scaffolding (Cargo.toml, wgpu + glyphon deps)",
     "status": "done"
   },
   {
     "id": "4",
-    "content": "Fix print() to flush on new leading byte + handle orphan continuation bytes",
-    "status": "done"
+    "content": "Implement wgpu device initialization + render pipeline",
+    "status": "pending"
   },
   {
     "id": "5",
-    "content": "Write corrected term/mod.rs with all fixes",
-    "status": "in_progress"
-  },
-  {
-    "id": "6",
-    "content": "Add 6-8 tests: Chinese, emoji, mixed, truncated, chunked, invalid, wide char wrap",
-    "status": "pending"
-  },
-  {
-    "id": "7",
-    "content": "Run cargo test to verify all tests pass",
-    "status": "pending"
+    "content": "Implement glyphon text rendering integration (glyph atlas, CJK/emoji)",
+    "status": "done"
   }
 ]
