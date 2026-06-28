@@ -11,27 +11,27 @@
   },
   {
     "id": "3",
-    "content": "Fix gpu.rs for wgpu 29 API (InstanceDescriptor, DeviceDescriptor, CurrentSurfaceTexture, multiview_mask)",
+    "content": "Fix gpu.rs for wgpu 29 API",
     "status": "done"
   },
   {
     "id": "4",
-    "content": "Fix PtyError → io::Error conversion in window.rs",
+    "content": "Fix PtyError → io::Error conversion",
     "status": "done"
   },
   {
     "id": "5",
-    "content": "Fix ExperimentalFeatures::disabled() for DeviceDescriptor",
-    "status": "done"
-  },
-  {
-    "id": "6",
     "content": "Add cursor_visible() to Terminal + cursor_state() to App",
     "status": "done"
   },
   {
+    "id": "6",
+    "content": "Create gpu.rs: GpuContext + init_wgpu + render_frame",
+    "status": "done"
+  },
+  {
     "id": "7",
-    "content": "Create gpu.rs: GpuContext + init_wgpu + render_frame (compiles clean with --features desktop)",
+    "content": "Verify desktop feature compiles clean + all tests pass",
     "status": "done"
   },
   {
@@ -41,7 +41,7 @@
   },
   {
     "id": "9",
-    "content": "End-to-end GPU rendering verification",
+    "content": "End-to-end GPU rendering test",
     "status": "pending"
   },
   {
