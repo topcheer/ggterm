@@ -31,6 +31,11 @@ pub mod app;
 pub mod command_nav;
 pub mod event;
 pub mod input;
+pub mod tabs;
+pub mod theme;
+
+#[cfg(feature = "ai")]
+pub mod ai_bridge;
 
 #[cfg(feature = "desktop")]
 pub mod gpu;
@@ -40,6 +45,11 @@ pub mod keymap;
 pub mod window;
 
 pub use app::App;
+pub use tabs::TabManager;
+pub use theme::AppTheme;
+
+#[cfg(feature = "ai")]
+pub use ai_bridge::{AIBridge, AIRequest, AIResponse};
 pub use command_nav::{CommandNavigator, ExitStatusSummary};
 pub use event::AppEvent;
 pub use input::InputEncoder;

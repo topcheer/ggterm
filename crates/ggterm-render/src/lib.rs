@@ -14,7 +14,7 @@ pub mod console;
 pub mod theme;
 
 pub use console::ConsoleRenderer;
-pub use theme::{CursorStyle, RenderTheme};
+pub use theme::{CursorStyle, RenderTheme, ThemeManager};
 
 use ggterm_core::{DirtyRect, Grid};
 

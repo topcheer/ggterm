@@ -8,10 +8,12 @@ use std::thread;
 use std::time::Duration;
 
 use ggterm_core::{Parser, Terminal};
-use ggterm_render::{ConsoleRenderer, CursorState, Renderer};
+use ggterm_render::{ConsoleRenderer, CursorState, RenderTheme, Renderer};
 
 use crate::event::{AppEvent, EventReceiver, EventSender};
 use crate::input::InputEncoder;
+use crate::tabs::TabManager;
+use crate::theme::AppTheme;
 
 /// The terminal application.
 ///
@@ -26,6 +28,13 @@ pub struct App {
     event_rx: EventReceiver,
     pty_writer: Option<Box<dyn std::io::Write + Send>>,
     running: bool,
+    /// Phase 5: theme manager
+    theme: AppTheme,
+    /// Phase 5: tab manager (metadata only — actual terminals managed at desktop level)
+    tabs: TabManager,
+    /// Phase 5: last AI response text (for display)
+    #[cfg(feature = "ai")]
+    last_ai_response: Option<String>,
 }
 
 impl App {
@@ -41,6 +50,10 @@ impl App {
             event_rx: rx,
             pty_writer: None,
             running: false,
+            theme: AppTheme::new(),
+            tabs: TabManager::new(cols, rows),
+            #[cfg(feature = "ai")]
+            last_ai_response: None,
         };
 
         (app, tx)
@@ -72,6 +85,7 @@ impl App {
             AppEvent::Resize { cols, rows } => {
                 self.terminal.resize(cols as usize, rows as usize);
                 self.renderer.resize(cols as usize, rows as usize);
+                self.tabs.resize_all(cols as usize, rows as usize);
                 self.render();
             }
 
@@ -88,6 +102,49 @@ impl App {
 
             AppEvent::Quit => {
                 self.running = false;
+            }
+
+            // ── Tab management (Phase 5-B) ──
+            AppEvent::NewTab => {
+                self.tabs.open_tab();
+            }
+            AppEvent::CloseTab(index) => {
+                let idx = index.unwrap_or(self.tabs.active_index());
+                self.tabs.close_tab(idx);
+            }
+            AppEvent::SwitchTab(index) => {
+                self.tabs.switch_tab(index);
+            }
+            AppEvent::NextTab => {
+                self.tabs.next_tab();
+            }
+            AppEvent::PrevTab => {
+                self.tabs.prev_tab();
+            }
+
+            // ── Theme management (Phase 5-A) ──
+            AppEvent::SetTheme(name) => {
+                self.theme.set_by_name(&name);
+            }
+            AppEvent::CycleTheme => {
+                self.theme.cycle_next();
+            }
+
+            // ── AI events (Phase 5-C) ──
+            #[cfg(feature = "ai")]
+            AppEvent::AIResponse(text) => {
+                self.last_ai_response = Some(text);
+            }
+            #[cfg(feature = "ai")]
+            AppEvent::AIError(msg) => {
+                self.last_ai_response = Some(format!("AI Error: {msg}"));
+            }
+            #[cfg(feature = "ai")]
+            AppEvent::AIRequest(_) => {
+                // AI requests are handled by AIBridge at the desktop level.
+                // At the App level, we just note that a request was made.
+                // The desktop layer (window.rs) owns the AIBridge and handles
+                // the actual execution, sending AIResponse back via the channel.
             }
         }
 
@@ -189,6 +246,69 @@ impl App {
     /// Get a reference to the input encoder (for mode updates like DECCKM).
     pub fn input_encoder(&mut self) -> &mut InputEncoder {
         &mut self.input_encoder
+    }
+
+    // ── Phase 5: Theme accessors ──
+
+    /// Get the current theme name.
+    pub fn theme_name(&self) -> &str {
+        self.theme.current_name()
+    }
+
+    /// Get the current render theme.
+    pub fn theme(&self) -> &RenderTheme {
+        self.theme.current()
+    }
+
+    /// Set theme by name. Returns `true` if found.
+    pub fn set_theme(&mut self, name: &str) -> bool {
+        self.theme.set_by_name(name)
+    }
+
+    /// Cycle to the next theme.
+    pub fn cycle_theme(&mut self) {
+        self.theme.cycle_next();
+    }
+
+    /// Get the app theme manager (mutable, for registering callbacks).
+    pub fn theme_manager(&mut self) -> &mut AppTheme {
+        &mut self.theme
+    }
+
+    // ── Phase 5: Tab accessors ──
+
+    /// Get the number of tabs.
+    pub fn tab_count(&self) -> usize {
+        self.tabs.tab_count()
+    }
+
+    /// Get the active tab index.
+    pub fn active_tab_index(&self) -> usize {
+        self.tabs.active_index()
+    }
+
+    /// Get tab manager reference.
+    pub fn tabs(&self) -> &TabManager {
+        &self.tabs
+    }
+
+    /// Get tab manager (mutable).
+    pub fn tabs_mut(&mut self) -> &mut TabManager {
+        &mut self.tabs
+    }
+
+    // ── Phase 5: AI accessors ──
+
+    /// Get the last AI response text (if any).
+    #[cfg(feature = "ai")]
+    pub fn last_ai_response(&self) -> Option<&str> {
+        self.last_ai_response.as_deref()
+    }
+
+    /// Clear the last AI response.
+    #[cfg(feature = "ai")]
+    pub fn clear_ai_response(&mut self) {
+        self.last_ai_response = None;
     }
 }
 
@@ -329,5 +449,179 @@ mod tests {
 
         let output = app.output();
         assert!(output.contains("你好世界"));
+    }
+
+    // ── Phase 5: Theme tests ──
+
+    #[test]
+    fn t_app_theme_default_is_dark() {
+        let (app, _tx) = App::new(80, 24);
+        assert_eq!(app.theme_name(), "dark");
+    }
+
+    #[test]
+    fn t_app_set_theme_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::SetTheme("dracula".to_string())).unwrap();
+        app.pump();
+        assert_eq!(app.theme_name(), "dracula");
+    }
+
+    #[test]
+    fn t_app_set_theme_directly() {
+        let (mut app, _tx) = App::new(80, 24);
+        assert!(app.set_theme("light"));
+        assert_eq!(app.theme_name(), "light");
+    }
+
+    #[test]
+    fn t_app_set_theme_unknown() {
+        let (mut app, _tx) = App::new(80, 24);
+        assert!(!app.set_theme("nonexistent"));
+        assert_eq!(app.theme_name(), "dark");
+    }
+
+    #[test]
+    fn t_app_cycle_theme() {
+        let (mut app, _tx) = App::new(80, 24);
+        assert_eq!(app.theme_name(), "dark");
+        app.cycle_theme();
+        assert_eq!(app.theme_name(), "light");
+        app.cycle_theme();
+        assert_eq!(app.theme_name(), "dracula");
+        app.cycle_theme();
+        assert_eq!(app.theme_name(), "dark"); // wraps
+    }
+
+    #[test]
+    fn t_app_cycle_theme_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::CycleTheme).unwrap();
+        app.pump();
+        assert_eq!(app.theme_name(), "light");
+    }
+
+    // ── Phase 5: Tab tests ──
+
+    #[test]
+    fn t_app_default_tab_count() {
+        let (app, _tx) = App::new(80, 24);
+        assert_eq!(app.tab_count(), 1);
+    }
+
+    #[test]
+    fn t_app_new_tab_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+        assert_eq!(app.tab_count(), 3);
+    }
+
+    #[test]
+    fn t_app_switch_tab_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+        assert_eq!(app.active_tab_index(), 2); // last opened is active
+
+        tx.send(AppEvent::SwitchTab(0)).unwrap();
+        app.pump();
+        assert_eq!(app.active_tab_index(), 0);
+    }
+
+    #[test]
+    fn t_app_next_tab_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+        tx.send(AppEvent::SwitchTab(0)).unwrap();
+        app.pump();
+        tx.send(AppEvent::NextTab).unwrap();
+        app.pump();
+        assert_eq!(app.active_tab_index(), 1);
+    }
+
+    #[test]
+    fn t_app_prev_tab_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+        tx.send(AppEvent::SwitchTab(0)).unwrap();
+        app.pump();
+        tx.send(AppEvent::PrevTab).unwrap();
+        app.pump();
+        assert_eq!(app.active_tab_index(), 2); // wraps to last
+    }
+
+    #[test]
+    fn t_app_close_tab_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+        assert_eq!(app.tab_count(), 3);
+
+        tx.send(AppEvent::CloseTab(Some(2))).unwrap();
+        app.pump();
+        assert_eq!(app.tab_count(), 2);
+    }
+
+    #[test]
+    fn t_app_close_active_tab_via_event() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+        assert_eq!(app.tab_count(), 2);
+
+        tx.send(AppEvent::CloseTab(None)).unwrap();
+        app.pump();
+        assert_eq!(app.tab_count(), 1);
+    }
+
+    #[test]
+    fn t_app_resize_updates_tabs() {
+        let (mut app, tx) = App::new(80, 24);
+        tx.send(AppEvent::NewTab).unwrap();
+        app.pump();
+
+        tx.send(AppEvent::Resize { cols: 120, rows: 40 }).unwrap();
+        app.pump();
+
+        assert_eq!(app.tabs().tabs()[0].cols, 120);
+        assert_eq!(app.tabs().tabs()[0].rows, 40);
+    }
+
+    // ── Phase 5: combined event tests ──
+
+    #[test]
+    fn t_app_theme_and_tab_events_combined() {
+        let (mut app, tx) = App::new(80, 24);
+
+        tx.send(AppEvent::SetTheme("light".to_string())).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::CycleTheme).unwrap();
+        app.pump();
+
+        assert_eq!(app.theme_name(), "dracula");
+        assert_eq!(app.tab_count(), 3);
+    }
+
+    #[test]
+    fn t_app_quit_still_works_with_new_events() {
+        let (mut app, tx) = App::new(80, 24);
+
+        tx.send(AppEvent::NewTab).unwrap();
+        tx.send(AppEvent::SetTheme("dracula".to_string())).unwrap();
+        tx.send(AppEvent::Quit).unwrap();
+        app.pump();
+
+        assert!(!app.is_running());
+        assert_eq!(app.tab_count(), 2);
+        assert_eq!(app.theme_name(), "dracula");
     }
 }
