@@ -1,32 +1,37 @@
 [
   {
-    "id": "p1a",
-    "content": "P1-A: Cargo workspace + ggterm-core crate",
+    "id": "1",
+    "content": "Fix broken build: remove duplicate methods, add utf8_expected_len, fix print()",
     "status": "done"
   },
   {
-    "id": "p1b",
-    "content": "P1-B: VTE 解析器增强 (me_pm) — UTF-8 + DEC 私有模式",
+    "id": "2",
+    "content": "Implement correct flush_utf8() with replacement char on invalid UTF-8",
     "status": "done"
   },
   {
-    "id": "p1c",
-    "content": "P1-C: Cell/Grid 模型 (gg_dev + ggcxf_dev)",
+    "id": "3",
+    "content": "Implement correct put_printable_char() with wide char handling + attribute merge",
     "status": "done"
   },
   {
-    "id": "p1d",
-    "content": "P1-D: Terminal 状态机 (me_pm) — Perform trait, 47 tests",
+    "id": "4",
+    "content": "Fix print() to flush on new leading byte + handle orphan continuation bytes",
     "status": "done"
   },
   {
-    "id": "p1e",
-    "content": "P1-E: PTY 集成 (gg_dev) — 418 行, 14 tests, 需集成验证",
+    "id": "5",
+    "content": "Write corrected term/mod.rs with all fixes",
     "status": "in_progress"
   },
   {
-    "id": "review",
-    "content": "Phase 1 评审 + 集成验证 + 下阶段规划",
+    "id": "6",
+    "content": "Add 6-8 tests: Chinese, emoji, mixed, truncated, chunked, invalid, wide char wrap",
+    "status": "pending"
+  },
+  {
+    "id": "7",
+    "content": "Run cargo test to verify all tests pass",
     "status": "pending"
   }
 ]

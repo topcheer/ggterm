@@ -7,6 +7,7 @@
 
 use crate::grid::{Cell, CellFlags, Color, Grid};
 use crate::vte::Perform;
+use unicode_width::UnicodeWidthChar;
 
 /// Terminal cursor state.
 #[derive(Debug, Clone, Copy)]
@@ -64,6 +65,8 @@ pub struct Terminal {
     flags: CellFlags,
     tab_stops: Vec<bool>,
     title: String,
+    /// UTF-8 byte buffer for reassembling multi-byte sequences.
+    utf8_buf: Vec<u8>,
 }
 
 impl Terminal {
@@ -85,6 +88,7 @@ impl Terminal {
             flags: CellFlags::empty(),
             tab_stops,
             title: String::new(),
+            utf8_buf: Vec::with_capacity(4),
         }
     }
 
@@ -110,8 +114,48 @@ impl Terminal {
 
     // -- Helpers --
 
+    #[allow(dead_code)]
+    #[allow(dead_code)]
     fn make_cell(&self, ch: char) -> Cell {
         Cell { ch, fg: self.fg, bg: self.bg, flags: self.flags }
+    }
+
+    /// Flush the UTF-8 byte buffer: decode and write the reassembled character.
+    fn flush_utf8(&mut self) {
+        if self.utf8_buf.is_empty() {
+            return;
+        }
+        if let Ok(s) = std::str::from_utf8(&self.utf8_buf) {
+            if let Some(ch) = s.chars().next() {
+                self.put_printable_char(ch);
+            }
+        }
+        self.utf8_buf.clear();
+    }
+
+    /// Write a decoded character to the grid with proper column advancement.
+    fn put_printable_char(&mut self, ch: char) {
+        if self.cursor.pending_wrap && self.modes.auto_wrap {
+            self.cursor.x = 0;
+            self.line_feed();
+            self.cursor.pending_wrap = false;
+        }
+        let width = UnicodeWidthChar::width(ch).unwrap_or(1);
+        if self.modes.insert && width > 0 {
+            self.grid.insert_char(self.cursor.x, self.cursor.y, width);
+        }
+        self.grid.put_char(self.cursor.x, self.cursor.y, ch);
+        if let Some(c) = self.grid.cell_mut(self.cursor.x, self.cursor.y) {
+            c.fg = self.fg;
+            c.bg = self.bg;
+            c.flags = self.flags;
+        }
+        if self.cursor.x + width < self.grid.width() {
+            self.cursor.x += width;
+        } else if self.modes.auto_wrap {
+            self.cursor.x = self.grid.width().saturating_sub(1);
+            self.cursor.pending_wrap = true;
+        }
     }
 
     #[allow(dead_code)]
@@ -225,32 +269,34 @@ impl Terminal {
     }
 }
 
+/// Determine the expected length of a UTF-8 sequence from its leading byte.
+fn utf8_expected_len(lead: u8) -> usize {
+    if lead & 0x80 == 0 { 1 }          // 0xxxxxxx
+    else if lead & 0xe0 == 0xc0 { 2 }  // 110xxxxx
+    else if lead & 0xf0 == 0xe0 { 3 }  // 1110xxxx
+    else if lead & 0xf8 == 0xf0 { 4 }  // 11110xxx
+    else { 1 }                         // invalid leading byte
+}
+
 impl Perform for Terminal {
     fn print(&mut self, byte: u8) {
-        let ch = if byte < 0x80 { byte as char } else { byte as char };
-        // Handle deferred wrap (DECAWM) BEFORE writing
-        if self.cursor.pending_wrap && self.modes.auto_wrap {
-            self.cursor.x = 0;
-            self.line_feed();
-            self.cursor.pending_wrap = false;
+        // ASCII: flush any pending UTF-8 buffer, then write directly
+        if byte < 0x80 {
+            self.flush_utf8();
+            self.put_printable_char(byte as char);
+            return;
         }
-        if self.modes.insert {
-            self.grid.insert_char(self.cursor.x, self.cursor.y, 1);
+        // Multi-byte UTF-8: buffer and decode when complete
+        self.utf8_buf.push(byte);
+        let expected = utf8_expected_len(self.utf8_buf[0]);
+        if self.utf8_buf.len() >= expected {
+            self.flush_utf8();
         }
-        let cell = self.make_cell(ch);
-        if let Some(c) = self.grid.cell_mut(self.cursor.x, self.cursor.y) {
-            *c = cell;
-        }
-        // Advance cursor: if at right margin, set pending_wrap
-        if self.cursor.x + 1 < self.grid.width() {
-            self.cursor.x += 1;
-        } else if self.modes.auto_wrap {
-            self.cursor.pending_wrap = true;
-        }
-        // else: no auto-wrap, cursor stays at last column
     }
 
     fn execute(&mut self, byte: u8) {
+        // Control characters interrupt pending UTF-8 sequences
+        self.flush_utf8();
         match byte {
             0x07 => {} // BEL
             0x08 => { if self.cursor.x > 0 { self.cursor.x -= 1; } self.cursor.pending_wrap = false; }
@@ -736,5 +782,98 @@ mod tests {
         p.feed(b"mRed", &mut t);
         assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Indexed(1));
         assert_eq!(t.grid().cell(0,0).unwrap().ch, 'R');
+    }
+
+    // -- UTF-8 tests --
+
+    #[test]
+    fn t_utf8_ascii() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hi");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'i');
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_utf8_chinese_3byte() {
+        // "你好" = E4BDA0 E5A5BD in UTF-8 (3 bytes per char, display width=2 each)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, "你好".as_bytes());
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(2,0).unwrap().ch, '好');
+        assert_eq!(t.cursor().0, 4); // 2 chars * 2 cells each
+    }
+
+    #[test]
+    fn t_utf8_emoji_4byte() {
+        // 😀 = F09F9880 in UTF-8 (4 bytes, display width=2)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, "😀".as_bytes());
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '😀');
+        assert_eq!(t.cursor().0, 2); // 1 emoji * 2 cells
+    }
+
+    #[test]
+    fn t_utf8_mixed_ascii_cjk() {
+        // "AB你好CD" — mix ASCII (1 cell) and CJK (2 cells)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, "AB你好CD".as_bytes());
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2,0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(4,0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(6,0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(7,0).unwrap().ch, 'D');
+        assert_eq!(t.cursor().0, 8); // 2+2+2+2 = 8
+    }
+
+    #[test]
+    fn t_utf8_split_across_feeds() {
+        // Feed the 3 bytes of '你' (E4 BD A0) in separate feed calls
+        let mut t = Terminal::new(80, 24);
+        let mut p = Parser::new();
+        p.feed(&[0xE4], &mut t);
+        p.feed(&[0xBD], &mut t);
+        p.feed(&[0xA0], &mut t);
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '你');
+        assert_eq!(t.cursor().0, 2); // CJK = 2 cells
+    }
+
+    #[test]
+    fn t_utf8_cjk_wraps_at_margin() {
+        // Cursor at last col, pending_wrap set; next char triggers wrap
+        feed(&mut t, b"C");
+        assert_eq!(t.grid().cell(0,1).unwrap().ch, 'C');
+    }        let mut t = Terminal::new(4, 24);
+        feed(&mut t, b"AB");
+        assert_eq!(t.cursor().0, 2);
+        feed(&mut t, "你".as_bytes());  // cols 2-3 (CJK = 2 cells)
+        // Cursor at col 3 (last col, pending_wrap set since 2+2=4 >= width=4)
+        assert_eq!(t.cursor().0, 3); // cursor at last column with pending_wrap
+        // Next char should trigger wrap
+        feed(&mut t, "C".as_bytes());
+        assert_eq!(t.cursor().0, 1); // wrapped to next line
+        assert_eq!(t.cursor().1, 1); // row 1
+    }
+
+    #[test]
+    fn t_utf8_invalid_sequence_dropped() {
+        // Invalid UTF-8: 0xFF is not a valid leading byte
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, &[0xFF]);
+        // Should not crash, cursor should not advance
+        assert_eq!(t.cursor().0, 0);
+    }
+
+    #[test]
+    fn t_utf8_control_interrupts_buffer() {
+        // Start a CJK sequence but interrupt with BS before completing
+        let mut t = Terminal::new(80, 24);
+        let mut p = Parser::new();
+        p.feed(&[0xE4, 0xBD], &mut t);  // incomplete '你'
+        p.feed(b"\x08", &mut t);         // BS (execute) — should flush (drop incomplete)
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'X');
     }
 }
