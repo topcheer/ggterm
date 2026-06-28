@@ -408,25 +408,36 @@ mod tests {
     #[test]
     #[ignore = "requires real shell; run with --ignored"]
     fn test_pty_exit_clean() {
-        let mut pty = PtySession::open_with_shell(80, 24, None).expect("open pty");
+        // Use /bin/sh explicitly to avoid interactive zsh/bash startup delays
+        #[cfg(unix)]
+        let shell = "/bin/sh";
+        #[cfg(not(unix))]
+        let shell = "cmd.exe";
+
+        let mut pty = PtySession::open_with_shell(80, 24, Some(shell)).expect("open pty");
 
         // Give shell time to start
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(std::time::Duration::from_millis(300));
 
-        // Send exit command
+        // Send exit command followed by EOF (Ctrl-D) for reliable exit
         #[cfg(unix)]
-        pty.write(b"exit\n").expect("write");
+        {
+            pty.write(b"exit\n").expect("write exit");
+            // Also send EOF as a fallback
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            pty.write(&[0x04]).expect("write EOF"); // Ctrl-D
+        }
         #[cfg(not(unix))]
         pty.write(b"exit\r\n").expect("write");
 
-        // Poll for exit (up to 2 seconds)
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        // Poll for exit (up to 3 seconds)
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
         loop {
             if !pty.is_alive() {
                 break;
             }
             if std::time::Instant::now() > deadline {
-                panic!("shell should have exited within 2 seconds");
+                panic!("shell should have exited within 3 seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
