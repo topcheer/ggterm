@@ -2,6 +2,7 @@
 members = [
     "crates/ggterm-core",
     "crates/ggterm-render",
+    "crates/ggterm-app",
 ]
 resolver = "2"
 
