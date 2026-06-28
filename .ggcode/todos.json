@@ -1,37 +1,32 @@
 [
   {
-    "id": "1",
-    "content": "Add portable-pty dependency to Cargo.toml",
+    "id": "p1a",
+    "content": "P1-A: Cargo workspace + ggterm-core crate",
     "status": "done"
   },
   {
-    "id": "2",
-    "content": "Create src/pty/mod.rs with PtySession struct",
+    "id": "p1b",
+    "content": "P1-B: VTE 解析器增强 (me_pm) — UTF-8 + DEC 私有模式",
+    "status": "done"
+  },
+  {
+    "id": "p1c",
+    "content": "P1-C: Cell/Grid 模型 (gg_dev + ggcxf_dev)",
+    "status": "done"
+  },
+  {
+    "id": "p1d",
+    "content": "P1-D: Terminal 状态机 (me_pm) — Perform trait, 47 tests",
+    "status": "done"
+  },
+  {
+    "id": "p1e",
+    "content": "P1-E: PTY 集成 (gg_dev) — 418 行, 14 tests, 需集成验证",
     "status": "in_progress"
   },
   {
-    "id": "3",
-    "content": "Implement open/write/try_read/resize/kill/is_alive methods",
-    "status": "pending"
-  },
-  {
-    "id": "4",
-    "content": "Auto-detect default shell (Unix $SHELL, Windows cmd)",
-    "status": "pending"
-  },
-  {
-    "id": "5",
-    "content": "Add pub mod pty to lib.rs",
-    "status": "done"
-  },
-  {
-    "id": "6",
-    "content": "Write tests (shell spawn, echo, resize, kill, is_alive)",
-    "status": "pending"
-  },
-  {
-    "id": "7",
-    "content": "cargo build + cargo test pass, commit, notify PM",
+    "id": "review",
+    "content": "Phase 1 评审 + 集成验证 + 下阶段规划",
     "status": "pending"
   }
 ]

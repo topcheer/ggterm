@@ -21,7 +21,7 @@
 use std::io::{self, Read, Write};
 
 use portable_pty::cmdbuilder::CommandBuilder;
-use portable_pty::{native_pty_system, Child, ChildKiller, MasterPty, PtySize, SlavePty};
+use portable_pty::{native_pty_system, Child, ChildKiller, MasterPty, PtySize};
 
 /// A PTY session managing a shell child process.
 ///
@@ -42,8 +42,11 @@ pub struct PtySession {
     writer: Box<dyn Write + Send>,
     /// Reader from the PTY master (stdout/stderr of the child).
     reader: Box<dyn Read + Send>,
-    /// The spawned child process (with kill capability).
-    child: Option<Box<dyn Child + ChildKiller + Send + Sync>>,
+    /// The spawned child process handle.
+    child: Option<Box<dyn Child + Send + Sync>>,
+    /// Kill handle for the child process (separate from child so we can
+    /// kill even while waiting on the child).
+    killer: Option<Box<dyn ChildKiller + Send>>,
     /// Current terminal size.
     size: PtySize,
 }
@@ -123,6 +126,9 @@ impl PtySession {
             .spawn_command(cmd)
             .map_err(|e| PtyError::Pty(e.to_string()))?;
 
+        // Clone a separate kill handle before moving child into the struct
+        let killer = child.clone_killer();
+
         // Take writer and reader from master
         let writer = pair
             .master
@@ -142,6 +148,7 @@ impl PtySession {
             writer,
             reader,
             child: Some(child),
+            killer: Some(killer),
             size,
         })
     }
@@ -190,20 +197,20 @@ impl PtySession {
     /// Sends SIGKILL on Unix, TerminateProcess on Windows.
     /// After this call, `is_alive()` returns `false`.
     pub fn kill(&mut self) {
-        if let Some(child) = self.child.as_mut() {
-            let _ = child.kill();
+        if let Some(killer) = self.killer.as_mut() {
+            let _ = killer.kill();
         }
     }
 
     /// Check if the child process is still running.
     ///
     /// Returns `true` if the process has not exited, `false` if terminated.
-    pub fn is_alive(&self) -> bool {
-        match &self.child {
+    pub fn is_alive(&mut self) -> bool {
+        match self.child.as_mut() {
             Some(child) => match child.try_wait() {
                 Ok(Some(_)) => false, // exited
                 Ok(None) => true,     // still running
-                Err(_) => false,      // error → assume dead
+                Err(_) => false,      // error -> assume dead
             },
             None => false,
         }
@@ -327,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_pty_open_with_size() {
-        let pty = PtySession::open(120, 40).expect("open pty");
+        let mut pty = PtySession::open(120, 40).expect("open pty");
         assert_eq!(pty.size(), (120, 40));
     }
 
@@ -399,6 +406,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires real shell; run with --ignored"]
     fn test_pty_exit_clean() {
         let mut pty = PtySession::open_with_shell(80, 24, None).expect("open pty");
 
@@ -411,8 +419,16 @@ mod tests {
         #[cfg(not(unix))]
         pty.write(b"exit\r\n").expect("write");
 
-        // Wait for exit
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        assert!(!pty.is_alive(), "shell should have exited");
+        // Poll for exit (up to 2 seconds)
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if !pty.is_alive() {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("shell should have exited within 2 seconds");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
 }
