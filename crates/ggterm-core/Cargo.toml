@@ -1,0 +1,13 @@
+[package]
+name = "ggterm-core"
+description = "Core terminal emulation engine: VTE parser, grid model, PTY"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+bitflags.workspace = true
+parking_lot.workspace = true
+log.workspace = true

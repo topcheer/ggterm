@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "crates/ggterm-core",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["GGTerm Contributors"]
+repository = "https://github.com/topcheer/ggterm"
+version = "0.1.0"
+
+[workspace.dependencies]
+# Core dependencies shared across crates
+bitflags = "2"
+parking_lot = "0.12"
+log = "0.4"
+
+# Profile: optimize for speed even in dev for terminal performance
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
