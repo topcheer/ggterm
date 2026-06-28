@@ -39,8 +39,10 @@ pub enum CommandMarkKind {
     CommandEnd,
 }
 
-/// A shell-integration command mark (OSC 133).
+/// A single OSC 133 mark emitted by the shell integration protocol.
+/// A single OSC 133 mark emitted by the shell integration protocol.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct CommandMark {
     /// What kind of mark this is.
     pub kind: CommandMarkKind,
@@ -48,6 +50,131 @@ pub struct CommandMark {
     pub row: usize,
     /// Exit code, only meaningful for `CommandEnd` marks.
     pub exit_code: Option<i32>,
+}
+
+/// A grouped command block assembled from OSC 133 marks.
+///
+/// Represents the full lifecycle of a single command: prompt -> command -> output -> end.
+/// Incomplete blocks (command still running) have `end_row = None`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandBlock {
+    /// Row where the prompt started (PromptStart / `OSC 133;A`).
+    pub prompt_row: usize,
+    /// Row where the command text was entered (CommandStart / `OSC 133;B`).
+    /// `None` if only PromptStart has been seen (user is still at the prompt).
+    pub command_row: Option<usize>,
+    /// Row where command output began (OutputStart / `OSC 133;C`).
+    /// `None` if the mark hasn't arrived yet or command produced no output.
+    pub output_row: Option<usize>,
+    /// Row where the command ended (CommandEnd / `OSC 133;D`).
+    /// `None` means the command is still running.
+    pub end_row: Option<usize>,
+    /// Exit code from CommandEnd mark. `None` if command is still running
+    /// or the mark didn't include an exit code.
+    pub exit_code: Option<i32>,
+}
+
+impl CommandBlock {
+    /// Returns true if the command completed successfully (exit code 0).
+    pub fn is_success(&self) -> bool {
+        self.exit_code == Some(0)
+    }
+
+    /// Returns true if the command failed (exit code non-zero).
+    pub fn is_failure(&self) -> bool {
+        matches!(self.exit_code, Some(code) if code != 0)
+    }
+
+    /// Returns true if the command is still running (no CommandEnd mark).
+    pub fn is_running(&self) -> bool {
+        self.command_row.is_some() && self.end_row.is_none()
+    }
+
+    /// Returns true if the user is at the prompt (no CommandStart yet).
+    pub fn is_at_prompt(&self) -> bool {
+        self.command_row.is_none()
+    }
+
+    /// Returns true if the command has completed (CommandEnd mark received).
+    pub fn is_complete(&self) -> bool {
+        self.end_row.is_some()
+    }
+}
+
+/// Group a flat list of CommandMark entries into CommandBlocks.
+///
+/// Each PromptStart (A) mark starts a new block. Subsequent marks
+/// (B, C, D) are attached to the current block until the next A mark.
+pub fn group_command_blocks(marks: &[CommandMark]) -> Vec<CommandBlock> {
+    let mut blocks = Vec::new();
+    let mut current: Option<CommandBlock> = None;
+
+    for mark in marks {
+        match mark.kind {
+            CommandMarkKind::PromptStart => {
+                if let Some(b) = current.take() {
+                    blocks.push(b);
+                }
+                current = Some(CommandBlock {
+                    prompt_row: mark.row,
+                    command_row: None,
+                    output_row: None,
+                    end_row: None,
+                    exit_code: None,
+                });
+            }
+            CommandMarkKind::CommandStart => {
+                if current.is_none() {
+                    current = Some(CommandBlock {
+                        prompt_row: mark.row,
+                        command_row: None,
+                        output_row: None,
+                        end_row: None,
+                        exit_code: None,
+                    });
+                }
+                if let Some(ref mut b) = current {
+                    b.command_row = Some(mark.row);
+                }
+            }
+            CommandMarkKind::OutputStart => {
+                if current.is_none() {
+                    current = Some(CommandBlock {
+                        prompt_row: mark.row,
+                        command_row: None,
+                        output_row: None,
+                        end_row: None,
+                        exit_code: None,
+                    });
+                }
+                if let Some(ref mut b) = current {
+                    b.output_row = Some(mark.row);
+                }
+            }
+            CommandMarkKind::CommandEnd => {
+                if current.is_none() {
+                    current = Some(CommandBlock {
+                        prompt_row: mark.row,
+                        command_row: None,
+                        output_row: None,
+                        end_row: None,
+                        exit_code: None,
+                    });
+                }
+                if let Some(ref mut b) = current {
+                    b.end_row = Some(mark.row);
+                    b.exit_code = mark.exit_code;
+                }
+                blocks.push(current.take().unwrap());
+            }
+        }
+    }
+
+    if let Some(b) = current.take() {
+        blocks.push(b);
+    }
+
+    blocks
 }
 
 /// Character set designation (G0 or G1).
@@ -61,127 +188,144 @@ pub enum Charset {
 }
 
 impl Charset {
-    /// Translate a character through this charset.
-    /// Only ASCII range 0x5F–0x7E is affected by DEC Special Graphics.
-    /// Returns the original character if no translation applies.
-    fn translate(self, ch: char) -> char {
-        if self != Charset::DecSpecial {
-            return ch;
-        }
-        // DEC Special Graphics mapping for 0x5F-0x7E
-        match ch {
-            '_' => ' ',    // blank
-            '`' => '\u{25C6}', // ◆
-            'a' => '\u{2592}', // ▒
-            'b' => '\u{2409}', // HT symbol
-            'c' => '\u{240C}', // FF symbol
-            'd' => '\u{240D}', // CR symbol
-            'e' => '\u{240A}', // LF symbol
-            'f' => '\u{00B0}', // °
-            'g' => '\u{00B1}', // ±
-            'h' => '\u{2424}', // NL symbol
-            'i' => '\u{240B}', // VT symbol
-            'j' => '\u{2518}', // ┘
-            'k' => '\u{2510}', // ┐
-            'l' => '\u{250C}', // ┌
-            'm' => '\u{2514}', // └
-            'n' => '\u{253C}', // ┼
-            'o' => '\u{23BA}', // ⎺
-            'p' => '\u{23BB}', // ⎻
-            'q' => '\u{2500}', // ─
-            'r' => '\u{23BC}', // ⎼
-            's' => '\u{23BD}', // ⎽
-            't' => '\u{251C}', // ├
-            'u' => '\u{2524}', // ┤
-            'v' => '\u{2534}', // ┴
-            'w' => '\u{252C}', // ┬
-            'x' => '\u{2502}', // │
-            'y' => '\u{2264}', // ≤
-            'z' => '\u{2265}', // ≥
-            '{' => '\u{03C0}', // π
-            '|' => '\u{2260}', // ≠
-            '}' => '\u{00A3}', // £
-            '~' => '\u{00B7}', // ·
-            _ => ch,
+    /// Translate a character according to the active character set.
+    pub fn translate(self, ch: char) -> char {
+        match self {
+            Charset::Ascii => ch,
+            Charset::DecSpecial => {
+                let b = ch as u32;
+                if (0x5f..=0x7e).contains(&b) {
+                    DEC_SPECIAL_GRAPHICS[(b - 0x5f) as usize]
+                } else {
+                    ch
+                }
+            }
         }
     }
 }
 
-/// Terminal mode flags.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Modes {
-    pub auto_wrap: bool,
-    pub cursor_visible: bool,
-    pub insert: bool,
-    pub origin: bool,
-    pub bracketed_paste: bool,
-    pub cursor_keys_app: bool,
-    pub alt_screen: bool,
-}
+/// DEC Special Graphics mapping for 0x5F-0x7E → Unicode.
+static DEC_SPECIAL_GRAPHICS: [char; 32] = [
+    '\u{00a0}',  // 0x5F '_'
+    '\u{25c6}',  // 0x60 '`' diamond
+    '\u{2592}',  // 0x61 'a' medium shade
+    '\u{2409}',  // 0x62 'b' HT
+    '\u{240c}',  // 0x63 'c' FF
+    '\u{240d}',  // 0x64 'd' CR
+    '\u{240a}',  // 0x65 'e' LF
+    '\u{00b0}',  // 0x66 'f' degree
+    '\u{00b1}',  // 0x67 'g' plus-minus
+    '\u{2424}',  // 0x68 'h' NL
+    '\u{240b}',  // 0x69 'i' VT
+    '\u{2518}',  // 0x6A 'j' ┘
+    '\u{2510}',  // 0x6B 'k' ┐
+    '\u{250c}',  // 0x6C 'l' ┌
+    '\u{2514}',  // 0x6D 'm' └
+    '\u{253c}',  // 0x6E 'n' ┼
+    '\u{239e}',  // 0x6F 'o'
+    '\u{239e}',  // 0x70 'p'
+    '\u{2500}',  // 0x71 'q' ─
+    '\u{23a0}',  // 0x72 'r'
+    '\u{23a2}',  // 0x73 's'
+    '\u{251c}',  // 0x74 't' ├
+    '\u{2524}',  // 0x75 'u' ┤
+    '\u{2534}',  // 0x76 'v' ┴
+    '\u{252c}',  // 0x77 'w' ┬
+    '\u{2502}',  // 0x78 'x' │
+    '\u{2264}',  // 0x79 'y' ≤
+    '\u{2265}',  // 0x7A 'z' ≥
+    '\u{03c0}',  // 0x7B '{' π
+    '\u{2260}',  // 0x7C '|' ≠
+    '\u{00a3}',  // 0x7D '}' £
+    '\u{00b7}',  // 0x7E '~' ·
+];
 
-impl Modes {
-    fn defaults() -> Self {
-        Self {
-            auto_wrap: true,
-            cursor_visible: true,
-            insert: false,
-            origin: false,
-            bracketed_paste: false,
-            cursor_keys_app: false,
-            alt_screen: false,
-        }
-    }
-}
-
-/// Cursor display style (DECSCUSR).
+/// Cursor shape (DECSCUSR / `CSI Ps SP q`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorStyle {
-    /// Default cursor style (usually blinking block).
     #[default]
     Default,
-    /// Blinking block.
     BlinkBlock,
-    /// Steady (non-blinking) block.
     SteadyBlock,
-    /// Blinking underline.
     BlinkUnderline,
-    /// Steady underline.
     SteadyUnderline,
-    /// Blinking bar (vertical line).
     BlinkBar,
-    /// Steady bar.
     SteadyBar,
 }
 
-/// The terminal state machine.
+/// Terminal mode flags toggled by SM/RM (`CSI ? Pn h/l`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Modes {
+    /// DECAWM — auto-wrap / line feed on right margin (default true).
+    pub auto_wrap: bool,
+    /// DECTCEM — text cursor enable (visibility).
+    pub cursor_visible: bool,
+    /// DECOM — origin mode.
+    pub origin: bool,
+    /// DECCKM — cursor keys application mode.
+    pub cursor_keys_app: bool,
+    /// Bracketed paste mode (mode 2004).
+    pub bracketed_paste: bool,
+    /// Alternate screen buffer active (modes 47/1047/1049).
+    pub alt_screen: bool,
+    /// Insert mode (IRM, SM/RM 4).
+    pub insert: bool,
+}
+
+impl Modes {
+    /// Return the default mode set (auto_wrap + cursor_visible enabled).
+    pub fn defaults() -> Self {
+        Self {
+            auto_wrap: true,
+            cursor_visible: true,
+            origin: false,
+            cursor_keys_app: false,
+            bracketed_paste: false,
+            alt_screen: false,
+            insert: false,
+        }
+    }
+}
+
+/// The main terminal state machine.
 ///
-/// Connects the VTE parser to the Grid model via the [`Perform`] trait.
+/// Owns the grid, cursor, current SGR attributes, mode flags, tab stops,
+/// OSC 133 command marks, and character set state.
 pub struct Terminal {
-    grid: Grid,
-    cursor: Cursor,
-    saved_cursor: Cursor,
-    modes: Modes,
-    fg: Color,
-    bg: Color,
-    flags: CellFlags,
-    tab_stops: Vec<bool>,
-    /// OSC 133 command marks for shell integration.
-    command_marks: Vec<CommandMark>,
-    title: String,
-    /// UTF-8 byte buffer for reassembling multi-byte sequences.
-    utf8_buf: Vec<u8>,
-    /// Active G0 character set.
-    g0_charset: Charset,
-    /// Active G1 character set.
-    g1_charset: Charset,
-    /// Active charset: false = G0, true = G1 (via ShiftOut).
-    active_g1: bool,
-    /// Last printed character (for REP — CSI Ps b).
-    last_printed_char: Option<char>,
-    /// Cursor style (DECSCUSR — CSI Ps SP q).
-    cursor_style: CursorStyle,
-    /// Device response buffer for DA/DSR replies.
-    response_buffer: Vec<u8>,
+    /// Primary (and alternate) screen grid.
+    pub(crate) grid: Grid,
+    /// Active cursor position and pending-wrap flag.
+    pub(crate) cursor: Cursor,
+    /// Saved cursor (for DECSC/DECRC and alt-screen swap).
+    pub(crate) saved_cursor: Cursor,
+    /// Terminal mode flags.
+    pub(crate) modes: Modes,
+    /// Current foreground colour.
+    pub(crate) fg: Color,
+    /// Current background colour.
+    pub(crate) bg: Color,
+    /// Current cell flags (bold, italic, underline, ...).
+    pub(crate) flags: CellFlags,
+    /// Tab stop positions (one bool per column).
+    pub(crate) tab_stops: Vec<bool>,
+    /// OSC 133 command marks accumulated from shell integration.
+    pub(crate) command_marks: Vec<CommandMark>,
+    /// Terminal title (set via OSC 0/2).
+    pub(crate) title: String,
+    /// UTF-8 reassembly buffer for multi-byte sequences.
+    pub(crate) utf8_buf: Vec<u8>,
+    /// G0 character set designation.
+    pub(crate) g0_charset: Charset,
+    /// G1 character set designation.
+    pub(crate) g1_charset: Charset,
+    /// True when G1 is active (via SO/0x0E); false means G0 active (SI/0x0F).
+    pub(crate) active_g1: bool,
+    /// Last printed character (for REP / `CSI Ps b`).
+    pub(crate) last_printed_char: Option<char>,
+    /// Cursor style (DECSCUSR).
+    pub(crate) cursor_style: CursorStyle,
+    /// Device response buffer (DA/DSR replies).
+    pub(crate) response_buffer: Vec<u8>,
 }
 
 impl Terminal {
@@ -241,6 +385,51 @@ impl Terminal {
     /// Return all OSC 133 command marks collected so far.
     pub fn command_marks(&self) -> &[CommandMark] {
         &self.command_marks
+    }
+
+    /// Return command marks grouped into logical command blocks.
+    ///
+    /// Each block represents a complete command lifecycle:
+    /// PromptStart → CommandStart → OutputStart → CommandEnd.
+    /// The final block may be incomplete (still running).
+    pub fn command_blocks(&self) -> Vec<CommandBlock> {
+        group_command_blocks(&self.command_marks)
+    }
+
+    /// Return the exit code of the most recent completed command.
+    ///
+    /// Returns `None` if no commands have completed yet.
+    pub fn last_exit_code(&self) -> Option<i32> {
+        self.command_marks
+            .iter()
+            .rev()
+            .find(|m| m.kind == CommandMarkKind::CommandEnd)
+            .and_then(|m| m.exit_code)
+    }
+
+    /// Return true if the most recent completed command succeeded (exit code 0).
+    pub fn last_command_succeeded(&self) -> bool {
+        self.last_exit_code() == Some(0)
+    }
+
+    /// Extract the text content of a grid row, trimming trailing spaces.
+    ///
+    /// Returns an empty string if the row is out of bounds.
+    pub fn extract_row_text(&self, row: usize) -> String {
+        let mut text = String::new();
+        let width = self.grid.width();
+        for x in 0..width {
+            match self.grid.cell(x, row) {
+                Some(cell) => {
+                    if cell.flags.contains(CellFlags::WIDE_SPACER) {
+                        continue;
+                    }
+                    text.push(cell.ch);
+                }
+                None => break,
+            }
+        }
+        text.trim_end().to_string()
     }
 
     pub fn resize(&mut self, width: usize, height: usize) {
@@ -1965,5 +2154,107 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(A");
         assert_eq!(t.g0_charset(), Charset::Ascii);
+    }
+
+    // -- P3-B: CommandBlock data model tests --
+
+    #[test]
+    fn t_command_blocks_empty() {
+        let t = Terminal::new(80, 24);
+        assert!(t.command_blocks().is_empty());
+    }
+
+    #[test]
+    fn t_command_blocks_single_command() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07");  // PromptStart
+        feed(&mut t, b"\x1b]133;C\x07");  // OutputStart
+        feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd exit 0
+        let blocks = t.command_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].is_complete());
+        assert!(blocks[0].is_success());
+    }
+
+    #[test]
+    fn t_command_blocks_failed_exit() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07");
+        feed(&mut t, b"\x1b]133;C\x07");
+        feed(&mut t, b"\x1b]133;D;127\x07");
+        let blocks = t.command_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].is_failure());
+        assert!(!blocks[0].is_success());
+    }
+
+    #[test]
+    fn t_command_blocks_multiple() {
+        let mut t = Terminal::new(80, 24);
+        // First command
+        feed(&mut t, b"\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;0\x07");
+        // Second command
+        feed(&mut t, b"\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;1\x07");
+        let blocks = t.command_blocks();
+        assert_eq!(blocks.len(), 2);
+        assert!(blocks[0].is_success());
+        assert!(blocks[1].is_failure());
+    }
+
+    #[test]
+    fn t_command_blocks_running() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07");  // PromptStart only
+        let blocks = t.command_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert!(!blocks[0].is_complete());
+        assert!(blocks[0].is_at_prompt());
+    }
+
+    #[test]
+    fn t_command_blocks_last_exit_code() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;42\x07");
+        assert_eq!(t.last_exit_code(), Some(42));
+        assert!(!t.last_command_succeeded());
+    }
+
+    #[test]
+    fn t_command_blocks_last_exit_code_none() {
+        let t = Terminal::new(80, 24);
+        assert_eq!(t.last_exit_code(), None);
+    }
+
+    #[test]
+    fn t_command_blocks_extract_row_text() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello World");
+        assert_eq!(t.extract_row_text(0), "Hello World");
+        assert_eq!(t.extract_row_text(1), "");
+    }
+
+    #[test]
+    fn t_group_command_blocks_empty() {
+        assert!(group_command_blocks(&[]).is_empty());
+    }
+
+    #[test]
+    fn t_group_command_blocks_stress() {
+        let mut marks = Vec::new();
+        for i in 0..100 {
+            marks.push(CommandMark { kind: CommandMarkKind::PromptStart, row: i * 3, exit_code: None });
+            marks.push(CommandMark { kind: CommandMarkKind::OutputStart, row: i * 3, exit_code: None });
+            marks.push(CommandMark { kind: CommandMarkKind::CommandEnd, row: i * 3 + 1, exit_code: Some(if i % 7 == 0 { 1 } else { 0 }) });
+        }
+        let blocks = group_command_blocks(&marks);
+        assert_eq!(blocks.len(), 100);
+        for (i, b) in blocks.iter().enumerate() {
+            assert!(b.is_complete());
+            if i % 7 == 0 {
+                assert!(b.is_failure());
+            } else {
+                assert!(b.is_success());
+            }
+        }
     }
 }

@@ -28,6 +28,7 @@
 //!   `GlyphonRenderer`. Adds winit, wgpu, pollster dependencies.
 
 pub mod app;
+pub mod command_nav;
 pub mod event;
 pub mod input;
 
@@ -39,6 +40,7 @@ pub mod keymap;
 pub mod window;
 
 pub use app::App;
+pub use command_nav::{CommandNavigator, ExitStatusSummary};
 pub use event::AppEvent;
 pub use input::InputEncoder;
 
