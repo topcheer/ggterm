@@ -1,0 +1,37 @@
+[
+  {
+    "id": "1",
+    "content": "Add unicode-width dependency to Cargo.toml",
+    "status": "done"
+  },
+  {
+    "id": "2",
+    "content": "Enhance Cell with Unicode wide char support (width detection, wide char flags)",
+    "status": "done"
+  },
+  {
+    "id": "3",
+    "content": "Add Row::insert_char() / Row::delete_char() (ICH/DCH support)",
+    "status": "done"
+  },
+  {
+    "id": "4",
+    "content": "Add DamageTracker with dirty rect merging",
+    "status": "done"
+  },
+  {
+    "id": "5",
+    "content": "Add Grid scroll region + insert_line/delete_line (IL/DL) + insert_char_at/delete_char_at",
+    "status": "done"
+  },
+  {
+    "id": "6",
+    "content": "Write 25+ comprehensive tests",
+    "status": "done"
+  },
+  {
+    "id": "7",
+    "content": "cargo build + cargo test pass, commit, notify PM",
+    "status": "done"
+  }
+]

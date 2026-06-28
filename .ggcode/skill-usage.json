@@ -4,14 +4,17 @@
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.926389+08:00",
+    "prompt_success_count": 2,
     "prompt_failure_count": 1,
-    "prompt_failure_decayed": 1,
-    "last_prompt_decay": "2026-06-28T23:39:24.937182+08:00"
+    "prompt_success_decayed": 1.9999443355375794,
+    "prompt_failure_decayed": 0.9996890118685867,
+    "last_prompt_decay": "2026-06-28T23:58:48.039985+08:00"
   },
   "global:a-stock-analysis-1.0.0": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933629+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958453+08:00"
@@ -19,7 +22,8 @@
   "global:agent-self-reflection-1.0.0": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.93363+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958454+08:00"
@@ -27,7 +31,8 @@
   "global:aminer-open-academic-1.0.5": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933631+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958455+08:00"
@@ -35,7 +40,8 @@
   "global:architecture-designer-0.1.0": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933631+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958455+08:00"
@@ -43,7 +49,8 @@
   "global:autoglm-browser-agent": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933632+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958455+08:00"
@@ -51,7 +58,8 @@
   "global:autoglm-deepresearch": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933632+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958456+08:00"
@@ -59,7 +67,8 @@
   "global:autoglm-generate-image": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933632+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958456+08:00"
@@ -67,7 +76,8 @@
   "global:autoglm-open-link": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933633+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958457+08:00"
@@ -75,7 +85,8 @@
   "global:autoglm-search-image": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
-    "last_prompt_exposure": "0001-01-01T00:00:00Z",
+    "prompt_exposure_count": 1,
+    "last_prompt_exposure": "2026-06-28T23:48:39.933637+08:00",
     "prompt_failure_count": 1,
     "prompt_failure_decayed": 1,
     "last_prompt_decay": "2026-06-28T23:39:24.958458+08:00"
