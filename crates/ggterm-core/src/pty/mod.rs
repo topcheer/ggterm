@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_pty_open_with_size() {
-        let mut pty = PtySession::open(120, 40).expect("open pty");
+        let pty = PtySession::open(120, 40).expect("open pty");
         assert_eq!(pty.size(), (120, 40));
     }
 
