@@ -7,6 +7,9 @@
 use ggterm_render_wgpu::GlyphonRenderer;
 
 /// Wraps the wgpu device/queue and surface configuration needed for rendering.
+///
+/// The `Surface` itself is managed by the caller (typically `DesktopApp`)
+/// because wgpu 29 surfaces have a lifetime tied to the window.
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -15,10 +18,10 @@ pub struct GpuContext {
 }
 
 impl GpuContext {
-    /// Create a GpuContext from an existing surface + adapter.
+    /// Initialize device + queue + surface configuration from an existing
+    /// surface and adapter.
     ///
-    /// Uses `pollster` for the async adapter/device requests since
-    /// the desktop app uses a synchronous winit event loop.
+    /// Uses `pollster::block_on` for the async device request.
     pub fn from_surface(
         surface: &wgpu::Surface,
         adapter: &wgpu::Adapter,
@@ -41,6 +44,7 @@ impl GpuContext {
 
         let caps = surface.get_capabilities(adapter);
 
+        // Prefer an sRGB format for correct color rendering.
         let surface_format = caps
             .formats
             .iter()
@@ -76,7 +80,7 @@ impl GpuContext {
         surface.configure(&self.device, &self.config);
     }
 
-    /// Create a GlyphonRenderer configured for this surface.
+    /// Create a GlyphonRenderer configured for this surface's format.
     pub fn create_renderer(&self, cols: usize, rows: usize) -> GlyphonRenderer {
         GlyphonRenderer::new(
             &self.device,
@@ -98,11 +102,20 @@ impl GpuContext {
         grid: &ggterm_core::Grid,
         cursor: &ggterm_render::CursorState,
     ) -> Result<(), RenderFrameError> {
-        let surface_texture = surface.get_current_texture();
-        let frame = match surface_texture {
-            wgpu::CurrentSurfaceTexture::Success(f) => f,
-            wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-            _ => return Err(RenderFrameError::SurfaceLost),
+        let frame = match surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t) => t,
+            wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Timeout => {
+                // Surface needs reconfiguration; skip this frame.
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Lost
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(RenderFrameError::Surface(
+                    "surface lost or invalid".into(),
+                ));
+            }
         };
 
         let view = frame
@@ -221,14 +234,14 @@ impl std::error::Error for GpuError {}
 /// Errors during frame rendering.
 #[derive(Debug)]
 pub enum RenderFrameError {
-    SurfaceLost,
+    Surface(String),
     Render(ggterm_render_wgpu::RenderError),
 }
 
 impl std::fmt::Display for RenderFrameError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RenderFrameError::SurfaceLost => write!(f, "surface lost or outdated"),
+            RenderFrameError::Surface(e) => write!(f, "surface error: {e}"),
             RenderFrameError::Render(e) => write!(f, "render error: {e}"),
         }
     }
