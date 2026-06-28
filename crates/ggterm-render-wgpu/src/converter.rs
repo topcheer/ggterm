@@ -85,8 +85,14 @@ pub fn row_to_runs(
         }
     }
 
-    if let Some(r) = current {
-        runs.push(r);
+    if let Some(mut r) = current {
+        // Trim trailing spaces from last run (empty grid cells)
+        while r.text.ends_with(' ') {
+            r.text.pop();
+        }
+        if !r.text.is_empty() {
+            runs.push(r);
+        }
     }
 
     runs
@@ -101,7 +107,7 @@ pub fn row_to_text(grid: &Grid, row: usize) -> String {
             text.push(cell.ch);
         }
     }
-    text
+    text.trim_end_matches(' ').to_string()
 }
 
 #[cfg(test)]
