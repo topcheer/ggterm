@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/ggterm-core",
+    "crates/ggterm-render",
 ]
 resolver = "2"
 

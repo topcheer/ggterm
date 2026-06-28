@@ -1,0 +1,11 @@
+[package]
+name = "ggterm-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ggterm-core = { path = "../ggterm-core" }
+
+[dev-dependencies]
+ggterm-core = { path = "../ggterm-core" }
