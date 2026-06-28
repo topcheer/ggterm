@@ -11,10 +11,3 @@ version.workspace = true
 ggterm-core = { path = "../ggterm-core" }
 ggterm-render = { path = "../ggterm-render" }
 log.workspace = true
-
-# Window and GPU (feature-gated for headless testing)
-winit = { version = "0.30", optional = true }
-
-[features]
-default = []
-desktop = ["dep:winit"]

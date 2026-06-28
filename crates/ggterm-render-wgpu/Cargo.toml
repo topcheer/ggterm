@@ -1,0 +1,15 @@
+[package]
+name = "ggterm-render-wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ggterm-core = { path = "../ggterm-core" }
+ggterm-render = { path = "../ggterm-render" }
+glyphon = "0.11"
+wgpu = "29"
+
+[dev-dependencies]
+ggterm-core = { path = "../ggterm-core" }
+ggterm-render = { path = "../ggterm-render" }

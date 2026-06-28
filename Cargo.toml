@@ -2,6 +2,7 @@
 members = [
     "crates/ggterm-core",
     "crates/ggterm-render",
+    "crates/ggterm-render-wgpu",
     "crates/ggterm-app",
 ]
 resolver = "2"
@@ -20,6 +21,10 @@ parking_lot = "0.12"
 log = "0.4"
 unicode-width = "0.2"
 portable-pty = "0.9"
+
+# Internal crates
+ggterm-core = { path = "crates/ggterm-core" }
+ggterm-render = { path = "crates/ggterm-render" }
 
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]
