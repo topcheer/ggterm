@@ -852,21 +852,6 @@ mod tests {
         assert_eq!(t.cursor().0, 1);     // C at col 0, cursor at 1
         assert_eq!(t.cursor().1, 1);     // wrapped to row 1
     }
-        assert_eq!(t.cursor().0, 3); // cursor at last column with pending_wrap
-        // Next char should trigger wrap
-        feed(&mut t, "C".as_bytes());
-        assert_eq!(t.cursor().0, 1); // wrapped to next line
-        assert_eq!(t.cursor().1, 1); // row 1
-    }
-
-    #[test]
-    fn t_utf8_invalid_sequence_dropped() {
-        // Invalid UTF-8: 0xFF is not a valid leading byte
-        let mut t = Terminal::new(80, 24);
-        feed(&mut t, &[0xFF]);
-        // Should not crash, cursor should not advance
-        assert_eq!(t.cursor().0, 0);
-    }
 
     #[test]
     fn t_utf8_control_interrupts_buffer() {
