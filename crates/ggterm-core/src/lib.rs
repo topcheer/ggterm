@@ -9,8 +9,10 @@
 //! - PTY I/O abstraction
 
 pub mod grid;
+pub mod term;
 pub mod vte;
 
 // Re-export key types for convenience
 pub use grid::{Cell, CellFlags, Color, DamageTracker, DirtyRect, Grid, Row};
+pub use term::Terminal;
 pub use vte::{Parser, Perform};

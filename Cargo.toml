@@ -17,6 +17,7 @@ bitflags = "2"
 parking_lot = "0.12"
 log = "0.4"
 unicode-width = "0.2"
+portable-pty = "0.9"
 
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]

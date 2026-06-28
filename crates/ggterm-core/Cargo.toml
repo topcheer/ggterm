@@ -12,3 +12,4 @@ bitflags.workspace = true
 parking_lot.workspace = true
 log.workspace = true
 unicode-width.workspace = true
+portable-pty.workspace = true

@@ -4,109 +4,109 @@
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.926389+08:00",
-    "prompt_success_count": 5,
+    "prompt_success_count": 6,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 4.999664910584439,
-    "prompt_failure_decayed": 0.9995580936066453,
-    "last_prompt_decay": "2026-06-29T00:06:57.788777+08:00"
+    "prompt_success_decayed": 5.998778715579168,
+    "prompt_failure_decayed": 0.9994034343474171,
+    "last_prompt_decay": "2026-06-29T00:16:36.4686+08:00"
   },
   "global:a-stock-analysis-1.0.0": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933629+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.999998241557257,
-    "prompt_failure_decayed": 0.9995659747505192,
-    "last_prompt_decay": "2026-06-29T00:06:28.333256+08:00"
+    "prompt_success_decayed": 3.9997328482772785,
+    "prompt_failure_decayed": 0.9995565872312536,
+    "last_prompt_decay": "2026-06-29T00:07:03.45428+08:00"
   },
   "global:agent-self-reflection-1.0.0": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.93363+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.999998241557324,
-    "prompt_failure_decayed": 0.9995659747503187,
-    "last_prompt_decay": "2026-06-29T00:06:28.333257+08:00"
+    "prompt_success_decayed": 3.9997328482773904,
+    "prompt_failure_decayed": 0.9995565872310977,
+    "last_prompt_decay": "2026-06-29T00:07:03.454282+08:00"
   },
   "global:aminer-open-academic-1.0.5": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933631+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.9999982415572681,
-    "prompt_failure_decayed": 0.9995659747505302,
-    "last_prompt_decay": "2026-06-29T00:06:28.333258+08:00"
+    "prompt_success_decayed": 3.999732848277167,
+    "prompt_failure_decayed": 0.9995565872310084,
+    "last_prompt_decay": "2026-06-29T00:07:03.454283+08:00"
   },
   "global:architecture-designer-0.1.0": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933631+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.9999982415572684,
-    "prompt_failure_decayed": 0.9995659747502631,
-    "last_prompt_decay": "2026-06-29T00:06:28.333258+08:00"
+    "prompt_success_decayed": 3.999732848277122,
+    "prompt_failure_decayed": 0.9995565872309863,
+    "last_prompt_decay": "2026-06-29T00:07:03.454283+08:00"
   },
   "global:autoglm-browser-agent": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933632+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.9999982415572233,
-    "prompt_failure_decayed": 0.9995659747502181,
-    "last_prompt_decay": "2026-06-29T00:06:28.333259+08:00"
+    "prompt_success_decayed": 3.9997328482770005,
+    "prompt_failure_decayed": 0.9995565872306634,
+    "last_prompt_decay": "2026-06-29T00:07:03.454284+08:00"
   },
   "global:autoglm-deepresearch": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933632+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.9999982415572126,
-    "prompt_failure_decayed": 0.9995659747502073,
-    "last_prompt_decay": "2026-06-29T00:06:28.33326+08:00"
+    "prompt_success_decayed": 3.9997328482766217,
+    "prompt_failure_decayed": 0.9995565872307969,
+    "last_prompt_decay": "2026-06-29T00:07:03.454285+08:00"
   },
   "global:autoglm-generate-image": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933632+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.9999982415572126,
-    "prompt_failure_decayed": 0.9995659747502073,
-    "last_prompt_decay": "2026-06-29T00:06:28.33326+08:00"
+    "prompt_success_decayed": 3.999732848276644,
+    "prompt_failure_decayed": 0.9995565872305295,
+    "last_prompt_decay": "2026-06-29T00:07:03.454286+08:00"
   },
   "global:autoglm-open-link": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933633+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.9999982415571904,
-    "prompt_failure_decayed": 0.999565974750185,
-    "last_prompt_decay": "2026-06-29T00:06:28.333261+08:00"
+    "prompt_success_decayed": 3.999732848276622,
+    "prompt_failure_decayed": 0.999556587230797,
+    "last_prompt_decay": "2026-06-29T00:07:03.454286+08:00"
   },
   "global:autoglm-search-image": {
     "usage_count": 0,
     "last_used": "0001-01-01T00:00:00Z",
     "prompt_exposure_count": 1,
     "last_prompt_exposure": "2026-06-28T23:48:39.933637+08:00",
-    "prompt_success_count": 2,
+    "prompt_success_count": 4,
     "prompt_failure_count": 1,
-    "prompt_success_decayed": 1.999998241557201,
-    "prompt_failure_decayed": 0.9995659747504633,
-    "last_prompt_decay": "2026-06-29T00:06:28.333261+08:00"
+    "prompt_success_decayed": 3.999732848276577,
+    "prompt_failure_decayed": 0.999556587230797,
+    "last_prompt_decay": "2026-06-29T00:07:03.454287+08:00"
   }
 }
