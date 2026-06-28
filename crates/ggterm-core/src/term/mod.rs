@@ -110,11 +110,11 @@ impl Terminal {
         self.cursor.x = self.cursor.x.min(width.saturating_sub(1));
         self.cursor.y = self.cursor.y.min(height.saturating_sub(1));
         self.cursor.pending_wrap = false;
+        self.utf8_buf.clear();
     }
 
     // -- Helpers --
 
-    #[allow(dead_code)]
     #[allow(dead_code)]
     fn make_cell(&self, ch: char) -> Cell {
         Cell { ch, fg: self.fg, bg: self.bg, flags: self.flags }
@@ -125,35 +125,78 @@ impl Terminal {
         if self.utf8_buf.is_empty() {
             return;
         }
-        if let Ok(s) = std::str::from_utf8(&self.utf8_buf) {
-            if let Some(ch) = s.chars().next() {
-                self.put_printable_char(ch);
+        match std::str::from_utf8(&self.utf8_buf) {
+            Ok(s) => {
+                if let Some(ch) = s.chars().next() {
+                    self.put_printable_char(ch);
+                }
+            }
+            Err(_) => {
+                // Invalid UTF-8 sequence — emit replacement character
+                self.put_printable_char('\u{FFFD}');
             }
         }
         self.utf8_buf.clear();
     }
 
     /// Write a decoded character to the grid with proper column advancement.
+    ///
+    /// Handles deferred wrap (DECAWM), insert mode (IRM), wide character
+    /// boundary wrapping, zero-width skip, and attribute merging.
     fn put_printable_char(&mut self, ch: char) {
+        let w = UnicodeWidthChar::width(ch).unwrap_or(1);
+
+        // Skip zero-width combining characters (our Cell model can't represent them)
+        if w == 0 {
+            return;
+        }
+
+        // Handle deferred wrap (DECAWM) before writing
         if self.cursor.pending_wrap && self.modes.auto_wrap {
             self.cursor.x = 0;
             self.line_feed();
             self.cursor.pending_wrap = false;
         }
-        let width = UnicodeWidthChar::width(ch).unwrap_or(1);
-        if self.modes.insert && width > 0 {
-            self.grid.insert_char(self.cursor.x, self.cursor.y, width);
+
+        let grid_width = self.grid.width();
+        if grid_width == 0 {
+            return;
         }
-        self.grid.put_char(self.cursor.x, self.cursor.y, ch);
+
+        // For wide chars (width 2), wrap to next line if not enough columns remain
+        if w == 2 && self.cursor.x + 1 >= grid_width && self.modes.auto_wrap {
+            self.cursor.x = 0;
+            self.line_feed();
+            self.cursor.pending_wrap = false;
+        }
+
+        // Insert mode: shift existing cells right to make room
+        if self.modes.insert {
+            self.grid.insert_char(self.cursor.x, self.cursor.y, w);
+        }
+
+        // Write the character (grid.put_char handles wide char + spacer mechanics)
+        let consumed = self.grid.put_char(self.cursor.x, self.cursor.y, ch);
+
+        // Apply current text attributes — merge with flags set by put_char (e.g., WIDE_CHAR)
         if let Some(c) = self.grid.cell_mut(self.cursor.x, self.cursor.y) {
             c.fg = self.fg;
             c.bg = self.bg;
-            c.flags = self.flags;
+            c.flags |= self.flags;
         }
-        if self.cursor.x + width < self.grid.width() {
-            self.cursor.x += width;
+        // For wide chars, set bg on the spacer cell to avoid visual gaps
+        if consumed == 2 && self.cursor.x + 1 < grid_width {
+            if let Some(c) = self.grid.cell_mut(self.cursor.x + 1, self.cursor.y) {
+                c.bg = self.bg;
+            }
+        }
+
+        // Advance cursor by the character's display width
+        let advance = if consumed > 0 { consumed } else { w };
+        if self.cursor.x + advance < grid_width {
+            self.cursor.x += advance;
         } else if self.modes.auto_wrap {
-            self.cursor.x = self.grid.width().saturating_sub(1);
+            self.cursor.x = grid_width.saturating_sub(1);
             self.cursor.pending_wrap = true;
         }
     }
@@ -285,6 +328,10 @@ impl Perform for Terminal {
             self.flush_utf8();
             self.put_printable_char(byte as char);
             return;
+        }
+        // Flush pending incomplete sequence when a new leading byte arrives
+        if !self.utf8_buf.is_empty() && byte >= 0xC0 {
+            self.flush_utf8();
         }
         // Multi-byte UTF-8: buffer and decode when complete
         self.utf8_buf.push(byte);
@@ -862,5 +909,129 @@ mod tests {
         p.feed(b"\x08", &mut t);         // BS (execute) — should flush (drop incomplete)
         feed(&mut t, b"X");
         assert_eq!(t.grid().cell(0,0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_utf8_invalid_sequence_emits_replacement() {
+        // Invalid UTF-8 bytes should emit U+FFFD (replacement character)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, &[0xFF]);
+        // 0xFF is invalid → flush_utf8 emits U+FFFD when next byte arrives
+        feed(&mut t, b"A");
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{FFFD}');
+        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_utf8_split_emoji_across_feeds() {
+        // 😀 = F0 9F 98 80 (4 bytes)
+        let mut t = Terminal::new(80, 24);
+        let mut p = Parser::new();
+        p.feed(&[0xF0, 0x9F], &mut t);
+        p.feed(&[0x98, 0x80], &mut t);
+        assert_eq!(t.grid().cell(0,0).unwrap().ch, '😀');
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_utf8_styled_wide_char_preserves_flags() {
+        // Bold red CJK char — SGR attributes must merge with WIDE_CHAR flag
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[1;31m");
+        feed(&mut t, "好".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, '好');
+        assert!(cell.is_wide(), "must preserve WIDE_CHAR flag");
+        assert!(cell.flags.contains(CellFlags::BOLD), "must preserve BOLD");
+        assert_eq!(cell.fg, Color::Indexed(1));
+    }
+
+    #[test]
+    fn t_utf8_multiple_cjk_sequence() {
+        // Write 3 CJK chars in a row
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, "你好世".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '世');
+        assert_eq!(t.cursor().0, 6); // 3 * 2 = 6
+    }
+
+    #[test]
+    fn t_utf8_truncated_then_new_sequence() {
+        // Truncated E4 BD (incomplete '你') then valid E5 A5 BD = '好'
+        // The new leading byte E5 should flush the old incomplete sequence
+        let mut t = Terminal::new(80, 24);
+        let mut p = Parser::new();
+        p.feed(&[0xE4, 0xBD, 0xE5, 0xA5, 0xBD], &mut t);
+        // E4 BD is incomplete → U+FFFD at col 0 (width 1)
+        // E5 A5 BD = '好' → col 1-2 (width 2)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{FFFD}');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '好');
+        assert_eq!(t.cursor().0, 3);
+    }
+
+    #[test]
+    fn t_utf8_cjk_followed_by_ascii() {
+        // CJK immediately followed by ASCII in same feed
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, "你X".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert!(t.grid().cell(0, 0).unwrap().is_wide());
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X');
+        assert_eq!(t.cursor().0, 3); // 2 (CJK) + 1 (ASCII)
+    }
+
+    #[test]
+    fn t_utf8_wide_char_bg_on_spacer() {
+        // Wide char with background color — spacer cell should inherit bg
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[42m");  // green bg
+        feed(&mut t, "中".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Indexed(2));
+        assert_eq!(t.grid().cell(1, 0).unwrap().bg, Color::Indexed(2),
+            "spacer cell should inherit bg color");
+    }
+
+    #[test]
+    fn t_utf8_cjk_at_penultimate_col() {
+        // Width=4: write ABC → cursor at col 3. CJK (width 2) doesn't fit at col 3.
+        // Should wrap to next line when auto_wrap is on.
+        let mut t = Terminal::new(4, 24);
+        feed(&mut t, b"ABC");   // A=col0, B=col1, C=col2, cursor at col3
+        feed(&mut t, "你".as_bytes());  // doesn't fit at col 3 → wrap
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你');
+        assert!(t.grid().cell(0, 1).unwrap().is_wide());
+    }
+
+    // -- dd_dev bug review regression tests --
+
+    #[test]
+    fn t_utf8_wide_char_flag_preserved() {
+        // Bug 1 regression: put_printable_char must not overwrite WIDE_CHAR flag.
+        // After writing a CJK char, the cell must still have WIDE_CHAR set
+        // even when SGR attributes (bold, italic, etc.) are active.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[1;3m"); // Bold + italic
+        feed(&mut t, "你".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.is_wide(), "WIDE_CHAR flag must be preserved after SGR merge");
+        assert!(cell.flags.contains(CellFlags::BOLD), "BOLD flag must be set");
+        assert!(cell.flags.contains(CellFlags::ITALIC), "ITALIC flag must be set");
+    }
+
+    #[test]
+    fn t_utf8_invalid_emits_replacement_char() {
+        // Bug 2: flush_utf8 should emit U+FFFD for invalid UTF-8, not silently drop.
+        // 0xFF is never a valid UTF-8 leading byte.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, &[0xFF]);
+        // After execute/feed completes, the invalid byte should have been flushed
+        // as U+FFFD. We feed a trailing ASCII to force the flush.
+        feed(&mut t, b"A");
+        // Cell (0,0) should have U+FFFD, cell (1,0) should have 'A'
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{FFFD}');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
     }
 }
