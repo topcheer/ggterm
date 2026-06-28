@@ -22,9 +22,18 @@ log = "0.4"
 unicode-width = "0.2"
 portable-pty = "0.9"
 
+# GPU / windowing (used by render-wgpu and desktop feature)
+wgpu = "29"
+glyphon = "0.11"
+winit = "0.30"
+pollster = "0.4"
+raw-window-handle = "0.6"
+env_logger = "0.11"
+
 # Internal crates
 ggterm-core = { path = "crates/ggterm-core" }
 ggterm-render = { path = "crates/ggterm-render" }
+ggterm-render-wgpu = { path = "crates/ggterm-render-wgpu" }
 
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]

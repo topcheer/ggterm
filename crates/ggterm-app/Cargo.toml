@@ -7,7 +7,29 @@ authors.workspace = true
 repository.workspace = true
 version.workspace = true
 
+[features]
+# Desktop mode: enables winit window + wgpu GPU rendering
+# Without this feature, the crate is headless/test-only (ConsoleRenderer).
+desktop = [
+    "dep:winit",
+    "dep:wgpu",
+    "dep:ggterm-render-wgpu",
+    "dep:pollster",
+    "dep:portable-pty",
+    "dep:raw-window-handle",
+    "dep:env_logger",
+]
+
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
 ggterm-render = { path = "../ggterm-render" }
 log.workspace = true
+
+# Desktop-only dependencies (optional — enabled by `desktop` feature)
+winit = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
+ggterm-render-wgpu = { path = "../ggterm-render-wgpu", optional = true }
+pollster = { workspace = true, optional = true }
+portable-pty = { workspace = true, optional = true }
+raw-window-handle = { workspace = true, optional = true }
+env_logger = { workspace = true, optional = true }

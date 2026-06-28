@@ -8,34 +8,39 @@
 //! ## Architecture
 //!
 //! ```text
-//! PTY Thread                    Main Thread (Event Loop)
-//! ──────────                    ────────────────────────
-//! PtySession::try_read()        winit events (keyboard, resize, close)
-//!         │                             │
-//!         ▼                             ▼
-//!   mpsc::Sender ──────────► AppEvent channel ──► App::handle_event()
-//! (PtyBytes)                                               │
-//!                                                          ▼
-//!                                              Parser::feed(bytes, &mut Terminal)
-//!                                                          │
-//!                                                          ▼
-//!                                              Renderer::render(grid, cursor, dirty)
-//!                                                          │
-//!                                                          ▼
-//!                                              wgpu surface / stdout
+//! PTY Reader Thread → mpsc::channel → Main Thread
+//!                                     ↓
+//!                              AppEvent::PtyBytes
+//!                                     ↓
+//!                             Parser.feed() → Terminal
+//!                                     ↓
+//!                                 Renderer
+//!                                     ↓
+//!                             Console (headless) or
+//!                             wgpu Surface (desktop)
 //! ```
 //!
-//! ## Thread Safety
+//! ## Features
 //!
-//! - `Terminal` and `Parser` live on the main thread (no synchronization needed).
-//! - `PtySession` is moved to a reader thread; bytes are sent via channel.
-//! - Input (keyboard) is encoded on the main thread and written to PTY via
-//!   a shared writer (behind a mutex or channel).
+//! - **default**: Headless mode using `ConsoleRenderer` (ANSI output). Suitable
+//!   for testing and non-GPU environments.
+//! - **desktop**: Enables winit window + wgpu GPU rendering via
+//!   `GlyphonRenderer`. Adds winit, wgpu, pollster dependencies.
 
 pub mod app;
 pub mod event;
 pub mod input;
 
+#[cfg(feature = "desktop")]
+pub mod keymap;
+#[cfg(feature = "desktop")]
+pub mod window;
+
 pub use app::App;
 pub use event::AppEvent;
 pub use input::InputEncoder;
+
+#[cfg(feature = "desktop")]
+pub use keymap::map_winit_key;
+#[cfg(feature = "desktop")]
+pub use window::{DesktopApp, DesktopConfig};
