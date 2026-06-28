@@ -842,14 +842,16 @@ mod tests {
 
     #[test]
     fn t_utf8_cjk_wraps_at_margin() {
-        // Cursor at last col, pending_wrap set; next char triggers wrap
-        feed(&mut t, b"C");
-        assert_eq!(t.grid().cell(0,1).unwrap().ch, 'C');
-    }        let mut t = Terminal::new(4, 24);
+        // Grid width=4: write "AB你" — CJK fills cols 2-3, then 'C' wraps
+        let mut t = Terminal::new(4, 24);
         feed(&mut t, b"AB");
         assert_eq!(t.cursor().0, 2);
-        feed(&mut t, "你".as_bytes());  // cols 2-3 (CJK = 2 cells)
-        // Cursor at col 3 (last col, pending_wrap set since 2+2=4 >= width=4)
+        feed(&mut t, "你".as_bytes());  // fills to end of line
+        assert_eq!(t.cursor().0, 3);     // cursor at last col, pending_wrap set
+        feed(&mut t, "C".as_bytes());   // wrap + write C
+        assert_eq!(t.cursor().0, 1);     // C at col 0, cursor at 1
+        assert_eq!(t.cursor().1, 1);     // wrapped to row 1
+    }
         assert_eq!(t.cursor().0, 3); // cursor at last column with pending_wrap
         // Next char should trigger wrap
         feed(&mut t, "C".as_bytes());
