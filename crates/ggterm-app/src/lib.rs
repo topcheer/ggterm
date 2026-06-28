@@ -32,6 +32,8 @@ pub mod event;
 pub mod input;
 
 #[cfg(feature = "desktop")]
+pub mod gpu;
+#[cfg(feature = "desktop")]
 pub mod keymap;
 #[cfg(feature = "desktop")]
 pub mod window;
@@ -40,6 +42,8 @@ pub use app::App;
 pub use event::AppEvent;
 pub use input::InputEncoder;
 
+#[cfg(feature = "desktop")]
+pub use gpu::{GpuContext, GpuError};
 #[cfg(feature = "desktop")]
 pub use keymap::map_winit_key;
 #[cfg(feature = "desktop")]

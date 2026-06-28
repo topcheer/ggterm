@@ -1,37 +1,52 @@
 [
   {
-    "id": "f2-1",
-    "content": "wgpu pipeline skeleton (dd_dev)",
-    "status": "pending"
-  },
-  {
-    "id": "f2-2",
-    "content": "glyphon text rendering integration (ggcxf_dev)",
+    "id": "1",
+    "content": "Fix lib.rs duplicate gpu module declaration",
     "status": "done"
   },
   {
-    "id": "f2-3",
-    "content": "Fix converter tests (cursor swap, wide spacer)",
+    "id": "2",
+    "content": "Fix window.rs spawn_pty_reader import path",
     "status": "done"
-  },
-  {
-    "id": "f3-1",
-    "content": "winit window + PTY I/O thread (gg_dev)",
-    "status": "in_progress"
   },
   {
     "id": "3",
-    "content": "Set up ggterm-render-wgpu crate scaffolding (Cargo.toml, wgpu + glyphon deps)",
+    "content": "Fix gpu.rs for wgpu 29 API (InstanceDescriptor, DeviceDescriptor, CurrentSurfaceTexture, multiview_mask)",
     "status": "done"
   },
   {
     "id": "4",
-    "content": "Implement wgpu device initialization + render pipeline",
-    "status": "pending"
+    "content": "Fix PtyError → io::Error conversion in window.rs",
+    "status": "done"
   },
   {
     "id": "5",
-    "content": "Implement glyphon text rendering integration (glyph atlas, CJK/emoji)",
+    "content": "Fix ExperimentalFeatures::disabled() for DeviceDescriptor",
     "status": "done"
+  },
+  {
+    "id": "6",
+    "content": "Add cursor_visible() to Terminal + cursor_state() to App",
+    "status": "done"
+  },
+  {
+    "id": "7",
+    "content": "Create gpu.rs: GpuContext + init_wgpu + render_frame (compiles clean with --features desktop)",
+    "status": "done"
+  },
+  {
+    "id": "8",
+    "content": "Rewrite window.rs: winit ApplicationHandler + GPU render loop",
+    "status": "pending"
+  },
+  {
+    "id": "9",
+    "content": "End-to-end GPU rendering verification",
+    "status": "pending"
+  },
+  {
+    "id": "10",
+    "content": "Commit all P1-F4 changes",
+    "status": "pending"
   }
 ]

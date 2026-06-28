@@ -31,8 +31,8 @@ use ggterm_core::pty::PtySession;
 
 use ggterm_render::theme::RenderTheme;
 
-use crate::app::App;
-use crate::event::{spawn_pty_reader, AppEvent};
+use crate::app::{spawn_pty_reader, App};
+use crate::event::AppEvent;
 use crate::input::KeyModifiers;
 
 /// Configuration for the desktop terminal window.
@@ -203,7 +203,7 @@ impl DesktopApp {
     ///
     /// Encodes the raw key bytes and writes them to the PTY.
     pub fn send_input(&mut self, data: &[u8]) -> std::io::Result<()> {
-        self.pty.write(data)?;
+        self.pty.write(data).map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(())
     }
 

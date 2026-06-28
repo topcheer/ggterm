@@ -139,6 +139,22 @@ impl App {
         self.terminal.grid()
     }
 
+    /// Get the cursor position (x, y) and visibility.
+    pub fn cursor_state(&self) -> (usize, usize, bool) {
+        let (cx, cy) = self.terminal.cursor();
+        (cx, cy, self.terminal.cursor_visible())
+    }
+
+    /// Get the current cursor position (x, y).
+    pub fn cursor(&self) -> (usize, usize) {
+        self.terminal.cursor()
+    }
+
+    /// Whether the cursor is visible (DECSET 25).
+    pub fn cursor_visible(&self) -> bool {
+        self.terminal.cursor_visible()
+    }
+
     /// Get the current rendered output (ConsoleRenderer).
     pub fn output(&self) -> &str {
         self.renderer.output()

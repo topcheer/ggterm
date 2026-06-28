@@ -97,6 +97,7 @@ impl Terminal {
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
     pub fn cursor(&self) -> (usize, usize) { (self.cursor.x, self.cursor.y) }
+    pub fn cursor_visible(&self) -> bool { self.modes.cursor_visible }
     pub fn title(&self) -> &str { &self.title }
 
     pub fn resize(&mut self, width: usize, height: usize) {
