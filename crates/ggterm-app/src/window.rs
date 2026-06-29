@@ -58,6 +58,10 @@ pub const MIN_ROWS: u16 = 3;
 /// We defer the actual Terminal/PTY resize until 100ms after the last event.
 pub const RESIZE_DEBOUNCE_MS: u64 = 100;
 
+/// Duration of the visual bell flash in frames (P11-E).
+/// At 60 FPS this is about 250ms (15 frames).
+pub const VISUAL_BELL_DURATION_FRAMES: u32 = 15;
+
 /// Compute terminal cell dimensions (cols, rows) from pixel dimensions.
 ///
 /// `width`/`height` are the window inner size in physical pixels.
@@ -243,6 +247,10 @@ pub struct DesktopApp {
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
     font_zoom: crate::font::FontZoom,
+
+    // ── Visual bell (P11-E) ──
+    /// Remaining frames for the visual bell flash (0 = no flash).
+    visual_bell_frames: u32,
 }
 
 impl DesktopApp {
@@ -334,6 +342,7 @@ impl DesktopApp {
             fullscreen: false,
             maximized: false,
             font_zoom: crate::font::FontZoom::default_size(),
+            visual_bell_frames: 0,
         };
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
@@ -1119,6 +1128,20 @@ impl DesktopApp {
             crate::clipboard::set_clipboard_bytes(&data);
         }
     }
+
+    /// Poll for bell events from the terminal and trigger visual bell (P11-E).
+    fn poll_bell(&mut self) {
+        if self
+            .active_session_mut()
+            .app_mut()
+            .terminal_mut()
+            .take_bell()
+        {
+            self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
+            log::debug!("Bell triggered");
+        }
+    }
+
     // ── Font zoom (P11-A) ─────────────────────────────────────────
 
     /// Apply the current font zoom level to the renderer (P11-A).
@@ -1345,6 +1368,9 @@ impl ApplicationHandler for DesktopApp {
 
         // P10-B: Poll OSC 52 clipboard set requests.
         self.poll_osc52_clipboard();
+
+        // P11-E: Poll for bell events.
+        self.poll_bell();
 
         // Apply deferred resize if debounce interval has elapsed.
         self.apply_pending_resize();

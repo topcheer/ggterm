@@ -341,6 +341,8 @@ pub struct Terminal {
     /// Pending OSC 52 clipboard set request (base64-decoded bytes).
     /// The app layer reads this and writes to the system clipboard.
     pub(crate) pending_clipboard_set: Option<Vec<u8>>,
+    /// Bell flag — set when BEL (0x07) is received (P11-E).
+    pub(crate) bell: bool,
 }
 
 impl Terminal {
@@ -371,6 +373,7 @@ impl Terminal {
             cursor_style: CursorStyle::default(),
             response_buffer: Vec::new(),
             pending_clipboard_set: None,
+            bell: false,
         }
     }
 
@@ -772,6 +775,14 @@ impl Terminal {
         self.pending_clipboard_set.take()
     }
 
+    /// Take the bell flag (P11-E).
+    ///
+    /// Returns `true` if a BEL (0x07) was received since the last call.
+    /// The app layer calls this in `about_to_wait` to trigger visual bell.
+    pub fn take_bell(&mut self) -> bool {
+        std::mem::replace(&mut self.bell, false)
+    }
+
     /// Simple base64 decoder for OSC 52 payloads.
     fn decode_base64(input: &str) -> Option<Vec<u8>> {
         let bytes = input.as_bytes();
@@ -847,7 +858,9 @@ impl Perform for Terminal {
         // Control characters interrupt pending UTF-8 sequences
         self.flush_utf8();
         match byte {
-            0x07 => {} // BEL
+            0x07 => {
+                self.bell = true;
+            }
             0x08 => {
                 if self.cursor.x > 0 {
                     self.cursor.x -= 1;
@@ -1596,6 +1609,45 @@ mod tests {
         assert!(t.bracketed_paste());
         feed(&mut t, b"\x1b[?2004l");
         assert!(!t.bracketed_paste());
+    }
+
+    #[test]
+    fn t_bell_sets_flag() {
+        let mut t = Terminal::new(80, 24);
+        assert!(!t.take_bell());
+        feed(&mut t, b"\x07");
+        assert!(t.take_bell());
+    }
+
+    #[test]
+    fn t_bell_take_clears() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x07");
+        assert!(t.take_bell());
+        assert!(!t.take_bell());
+    }
+
+    #[test]
+    fn t_bell_in_text() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"hello\x07world");
+        assert!(t.take_bell());
+    }
+
+    #[test]
+    fn t_bell_multiple() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x07\x07\x07");
+        // Multiple bells — still just true (we only track that bell occurred).
+        assert!(t.take_bell());
+        assert!(!t.take_bell());
+    }
+
+    #[test]
+    fn t_bell_no_false_positive() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"hello world");
+        assert!(!t.take_bell());
     }
 
     #[test]
