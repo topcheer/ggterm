@@ -283,13 +283,13 @@ cargo run --features desktop
 # With CLI options
 cargo run --features desktop -- --cols 120 --rows 40 --shell /bin/zsh
 
-# Run tests (1266 tests with all features)
+# Run tests (1268 tests with all features)
 cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 ```
 
 ## Status
 
-**1266 tests passing** (2 ignored PTY integration tests).
+**1268 tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|

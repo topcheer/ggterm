@@ -228,9 +228,7 @@ impl GlyphonRenderer {
                 if run.italic {
                     attrs = attrs.style(glyphon::Style::Italic);
                 }
-                // NOTE: Underline is tracked in TextRun but cosmic-text 0.18
-                // does not expose underline on Attrs. Upgrade cosmic-text
-                // or use a custom render pass for underline rendering.
+                // Underline is rendered via a separate wgpu pipeline (draw_underlines).
 
                 attrs_list.add_span(start..end, &attrs);
             }
