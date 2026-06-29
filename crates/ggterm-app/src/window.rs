@@ -239,6 +239,10 @@ pub struct DesktopApp {
     fullscreen: bool,
     /// Whether the window is currently maximized.
     maximized: bool,
+
+    // ── Font zoom (P11-A) ──
+    /// Tracks current font size and zoom level for Ctrl+=/-/0.
+    font_zoom: crate::font::FontZoom,
 }
 
 impl DesktopApp {
@@ -329,6 +333,7 @@ impl DesktopApp {
             search: crate::search::SearchState::new(),
             fullscreen: false,
             maximized: false,
+            font_zoom: crate::font::FontZoom::default_size(),
         };
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
@@ -516,6 +521,34 @@ impl DesktopApp {
                 }
                 KeyCode::KeyW => {
                     self.close_tab();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // P11-A: Font zoom — Ctrl+= / Ctrl+- / Ctrl+0
+        if self.mods.ctrl
+            && !self.mods.shift
+            && let PhysicalKey::Code(code) = &event.physical_key
+        {
+            match code {
+                KeyCode::Equal => {
+                    if self.font_zoom.zoom_in() {
+                        self.apply_font_size();
+                    }
+                    return;
+                }
+                KeyCode::Minus => {
+                    if self.font_zoom.zoom_out() {
+                        self.apply_font_size();
+                    }
+                    return;
+                }
+                KeyCode::Digit0 => {
+                    if self.font_zoom.reset() {
+                        self.apply_font_size();
+                    }
                     return;
                 }
                 _ => {}
@@ -1086,6 +1119,21 @@ impl DesktopApp {
             crate::clipboard::set_clipboard_bytes(&data);
         }
     }
+    // ── Font zoom (P11-A) ─────────────────────────────────────────
+
+    /// Apply the current font zoom level to the renderer (P11-A).
+    ///
+    /// Calls `set_font_size()` on the GlyphonRenderer, which recomputes
+    /// cell metrics. The actual cell dimension change triggers a resize
+    /// on the next `about_to_wait` cycle.
+    fn apply_font_size(&mut self) {
+        let size = self.font_zoom.current_size();
+        if let Some(ref mut renderer) = self.renderer {
+            renderer.set_font_size(size);
+            log::info!("Font size: {size:.1}px");
+        }
+    }
+
     // ── Window controls (P11-C) ───────────────────────────────────
 
     /// Apply the active theme from the App's ThemeManager to the GPU renderer (P11-D).

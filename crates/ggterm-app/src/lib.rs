@@ -32,6 +32,7 @@ pub mod clipboard;
 pub mod command_nav;
 pub mod config;
 pub mod event;
+pub mod font;
 pub mod input;
 pub mod mouse;
 pub mod search;
