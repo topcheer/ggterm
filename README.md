@@ -130,19 +130,7 @@ Platform Abstraction (ConPTY / POSIX)
 | 16 | Hot-Reload, Search Highlights, Window Title Enhancement | Done |
 | 17 | Dynamic Colors, Combining Chars, URL Click, Status Bar Toggle | Done |
 | 18 | DPI-Aware Rendering, Per-Run Grid Alignment, Multi-Platform | Done |
-| 19 | Desktop UI: Splits, Overlay Rendering, Settings, Menu, About | In Progress |
-| 12 | Rendering Quality & VT Compliance (theme bg, focus events, cleanup) | Done |
-| 13 | Terminal Completeness (SGR attrs, OSC 8 hyperlinks, keybindings, status bar, clipboard) | Done |
-| 14 | Search Highlighting, Config Keybindings, Module Extraction | Done |
-| 15 | Alt-Screen & Themes (6 themes, config hot-reload, robustness) | Done |
-| 16 | Hot-Reload & Indicators (search highlights, title enhancement) | Done |
-| 17 | Dynamic Colors & Interaction (OSC 10/11/12, combining chars, URL click) | Done |
-| 18 | DPI & Multi-Platform (per-run grid alignment, multi-platform fonts) | Done |
-| 19 | Desktop UI Integration (splits, tab bar, settings, about, menu, overlay) | Done |
-| 16 | Hot-Reload, Search Highlight Wiring, Title Enhancement | Done |
-| 17 | Dynamic Colors (OSC 10/11), Combining Chars, URL Click | Done |
-| 18 | DPI-Aware Rendering, Per-Run Grid Alignment, Multi-Platform | Done |
-| 19 | Desktop UI Integration (Splits, Tab Bar, Settings, About, Menu) | Done |
+| 19 | Desktop UI: Splits, Overlay Rendering, Settings, Menu, About | Done |
 
 ## Usage
 
@@ -392,6 +380,19 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Shift+Enter` | Previous search match |
 | `Esc` | Close search bar |
 | `Ctrl+Shift+Up/Down` | Navigate command blocks |
+| `Ctrl+Shift+D` | Split horizontal (left \| right) (*) |
+| `Ctrl+Shift+S` | Split vertical (top / bottom) (*) |
+| `Ctrl+Shift+[` | Focus previous pane (*) |
+| `Ctrl+Shift+]` | Focus next pane (*) |
+| `Ctrl+Shift+Alt+←→↑↓` | Adjust split ratio (*) |
+| `Ctrl+Shift+B` | Toggle status bar (*) |
+| `Ctrl+Shift+D` | Split pane horizontally |
+| `Ctrl+Shift+S` | Split pane vertically |
+| `Ctrl+Shift+[` | Previous pane |
+| `Ctrl+Shift+]` | Next pane |
+| `Ctrl+Shift+Alt+←/→/↑/↓` | Adjust split ratio |
+| `Ctrl+,` | Toggle settings panel |
+| `Ctrl+Shift+B` | Toggle status bar |
 
 ## Building
 
