@@ -87,6 +87,78 @@ Platform Abstraction (ConPTY / POSIX)
 - **Theme Rendering**: Active theme colors applied to GPU renderer, Ctrl+Shift+T (cycle themes)
 - **Bell Support**: BEL character detection with visual bell flash
 
+### Phase 12-15: Rendering Quality, Terminal Completeness, Config UX
+- **Alt-Screen**: DECSET 47/1047/1049 with grid swap + cursor save/restore
+- **SGR Advanced**: DIM, HIDDEN, STRIKETHROUGH rendering; OSC 8 hyperlinks
+- **Dynamic Colors**: OSC 10/11/12 fg/bg/cursor color overrides
+- **6 Themes**: dark, light, dracula, solarized-dark, solarized-light, gruvbox
+- **Config Hot-Reload**: theme/font/scrollback switching without restart
+- **DPI-Aware Rendering**: per-run grid alignment, multi-platform fonts (Menlo/DejaVu/Cascadia)
+- **Combining Characters**: zero-width marks for accented chars and emoji modifiers
+- **URL Detection**: Cmd+Click opens URLs, hover detection
+- **Custom Keybindings**: TOML [keybindings] with 13 configurable actions
+
+### Phase 16-19: Desktop Integration & Polish
+- **Overlay Rendering**: GPU-accelerated tab bar, settings panel, about dialog overlays
+- **Window Splits**: Ctrl+Shift+D/S (horizontal/vertical split), Ctrl+Shift+[/] (pane focus), Ctrl+Shift+Alt+arrows (adjust ratio)
+- **Application Menu**: MenuAction enum (16 variants) with thread-safe action queue
+- **Settings Panel**: 7 configurable fields (theme, font, scrollback, shell, AI settings), Ctrl+, toggle
+- **Tab Bar**: `1:zsh* | 2:vim | 3:logs!` format with dirty indicators
+- **About Dialog**: Version, git hash, build date, tech stack
+- **Native Menu Data**: action_to_tag/tag_to_action mapping, accelerator parsing (macOS)
+- **Platform Packaging**: Cargo.bundle.toml, Makefile (dist/install/run/package), Info.plist
+
+### Phase 12: Rendering Quality & VT Compliance
+- **Theme-aware background clearing**: Per-pixel bg color in render
+- **Underline rendering**: Custom wgpu pipeline for underlines and strikethroughs
+- **Visual bell**: Background blends toward white on BEL
+- **Focus event reporting**: DECSET 1004 (focus in/out)
+- **Cursor shape change**: DECSCUSR (block/bar/underline)
+- **Size reporting**: CSI 18t/14t text area size response
+
+### Phase 13: Terminal Completeness
+- **SGR attributes**: DIM (60% brightness), HIDDEN (fg=bg), STRIKETHROUGH (wgpu pipeline)
+- **OSC 8 hyperlinks**: Clickable URLs rendered as cells with hyperlink metadata
+- **Configurable keybindings**: 13 customizable actions via TOML [keybindings]
+- **Status bar**: Cursor position, tab count, bell/search/AI indicators
+- **Cross-platform clipboard**: Linux X11 (xclip/xsel) + Wayland (wl-copy/wl-paste)
+
+### Phase 14: Search & Config Keybindings
+- **Search match highlighting**: row_to_runs() highlights matched text
+- **Config-driven keybinding dispatch**: default_keybindings() + check_keybinding()
+- **Module extraction**: desktop_config.rs for cleaner separation
+
+### Phase 15: Alt-Screen & Themes
+- **Alt-screen grid swap**: DECSET 47/1047/1049 with save/restore grid + cursor
+- **6 built-in themes**: dark, light, solarized_dark, solarized_light, gruvbox (+ dracula)
+- **Robustness**: gpu.rs alpha_modes safe fallback, ai_bridge expect→let-else
+
+### Phase 16: Hot-Reload & Indicators
+- **Config hot-reload**: Theme/font/scrollback switching without restart
+- **Search highlights wired to renderer**: visible match positions highlighted
+- **Window title enhancement**: (alt) indicator, [BELL] indicator
+
+### Phase 17: Dynamic Colors & Interaction
+- **OSC 10/11/12 dynamic colors**: Set/query fg/bg/cursor colors at runtime
+- **Combining characters**: Zero-width marks merged into cells (é, ü, emoji modifiers)
+- **URL click & hover**: Cmd+Click opens URLs, hover detection
+- **Status bar toggle**: Ctrl+Shift+B
+
+### Phase 18: DPI & Multi-Platform
+- **DPI-aware rendering**: LogicalSize window, PhysicalSize surface, ScaleFactorChanged handler
+- **Per-run grid alignment**: Each text run positioned at exact grid column, wide chars force run split
+- **Multi-platform fonts**: Menlo (macOS) / DejaVu Sans Mono (Linux) / Cascadia Mono (Windows)
+- **Bold via bright color**: Menlo Bold lacks box-drawing glyphs, bold = bright only
+
+### Phase 19: Desktop UI Integration
+- **Window splits**: Ctrl+Shift+D (horizontal), Ctrl+Shift+S (vertical), Ctrl+Shift+[ / ] (pane focus)
+- **Tab bar overlay**: Active/dirty indicators, per-tab rectangles with separators
+- **Settings overlay**: Ctrl+, (theme/font/scrollback/shell/AI fields), semi-transparent panel
+- **About dialog**: Version, git hash, build date, tech stack
+- **Application menu**: 16 MenuAction variants with thread-safe action queue
+- **Overlay rendering**: OverlayRect/OverlayTextSpec for pixel-perfect UI overlays on top of terminal
+- **Native menu data layer**: action_to_tag/tag_to_action mapping + parse_accelerator (macOS)
+
 ## Status
 
 | Phase | Description | Status |
@@ -102,10 +174,26 @@ Platform Abstraction (ConPTY / POSIX)
 | 9 | Desktop Terminal (binary, mouse, keyboard, resize) | Done |
 | 10 | Multi-Tab & Integration (tabs, clipboard, AI overlay, search) | Done |
 | 11 | Usability & Polish (font zoom, utilities, fullscreen, themes, bell) | Done |
+| 12 | Rendering Quality & VT Compliance (theme bg, underline, focus events) | Done |
+| 13 | Terminal Completeness (SGR attrs, OSC 8 hyperlinks, keybindings, status bar) | Done |
+| 14 | Search Highlighting, Config Keybindings, Module Extraction | Done |
+| 15 | Alt-Screen Grid Swap, New Themes, Robustness | Done |
+| 16 | Hot-Reload, Search Highlights, Window Title Enhancement | Done |
+| 17 | Dynamic Colors, Combining Chars, URL Click, Status Bar Toggle | Done |
+| 18 | DPI-Aware Rendering, Per-Run Grid Alignment, Multi-Platform | Done |
+| 19 | Desktop UI: Splits, Overlay Rendering, Settings, Menu, About | In Progress |
 | 12 | Rendering Quality & VT Compliance (theme bg, focus events, cleanup) | Done |
 | 13 | Terminal Completeness (SGR attrs, OSC 8 hyperlinks, keybindings, status bar, clipboard) | Done |
 | 14 | Search Highlighting, Config Keybindings, Module Extraction | Done |
-| 15 | Config-Driven Keybinding Dispatch, Documentation | Done |
+| 15 | Alt-Screen & Themes (6 themes, config hot-reload, robustness) | Done |
+| 16 | Hot-Reload & Indicators (search highlights, title enhancement) | Done |
+| 17 | Dynamic Colors & Interaction (OSC 10/11/12, combining chars, URL click) | Done |
+| 18 | DPI & Multi-Platform (per-run grid alignment, multi-platform fonts) | Done |
+| 19 | Desktop UI Integration (splits, tab bar, settings, about, menu, overlay) | Done |
+| 16 | Hot-Reload, Search Highlight Wiring, Title Enhancement | Done |
+| 17 | Dynamic Colors (OSC 10/11), Combining Chars, URL Click | Done |
+| 18 | DPI-Aware Rendering, Per-Run Grid Alignment, Multi-Platform | Done |
+| 19 | Desktop UI Integration (Splits, Tab Bar, Settings, About, Menu) | Done |
 
 ## Usage
 
