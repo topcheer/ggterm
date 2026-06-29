@@ -48,6 +48,9 @@ notify = "8"
 # Error handling
 thiserror = "2"
 
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive"] }
+
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]
 opt-level = 1

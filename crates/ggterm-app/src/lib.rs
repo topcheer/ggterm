@@ -32,6 +32,7 @@ pub mod command_nav;
 pub mod config;
 pub mod event;
 pub mod input;
+pub mod shell_integration;
 pub mod tabs;
 pub mod theme;
 
@@ -59,6 +60,7 @@ pub use ai_bridge::{AIBridge, AIRequest, AIResponse};
 pub use command_nav::{CommandNavigator, ExitStatusSummary};
 pub use event::AppEvent;
 pub use input::InputEncoder;
+pub use shell_integration::{ShellIntegrationConfig, ShellKind};
 
 #[cfg(feature = "desktop")]
 pub use gpu::{GpuContext, GpuError};

@@ -161,6 +161,10 @@ pub struct DesktopApp {
     /// Config manager with optional file-system watcher.
     #[cfg(feature = "config-watch")]
     config_mgr: Option<ConfigManager>,
+
+    // ── Dynamic window title (OSC 0/2) ──
+    /// Last known terminal title (to detect changes).
+    last_title: String,
 }
 
 impl DesktopApp {
@@ -198,6 +202,7 @@ impl DesktopApp {
             encoder: InputEncoder::new(),
             #[cfg(feature = "config-watch")]
             config_mgr: None,
+            last_title: String::new(),
         };
 
         // 5b. Load config and start watching (if config-watch is enabled).
@@ -414,7 +419,21 @@ impl ApplicationHandler for DesktopApp {
 
                 self.render_frame();
 
-                // Check PTY exit.
+                // Update window title if the terminal title changed (OSC 0/2).
+                let title = self.app.terminal().title().to_string();
+                if title != self.last_title
+                    && let Some(ref window) = self.window
+                {
+                    let display = if title.is_empty() {
+                        format!("GGTerm {}", env!("CARGO_PKG_VERSION"))
+                    } else {
+                        title.clone()
+                    };
+                    window.set_title(&display);
+                    self.last_title = title;
+                }
+
+                // Check PTY exit.,
                 if let Some(ref mut pty) = self.pty
                     && !pty.is_alive()
                 {
