@@ -33,12 +33,15 @@ pub mod config;
 pub mod event;
 pub mod input;
 pub mod mouse;
+pub mod search;
 pub mod shell_integration;
 pub mod tabs;
 pub mod theme;
 
 #[cfg(feature = "ai")]
 pub mod ai_bridge;
+#[cfg(feature = "ai")]
+pub mod ai_overlay;
 
 #[cfg(feature = "desktop")]
 pub mod gpu;
@@ -46,6 +49,8 @@ pub mod gpu;
 pub mod keymap;
 #[cfg(feature = "desktop")]
 pub mod resize;
+#[cfg(feature = "desktop")]
+pub mod clipboard;
 #[cfg(feature = "desktop")]
 pub mod window;
 
@@ -63,6 +68,7 @@ pub use ai_bridge::{AIBridge, AIRequest, AIResponse};
 pub use command_nav::{CommandNavigator, ExitStatusSummary};
 pub use event::AppEvent;
 pub use input::InputEncoder;
+pub use search::SearchState;
 pub use shell_integration::{ShellIntegrationConfig, ShellKind};
 
 #[cfg(feature = "desktop")]
