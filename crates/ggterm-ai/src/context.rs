@@ -155,11 +155,11 @@ impl AIContext {
             }
         }
 
-        if let Some(ref output) = self.last_output {
-            if !output.is_empty() {
-                let _ = writeln!(out, "\nLast command output:");
-                let _ = writeln!(out, "{output}");
-            }
+        if let Some(ref output) = self.last_output
+            && !output.is_empty()
+        {
+            let _ = writeln!(out, "\nLast command output:");
+            let _ = writeln!(out, "{output}");
         }
 
         out

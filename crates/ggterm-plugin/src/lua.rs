@@ -148,10 +148,10 @@ impl Plugin for LuaPlugin {
             .create_table()
             .map_err(|e| PluginError::Lua(format!("init ctx: {e}")))?;
 
-        if let Some(ref cwd) = ctx.cwd {
-            if let Ok(s) = lua.create_string(cwd) {
-                let _ = ctx_table.set("cwd", s);
-            }
+        if let Some(ref cwd) = ctx.cwd
+            && let Ok(s) = lua.create_string(cwd)
+        {
+            let _ = ctx_table.set("cwd", s);
         }
         let _ = ctx_table.set("cols", ctx.cols);
         let _ = ctx_table.set("rows", ctx.rows);
@@ -177,7 +177,7 @@ impl Plugin for LuaPlugin {
         let hook_type = hook.hook_type();
 
         // Fast check: is this hook registered?
-        if !self.registered_hooks.iter().any(|ht| *ht == hook_type) {
+        if !self.registered_hooks.contains(&hook_type) {
             return HookResult::Allow;
         }
 

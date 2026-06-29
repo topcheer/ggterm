@@ -202,10 +202,10 @@ impl DesktopApp {
 
     /// Write encoded keyboard bytes to the PTY.
     fn write_to_pty(&mut self, bytes: &[u8]) {
-        if let Some(ref mut pty) = self.pty {
-            if let Err(e) = pty.write(bytes) {
-                log::warn!("PTY write error: {e}");
-            }
+        if let Some(ref mut pty) = self.pty
+            && let Err(e) = pty.write(bytes)
+        {
+            log::warn!("PTY write error: {e}");
         }
     }
 
@@ -227,10 +227,10 @@ impl DesktopApp {
             rows: new_rows,
         });
 
-        if let Some(ref mut pty) = self.pty {
-            if let Err(e) = pty.resize(new_cols, new_rows) {
-                log::warn!("PTY resize failed: {e}");
-            }
+        if let Some(ref mut pty) = self.pty
+            && let Err(e) = pty.resize(new_cols, new_rows)
+        {
+            log::warn!("PTY resize failed: {e}");
         }
 
         if let (Some(gpu), Some(surface)) = (&mut self.gpu, &self.surface) {
@@ -372,12 +372,11 @@ impl ApplicationHandler for DesktopApp {
                 self.render_frame();
 
                 // Check PTY exit.
-                if let Some(ref mut pty) = self.pty {
-                    if !pty.is_alive() {
-                        log::info!("PTY exited");
-                        event_loop.exit();
-                        return;
-                    }
+                if let Some(ref mut pty) = self.pty
+                    && !pty.is_alive()
+                {
+                    log::info!("PTY exited");
+                    event_loop.exit();
                 }
             }
 
@@ -396,10 +395,8 @@ impl ApplicationHandler for DesktopApp {
             }
 
             WindowEvent::Focused(focused) => {
-                if focused {
-                    if let Some(ref window) = self.window {
-                        window.request_redraw();
-                    }
+                if focused && let Some(ref window) = self.window {
+                    window.request_redraw();
                 }
             }
 
@@ -417,11 +414,10 @@ impl ApplicationHandler for DesktopApp {
             return;
         }
 
-        if let Some(ref mut pty) = self.pty {
-            if !pty.is_alive() {
-                event_loop.exit();
-                return;
-            }
+        if let Some(ref mut pty) = self.pty
+            && !pty.is_alive()
+        {
+            event_loop.exit();
         }
 
         // Always request redraw to keep the render loop alive.

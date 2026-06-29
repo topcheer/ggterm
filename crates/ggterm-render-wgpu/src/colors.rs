@@ -44,7 +44,7 @@ pub fn indexed_to_rgb(idx: u8) -> (u8, u8, u8) {
             )
         }
         232..=255 => {
-            let v = 8 + (idx - 232) as u8 * 10;
+            let v = 8 + (idx - 232) * 10;
             (v, v, v)
         }
     }

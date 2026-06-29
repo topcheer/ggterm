@@ -10,7 +10,7 @@ use crate::vte::Perform;
 use unicode_width::UnicodeWidthChar;
 
 /// Terminal cursor state.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Cursor {
     /// Column (0-based).
     pub x: usize,
@@ -18,16 +18,6 @@ pub struct Cursor {
     pub y: usize,
     /// Pending wrap flag (deferred wrap for DECAWM).
     pub pending_wrap: bool,
-}
-
-impl Default for Cursor {
-    fn default() -> Self {
-        Self {
-            x: 0,
-            y: 0,
-            pending_wrap: false,
-        }
-    }
 }
 
 /// OSC 133 command mark kind (Shell Integration protocol).
@@ -566,10 +556,11 @@ impl Terminal {
             c.flags |= self.flags;
         }
         // For wide chars, set bg on the spacer cell to avoid visual gaps
-        if consumed == 2 && self.cursor.x + 1 < grid_width {
-            if let Some(c) = self.grid.cell_mut(self.cursor.x + 1, self.cursor.y) {
-                c.bg = self.bg;
-            }
+        if consumed == 2
+            && self.cursor.x + 1 < grid_width
+            && let Some(c) = self.grid.cell_mut(self.cursor.x + 1, self.cursor.y)
+        {
+            c.bg = self.bg;
         }
 
         // Advance cursor by the character's display width
@@ -775,7 +766,7 @@ impl Perform for Terminal {
                 self.cursor.x = next.min(width.saturating_sub(1));
                 self.cursor.pending_wrap = false;
             }
-            0x0a | 0x0b | 0x0c => {
+            0x0a..=0x0c => {
                 self.line_feed();
             }
             0x0d => {
@@ -1087,23 +1078,20 @@ impl Perform for Terminal {
         }
         // Handle intermediate-byte escape sequences (e.g. DECALN = ESC # 8).
         if intermediates.contains(&b'#') {
-            match final_byte {
-                b'8' => {
-                    // DECALN — fill the entire screen with 'E' for alignment testing.
-                    // This also tests that scroll regions are NOT affected (they stay set).
-                    for row in 0..self.grid.height() {
-                        for col in 0..self.grid.width() {
-                            if let Some(c) = self.grid.cell_mut(col, row) {
-                                c.ch = 'E';
-                                c.fg = Color::Default;
-                                c.bg = Color::Default;
-                                c.flags = CellFlags::empty();
-                            }
+            if final_byte == b'8' {
+                // DECALN — fill the entire screen with 'E' for alignment testing.
+                // This also tests that scroll regions are NOT affected (they stay set).
+                for row in 0..self.grid.height() {
+                    for col in 0..self.grid.width() {
+                        if let Some(c) = self.grid.cell_mut(col, row) {
+                            c.ch = 'E';
+                            c.fg = Color::Default;
+                            c.bg = Color::Default;
+                            c.flags = CellFlags::empty();
                         }
                     }
-                    self.grid.mark_all_dirty();
                 }
-                _ => {}
+                self.grid.mark_all_dirty();
             }
             return;
         }

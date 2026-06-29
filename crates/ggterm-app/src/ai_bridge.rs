@@ -113,7 +113,7 @@ impl AIBridge {
             let result = if let Some(ref nl) = req.natural_language {
                 engine.nl2cmd(nl, &req.context)
             } else {
-                engine.execute(req.action.clone(), &req.context)
+                engine.execute(req.action, &req.context)
             };
 
             let _ = tx.send((

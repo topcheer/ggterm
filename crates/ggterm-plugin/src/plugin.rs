@@ -166,13 +166,18 @@ pub trait Plugin: Send + Sync {
     fn handle_hook(&mut self, hook: &Hook, ctx: &PluginContext) -> HookResult;
 }
 
+/// Type alias for the hook handler closure.
+pub type HookHandler = Box<dyn Fn(&Hook, &PluginContext) -> HookResult + Send + Sync>;
+/// Type alias for the init closure.
+pub type InitFn = Box<dyn Fn(&PluginContext) -> Result<(), PluginError> + Send + Sync>;
+
 /// Native Rust plugin backed by closures.
 pub struct NativePlugin {
     name: String,
     version: String,
     registered_hooks: Vec<crate::hooks::HookType>,
-    handler: Box<dyn Fn(&Hook, &PluginContext) -> HookResult + Send + Sync>,
-    init_fn: Option<Box<dyn Fn(&PluginContext) -> Result<(), PluginError> + Send + Sync>>,
+    handler: HookHandler,
+    init_fn: Option<InitFn>,
 }
 
 impl Plugin for NativePlugin {
@@ -201,8 +206,8 @@ pub struct NativePluginBuilder {
     name: String,
     version: String,
     hooks: Vec<crate::hooks::HookType>,
-    handler: Option<Box<dyn Fn(&Hook, &PluginContext) -> HookResult + Send + Sync>>,
-    init_fn: Option<Box<dyn Fn(&PluginContext) -> Result<(), PluginError> + Send + Sync>>,
+    handler: Option<HookHandler>,
+    init_fn: Option<InitFn>,
 }
 
 impl NativePluginBuilder {
@@ -245,6 +250,7 @@ pub fn native(name: impl Into<String>) -> NativePluginBuilder {
 }
 
 impl NativePlugin {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(name: impl Into<String>) -> NativePluginBuilder {
         NativePluginBuilder {
             name: name.into(),

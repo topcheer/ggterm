@@ -132,9 +132,10 @@ impl Hook {
 /// Result of a plugin hook handler.
 ///
 /// Controls how the terminal responds after the plugin processes a hook.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum HookResult {
     /// Allow the action to proceed normally (default).
+    #[default]
     Allow,
     /// Deny the action — block it from proceeding.
     Deny,
@@ -186,12 +187,6 @@ impl HookResult {
             Self::Transform(t) => Some(t),
             _ => None,
         }
-    }
-}
-
-impl Default for HookResult {
-    fn default() -> Self {
-        Self::Allow
     }
 }
 

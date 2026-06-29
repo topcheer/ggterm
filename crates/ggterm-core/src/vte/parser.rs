@@ -91,7 +91,7 @@ impl Parser {
             // ESC — enter escape state
             self.state = State::Escape;
             self.reset_seq();
-        } else if byte >= 0x20 && byte <= 0x7e {
+        } else if (0x20..=0x7e).contains(&byte) {
             // Printable ASCII
             perform.print(byte);
         } else if byte >= 0x80 {

@@ -84,10 +84,8 @@ impl ConsoleRenderer {
 
                 // Determine effective colors (handle cursor + REVERSE)
                 let is_cursor = cursor.visible && cursor.x == col && cursor.y == row;
-                let (fg, bg) = if is_cursor {
-                    (cell.bg, cell.fg) // swap for cursor highlight
-                } else if cell.flags.contains(CellFlags::REVERSE) {
-                    (cell.bg, cell.fg)
+                let (fg, bg) = if is_cursor || cell.flags.contains(CellFlags::REVERSE) {
+                    (cell.bg, cell.fg) // swap for cursor/reverse highlight
                 } else {
                     (cell.fg, cell.bg)
                 };
@@ -113,9 +111,7 @@ impl ConsoleRenderer {
                 }
 
                 // Handle HIDDEN and null char
-                let ch = if cell.flags.contains(CellFlags::HIDDEN) {
-                    ' '
-                } else if cell.ch == '\0' {
+                let ch = if cell.flags.contains(CellFlags::HIDDEN) || cell.ch == '\0' {
                     ' '
                 } else {
                     cell.ch

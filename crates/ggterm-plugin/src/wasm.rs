@@ -38,27 +38,14 @@
 //! | 1    | Deny |
 //! | 2    | Transform (call `gg_get_result` to read new text) |
 //! | 3    | Annotate (key=value from `gg_get_result`, split on `\0`) |
-//!
-//! ### Hook Data Format
-//!
-//! Hook data is written as UTF-8 text into WASM linear memory before calling
-//! `gg_handle_hook`. The format depends on hook type:
-//!
-//! - **OnInput/OnOutput/OnCommandStart**: raw text content
-//! - **OnCommandEnd**: `command\0exit_code` (null-separated)
-//! - **OnResize**: `cols,rows`
-//! - **OnThemeChange**: `from\0to`
-//!
-//! ### Host Imports (optional)
-//!
-//! The WASM module may import from the `ggterm` module:
-//!
-//! - `gg_log(level: i32, ptr: i32, len: i32)` — log a message
 
 use std::sync::Mutex;
 
 use crate::hooks::{Hook, HookResult, HookType};
 use crate::plugin::{Plugin, PluginContext, PluginError, PluginStats};
+
+// WASM page size constant (wasmtime v29 removed WASM_PAGE_SIZE const).
+const WASM_PAGE_SIZE: usize = 65536;
 
 // ── Hook type IDs ──────────────────────────────────────────────────
 
@@ -69,13 +56,7 @@ const HOOK_ON_COMMAND_END: i32 = 3;
 const HOOK_ON_RESIZE: i32 = 4;
 const HOOK_ON_THEME_CHANGE: i32 = 5;
 
-const HOOK_BIT_ON_INPUT: i32 = 1 << HOOK_ON_INPUT;
-const HOOK_BIT_ON_OUTPUT: i32 = 1 << HOOK_ON_OUTPUT;
-const HOOK_BIT_ON_COMMAND_START: i32 = 1 << HOOK_ON_COMMAND_START;
-const HOOK_BIT_ON_COMMAND_END: i32 = 1 << HOOK_ON_COMMAND_END;
-const HOOK_BIT_ON_RESIZE: i32 = 1 << HOOK_ON_RESIZE;
-const HOOK_BIT_ON_THEME_CHANGE: i32 = 1 << HOOK_ON_THEME_CHANGE;
-
+#[allow(dead_code)]
 fn hook_type_to_id(ht: HookType) -> i32 {
     match ht {
         HookType::OnInput => HOOK_ON_INPUT,
@@ -102,10 +83,10 @@ fn id_to_hook_type(id: i32) -> Option<HookType> {
 fn bitmask_to_hooks(mask: i32) -> Vec<HookType> {
     let mut hooks = Vec::new();
     for id in 0..6 {
-        if mask & (1 << id) != 0 {
-            if let Some(ht) = id_to_hook_type(id) {
-                hooks.push(ht);
-            }
+        if mask & (1 << id) != 0
+            && let Some(ht) = id_to_hook_type(id)
+        {
+            hooks.push(ht);
         }
     }
     hooks
@@ -142,17 +123,17 @@ pub struct WasmPlugin {
     registered_hooks: Vec<HookType>,
     stats: PluginStats,
     initialized: bool,
-    // Opaque engine/module/store — boxed to keep wasmtime types private
-    // from the rest of the crate.
     inner: Mutex<WasmInner>,
 }
 
 struct WasmInner {
     #[allow(dead_code)]
     engine: wasmtime::Engine,
+    #[allow(dead_code)]
     module: wasmtime::Module,
     store: wasmtime::Store<HostState>,
     memory: wasmtime::Memory,
+    instance: wasmtime::Instance,
 }
 
 impl WasmInner {
@@ -192,87 +173,130 @@ impl WasmInner {
     fn ensure_capacity(&mut self, required: usize) -> Result<(), PluginError> {
         let current = self.memory.data_size(&self.store);
         if current < required {
-            let pages_needed =
-                ((required - current) + wasmtime::WASM_PAGE_SIZE - 1) / wasmtime::WASM_PAGE_SIZE;
+            let pages_needed = (required - current).div_ceil(WASM_PAGE_SIZE);
             self.memory
                 .grow(&mut self.store, pages_needed as u64)
                 .map_err(|e| PluginError::Wasm(format!("failed to grow memory: {e}")))?;
         }
         Ok(())
     }
+
+    // ── Typed function call helpers (dynamic dispatch via Val) ──────
+
+    /// Call a no-arg, no-return exported function (e.g. gg_init, gg_shutdown).
+    /// No-op if the function doesn't exist.
+    fn call_void(&mut self, name: &str) -> Result<(), PluginError> {
+        if let Some(func) = self.instance.get_func(&mut self.store, name) {
+            func.call(&mut self.store, &[], &mut [])
+                .map_err(|e| PluginError::Wasm(format!("{name} failed: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Call a no-arg function that returns i32 (e.g. gg_name, gg_version, gg_hooks).
+    /// Returns None if the function doesn't exist.
+    fn call_i32_ret(&mut self, name: &str) -> Result<Option<i32>, PluginError> {
+        if let Some(func) = self.instance.get_func(&mut self.store, name) {
+            let mut results = vec![wasmtime::Val::I32(0)];
+            func.call(&mut self.store, &[], &mut results)
+                .map_err(|e| PluginError::Wasm(format!("{name} failed: {e}")))?;
+            return Ok(Some(results[0].unwrap_i32()));
+        }
+        Ok(None)
+    }
+
+    /// Call gg_handle_hook(type, data_ptr, data_len) -> i32.
+    fn call_handle_hook(
+        &mut self,
+        hook_type: i32,
+        data_ptr: i32,
+        data_len: i32,
+    ) -> Result<Option<i32>, PluginError> {
+        if let Some(func) = self.instance.get_func(&mut self.store, "gg_handle_hook") {
+            let mut results = vec![wasmtime::Val::I32(0)];
+            func.call(
+                &mut self.store,
+                &[
+                    wasmtime::Val::I32(hook_type),
+                    wasmtime::Val::I32(data_ptr),
+                    wasmtime::Val::I32(data_len),
+                ],
+                &mut results,
+            )
+            .map_err(|e| PluginError::Wasm(format!("gg_handle_hook failed: {e}")))?;
+            return Ok(Some(results[0].unwrap_i32()));
+        }
+        Ok(None)
+    }
+
+    /// Call gg_get_result(ptr, max_len) -> i32.
+    fn call_get_result(&mut self, buf_ptr: i32, max_len: i32) -> Result<Option<i32>, PluginError> {
+        if let Some(func) = self.instance.get_func(&mut self.store, "gg_get_result") {
+            let mut results = vec![wasmtime::Val::I32(0)];
+            func.call(
+                &mut self.store,
+                &[wasmtime::Val::I32(buf_ptr), wasmtime::Val::I32(max_len)],
+                &mut results,
+            )
+            .map_err(|e| PluginError::Wasm(format!("gg_get_result failed: {e}")))?;
+            return Ok(Some(results[0].unwrap_i32()));
+        }
+        Ok(None)
+    }
 }
 
 impl WasmPlugin {
     /// Load a WASM plugin from a `.wasm` file.
     pub fn from_file(path: impl AsRef<std::path::Path>) -> Result<Self, PluginError> {
-        let wasm_bytes = std::fs::read(path.as_ref()).map_err(|e| {
-            PluginError::Wasm(format!("failed to read {:?}: {e}", path.as_ref()))
-        })?;
+        let wasm_bytes = std::fs::read(path.as_ref())
+            .map_err(|e| PluginError::Wasm(format!("failed to read {:?}: {e}", path.as_ref())))?;
         Self::from_bytes(&wasm_bytes)
     }
 
     /// Load a WASM plugin from raw bytes.
     pub fn from_bytes(wasm_bytes: &[u8]) -> Result<Self, PluginError> {
-        // Configure engine: Cranelift compiler, no parallel compilation (smaller)
-        let engine = wasmtime::Engine::new(
-            &wasmtime::Config::new().strategy(wasmtime::Strategy::Cranelift),
-        )
-        .map_err(|e| PluginError::Wasm(format!("failed to create engine: {e}")))?;
+        let engine = wasmtime::Engine::default();
 
         let module = wasmtime::Module::new(&engine, wasm_bytes)
             .map_err(|e| PluginError::Wasm(format!("failed to compile WASM: {e}")))?;
 
-        // Set up host imports
-        let mut host_state = HostState::default();
-
-        // Create the gg_log import function
-        let log_func = wasmtime::Func::new(
-            &engine,
-            wasmtime::FuncType::new(
-                &[
-                    wasmtime::ValType::I32,
-                    wasmtime::ValType::I32,
-                    wasmtime::ValType::I32,
-                ],
-                &[],
-            ),
-            {
-                let state_ptr = &mut host_state as *mut HostState;
-                move |mut caller, params, _results| {
-                    let level = params[0].unwrap_i32();
-                    let ptr = params[1].unwrap_i32() as usize;
-                    let len = params[2].unwrap_i32() as usize;
-
-                    // SAFETY: caller is single-threaded, state_ptr is valid
-                    let state = unsafe { &mut *state_ptr };
-                    if let Some(mem) = caller.get_export("memory") {
-                        if let Some(memory) = mem.into_memory() {
-                            let data = memory.data(&caller);
-                            if let Some(slice) = data.get(ptr..ptr + len) {
-                                if let Ok(msg) = String::from_utf8(slice.to_vec()) {
-                                    state.log_messages.push((level, msg));
-                                }
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-            },
-        );
-
-        let mut linker = wasmtime::Linker::new(&engine);
-        linker
-            .define("ggterm", "gg_log", log_func)
-            .map_err(|e| PluginError::Wasm(format!("failed to define import: {e}")))?;
-
+        let host_state = HostState::default();
         let mut store = wasmtime::Store::new(&engine, host_state);
 
-        // Instantiate with linker (provides host imports)
+        // Create a linker for optional host imports.
+        let mut linker = wasmtime::Linker::new(&engine);
+
+        // Provide gg_log import — reads a log message from WASM memory.
+        // The closure captures nothing; it accesses memory via Caller.
+        linker
+            .func_wrap(
+                "ggterm",
+                "gg_log",
+                |mut caller: wasmtime::Caller<'_, HostState>, level: i32, ptr: i32, len: i32| {
+                    let mut msg_text = None;
+                    if let Some(ext) = caller.get_export("memory")
+                        && let wasmtime::Extern::Memory(mem) = ext
+                    {
+                        let data = mem.data(&caller);
+                        if let Some(slice) = data.get(ptr as usize..(ptr as usize + len as usize))
+                            && let Ok(s) = String::from_utf8(slice.to_vec())
+                        {
+                            msg_text = Some(s);
+                        }
+                    }
+                    if let Some(msg) = msg_text {
+                        caller.data_mut().log_messages.push((level, msg));
+                    }
+                },
+            )
+            .map_err(|e| PluginError::Wasm(format!("failed to define gg_log import: {e}")))?;
+
+        // Instantiate with linker (provides host imports if the module needs them).
         let instance = linker
             .instantiate(&mut store, &module)
             .map_err(|e| PluginError::Wasm(format!("failed to instantiate WASM: {e}")))?;
 
-        // Get memory export
+        // Get memory export — required.
         let memory = instance
             .get_memory(&mut store, "memory")
             .ok_or_else(|| PluginError::Wasm("missing 'memory' export".into()))?;
@@ -282,6 +306,7 @@ impl WasmPlugin {
             module,
             store,
             memory,
+            instance,
         };
 
         let mut plugin = Self {
@@ -293,7 +318,7 @@ impl WasmPlugin {
             inner: Mutex::new(inner),
         };
 
-        // Call gg_name, gg_version, gg_hooks to populate metadata
+        // Call gg_name, gg_version, gg_hooks to populate metadata.
         plugin.read_metadata()?;
 
         Ok(plugin)
@@ -304,50 +329,32 @@ impl WasmPlugin {
     fn read_metadata(&mut self) -> Result<(), PluginError> {
         let mut inner = self.inner.lock().unwrap();
 
-        // Get name
-        if let Some(func) = inner.module.get_export(None, "gg_name").and_then(|e| {
-            e.into_func().and_then(|f| {
-                f.typed::<(), i32>(&inner.engine)
-                    .ok()
-            })
-        }) {
-            let ptr = func
-                .call(&mut inner.store, ())
-                .map_err(|e| PluginError::Wasm(format!("gg_name failed: {e}")))?;
-            if ptr > 0 {
-                inner.name_str_from_ptr(ptr as usize, &mut self.name)?;
+        // Get name — ptr >= 0 means valid (offset 0 is legitimate)
+        if let Some(ptr) = inner.call_i32_ret("gg_name")?
+            && ptr >= 0
+        {
+            let name = inner.read_cstr(ptr as usize)?;
+            if !name.is_empty() {
+                self.name = name;
             }
         }
 
         // Get version
-        if let Some(func) = inner.module.get_export(None, "gg_version").and_then(|e| {
-            e.into_func().and_then(|f| {
-                f.typed::<(), i32>(&inner.engine)
-                    .ok()
-            })
-        }) {
-            let ptr = func
-                .call(&mut inner.store, ())
-                .map_err(|e| PluginError::Wasm(format!("gg_version failed: {e}")))?;
-            if ptr > 0 {
-                inner.version_str_from_ptr(ptr as usize, &mut self.version)?;
+        if let Some(ptr) = inner.call_i32_ret("gg_version")?
+            && ptr >= 0
+        {
+            let version = inner.read_cstr(ptr as usize)?;
+            if !version.is_empty() {
+                self.version = version;
             }
         }
 
         // Get hooks bitmask
-        if let Some(func) = inner.module.get_export(None, "gg_hooks").and_then(|e| {
-            e.into_func().and_then(|f| {
-                f.typed::<(), i32>(&inner.engine)
-                    .ok()
-            })
-        }) {
-            let mask = func
-                .call(&mut inner.store, ())
-                .map_err(|e| PluginError::Wasm(format!("gg_hooks failed: {e}")))?;
+        if let Some(mask) = inner.call_i32_ret("gg_hooks")? {
             self.registered_hooks = bitmask_to_hooks(mask);
         }
 
-        // If name is still empty, use a fallback
+        // Fallbacks for missing metadata
         if self.name.is_empty() {
             self.name = "wasm-plugin".to_string();
         }
@@ -355,7 +362,7 @@ impl WasmPlugin {
             self.version = "0.1.0".to_string();
         }
         if self.registered_hooks.is_empty() {
-            // Default to all hooks if the module doesn't declare them
+            // Default to all hooks if the module doesn't declare them.
             self.registered_hooks = HookType::all().to_vec();
         }
 
@@ -374,19 +381,6 @@ impl WasmPlugin {
     }
 }
 
-/// Extension methods on WasmInner for reading strings.
-impl WasmInner {
-    fn name_str_from_ptr(&self, ptr: usize, out: &mut String) -> Result<(), PluginError> {
-        *out = self.read_cstr(ptr)?;
-        Ok(())
-    }
-
-    fn version_str_from_ptr(&self, ptr: usize, out: &mut String) -> Result<(), PluginError> {
-        *out = self.read_cstr(ptr)?;
-        Ok(())
-    }
-}
-
 impl Plugin for WasmPlugin {
     fn name(&self) -> &str {
         &self.name
@@ -402,16 +396,7 @@ impl Plugin for WasmPlugin {
         }
 
         let mut inner = self.inner.lock().unwrap();
-
-        if let Some(func) = inner.module.get_export(None, "gg_init").and_then(|e| {
-            e.into_func().and_then(|f| {
-                f.typed::<(), ()>(&inner.engine)
-                    .ok()
-            })
-        }) {
-            func.call(&mut inner.store, ())
-                .map_err(|e| PluginError::Wasm(format!("gg_init failed: {e}")))?;
-        }
+        inner.call_void("gg_init")?;
 
         drop(inner);
         self.initialized = true;
@@ -420,16 +405,8 @@ impl Plugin for WasmPlugin {
 
     fn shutdown(&mut self) {
         let mut inner = self.inner.lock().unwrap();
-
-        if let Some(func) = inner.module.get_export(None, "gg_shutdown").and_then(|e| {
-            e.into_func().and_then(|f| {
-                f.typed::<(), ()>(&inner.engine)
-                    .ok()
-            })
-        }) {
-            let _ = func.call(&mut inner.store, ());
-        }
-
+        let _ = inner.call_void("gg_shutdown");
+        drop(inner);
         self.initialized = false;
     }
 
@@ -438,15 +415,13 @@ impl Plugin for WasmPlugin {
     }
 
     fn handle_hook(&mut self, hook: &Hook, _ctx: &PluginContext) -> HookResult {
-        // Serialize hook data for WASM
         let (hook_type_id, data) = serialize_hook(hook);
 
         let mut inner = self.inner.lock().unwrap();
 
-        // Ensure WASM memory has space for the data
-        // We write at a fixed scratch offset (0) — the module must not use
-        // offset 0 for persistent data.
-        const SCRATCH_OFFSET: usize = 1024; // Start at 1KB to avoid null-page
+        // Write hook data into WASM memory at a fixed scratch offset.
+        // The module must not use this offset range for persistent data.
+        const SCRATCH_OFFSET: usize = 1024;
 
         if let Err(e) = inner.ensure_capacity(SCRATCH_OFFSET + data.len() + 1) {
             self.stats.record_error();
@@ -454,7 +429,6 @@ impl Plugin for WasmPlugin {
             return HookResult::Allow;
         }
 
-        // Write hook data into WASM memory
         if let Err(e) = inner.write_memory(SCRATCH_OFFSET, &data) {
             self.stats.record_error();
             log::warn!("WASM plugin '{}' write error: {}", self.name, e);
@@ -462,119 +436,89 @@ impl Plugin for WasmPlugin {
         }
 
         // Call gg_handle_hook(type, data_ptr, data_len)
-        let result_code = if let Some(func) =
-            inner.module.get_export(None, "gg_handle_hook").and_then(|e| {
-                e.into_func().and_then(|f| {
-                    f.typed::<(i32, i32, i32), i32>(&inner.engine).ok()
-                })
-            })
-        {
-            match func.call(
-                &mut inner.store,
-                (hook_type_id, SCRATCH_OFFSET as i32, data.len() as i32),
-            ) {
-                Ok(code) => code,
+        let result_code =
+            match inner.call_handle_hook(hook_type_id, SCRATCH_OFFSET as i32, data.len() as i32) {
+                Ok(Some(code)) => code,
+                Ok(None) => return HookResult::Allow, // No handler exported
                 Err(e) => {
                     self.stats.record_error();
                     log::warn!("WASM plugin '{}' hook error: {}", self.name, e);
                     return HookResult::Allow;
                 }
-            }
-        } else {
-            // No handler exported — default to Allow
-            return HookResult::Allow;
-        };
+            };
 
         // Convert result code to HookResult
         let result = match result_code {
             RESULT_ALLOW => HookResult::Allow,
             RESULT_DENY => HookResult::Deny,
-            RESULT_TRANSFORM => {
-                // Call gg_get_result to read transformed text
-                if let Some(func) = inner
-                    .module
-                    .get_export(None, "gg_get_result")
-                    .and_then(|e| {
-                        e.into_func().and_then(|f| {
-                            f.typed::<(i32, i32), i32>(&inner.engine).ok()
-                        })
-                    })
-                {
-                    // Write into a result buffer at a different scratch area
-                    const RESULT_BUF_OFFSET: usize = 4096;
-                    const RESULT_BUF_MAX: usize = 8192;
-
-                    let _ = inner.ensure_capacity(RESULT_BUF_OFFSET + RESULT_BUF_MAX);
-
-                    let actual_len = func
-                        .call(
-                            &mut inner.store,
-                            (RESULT_BUF_OFFSET as i32, RESULT_BUF_MAX as i32),
-                        )
-                        .unwrap_or(0);
-
-                    if actual_len > 0 && actual_len as usize <= RESULT_BUF_MAX {
-                        match inner.read_string(RESULT_BUF_OFFSET, actual_len as usize) {
-                            Ok(text) => HookResult::Transform(text),
-                            Err(_) => HookResult::Allow,
-                        }
-                    } else {
-                        HookResult::Allow
-                    }
-                } else {
-                    HookResult::Allow
-                }
-            }
-            RESULT_ANNOTATE => {
-                // Call gg_get_result for annotation data "key\0value"
-                if let Some(func) = inner
-                    .module
-                    .get_export(None, "gg_get_result")
-                    .and_then(|e| {
-                        e.into_func().and_then(|f| {
-                            f.typed::<(i32, i32), i32>(&inner.engine).ok()
-                        })
-                    })
-                {
-                    const RESULT_BUF_OFFSET: usize = 4096;
-                    const RESULT_BUF_MAX: usize = 8192;
-
-                    let _ = inner.ensure_capacity(RESULT_BUF_OFFSET + RESULT_BUF_MAX);
-
-                    let actual_len = func
-                        .call(
-                            &mut inner.store,
-                            (RESULT_BUF_OFFSET as i32, RESULT_BUF_MAX as i32),
-                        )
-                        .unwrap_or(0);
-
-                    if actual_len > 0 && actual_len as usize <= RESULT_BUF_MAX {
-                        match inner.read_string(RESULT_BUF_OFFSET, actual_len as usize) {
-                            Ok(text) => {
-                                let parts: Vec<&str> = text.splitn(2, '\0').collect();
-                                if parts.len() == 2 {
-                                    HookResult::Annotate(
-                                        parts[0].to_string(),
-                                        parts[1].to_string(),
-                                    )
-                                } else {
-                                    HookResult::Allow
-                                }
-                            }
-                            Err(_) => HookResult::Allow,
-                        }
-                    } else {
-                        HookResult::Allow
-                    }
-                } else {
-                    HookResult::Allow
-                }
-            }
+            RESULT_TRANSFORM => read_result(&mut inner, &mut self.stats, &self.name),
+            RESULT_ANNOTATE => read_annotation(&mut inner, &mut self.stats, &self.name),
             _ => HookResult::Allow,
         };
 
         self.stats.record(&result);
         result
+    }
+}
+
+/// Call gg_get_result and parse the returned text as a Transform.
+fn read_result(inner: &mut WasmInner, stats: &mut PluginStats, name: &str) -> HookResult {
+    const RESULT_BUF_OFFSET: usize = 4096;
+    const RESULT_BUF_MAX: usize = 8192;
+
+    if let Err(e) = inner.ensure_capacity(RESULT_BUF_OFFSET + RESULT_BUF_MAX) {
+        stats.record_error();
+        log::warn!("WASM plugin '{name}' result memory error: {e}");
+        return HookResult::Allow;
+    }
+
+    let actual_len = match inner.call_get_result(RESULT_BUF_OFFSET as i32, RESULT_BUF_MAX as i32) {
+        Ok(Some(len)) => len,
+        _ => return HookResult::Allow,
+    };
+
+    if actual_len < 0 || actual_len as usize > RESULT_BUF_MAX {
+        return HookResult::Allow;
+    }
+    if actual_len == 0 {
+        return HookResult::Transform(String::new());
+    }
+    match inner.read_string(RESULT_BUF_OFFSET, actual_len as usize) {
+        Ok(text) => HookResult::Transform(text),
+        Err(_) => HookResult::Allow,
+    }
+}
+
+/// Call gg_get_result and parse "key\0value" as an Annotate.
+fn read_annotation(inner: &mut WasmInner, stats: &mut PluginStats, name: &str) -> HookResult {
+    const RESULT_BUF_OFFSET: usize = 4096;
+    const RESULT_BUF_MAX: usize = 8192;
+
+    if let Err(e) = inner.ensure_capacity(RESULT_BUF_OFFSET + RESULT_BUF_MAX) {
+        stats.record_error();
+        log::warn!("WASM plugin '{name}' annotation memory error: {e}");
+        return HookResult::Allow;
+    }
+
+    let actual_len = match inner.call_get_result(RESULT_BUF_OFFSET as i32, RESULT_BUF_MAX as i32) {
+        Ok(Some(len)) => len,
+        _ => return HookResult::Allow,
+    };
+
+    if actual_len > 0 && actual_len as usize <= RESULT_BUF_MAX {
+        match inner.read_string(RESULT_BUF_OFFSET, actual_len as usize) {
+            Ok(text) => {
+                let parts: Vec<&str> = text.splitn(2, '\0').collect();
+                if parts.len() == 2 {
+                    HookResult::Annotate(parts[0].to_string(), parts[1].to_string())
+                } else {
+                    HookResult::Allow
+                }
+            }
+            Err(_) => HookResult::Allow,
+        }
+    } else {
+        HookResult::Allow
     }
 }
 
@@ -584,12 +528,11 @@ fn serialize_hook(hook: &Hook) -> (i32, Vec<u8>) {
         Hook::OnInput(text) => (HOOK_ON_INPUT, text.as_bytes().to_vec()),
         Hook::OnOutput(text) => (HOOK_ON_OUTPUT, text.as_bytes().to_vec()),
         Hook::OnCommandStart(cmd) => (HOOK_ON_COMMAND_START, cmd.as_bytes().to_vec()),
-        Hook::OnCommandEnd { command, exit_code } => {
-            (HOOK_ON_COMMAND_END, format!("{command}\0{exit_code}").into_bytes())
-        }
-        Hook::OnResize { cols, rows } => {
-            (HOOK_ON_RESIZE, format!("{cols},{rows}").into_bytes())
-        }
+        Hook::OnCommandEnd { command, exit_code } => (
+            HOOK_ON_COMMAND_END,
+            format!("{command}\0{exit_code}").into_bytes(),
+        ),
+        Hook::OnResize { cols, rows } => (HOOK_ON_RESIZE, format!("{cols},{rows}").into_bytes()),
         Hook::OnThemeChange { from, to } => {
             (HOOK_ON_THEME_CHANGE, format!("{from}\0{to}").into_bytes())
         }
@@ -635,13 +578,13 @@ mod tests {
 
     #[test]
     fn t_bitmask_single() {
-        let hooks = bitmask_to_hooks(HOOK_BIT_ON_INPUT);
+        let hooks = bitmask_to_hooks(1 << HOOK_ON_INPUT);
         assert_eq!(hooks, vec![HookType::OnInput]);
     }
 
     #[test]
     fn t_bitmask_multiple() {
-        let mask = HOOK_BIT_ON_INPUT | HOOK_BIT_ON_OUTPUT | HOOK_BIT_ON_COMMAND_END;
+        let mask = (1 << HOOK_ON_INPUT) | (1 << HOOK_ON_OUTPUT) | (1 << HOOK_ON_COMMAND_END);
         let hooks = bitmask_to_hooks(mask);
         assert_eq!(hooks.len(), 3);
         assert!(hooks.contains(&HookType::OnInput));
@@ -651,12 +594,7 @@ mod tests {
 
     #[test]
     fn t_bitmask_all() {
-        let mask = HOOK_BIT_ON_INPUT
-            | HOOK_BIT_ON_OUTPUT
-            | HOOK_BIT_ON_COMMAND_START
-            | HOOK_BIT_ON_COMMAND_END
-            | HOOK_BIT_ON_RESIZE
-            | HOOK_BIT_ON_THEME_CHANGE;
+        let mask = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5);
         let hooks = bitmask_to_hooks(mask);
         assert_eq!(hooks.len(), 6);
     }
@@ -715,9 +653,6 @@ mod tests {
     }
 
     // ── WasmPlugin with minimal WASM module ────────────────────────
-    //
-    // We build a tiny WASM module in WAT (WebAssembly Text) format
-    // that exports the required functions.
 
     /// WAT source for a minimal valid WASM plugin.
     const MINIMAL_PLUGIN_WAT: &str = r#"
@@ -789,13 +724,12 @@ mod tests {
   (func (export "gg_shutdown"))
 
   ;; Handle hook: transform input to uppercase
-  ;; data_ptr and data_len are params 1 and 2
   (func (export "gg_handle_hook")
     (param $hook_type i32) (param $data_ptr i32) (param $data_len i32)
     (result i32)
 
-    ;; Copy input to result buffer (offset 8192), uppercasing ASCII
     (local $i i32)
+    (local $byte i32)
     (local.set $i (i32.const 0))
 
     (block $done
@@ -803,7 +737,6 @@ mod tests {
         (br_if $done (i32.ge_s (local.get $i) (local.get $data_len)))
 
         ;; Load byte from input
-        (local $byte i32)
         (local.set $byte
           (i32.load8_u
             (i32.add (local.get $data_ptr) (local.get $i))))
@@ -838,6 +771,7 @@ mod tests {
     (result i32)
 
     (local $len i32)
+    (local $i i32)
     (local.set $len (global.get $result_len))
 
     ;; Clamp to max_len
@@ -845,7 +779,6 @@ mod tests {
       (then (local.set $len (local.get $max_len))))
 
     ;; Copy bytes
-    (local $i i32)
     (local.set $i (i32.const 0))
     (block $done
       (loop $loop
@@ -872,7 +805,7 @@ mod tests {
 
   (func (export "gg_name") (result i32) i32.const 0)
   (func (export "gg_version") (result i32) i32.const 64)
-  (func (export "gg_hooks") (result i32) i32.const 1)  ;; OnInput
+  (func (export "gg_hooks") (result i32) i32.const 1)
   (func (export "gg_init"))
   (func (export "gg_shutdown"))
 
@@ -887,8 +820,53 @@ mod tests {
 )
 "#;
 
+    /// WAT source for an annotate plugin.
+    const ANNOTATE_PLUGIN_WAT: &str = r#"
+(module
+  (memory (export "memory") 1)
+  (data (i32.const 0) "annotator\00")
+  (data (i32.const 64) "1.0.0\00")
+
+  (func (export "gg_name") (result i32) i32.const 0)
+  (func (export "gg_version") (result i32) i32.const 64)
+  (func (export "gg_hooks") (result i32) i32.const 1)
+  (func (export "gg_init"))
+  (func (export "gg_shutdown"))
+
+  ;; Return Annotate (3)
+  (func (export "gg_handle_hook")
+    (param i32 i32 i32) (result i32)
+    i32.const 3)
+
+  ;; Return "severity\0info" — 13 bytes (8+1+4)
+  (data (i32.const 8192) "severity\00info")
+  (func (export "gg_get_result")
+    (param $out_ptr i32) (param $max_len i32) (result i32)
+
+    (local $i i32)
+    (local.set $i (i32.const 0))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_s (local.get $i) (i32.const 13)))
+        (br_if $done (i32.ge_s (local.get $i) (local.get $max_len)))
+        (i32.store8
+          (i32.add (local.get $out_ptr) (local.get $i))
+          (i32.load8_u
+            (i32.add (i32.const 8192) (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)
+      )
+    )
+    (local.get $i))
+)
+"#;
+
     fn compile_wat(wat_src: &str) -> Vec<u8> {
         wat::parse_str(wat_src).unwrap()
+    }
+
+    fn make_ctx() -> PluginContext {
+        PluginContext::new(80, 24)
     }
 
     // ── Minimal plugin tests ───────────────────────────────────────
@@ -915,7 +893,7 @@ mod tests {
         let wasm = compile_wat(MINIMAL_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         assert!(plugin.init(&ctx).is_ok());
     }
 
@@ -924,7 +902,7 @@ mod tests {
         let wasm = compile_wat(MINIMAL_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         let result = plugin.handle_hook(&Hook::OnInput("hello".into()), &ctx);
@@ -936,7 +914,7 @@ mod tests {
         let wasm = compile_wat(MINIMAL_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
         plugin.shutdown();
         // shutdown is idempotent
@@ -948,7 +926,7 @@ mod tests {
         let wasm = compile_wat(MINIMAL_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
         // Second init should be a no-op
         assert!(plugin.init(&ctx).is_ok());
@@ -963,7 +941,7 @@ mod tests {
 
         assert_eq!(plugin.name(), "upper");
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         let result = plugin.handle_hook(&Hook::OnInput("hello world".into()), &ctx);
@@ -978,7 +956,7 @@ mod tests {
         let wasm = compile_wat(UPPERCASE_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         let result = plugin.handle_hook(&Hook::OnInput("".into()), &ctx);
@@ -993,7 +971,7 @@ mod tests {
         let wasm = compile_wat(UPPERCASE_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         let result = plugin.handle_hook(&Hook::OnInput("HELLO".into()), &ctx);
@@ -1012,11 +990,33 @@ mod tests {
 
         assert_eq!(plugin.name(), "denyer");
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         let result = plugin.handle_hook(&Hook::OnInput("rm -rf /".into()), &ctx);
         assert_eq!(result, HookResult::Deny);
+    }
+
+    // ── Annotate plugin tests ──────────────────────────────────────
+
+    #[test]
+    fn t_wasm_plugin_annotate() {
+        let wasm = compile_wat(ANNOTATE_PLUGIN_WAT);
+        let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
+
+        assert_eq!(plugin.name(), "annotator");
+
+        let ctx = make_ctx();
+        plugin.init(&ctx).unwrap();
+
+        let result = plugin.handle_hook(&Hook::OnInput("test".into()), &ctx);
+        match result {
+            HookResult::Annotate(key, value) => {
+                assert_eq!(key, "severity");
+                assert_eq!(value, "info");
+            }
+            other => panic!("expected Annotate, got {:?}", other),
+        }
     }
 
     // ── Stats tests ────────────────────────────────────────────────
@@ -1026,7 +1026,7 @@ mod tests {
         let wasm = compile_wat(MINIMAL_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         plugin.handle_hook(&Hook::OnInput("test".into()), &ctx);
@@ -1039,7 +1039,7 @@ mod tests {
         let wasm = compile_wat(DENY_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         plugin.handle_hook(&Hook::OnInput("test".into()), &ctx);
@@ -1052,7 +1052,7 @@ mod tests {
         let wasm = compile_wat(UPPERCASE_PLUGIN_WAT);
         let mut plugin = WasmPlugin::from_bytes(&wasm).unwrap();
 
-        let ctx = PluginContext::default();
+        let ctx = make_ctx();
         plugin.init(&ctx).unwrap();
 
         plugin.handle_hook(&Hook::OnInput("test".into()), &ctx);

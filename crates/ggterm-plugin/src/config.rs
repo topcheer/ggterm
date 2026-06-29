@@ -22,7 +22,7 @@ pub enum PluginType {
 
 impl PluginType {
     /// Parse from a string.
-    pub fn from_str(s: &str) -> Result<Self, PluginError> {
+    pub fn parse(s: &str) -> Result<Self, PluginError> {
         match s.to_lowercase().as_str() {
             "native" | "rust" => Ok(Self::Native),
             "lua" => Ok(Self::Lua),
@@ -265,29 +265,26 @@ mod tests {
 
     #[test]
     fn t_plugin_type_from_str_native() {
-        assert_eq!(PluginType::from_str("native").unwrap(), PluginType::Native);
-        assert_eq!(PluginType::from_str("rust").unwrap(), PluginType::Native);
+        assert_eq!(PluginType::parse("native").unwrap(), PluginType::Native);
+        assert_eq!(PluginType::parse("rust").unwrap(), PluginType::Native);
     }
 
     #[test]
     fn t_plugin_type_from_str_lua() {
-        assert_eq!(PluginType::from_str("lua").unwrap(), PluginType::Lua);
-        assert_eq!(PluginType::from_str("LUA").unwrap(), PluginType::Lua);
+        assert_eq!(PluginType::parse("lua").unwrap(), PluginType::Lua);
+        assert_eq!(PluginType::parse("LUA").unwrap(), PluginType::Lua);
     }
 
     #[test]
     fn t_plugin_type_from_str_wasm() {
-        assert_eq!(PluginType::from_str("wasm").unwrap(), PluginType::Wasm);
-        assert_eq!(
-            PluginType::from_str("webassembly").unwrap(),
-            PluginType::Wasm
-        );
+        assert_eq!(PluginType::parse("wasm").unwrap(), PluginType::Wasm);
+        assert_eq!(PluginType::parse("webassembly").unwrap(), PluginType::Wasm);
     }
 
     #[test]
     fn t_plugin_type_from_str_invalid() {
-        assert!(PluginType::from_str("python").is_err());
-        assert!(PluginType::from_str("").is_err());
+        assert!(PluginType::parse("python").is_err());
+        assert!(PluginType::parse("").is_err());
     }
 
     #[test]

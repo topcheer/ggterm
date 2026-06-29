@@ -101,7 +101,7 @@ impl RenderTheme {
                 (component(r), component(g), component(b))
             }
             232..=255 => {
-                let v = 8 + (n - 232) as u8 * 10;
+                let v = 8 + (n - 232) * 10;
                 (v, v, v)
             }
         }

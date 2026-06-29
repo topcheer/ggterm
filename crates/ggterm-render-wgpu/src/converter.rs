@@ -52,10 +52,12 @@ pub fn row_to_runs(
         let mut bg_rgb = crate::colors::map_bg(bg, theme);
 
         // Cursor: swap resulting RGB for visibility (handles Default color case)
-        if let Some(c) = cursor {
-            if c.visible && c.x == col && c.y == row {
-                std::mem::swap(&mut fg_rgb, &mut bg_rgb);
-            }
+        if let Some(c) = cursor
+            && c.visible
+            && c.x == col
+            && c.y == row
+        {
+            std::mem::swap(&mut fg_rgb, &mut bg_rgb);
         }
 
         let bold = cell.flags.contains(CellFlags::BOLD);
