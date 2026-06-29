@@ -54,3 +54,7 @@ clap = { workspace = true, optional = true }
 
 [dev-dependencies]
 ggterm-plugin = { path = "../ggterm-plugin" }
+
+[[bin]]
+name = "ggterm"
+required-features = ["desktop"]
