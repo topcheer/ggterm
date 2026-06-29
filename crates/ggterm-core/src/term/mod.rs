@@ -5,7 +5,7 @@
 //! the [`Grid`] model. It manages cursor position, text attributes,
 //! terminal modes, scroll regions, and tab stops.
 
-use crate::grid::{Cell, CellFlags, Color, Grid};
+use crate::grid::{CellFlags, Color, Grid};
 use crate::vte::Perform;
 use unicode_width::UnicodeWidthChar;
 
@@ -563,17 +563,6 @@ impl Terminal {
 
     // -- Helpers --
 
-    #[allow(dead_code)]
-    fn make_cell(&self, ch: char) -> Cell {
-        Cell {
-            ch,
-            fg: self.fg,
-            bg: self.bg,
-            flags: self.flags,
-            hyperlink: self.current_hyperlink.clone(),
-        }
-    }
-
     /// Flush the UTF-8 byte buffer: decode and write the reassembled character.
     fn flush_utf8(&mut self) {
         if self.utf8_buf.is_empty() {
@@ -669,15 +658,6 @@ impl Terminal {
             self.cursor.x += advance;
         } else if self.modes.auto_wrap {
             self.cursor.x = grid_width.saturating_sub(1);
-            self.cursor.pending_wrap = true;
-        }
-    }
-
-    #[allow(dead_code)]
-    fn advance_cursor(&mut self) {
-        if self.cursor.x + 1 < self.grid.width() {
-            self.cursor.x += 1;
-        } else if self.modes.auto_wrap {
             self.cursor.pending_wrap = true;
         }
     }
