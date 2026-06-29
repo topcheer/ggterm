@@ -392,14 +392,6 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Ctrl+Shift+B` | Toggle status bar (*) |
 
 ## Building
-| `Ctrl+Shift+S` | Split pane vertically |
-| `Ctrl+Shift+[` | Previous pane |
-| `Ctrl+Shift+]` | Next pane |
-| `Ctrl+Shift+Alt+←/→/↑/↓` | Adjust split ratio |
-| `Ctrl+,` | Toggle settings panel |
-| `Ctrl+Shift+B` | Toggle status bar |
-
-## Building
 
 ```bash
 # Headless (no GPU required)
@@ -426,7 +418,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 
 ## Status
 
-**1309 tests passing** (2 ignored PTY integration tests).
+**1490 tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
