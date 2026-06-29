@@ -39,6 +39,8 @@ pub fn row_to_runs(
     theme: &RenderTheme,
     cursor: Option<&CursorState>,
     highlights: &[(usize, usize)],
+    dynamic_fg: Option<(u8, u8, u8)>,
+    dynamic_bg: Option<(u8, u8, u8)>,
 ) -> Vec<TextRun> {
     let mut runs = Vec::new();
     let mut current: Option<TextRun> = None;
@@ -60,8 +62,16 @@ pub fn row_to_runs(
             std::mem::swap(&mut fg, &mut bg);
         }
 
-        let mut fg_rgb = crate::colors::map_fg(fg, theme);
-        let mut bg_rgb = crate::colors::map_bg(bg, theme);
+        let mut fg_rgb = if fg == ggterm_core::Color::Default {
+            dynamic_fg.unwrap_or_else(|| crate::colors::map_fg(fg, theme))
+        } else {
+            crate::colors::map_fg(fg, theme)
+        };
+        let mut bg_rgb = if bg == ggterm_core::Color::Default {
+            dynamic_bg.unwrap_or_else(|| crate::colors::map_bg(bg, theme))
+        } else {
+            crate::colors::map_bg(bg, theme)
+        };
 
         // P13-A: DIM — reduce foreground brightness to ~60%.
         if cell.flags.contains(CellFlags::DIM) {
@@ -182,7 +192,7 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None);
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].text, "ABC");
     }
@@ -197,7 +207,7 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None);
         assert_eq!(runs.len(), 3);
         assert_eq!(runs[0].text, "A");
         assert_eq!(runs[1].text, "B");
@@ -214,7 +224,7 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None);
         assert_eq!(runs.len(), 3);
         assert!(!runs[0].bold);
         assert!(runs[1].bold);
@@ -231,7 +241,7 @@ mod tests {
         grid[(1, 0)] = b;
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None);
         assert_eq!(runs.len(), 2);
         // REVERSE: fg becomes bg color
         assert_eq!(runs[1].fg, (0, 0, 255)); // was bg
@@ -248,7 +258,7 @@ mod tests {
         let theme = RenderTheme::default();
         let cursor = CursorState::new(1, 0);
 
-        let runs = row_to_runs(&grid, 0, &theme, Some(&cursor), &[]);
+        let runs = row_to_runs(&grid, 0, &theme, Some(&cursor), &[], None, None);
         // Cursor cell should have swapped colors → different run
         assert!(runs.len() >= 2);
     }
@@ -272,7 +282,7 @@ mod tests {
         grid.put_char(3, 0, 'B');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None);
         let total: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(total.trim_end(), "A中B");
     }
@@ -287,8 +297,8 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
-        let runs2 = row_to_runs(&grid, 0, &theme, None, &[(99, 99)]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None);
+        let runs2 = row_to_runs(&grid, 0, &theme, None, &[(99, 99)], None, None);
         // Neither should have highlight colors
         for r in &runs {
             assert_ne!(r.bg, HIGHLIGHT_BG);
@@ -306,7 +316,7 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[(1, 2)]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[(1, 2)], None, None);
 
         // Find the run(s) containing 'B' and 'C' (cols 1,2)
         let mut found_highlight = false;
@@ -332,7 +342,7 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 0), (3, 3)]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 0), (3, 3)], None, None);
 
         let mut highlight_count = 0;
         for r in &runs {
@@ -355,7 +365,7 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 1)]);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 1)], None, None);
 
         // Find run containing 'C' and 'D' — they must NOT be highlighted
         for r in &runs {

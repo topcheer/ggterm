@@ -126,6 +126,10 @@ pub struct GlyphonRenderer {
     strike_vertex_count: u32,
     /// Search-match highlights: (row, col_start, col_end) inclusive (P14-B).
     highlights: Vec<(usize, usize, usize)>,
+    /// Dynamic foreground color (OSC 10) — overrides theme default fg.
+    dynamic_fg: Option<(u8, u8, u8)>,
+    /// Dynamic background color (OSC 11) — overrides theme default bg.
+    dynamic_bg: Option<(u8, u8, u8)>,
 }
 
 impl GlyphonRenderer {
@@ -214,6 +218,8 @@ impl GlyphonRenderer {
             strike_vertex_buffer: None,
             strike_vertex_count: 0,
             highlights: Vec::new(),
+            dynamic_fg: None,
+            dynamic_bg: None,
         }
     }
 
@@ -256,6 +262,16 @@ impl GlyphonRenderer {
     /// Pass an empty vec to clear highlights.
     pub fn set_highlights(&mut self, highlights: Vec<(usize, usize, usize)>) {
         self.highlights = highlights;
+    }
+
+    /// Set dynamic foreground color (OSC 10). Pass None to reset to theme default.
+    pub fn set_dynamic_fg(&mut self, color: Option<(u8, u8, u8)>) {
+        self.dynamic_fg = color;
+    }
+
+    /// Set dynamic background color (OSC 11). Pass None to reset to theme default.
+    pub fn set_dynamic_bg(&mut self, color: Option<(u8, u8, u8)>) {
+        self.dynamic_bg = color;
     }
 
     /// Set the font size and recompute cell metrics.
@@ -345,7 +361,15 @@ impl GlyphonRenderer {
                 .map(|&(_, s, e)| (s, e))
                 .collect();
 
-            let runs = converter::row_to_runs(grid, row_idx, theme, Some(cursor), &row_highlights);
+            let runs = converter::row_to_runs(
+                grid,
+                row_idx,
+                theme,
+                Some(cursor),
+                &row_highlights,
+                self.dynamic_fg,
+                self.dynamic_bg,
+            );
 
             for run in &runs {
                 if run.text.is_empty() {
@@ -703,7 +727,7 @@ mod tests {
         grid[(1, 0)] = Cell::with_char('i');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "Hi");
     }
@@ -716,7 +740,7 @@ mod tests {
         grid.put_char(2, 0, '好');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "你好");
     }
@@ -726,7 +750,7 @@ mod tests {
     fn test_grid_to_text_empty_row() {
         let grid = Grid::new(5, 1);
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "");
     }

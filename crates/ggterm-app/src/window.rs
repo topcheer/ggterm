@@ -658,6 +658,17 @@ impl DesktopApp {
         // Apply search highlights before rendering.
         renderer.set_highlights(search_highlights);
 
+        // Apply dynamic colors (OSC 10/11) if set on the terminal.
+        let term = self.sessions[self.active].app().terminal();
+        renderer.set_dynamic_fg(term.dynamic_fg().map(|c| match c {
+            ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
+            _ => unreachable!("dynamic_fg stores Rgb"),
+        }));
+        renderer.set_dynamic_bg(term.dynamic_bg().map(|c| match c {
+            ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
+            _ => unreachable!("dynamic_bg stores Rgb"),
+        }));
+
         if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
             log::error!("Render error: {e}");
         }
