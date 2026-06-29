@@ -45,6 +45,8 @@ pub mod gpu;
 #[cfg(feature = "desktop")]
 pub mod keymap;
 #[cfg(feature = "desktop")]
+pub mod resize;
+#[cfg(feature = "desktop")]
 pub mod window;
 
 pub use app::App;

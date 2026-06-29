@@ -45,29 +45,6 @@ use crate::input::InputEncoder;
 use crate::keymap::map_winit_key;
 
 // ══════════════════════════════════════════════════════════════════
-//  P9-H: Resize computation utilities
-// ══════════════════════════════════════════════════════════════════
-
-/// Minimum terminal dimensions in cells.
-pub const MIN_COLS: u16 = 10;
-pub const MIN_ROWS: u16 = 3;
-
-/// Debounce interval for resize events (milliseconds).
-pub const RESIZE_DEBOUNCE_MS: u64 = 100;
-
-/// Compute terminal cell dimensions from window pixel size.
-pub fn compute_cell_dimensions(
-    pixel_width: u32,
-    pixel_height: u32,
-    cell_width: f32,
-    cell_height: f32,
-) -> (u16, u16) {
-    let cols = ((pixel_width as f32 / cell_width) as u16).max(MIN_COLS);
-    let rows = ((pixel_height as f32 / cell_height) as u16).max(MIN_ROWS);
-    (cols, rows)
-}
-
-// ══════════════════════════════════════════════════════════════════
 //  P9-H: Resize constants + computation helpers
 // ══════════════════════════════════════════════════════════════════
 
