@@ -177,7 +177,6 @@ impl From<ModsState> for crate::input::KeyModifiers {
 /// Implements winit's `ApplicationHandler` trait to receive OS events.
 /// GPU resources (surface, device, renderer) are lazily initialized in
 /// `resumed()`.
-#[allow(dead_code)] // P9-D mouse fields/methods pending integration
 pub struct DesktopApp {
     /// Terminal sessions (one per tab).
     sessions: Vec<TabSession>,
@@ -494,9 +493,32 @@ impl DesktopApp {
 
     /// Render one frame.
     fn render_frame(&mut self) {
-        // Use raw index to avoid borrowing self for the grid data,
-        // so we can separately borrow self.gpu/surface/renderer as mutable.
+        // P12-A/P12-C: Get theme background color for clear color,
+        // and blend with visual bell flash if active.
         let active = self.active;
+        let (br, bg, bb) = {
+            let session = &self.sessions[active];
+            let theme = session.app().theme();
+            theme.resolve_bg(&theme.default_bg)
+        };
+        let bg_color = if self.visual_bell_frames > 0 {
+            let intensity = self.visual_bell_frames as f64 / VISUAL_BELL_DURATION_FRAMES as f64;
+            let flash = 0.3 * intensity;
+            [
+                (br as f64 / 255.0) + flash * (1.0 - br as f64 / 255.0),
+                (bg as f64 / 255.0) + flash * (1.0 - bg as f64 / 255.0),
+                (bb as f64 / 255.0) + flash * (1.0 - bb as f64 / 255.0),
+            ]
+        } else {
+            [br as f64 / 255.0, bg as f64 / 255.0, bb as f64 / 255.0]
+        };
+
+        // Decrement visual bell counter.
+        if self.visual_bell_frames > 0 {
+            self.visual_bell_frames -= 1;
+        }
+
+        // Now borrow session for grid + cursor data.
         let session = &self.sessions[active];
         let grid = session.app().grid();
         let cursor = cursor_state(session.app());
@@ -506,7 +528,7 @@ impl DesktopApp {
             _ => return,
         };
 
-        if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor) {
+        if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
             log::error!("Render error: {e}");
         }
     }
@@ -814,7 +836,6 @@ impl DesktopApp {
     // ── Mouse handling (P9-D, pending integration) ────────────────
 
     /// Convert pixel position to terminal cell coordinates.
-    #[allow(dead_code)]
     fn pixel_to_cell_pos(&self) -> (u16, u16) {
         crate::mouse::pixel_to_cell(
             self.cursor_pos.0,
@@ -825,7 +846,6 @@ impl DesktopApp {
     }
 
     /// Handle winit MouseInput events (button press/release).
-    #[allow(dead_code)]
     fn handle_mouse_input(&mut self, state: ElementState, button: winit::event::MouseButton) {
         let mouse_button = match button {
             winit::event::MouseButton::Left => crate::mouse::MouseButton::Left,
@@ -1338,6 +1358,15 @@ impl ApplicationHandler for DesktopApp {
             }
 
             WindowEvent::Focused(focused) => {
+                // P12-D: Send focus event report if DECSET 1004 is active.
+                let report = if focused {
+                    self.active_session().app().terminal().focus_in_report()
+                } else {
+                    self.active_session().app().terminal().focus_out_report()
+                };
+                if !report.is_empty() {
+                    self.write_to_pty(&report);
+                }
                 if focused && let Some(ref window) = self.window {
                     window.request_redraw();
                 }

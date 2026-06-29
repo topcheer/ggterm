@@ -95,6 +95,7 @@ impl GpuContext {
         renderer: &mut GlyphonRenderer,
         grid: &ggterm_core::Grid,
         cursor: &ggterm_render::CursorState,
+        bg_color: [f64; 3],
     ) -> Result<(), RenderFrameError> {
         let frame = match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
@@ -129,9 +130,9 @@ impl GpuContext {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.03,
-                            g: 0.03,
-                            b: 0.03,
+                            r: bg_color[0],
+                            g: bg_color[1],
+                            b: bg_color[2],
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,

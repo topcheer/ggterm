@@ -571,7 +571,7 @@ impl CommandNavOverlay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ggterm_core::{CommandMark, CommandMarkKind, Terminal};
+    use ggterm_core::Terminal;
 
     /// Feed raw bytes into the terminal as if received from the PTY.
     fn feed(term: &mut Terminal, data: &[u8]) {

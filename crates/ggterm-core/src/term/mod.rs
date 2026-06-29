@@ -276,6 +276,8 @@ pub struct Modes {
     pub mouse_utf8: bool,
     /// URXVT mouse formatting (DECSET 1015).
     pub mouse_urxvt: bool,
+    /// Focus event reporting (DECSET 1004) — P12-D.
+    pub focus_event: bool,
 }
 
 impl Modes {
@@ -295,6 +297,7 @@ impl Modes {
             mouse_sgr: false,
             mouse_utf8: false,
             mouse_urxvt: false,
+            focus_event: false,
         }
     }
 }
@@ -424,6 +427,31 @@ impl Terminal {
     /// Return true if bracketed paste mode is active (DECSET 2004).
     pub fn bracketed_paste(&self) -> bool {
         self.modes.bracketed_paste
+    }
+
+    /// Return true if focus event reporting is active (DECSET 1004) — P12-D.
+    pub fn focus_event_enabled(&self) -> bool {
+        self.modes.focus_event
+    }
+
+    /// Generate focus-in report sequence (P12-D).
+    /// Returns `\x1b[I` if focus reporting is enabled, otherwise empty.
+    pub fn focus_in_report(&self) -> Vec<u8> {
+        if self.modes.focus_event {
+            b"\x1b[I".to_vec()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Generate focus-out report sequence (P12-D).
+    /// Returns `\x1b[O` if focus reporting is enabled, otherwise empty.
+    pub fn focus_out_report(&self) -> Vec<u8> {
+        if self.modes.focus_event {
+            b"\x1b[O".to_vec()
+        } else {
+            Vec::new()
+        }
     }
 
     pub fn cursor_style(&self) -> CursorStyle {
@@ -686,6 +714,7 @@ impl Terminal {
             1005 => self.modes.mouse_utf8 = enable,  // UTF-8 encoding
             1006 => self.modes.mouse_sgr = enable,   // SGR encoding
             1015 => self.modes.mouse_urxvt = enable, // URXVT encoding
+            1004 => self.modes.focus_event = enable, // Focus event reporting
             _ => {}
         }
     }
@@ -1648,6 +1677,32 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"hello world");
         assert!(!t.take_bell());
+    }
+
+    #[test]
+    fn t_focus_event_disabled_by_default() {
+        let t = Terminal::new(80, 24);
+        assert!(!t.focus_event_enabled());
+        assert!(t.focus_in_report().is_empty());
+        assert!(t.focus_out_report().is_empty());
+    }
+
+    #[test]
+    fn t_focus_event_enabled() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1004h");
+        assert!(t.focus_event_enabled());
+        assert_eq!(t.focus_in_report(), b"\x1b[I");
+        assert_eq!(t.focus_out_report(), b"\x1b[O");
+    }
+
+    #[test]
+    fn t_focus_event_disabled() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1004h");
+        feed(&mut t, b"\x1b[?1004l");
+        assert!(!t.focus_event_enabled());
+        assert!(t.focus_in_report().is_empty());
     }
 
     #[test]
