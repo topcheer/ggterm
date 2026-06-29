@@ -154,6 +154,12 @@ pub struct DesktopApp {
     /// Resolved keybindings: action name → (ctrl, shift, alt, key).
     /// Populated from ConfigManager at startup; falls back to defaults.
     resolved_keybindings: std::collections::HashMap<String, (bool, bool, bool, String)>,
+
+    // ── Config hot-reload tracking (P16-B) ──
+    /// Last applied theme name from config (for change detection on hot-reload).
+    last_applied_theme: String,
+    /// Last applied font size from config (for change detection on hot-reload).
+    last_applied_font_size: f32,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -369,6 +375,14 @@ impl DesktopApp {
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
             resolved_keybindings: crate::window::default_keybindings(),
+            last_applied_theme: config_mgr
+                .as_ref()
+                .map(|m| m.config().appearance.theme.clone())
+                .unwrap_or_else(|| "dark".to_string()),
+            last_applied_font_size: config_mgr
+                .as_ref()
+                .map(|m| m.config().appearance.font_size as f32)
+                .unwrap_or(crate::font::DEFAULT_FONT_SIZE),
         };
 
         // ── Step 7b: Load config-driven keybindings (P14-D) ──
@@ -1499,14 +1513,26 @@ impl ApplicationHandler for DesktopApp {
                                         t.to_string()
                                     };
                                     let truncated: String = label.chars().take(12).collect();
-                                    if i == self.active {
-                                        format!("[{}*]", truncated)
+                                    // P16-D: Add alt-screen indicator.
+                                    let alt = if s.app().terminal().is_alt_screen() {
+                                        " (alt)"
                                     } else {
-                                        format!("[{}]", truncated)
+                                        ""
+                                    };
+                                    if i == self.active {
+                                        format!("[{}*{}]", truncated, alt)
+                                    } else {
+                                        format!("[{}{}]", truncated, alt)
                                     }
                                 })
                                 .collect();
-                            format!("GGTerm — {}", titles.join(" "))
+                            // P16-D: Add bell indicator.
+                            let bell = if self.visual_bell_frames > 0 {
+                                " \u{1F514}"
+                            } else {
+                                ""
+                            };
+                            format!("GGTerm — {}{}", titles.join(" "), bell)
                         } else if self.last_title.is_empty() {
                             format!("GGTerm {}", env!("CARGO_PKG_VERSION"))
                         } else {
@@ -1590,11 +1616,41 @@ impl ApplicationHandler for DesktopApp {
             match mgr.poll_reload() {
                 Ok(true) => {
                     let cfg = mgr.config();
+                    let new_theme = cfg.appearance.theme.clone();
+                    let new_font_size = cfg.appearance.font_size as f32;
+                    let new_scrollback = cfg.terminal.scrollback_lines;
                     log::info!(
-                        "Config reloaded: theme={}, scrollback={}",
-                        cfg.appearance.theme,
-                        cfg.terminal.scrollback_lines
+                        "Config reloaded: theme={}, font_size={}, scrollback={}",
+                        new_theme,
+                        new_font_size,
+                        new_scrollback
                     );
+
+                    // P16-B: Apply theme change if different.
+                    if new_theme != self.last_applied_theme {
+                        self.active_session_mut()
+                            .app_mut()
+                            .theme_manager()
+                            .set_by_name(&new_theme);
+                        self.apply_theme_to_renderer();
+                        self.last_applied_theme = new_theme.clone();
+                        log::info!("Theme changed → applied '{}'", new_theme);
+                    }
+
+                    // P16-B: Apply font size change if different.
+                    if (new_font_size - self.last_applied_font_size).abs() > 0.01 {
+                        self.font_zoom.set_base_size(new_font_size);
+                        self.apply_font_size();
+                        self.last_applied_font_size = new_font_size;
+                        log::info!("Font size changed → applied {new_font_size:.1}px");
+                    }
+
+                    // P16-B: Update scrollback limit.
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .set_scrollback(new_scrollback);
                 }
                 Ok(false) => {}
                 Err(e) => log::warn!("Config reload error: {e}"),

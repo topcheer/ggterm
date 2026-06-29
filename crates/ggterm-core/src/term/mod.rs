@@ -474,6 +474,11 @@ impl Terminal {
         &self.title
     }
 
+    /// Return true if the alternate screen buffer is active (P16-D).
+    pub fn is_alt_screen(&self) -> bool {
+        self.modes.alt_screen
+    }
+
     /// Return the device response buffer (DA/DSR replies).
     pub fn response_buffer(&self) -> &[u8] {
         &self.response_buffer
