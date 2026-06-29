@@ -1121,11 +1121,12 @@ impl DesktopApp {
             return;
         }
 
-        // Ctrl+Shift+S → vertical split (top / bottom)
+        // Ctrl+Shift+\ → vertical split (top / bottom)
+        // (Ctrl+Shift+S is reserved for AI Suggest)
         if self.mods.ctrl
             && self.mods.shift
             && !self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyS) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::Backslash) = &event.physical_key
         {
             self.split_pane_vertical();
             return;
@@ -1443,8 +1444,51 @@ impl DesktopApp {
         crate::mouse::pixel_to_cell(self.cursor_pos.0, self.cursor_pos.1, cw, ch)
     }
 
+    /// P20-D: Check if the cursor is over a different pane and switch focus.
+    ///
+    /// Returns `true` if focus changed (caller may want to redraw).
+    fn maybe_switch_pane_focus(&mut self) -> bool {
+        let session = self.active_session();
+        // Only relevant when there are multiple panes.
+        if session.pane_count() <= 1 {
+            return false;
+        }
+
+        // Need renderer to get screen dimensions for split area calculation.
+        let Some(screen_w) = self.renderer.as_ref().map(|r| r.resolution_width()) else {
+            return false;
+        };
+        let Some(screen_h) = self.renderer.as_ref().map(|r| r.resolution_height()) else {
+            return false;
+        };
+
+        let bounds = crate::splits::Rect::new(0, 0, screen_w, screen_h);
+        let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
+
+        if let Some(hit_id) = session.split_tree().pane_at_point(px, py, bounds) {
+            let active = session.split_tree().active();
+            if hit_id != active {
+                self.active_session_mut()
+                    .split_tree_mut()
+                    .set_active(hit_id);
+                log::debug!("P20-D: pane focus → {hit_id}");
+                return true;
+            }
+        }
+        false
+    }
+
     /// Handle winit MouseInput events (button press/release).
     fn handle_mouse_input(&mut self, state: ElementState, button: winit::event::MouseButton) {
+        // P20-D: On left-click, switch pane focus to the pane under the cursor.
+        if state == ElementState::Pressed
+            && button == winit::event::MouseButton::Left
+            && self.maybe_switch_pane_focus()
+            && let Some(ref window) = self.window
+        {
+            window.request_redraw();
+        }
+
         let mouse_button = match button {
             winit::event::MouseButton::Left => crate::mouse::MouseButton::Left,
             winit::event::MouseButton::Right => crate::mouse::MouseButton::Right,
@@ -1619,6 +1663,13 @@ impl DesktopApp {
 
     /// Handle mouse wheel events — scroll scrollback or report to PTY.
     fn handle_mouse_wheel(&mut self, delta: winit::event::MouseScrollDelta) {
+        // P20-D: Route wheel events to the pane under the cursor.
+        if self.maybe_switch_pane_focus()
+            && let Some(ref window) = self.window
+        {
+            window.request_redraw();
+        }
+
         let (col, row) = self.pixel_to_cell_pos();
         let mods = crate::mouse::MouseModifiers {
             shift: self.mods.shift,
