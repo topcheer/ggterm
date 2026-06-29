@@ -36,11 +36,7 @@ impl TabSession {
     /// * `cols`, `rows` — Terminal dimensions.
     /// * `shell` — Shell program path.
     /// * `config_mgr` — Optional config for theme/scrollback.
-    pub fn new(
-        cols: u16,
-        rows: u16,
-        shell: &str,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(cols: u16, rows: u16, shell: &str) -> Result<Self, Box<dyn std::error::Error>> {
         // Prepare shell integration (OSC 133 auto-injection).
         let shell_integration = ShellIntegrationConfig::prepare(shell);
         let (program, spawn_args) = shell_integration.spawn_args();
@@ -197,11 +193,7 @@ mod tests {
 
     #[test]
     fn test_format_tab_bar_multi() {
-        let titles = vec![
-            "zsh".to_string(),
-            "vim".to_string(),
-            "logs".to_string(),
-        ];
+        let titles = vec!["zsh".to_string(), "vim".to_string(), "logs".to_string()];
         let dirty = vec![false, false, false];
         assert_eq!(
             format_tab_bar(&titles, 1, &dirty),

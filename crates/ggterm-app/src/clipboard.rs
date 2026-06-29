@@ -14,11 +14,7 @@ pub fn read_clipboard() -> Option<String> {
         match result {
             Ok(output) if output.status.success() => {
                 let text = String::from_utf8_lossy(&output.stdout).to_string();
-                if text.is_empty() {
-                    None
-                } else {
-                    Some(text)
-                }
+                if text.is_empty() { None } else { Some(text) }
             }
             _ => None,
         }

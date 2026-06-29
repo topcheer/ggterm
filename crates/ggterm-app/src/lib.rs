@@ -36,8 +36,8 @@ pub mod input;
 pub mod mouse;
 pub mod search;
 pub mod shell_integration;
-pub mod tabs;
 pub mod tab_session;
+pub mod tabs;
 pub mod theme;
 
 #[cfg(feature = "ai")]

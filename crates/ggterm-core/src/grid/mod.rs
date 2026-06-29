@@ -114,6 +114,11 @@ impl Grid {
         self.rows.get(row)
     }
 
+    /// Get the text content of a visible row.
+    pub fn row_text(&self, row: usize) -> Option<String> {
+        self.rows.get(row).map(|r| r.text())
+    }
+
     /// Get a mutable reference to a visible row.
     pub fn row_mut(&mut self, row: usize) -> Option<&mut Row> {
         self.rows.get_mut(row)
@@ -365,6 +370,11 @@ impl Grid {
     /// Get a scrollback row by index (0 = oldest).
     pub fn scrollback_row(&self, index: usize) -> Option<&Row> {
         self.scrollback.get(index)
+    }
+
+    /// Get the text content of a scrollback row.
+    pub fn scrollback_row_text(&self, index: usize) -> Option<String> {
+        self.scrollback.get(index).map(|r| r.text())
     }
 
     /// Set the maximum scrollback capacity.

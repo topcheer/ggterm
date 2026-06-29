@@ -223,6 +223,14 @@ pub struct DesktopApp {
     pending_resize: Option<(u32, u32)>,
     /// Instant of the last resize event (for debounce timing).
     last_resize_time: Option<std::time::Instant>,
+
+    // ── AI assistant overlay (P10-C, ai feature) ──
+    /// AI overlay state (thinking/result/error).
+    #[cfg(feature = "ai")]
+    ai_overlay: crate::ai_overlay::AIOverlayState,
+    /// AI bridge for background requests.
+    #[cfg(feature = "ai")]
+    ai_bridge: Option<crate::ai_bridge::AIBridge>,
 }
 
 impl DesktopApp {
@@ -316,6 +324,10 @@ impl DesktopApp {
             button_held: None,
             pending_resize: None,
             last_resize_time: None,
+            #[cfg(feature = "ai")]
+            ai_overlay: crate::ai_overlay::AIOverlayState::new(),
+            #[cfg(feature = "ai")]
+            ai_bridge: None,
         };
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
@@ -447,8 +459,43 @@ impl DesktopApp {
                     self.app.handle_event(AppEvent::NextCommandBlock);
                     return;
                 }
+                KeyCode::KeyV => {
+                    // Ctrl+Shift+V → paste from system clipboard
+                    self.paste_from_clipboard();
+                    return;
+                }
+                // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N)
+                #[cfg(feature = "ai")]
+                KeyCode::KeyE => {
+                    self.trigger_ai_request(ggterm_ai::Action::Explain);
+                    return;
+                }
+                #[cfg(feature = "ai")]
+                KeyCode::KeyS => {
+                    self.trigger_ai_request(ggterm_ai::Action::Suggest);
+                    return;
+                }
+                #[cfg(feature = "ai")]
+                KeyCode::KeyH => {
+                    self.trigger_ai_request(ggterm_ai::Action::ErrorHelp);
+                    return;
+                }
+                #[cfg(feature = "ai")]
+                KeyCode::KeyN => {
+                    self.trigger_ai_request(ggterm_ai::Action::NL2Command);
+                    return;
+                }
                 _ => {}
             }
+        }
+
+        // P10-C: Esc dismisses AI overlay if visible.
+        #[cfg(feature = "ai")]
+        if self.ai_overlay.is_visible()
+            && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
+        {
+            self.ai_overlay.hide();
+            return;
         }
 
         // Extract logical text for printable character support.
@@ -463,6 +510,44 @@ impl DesktopApp {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {
                 self.write_to_pty(&bytes);
+            }
+        }
+    }
+
+    // ── AI assistant (P10-C, ai feature) ──────────────────────────
+
+    /// Trigger an AI request from the current terminal context.
+    ///
+    /// Builds an [`AIContext`] from the terminal state, shows the overlay
+    /// in "thinking" mode, and dispatches the request to the AIBridge.
+    #[cfg(feature = "ai")]
+    fn trigger_ai_request(&mut self, action: ggterm_ai::Action) {
+        // Show overlay immediately.
+        self.ai_overlay.start_request(action);
+
+        // Build context from terminal.
+        let ctx = ggterm_ai::AIContext::from_terminal(self.app.terminal());
+        let req = crate::ai_bridge::AIRequest::new(action, ctx);
+
+        if let Some(ref mut bridge) = self.ai_bridge {
+            if !bridge.request(req) {
+                self.ai_overlay.set_error("AI is busy, please wait...");
+            }
+        } else {
+            self.ai_overlay
+                .set_error("AI not configured (set ai.api_endpoint in config)");
+        }
+    }
+
+    /// Poll the AIBridge for a completed result and update the overlay.
+    #[cfg(feature = "ai")]
+    fn poll_ai_bridge(&mut self) {
+        if let Some(ref mut bridge) = self.ai_bridge
+            && let Some(response) = bridge.poll_result()
+        {
+            match response.result {
+                Ok(text) => self.ai_overlay.set_response(text),
+                Err(e) => self.ai_overlay.set_error(e),
             }
         }
     }
@@ -534,7 +619,7 @@ impl DesktopApp {
             return;
         }
 
-        // Mouse tracking is OFF — handle selection locally.
+        // Mouse tracking is OFF — handle selection and paste locally.
         match (mouse_button, state) {
             (crate::mouse::MouseButton::Left, ElementState::Pressed) => {
                 self.button_held = Some(mouse_button);
@@ -553,6 +638,10 @@ impl DesktopApp {
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
+            }
+            (crate::mouse::MouseButton::Middle, ElementState::Pressed) => {
+                // Middle-click paste from system clipboard.
+                self.paste_from_clipboard();
             }
             _ => {}
         }
@@ -738,22 +827,37 @@ impl DesktopApp {
 
         if !text.is_empty() {
             log::debug!("Clipboard copy: {} chars", text.len());
-            #[cfg(target_os = "macos")]
-            {
-                use std::process::Command;
-                let _ = Command::new("pbcopy")
-                    .stdin(std::process::Stdio::piped())
-                    .spawn()
-                    .and_then(|mut child| {
-                        use std::io::Write;
-                        child.stdin.take().unwrap().write_all(text.as_bytes())?;
-                        child.wait()
-                    });
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                log::debug!("Clipboard copy not implemented on this platform");
-            }
+            crate::clipboard::set_clipboard_bytes(text.as_bytes());
+        }
+    }
+
+    /// Paste text from the system clipboard into the PTY.
+    ///
+    /// Reads from the clipboard via `pbpaste` (macOS) or platform equivalent.
+    /// If bracketed paste mode is active, wraps the text in escape markers.
+    fn paste_from_clipboard(&mut self) {
+        let Some(text) = crate::clipboard::read_clipboard() else {
+            log::debug!("Paste: clipboard empty or unavailable");
+            return;
+        };
+        if text.is_empty() {
+            return;
+        }
+
+        let bracketed = self.app.terminal().bracketed_paste();
+        let bytes = crate::clipboard::bracket_paste(&text, bracketed);
+        log::debug!("Paste: {} bytes (bracketed={})", bytes.len(), bracketed);
+        self.write_to_pty(&bytes);
+    }
+
+    /// Poll for pending OSC 52 clipboard set operations.
+    ///
+    /// Called from `about_to_wait` to apply any OSC 52 clipboard changes
+    /// that programs have requested.
+    fn poll_osc52_clipboard(&mut self) {
+        if let Some(data) = self.app.terminal_mut().take_pending_clipboard_set() {
+            log::debug!("OSC 52 clipboard set: {} bytes", data.len());
+            crate::clipboard::set_clipboard_bytes(&data);
         }
     }
 }
@@ -909,6 +1013,13 @@ impl ApplicationHandler for DesktopApp {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Pump PTY events.
         self.app.pump();
+
+        // P10-C: Poll AI bridge for results.
+        #[cfg(feature = "ai")]
+        self.poll_ai_bridge();
+
+        // P10-B: Poll OSC 52 clipboard set requests.
+        self.poll_osc52_clipboard();
 
         // Apply deferred resize if debounce interval has elapsed.
         self.apply_pending_resize();
