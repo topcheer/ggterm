@@ -7,6 +7,8 @@ A GPU-accelerated, AI-native, cross-platform terminal emulator built in Rust.
 - **Fast**: wgpu GPU rendering, damage-only updates, zero-copy parsing
 - **AI-native**: shell integration (OSC 133), command blocks, AI suggestions
 - **Cross-platform**: macOS, Linux, Windows (desktop) + iOS, Android (mobile)
+- **Configurable**: TOML config with hot-reload, plugin system (Lua + WASM)
+- **Extensible**: Plugin system with Lua and WASM runtimes, hook into all I/O
 - **Extensible**: WASM + Lua plugin system
 - **Customizable**: Multiple themes (dark, light, dracula) + multi-tab support
 
@@ -104,6 +106,47 @@ if let Some(response) = bridge.poll_result() {
 }
 ```
 
+## Configuration
+
+GGTerm reads settings from `~/.ggterm/config.toml` with hot-reload support.
+See [`docs/config.md`](docs/config.md) for the full reference, or copy
+[`config.example.toml`](config.example.toml) to get started.
+
+```toml
+[appearance]
+theme = "dark"
+font_size = 14
+
+[terminal]
+scrollback_lines = 10000
+shell = "/bin/zsh"
+
+[ai]
+enabled = false
+model = "gpt-4o-mini"
+```
+
+## Command Navigation
+
+Jump between command blocks with keyboard shortcuts. Requires shell integration
+(OSC 133). See [`docs/command-nav.md`](docs/command-nav.md) for details.
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+Up` | Previous command block |
+| `Ctrl+Shift+Down` | Next command block |
+| `Ctrl+Shift+H` | Toggle status bar |
+
+Install shell integration:
+```bash
+# bash
+echo 'source /path/to/ggterm/shell/bash.sh' >> ~/.bashrc
+# zsh
+echo 'source /path/to/ggterm/shell/zsh.zsh' >> ~/.zshrc
+# fish
+echo 'source /path/to/ggterm/shell/fish.fish' >> ~/.config/fish/config.fish
+```
+
 ## Building
 
 ```bash
@@ -113,15 +156,33 @@ cargo build
 # Desktop (wgpu GPU rendering)
 cargo build --features desktop
 
-# With AI integration
-cargo build --features ai
+# With AI + plugins
+cargo build --features "desktop ai plugin plugin-lua"
 
 # All features
-cargo build --features "desktop ai"
+cargo build --features "desktop ai plugin plugin-lua plugin-wasm"
 
-# Run tests
-cargo test --features "desktop ai" --workspace
+# Run tests (987 tests with all features)
+cargo test --features "desktop ai plugin plugin-lua" --workspace
 ```
+
+## Status
+
+**987 tests passing** (1 ignored PTY integration test).
+
+| Feature | Status | Tests |
+|---------|--------|-------|
+| VTE Parser | Done | 58 |
+| Grid Model | Done | 116 |
+| Terminal State Machine | Done | 136 |
+| PTY Integration | Done | 12 |
+| Renderer (Console + GPU) | Done | 49 |
+| App + Events + Input | Done | 295 |
+| Plugin System (Lua + WASM) | Done | 132 |
+| Shell Integration (OSC 133) | Done | 12 |
+| Command Navigation | Done | 32 |
+| Config System (TOML + Hot-reload) | Done | 15 |
+| Error Handling (thiserror) | Done | — |
 
 ## License
 

@@ -1,0 +1,34 @@
+# GGTerm Configuration Example
+# Place at ~/.ggterm/config.toml
+# All fields are optional — missing keys use built-in defaults.
+
+[appearance]
+# Theme: "dark", "light", "solarized"
+theme = "dark"
+
+# Font family name (resolved by glyphon text shaping)
+font_family = "monospace"
+
+# Font size in pixels
+font_size = 14
+
+# Cell dimensions in pixels
+cell_width = 8
+cell_height = 16
+
+[terminal]
+# Maximum scrollback history lines
+scrollback_lines = 10000
+
+# Shell program path. Empty = use $SHELL or /bin/sh
+shell = ""
+
+[ai]
+# Enable AI features at startup
+enabled = false
+
+# LLM API endpoint URL
+api_endpoint = "https://api.openai.com/v1"
+
+# Model identifier
+model = "gpt-4o-mini"
