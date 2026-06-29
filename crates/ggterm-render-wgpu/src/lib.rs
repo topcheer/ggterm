@@ -84,41 +84,6 @@ fn measure_cell_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
     font_size * 0.6
 }
 
-/// Measure the advance width of a CJK character (e.g. '已').
-/// For perfect grid alignment: cell_w should be cjk_advance / 2.
-/// This ensures 2 cells = 1 CJK glyph with no cumulative drift.
-fn measure_cjk_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
-    let metrics = Metrics::new(font_size, font_size);
-    let attrs = Attrs::new().family(Family::Name(TERMINAL_FONT));
-    let attrs_list = AttrsList::new(&attrs);
-
-    let mut buffer = Buffer::new(font_system, metrics);
-    buffer.lines = vec![BufferLine::new(
-        "已已已已已".to_string(), // 5 CJK chars
-        LineEnding::None,
-        attrs_list,
-        Shaping::Advanced,
-    )];
-    buffer.shape_until_scroll(font_system, false);
-
-    let runs: Vec<LayoutRun> = buffer.layout_runs().collect();
-    if let Some(run) = runs.first() {
-        if run.glyphs.len() >= 2 {
-            let advance = run.glyphs[1].x - run.glyphs[0].x;
-            if advance > 0.0 {
-                return advance;
-            }
-        }
-        if run.glyphs.len() >= 5 {
-            let total = run.glyphs.last().unwrap().x + run.glyphs.last().unwrap().w;
-            return total / 5.0;
-        }
-    }
-
-    // Fallback: CJK chars are typically square (same as font height).
-    font_size
-}
-
 /// GPU-accelerated terminal renderer using wgpu + glyphon.
 ///
 /// Created with an externally-managed `wgpu::Device` and `wgpu::Queue` (typically
@@ -141,6 +106,8 @@ pub struct GlyphonRenderer {
     line_height: f32,
     /// Measured cell width from actual font metrics (P18-B). Float for precise positioning.
     cell_width_f32: f32,
+    /// Natural advance width of the terminal font (before letter_spacing adjustment).
+    natural_advance: f32,
     /// Cell width rounded to integer for grid computations.
     measured_cell_width: u32,
     /// DPI scale factor (e.g. 2.0 on Retina). P18-A.
@@ -188,19 +155,16 @@ impl GlyphonRenderer {
         let scaled_font = DEFAULT_FONT_SIZE * sf;
         let scaled_lh = DEFAULT_LINE_HEIGHT * sf;
 
-        // P18-B: Measure real font advance widths.
-        // CRITICAL: CJK chars take 2 cells in the terminal model.
-        // If cell_w != cjk_advance/2, CJK rows drift from ASCII rows.
-        // Fix: derive cell_w from CJK advance / 2 so they're always aligned.
-        let cjk_advance = measure_cjk_width(&mut font_system, scaled_font);
-        let cell_w_from_cjk = (cjk_advance / 2.0).round() as u32;
-        let cell_w_from_ascii = measure_cell_width(&mut font_system, scaled_font).round() as u32;
-        // Use the larger of the two to avoid clipping characters.
-        let cell_w = cell_w_from_cjk.max(cell_w_from_ascii);
+        // P18-D: Use the EXACT float advance of ASCII 'M' as cell width.
+        // Do NOT round — sub-pixel rounding causes cumulative drift.
+        // glyphon renders chars at their natural float advance; if cell_w
+        // matches exactly, positioning is perfect.
+        // CJK chars occupy 2 cells but render at their natural width within
+        // that space (each in its own run at start_col positioning).
+        let natural_advance = measure_cell_width(&mut font_system, scaled_font);
+        let cell_w_f32 = natural_advance;
+        let cell_w = natural_advance.round() as u32;
         let cell_h = scaled_lh.round() as u32;
-        // letter_spacing adjusts each char to exactly cell_w pixels.
-        // If natural advance is 9.3 and cell_w is 9, add 0 to keep natural.
-        // This avoids cumulative drift from sub-pixel differences.
 
         // P18-C: Viewport resolution MUST match the GPU surface texture size.
         // If they differ, glyphon's output gets stretched/compressed onto the
@@ -239,7 +203,8 @@ impl GlyphonRenderer {
             rows,
             font_size: scaled_font,
             line_height: scaled_lh,
-            cell_width_f32: cell_w as f32,
+            cell_width_f32: cell_w_f32,
+            natural_advance,
             measured_cell_width: cell_w,
             scale_factor,
             theme: RenderTheme::default(),
@@ -303,10 +268,11 @@ impl GlyphonRenderer {
         self.font_size = physical.clamp(6.0, 144.0);
         // P18-B: line_height = font_size for seamless box-drawing character tiling.
         self.line_height = self.font_size;
-        // P18-B: Re-measure cell width for the new font size.
-        let measured = measure_cell_width(&mut self.font_system, self.font_size);
-        self.cell_width_f32 = measured;
-        self.measured_cell_width = measured.round() as u32;
+        // P18-D: Use exact float advance as cell width — no rounding.
+        let natural = measure_cell_width(&mut self.font_system, self.font_size);
+        self.natural_advance = natural;
+        self.cell_width_f32 = natural;
+        self.measured_cell_width = natural.round() as u32;
     }
 
     /// Get the current font size.
@@ -385,13 +351,19 @@ impl GlyphonRenderer {
                     continue;
                 }
 
+                // P18-D: No letter_spacing — use the font's exact natural advance.
+                // The cell_w is set to the exact float advance of the ASCII 'M',
+                // so glyphon's natural positioning matches the grid perfectly.
                 let attrs = Attrs::new()
                     .family(Family::Name(TERMINAL_FONT))
                     .color(GlyphonColor::rgb(run.fg.0, run.fg.1, run.fg.2));
                 let mut attrs = attrs;
-                if run.bold {
-                    attrs = attrs.weight(glyphon::Weight::BOLD);
-                }
+                // P18-D: Do NOT apply Weight::BOLD. Menlo Bold is missing
+                // box-drawing glyphs (U+2500-257F), causing tofu/squares.
+                // Bold is distinguished by bright foreground color (handled
+                // by SGR processing). This matches xterm/Alacritty behavior.
+                // Keep the run.bold flag for run splitting only.
+                let _ = run.bold; // suppress unused warning
                 if run.italic {
                     attrs = attrs.style(glyphon::Style::Italic);
                 }
