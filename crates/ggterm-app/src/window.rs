@@ -233,6 +233,12 @@ pub struct DesktopApp {
     // ── Scrollback search (P10-D) ──
     /// Search bar state. When active, keyboard input goes to the search query.
     search: crate::search::SearchState,
+
+    // ── Window controls (P11-C) ──
+    /// Whether the window is currently fullscreen.
+    fullscreen: bool,
+    /// Whether the window is currently maximized.
+    maximized: bool,
 }
 
 impl DesktopApp {
@@ -321,6 +327,8 @@ impl DesktopApp {
             #[cfg(feature = "ai")]
             ai_bridge: None,
             search: crate::search::SearchState::new(),
+            fullscreen: false,
+            maximized: false,
         };
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
@@ -508,6 +516,21 @@ impl DesktopApp {
                 }
                 KeyCode::KeyW => {
                     self.close_tab();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // P11-C: F11 → toggle fullscreen, Ctrl+Shift+Return → toggle maximized
+        if let PhysicalKey::Code(code) = &event.physical_key {
+            match code {
+                KeyCode::F11 => {
+                    self.toggle_fullscreen();
+                    return;
+                }
+                KeyCode::Enter if self.mods.ctrl && self.mods.shift => {
+                    self.toggle_maximized();
                     return;
                 }
                 _ => {}
@@ -1054,6 +1077,29 @@ impl DesktopApp {
         {
             log::debug!("OSC 52 clipboard set: {} bytes", data.len());
             crate::clipboard::set_clipboard_bytes(&data);
+        }
+    }
+    // ── Window controls (P11-C) ───────────────────────────────────
+
+    /// Toggle fullscreen mode.
+    fn toggle_fullscreen(&mut self) {
+        if let Some(ref window) = self.window {
+            self.fullscreen = !self.fullscreen;
+            if self.fullscreen {
+                window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+            } else {
+                window.set_fullscreen(None);
+            }
+            log::info!("Fullscreen: {}", self.fullscreen);
+        }
+    }
+
+    /// Toggle window maximized state.
+    fn toggle_maximized(&mut self) {
+        if let Some(ref window) = self.window {
+            self.maximized = !self.maximized;
+            window.set_maximized(self.maximized);
+            log::info!("Maximized: {}", self.maximized);
         }
     }
 }
