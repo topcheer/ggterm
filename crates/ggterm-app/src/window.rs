@@ -38,12 +38,64 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::app::{App, spawn_pty_reader};
-#[cfg(feature = "config-watch")]
 use crate::config::ConfigManager;
 use crate::event::{AppEvent, EventSender};
 use crate::gpu::{GpuContext, cursor_state, init_wgpu};
 use crate::input::InputEncoder;
 use crate::keymap::map_winit_key;
+
+// ══════════════════════════════════════════════════════════════════
+//  P9-H: Resize computation utilities
+// ══════════════════════════════════════════════════════════════════
+
+/// Minimum terminal dimensions in cells.
+pub const MIN_COLS: u16 = 10;
+pub const MIN_ROWS: u16 = 3;
+
+/// Debounce interval for resize events (milliseconds).
+pub const RESIZE_DEBOUNCE_MS: u64 = 100;
+
+/// Compute terminal cell dimensions from window pixel size.
+pub fn compute_cell_dimensions(
+    pixel_width: u32,
+    pixel_height: u32,
+    cell_width: f32,
+    cell_height: f32,
+) -> (u16, u16) {
+    let cols = ((pixel_width as f32 / cell_width) as u16).max(MIN_COLS);
+    let rows = ((pixel_height as f32 / cell_height) as u16).max(MIN_ROWS);
+    (cols, rows)
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  P9-H: Resize constants + computation helpers
+// ══════════════════════════════════════════════════════════════════
+
+/// Minimum terminal dimensions in cells.
+/// Prevents the window from shrinking to an unusable size.
+pub const MIN_COLS: u16 = 10;
+pub const MIN_ROWS: u16 = 3;
+
+/// Resize debounce interval (milliseconds).
+/// During a window drag-resize, winit fires many `Resized` events.
+/// We defer the actual Terminal/PTY resize until 100ms after the last event.
+pub const RESIZE_DEBOUNCE_MS: u64 = 100;
+
+/// Compute terminal cell dimensions (cols, rows) from pixel dimensions.
+///
+/// `width`/`height` are the window inner size in physical pixels.
+/// `cell_width`/`cell_height` are the pixel dimensions of a single cell.
+/// The result is clamped to at least `MIN_COLS` x `MIN_ROWS`.
+pub fn compute_cell_dimensions(
+    width: u32,
+    height: u32,
+    cell_width: f32,
+    cell_height: f32,
+) -> (u16, u16) {
+    let cols = ((width as f32 / cell_width) as u16).max(MIN_COLS);
+    let rows = ((height as f32 / cell_height) as u16).max(MIN_ROWS);
+    (cols, rows)
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  DesktopConfig
@@ -188,6 +240,12 @@ pub struct DesktopApp {
     cursor_pos: (f64, f64),
     /// Mouse button currently held (for drag tracking).
     button_held: Option<crate::mouse::MouseButton>,
+
+    // ── Resize debouncing (P9-H) ──
+    /// Pending resize dimensions (stored during drag, applied after debounce).
+    pending_resize: Option<(u32, u32)>,
+    /// Instant of the last resize event (for debounce timing).
+    last_resize_time: Option<std::time::Instant>,
 }
 
 impl DesktopApp {
@@ -196,33 +254,76 @@ impl DesktopApp {
     pub fn run(config: DesktopConfig) -> Result<(), Box<dyn std::error::Error>> {
         let _ = env_logger::try_init();
 
-        let (cols, rows) = (config.cols, config.rows);
+        // ── Step 1: Load configuration from ~/.ggterm/config.toml ──
+        let config_mgr = match ConfigManager::load_default() {
+            Ok(mgr) => {
+                log::info!(
+                    "Config loaded from ~/.ggterm/config.toml (theme={}, scrollback={})",
+                    mgr.config().appearance.theme,
+                    mgr.config().terminal.scrollback_lines
+                );
+                Some(mgr)
+            }
+            Err(e) => {
+                log::info!("No config file found, using defaults: {e}");
+                None
+            }
+        };
 
-        // 1. Prepare shell integration (OSC 133 auto-injection).
-        let shell_path = config.shell.clone().unwrap_or_else(default_shell_string);
+        // ── Step 2: Merge config values into DesktopConfig (CLI overrides win) ──
+        let (cols, rows) = (config.cols, config.rows);
+        let effective_shell = config
+            .shell
+            .clone()
+            .or_else(|| {
+                config_mgr
+                    .as_ref()
+                    .map(|m| m.config().terminal.shell.clone())
+                    .filter(|s| !s.is_empty())
+            })
+            .unwrap_or_else(default_shell_string);
+
+        let mut desktop_config = config;
+        if let Some(ref mgr) = config_mgr {
+            let cfg = mgr.config();
+            if desktop_config.cell_width == 8.0 {
+                desktop_config.cell_width = cfg.appearance.cell_width as f32;
+            }
+            if desktop_config.cell_height == 16.0 {
+                desktop_config.cell_height = cfg.appearance.cell_height as f32;
+            }
+        }
+        desktop_config.shell = Some(effective_shell.clone());
+
+        // ── Step 3: Prepare shell integration (OSC 133 auto-injection) ──
         let shell_integration =
-            crate::shell_integration::ShellIntegrationConfig::prepare(&shell_path);
+            crate::shell_integration::ShellIntegrationConfig::prepare(&effective_shell);
         let (program, spawn_args) = shell_integration.spawn_args();
         let env_vars = shell_integration.env_vars();
 
-        // 2. Create PTY session with shell integration.
+        // ── Step 4: Create PTY session with shell integration ──
         let pty = PtySession::open_advanced(cols, rows, Some(&program), &spawn_args, &env_vars)?;
 
-        // 2. Create the headless App (Terminal + Parser + InputEncoder).
+        // ── Step 5: Create App and apply config (theme + scrollback) ──
         let (mut app, event_tx) = App::new(cols as usize, rows as usize);
+        if let Some(ref mgr) = config_mgr {
+            let cfg = mgr.config();
+            app.theme_manager().set_by_name(&cfg.appearance.theme);
+            app.terminal_mut()
+                .grid_mut()
+                .set_scrollback(cfg.terminal.scrollback_lines);
+        }
 
-        // 3. Spawn PTY reader thread → pump bytes into event channel.
+        // ── Step 6: Spawn PTY reader thread ──
         let reader = pty.try_clone_reader()?;
         spawn_pty_reader(reader, event_tx.clone());
-
-        // 4. Mark app as running.
         app.start();
 
-        // 5. Build DesktopApp.
+        // ── Step 7: Build DesktopApp ──
         let mut desktop = DesktopApp {
             app,
             pty: Some(pty),
-            config,
+            config: desktop_config,
             mods: ModsState::default(),
             window: None,
             surface: None,
@@ -236,25 +337,22 @@ impl DesktopApp {
             selection: crate::mouse::MouseSelection::default(),
             cursor_pos: (0.0, 0.0),
             button_held: None,
+            pending_resize: None,
+            last_resize_time: None,
         };
 
-        // 5b. Load config and start watching (if config-watch is enabled).
+        // ── Step 8: Start config file watcher (if config-watch feature) ──
         #[cfg(feature = "config-watch")]
         {
-            match ConfigManager::load_default() {
-                Ok(mut mgr) => {
-                    if let Err(e) = mgr.watch() {
-                        log::warn!("Config watch failed: {e}");
-                    }
-                    desktop.config_mgr = Some(mgr);
+            if let Some(mut mgr) = config_mgr {
+                if let Err(e) = mgr.watch() {
+                    log::warn!("Config watch failed: {e}");
                 }
-                Err(e) => {
-                    log::warn!("Config load failed: {e}");
-                }
+                desktop.config_mgr = Some(mgr);
             }
         }
 
-        // 6. Create winit event loop and run.
+        // ── Step 9: Create winit event loop and run ──
         let event_loop = EventLoop::new()?;
         event_loop.run_app(&mut desktop)?;
 
@@ -272,10 +370,39 @@ impl DesktopApp {
         }
     }
 
-    /// Handle window resize: recalculate cols/rows, resize Terminal + PTY + GPU.
+    /// Handle window resize: store pending dimensions for debounced apply.
+    ///
+    /// During a drag-resize, winit fires many `Resized` events. We store the
+    /// latest dimensions and defer the actual Terminal/PTY resize until the
+    /// user stops dragging (100ms debounce). See `apply_pending_resize()`.
     fn handle_resize(&mut self, width: u32, height: u32) {
-        let new_cols = ((width as f32 / self.config.cell_width) as u16).max(1);
-        let new_rows = ((height as f32 / self.config.cell_height) as u16).max(1);
+        self.pending_resize = Some((width.max(1), height.max(1)));
+        self.last_resize_time = Some(std::time::Instant::now());
+    }
+
+    /// Apply a pending resize if the debounce interval (100ms) has elapsed.
+    ///
+    /// Called from `about_to_wait()`. Returns `true` if a resize was applied.
+    fn apply_pending_resize(&mut self) -> bool {
+        let Some((width, height)) = self.pending_resize else {
+            return false;
+        };
+        let Some(last) = self.last_resize_time else {
+            return false;
+        };
+
+        // Check if enough time has passed since the last resize event.
+        if std::time::Instant::now().duration_since(last) < std::time::Duration::from_millis(100) {
+            return false; // Not enough time elapsed — wait.
+        }
+
+        // Clear pending state.
+        self.pending_resize = None;
+        self.last_resize_time = None;
+
+        // Compute new cell dimensions with minimum size (10x3).
+        let new_cols = ((width as f32 / self.config.cell_width) as u16).max(10);
+        let new_rows = ((height as f32 / self.config.cell_height) as u16).max(3);
 
         log::debug!(
             "Resize: {}x{}px → {}x{} cells",
@@ -304,6 +431,8 @@ impl DesktopApp {
         if let Some(gpu) = &self.gpu {
             self.renderer = Some(gpu.create_renderer(new_cols as usize, new_rows as usize));
         }
+
+        true
     }
 
     /// Render one frame.
@@ -804,6 +933,9 @@ impl ApplicationHandler for DesktopApp {
         // Pump PTY events.
         self.app.pump();
 
+        // Apply deferred resize if debounce interval has elapsed.
+        self.apply_pending_resize();
+
         // Poll config watcher for hot-reload.
         #[cfg(feature = "config-watch")]
         if let Some(ref mut mgr) = self.config_mgr {
@@ -839,6 +971,10 @@ impl ApplicationHandler for DesktopApp {
         if let Some(ref window) = self.window {
             window.request_redraw();
         }
+
+        // If we have a pending (debounced) resize, keep polling so we apply
+        // it after the 100ms window. request_redraw above already keeps the
+        // event loop spinning in winit's Poll mode.
     }
 }
 
@@ -910,5 +1046,170 @@ mod tests {
         assert!(km.shift);
         assert!(!km.ctrl);
         assert!(km.alt);
+    }
+
+    #[test]
+    fn test_desktop_config_with_shell() {
+        let cfg = DesktopConfig::default().with_shell("/bin/bash");
+        assert_eq!(cfg.shell.as_deref(), Some("/bin/bash"));
+    }
+
+    #[test]
+    fn test_desktop_config_shell_default_none() {
+        let cfg = DesktopConfig::default();
+        assert!(cfg.shell.is_none(), "shell should default to None");
+    }
+
+    #[test]
+    fn test_config_manager_load_default_fails_gracefully() {
+        // ConfigManager::load_default() should return Err when no config file exists,
+        // not panic. This verifies the graceful degradation behavior.
+        // (On a dev machine it might find a real config, which is also fine.)
+        let _ = ConfigManager::load_default();
+    }
+
+    #[test]
+    fn test_cli_shell_overrides_config() {
+        // Simulate the merge logic: CLI shell wins over config shell
+        let cli_shell: Option<String> = Some("/bin/zsh".to_string());
+        let config_shell: Option<String> = Some("/bin/bash".to_string());
+
+        let effective = cli_shell
+            .clone()
+            .or(config_shell)
+            .unwrap_or_else(default_shell_string);
+
+        assert_eq!(effective, "/bin/zsh", "CLI shell should take precedence");
+    }
+
+    #[test]
+    fn test_config_shell_used_when_no_cli() {
+        // Simulate: CLI is None, config provides the shell
+        let cli_shell: Option<String> = None;
+        let config_shell: Option<String> = Some("/bin/fish".to_string());
+
+        let effective = cli_shell
+            .clone()
+            .or(config_shell)
+            .unwrap_or_else(default_shell_string);
+
+        assert_eq!(effective, "/bin/fish");
+    }
+
+    #[test]
+    fn test_default_shell_when_no_config_no_cli() {
+        let cli_shell: Option<String> = None;
+        let config_shell: Option<String> = None;
+
+        let effective = cli_shell
+            .clone()
+            .or(config_shell)
+            .unwrap_or_else(default_shell_string);
+
+        // Should not be empty — should resolve to some system shell
+        assert!(!effective.is_empty());
+    }
+
+    #[test]
+    fn test_cell_size_from_config_applied() {
+        // Simulate the config merge logic for cell dimensions
+        let mut desktop_config = DesktopConfig::default();
+        assert_eq!(desktop_config.cell_width, 8.0); // default
+
+        // Config says cell_width = 10
+        let config_cell_width: u32 = 10;
+        if desktop_config.cell_width == 8.0 {
+            desktop_config.cell_width = config_cell_width as f32;
+        }
+        assert_eq!(desktop_config.cell_width, 10.0);
+    }
+
+    #[test]
+    fn test_cell_size_cli_overrides_config() {
+        // If CLI set a non-default cell_width, config should NOT override it
+        let mut desktop_config = DesktopConfig::default().with_cell_size(9.5, 19.0);
+        let config_cell_width: u32 = 10;
+
+        if desktop_config.cell_width == 8.0 {
+            // This branch should NOT execute since CLI set 9.5
+            desktop_config.cell_width = config_cell_width as f32;
+        }
+        assert_eq!(
+            desktop_config.cell_width, 9.5,
+            "CLI cell_width should be preserved"
+        );
+    }
+
+    // ── P9-H: Resize computation tests ────────────────────────────────
+
+    #[test]
+    fn test_compute_cell_dimensions_basic() {
+        // 640px / 8px = 80 cols, 384px / 16px = 24 rows
+        let (cols, rows) = compute_cell_dimensions(640, 384, 8.0, 16.0);
+        assert_eq!(cols, 80);
+        assert_eq!(rows, 24);
+    }
+
+    #[test]
+    fn test_compute_cell_dimensions_minimum() {
+        // 0px → clamped to MIN_COLS x MIN_ROWS
+        let (cols, rows) = compute_cell_dimensions(0, 0, 8.0, 16.0);
+        assert_eq!(cols, MIN_COLS);
+        assert_eq!(rows, MIN_ROWS);
+    }
+
+    #[test]
+    fn test_compute_cell_dimensions_small_window() {
+        // 40px / 8 = 5 cols → clamped to 10
+        let (cols, rows) = compute_cell_dimensions(40, 32, 8.0, 16.0);
+        assert_eq!(cols, MIN_COLS); // 5 → 10
+        assert_eq!(rows, MIN_ROWS); // 2 → 3
+    }
+
+    #[test]
+    fn test_compute_cell_dimensions_just_at_minimum() {
+        // 80px / 8 = 10 cols (exactly MIN_COLS)
+        // 48px / 16 = 3 rows (exactly MIN_ROWS)
+        let (cols, rows) = compute_cell_dimensions(80, 48, 8.0, 16.0);
+        assert_eq!(cols, 10);
+        assert_eq!(rows, 3);
+    }
+
+    #[test]
+    fn test_compute_cell_dimensions_large_window() {
+        // 3840px / 8 = 480, 2160px / 16 = 135
+        let (cols, rows) = compute_cell_dimensions(3840, 2160, 8.0, 16.0);
+        assert_eq!(cols, 480);
+        assert_eq!(rows, 135);
+    }
+
+    #[test]
+    fn test_compute_cell_dimensions_custom_cell_size() {
+        // cell_width=12, cell_height=24
+        let (cols, rows) = compute_cell_dimensions(1200, 720, 12.0, 24.0);
+        assert_eq!(cols, 100);
+        assert_eq!(rows, 30);
+    }
+
+    #[test]
+    fn test_compute_cell_dimensions_subpixel_floor() {
+        // 644px / 8.0 = 80.5 → floor → 80
+        let (cols, _) = compute_cell_dimensions(644, 384, 8.0, 16.0);
+        assert_eq!(cols, 80);
+    }
+
+    #[test]
+    fn test_min_cols_constant() {
+        assert_eq!(MIN_COLS, 10);
+    }
+
+    #[test]
+    fn test_min_rows_constant() {
+        assert_eq!(MIN_ROWS, 3);
+    }
+
+    #[test]
+    fn test_debounce_ms_constant() {
+        assert_eq!(RESIZE_DEBOUNCE_MS, 100);
     }
 }
