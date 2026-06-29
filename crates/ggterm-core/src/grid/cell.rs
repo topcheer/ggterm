@@ -90,8 +90,11 @@ impl Color {
 /// hyperlink (`Option<String>`). Use `.clone()` when you need an owned copy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
-    /// The character to display (0 = blank).
+    /// The character to display (0 = blank / space).
     pub ch: char,
+    /// Combining characters attached to this cell (P17-B).
+    /// Empty for most cells. Non-empty when zero-width marks follow the base char.
+    pub combining: Vec<char>,
     /// Foreground color.
     pub fg: Color,
     /// Background color.
@@ -106,6 +109,7 @@ impl Default for Cell {
     fn default() -> Self {
         Self {
             ch: ' ',
+            combining: Vec::new(),
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),

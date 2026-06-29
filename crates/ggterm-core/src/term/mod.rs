@@ -660,8 +660,29 @@ impl Terminal {
     fn put_printable_char(&mut self, ch: char) {
         let w = UnicodeWidthChar::width(ch).unwrap_or(1);
 
-        // Skip zero-width combining characters (our Cell model can't represent them)
+        // P17-B: Combining characters (zero-width) are merged into the preceding cell.
         if w == 0 {
+            let cx = self.cursor.x;
+            let cy = self.cursor.y;
+            if cx > 0
+                && let Some(c) = self.grid.cell_mut(cx.saturating_sub(1), cy)
+                && !c.flags.contains(CellFlags::WIDE_SPACER)
+                && !c.is_blank()
+            {
+                c.combining.push(ch);
+                return;
+            }
+            if cx == 0 && cy > 0 {
+                let prev_w = self.grid.width();
+                if let Some(c) = self.grid.cell_mut(prev_w.saturating_sub(1), cy - 1)
+                    && !c.flags.contains(CellFlags::WIDE_SPACER)
+                    && !c.is_blank()
+                {
+                    c.combining.push(ch);
+                    return;
+                }
+            }
+            // No preceding cell to attach to — silently drop.
             return;
         }
 
@@ -2431,6 +2452,63 @@ mod tests {
             cell.flags.contains(CellFlags::ITALIC),
             "ITALIC flag must be set"
         );
+    }
+
+    // ── P17-B: Combining Character tests ─────────────────────────────
+
+    #[test]
+    fn t_combining_char_merges_into_preceding_cell() {
+        let mut t = Terminal::new(80, 24);
+        // 'e' followed by combining acute accent (U+0301)
+        feed(&mut t, "e\u{0301}".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'e');
+        assert_eq!(cell.combining, vec!['\u{0301}']);
+        // Cursor should have advanced only for 'e' (width 1), not for combining.
+        assert_eq!(t.cursor().0, 1);
+    }
+
+    #[test]
+    fn t_combining_char_multiple_marks() {
+        let mut t = Terminal::new(80, 24);
+        // 'a' with combining diaeresis (U+0308) and combining grave (U+0300)
+        feed(&mut t, "a\u{0308}\u{0300}".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'a');
+        assert_eq!(cell.combining, vec!['\u{0308}', '\u{0300}']);
+        assert_eq!(t.cursor().0, 1);
+    }
+
+    #[test]
+    fn t_combining_char_at_line_start_dropped() {
+        let mut t = Terminal::new(80, 24);
+        // Combining char at position (0,0) — no preceding cell, should be dropped.
+        feed(&mut t, "\u{0301}".as_bytes());
+        assert!(t.grid().cell(0, 0).unwrap().combining.is_empty());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_combining_char_preserves_fg_bg() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[31;42m"); // red fg, green bg
+        feed(&mut t, "e\u{0301}".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Indexed(1)); // red
+        assert_eq!(cell.bg, Color::Indexed(2)); // green
+        assert_eq!(cell.combining, vec!['\u{0301}']);
+    }
+
+    #[test]
+    fn t_combining_char_does_not_advance_cursor() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, "ab\u{0301}c".as_bytes());
+        // 'a' at col 0, 'b' at col 1 (with combining), 'c' at col 2
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'a');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'b');
+        assert_eq!(t.grid().cell(1, 0).unwrap().combining, vec!['\u{0301}']);
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'c');
+        assert_eq!(t.cursor().0, 3);
     }
 
     #[test]
