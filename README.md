@@ -450,6 +450,17 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 | Bell Support | Done | 5 |
 | Status Bar | Done | 8 |
 | Config-Driven Keybindings | Done | 8 |
+| Alt-Screen Grid Swap | Done | — |
+| Dynamic Colors (OSC 10/11) | Done | 8 |
+| Combining Characters | Done | 5 |
+| URL Click & Hover | Done | — |
+| DPI-Aware Rendering | Done | 3 |
+| Splits (SplitTree + PaneSession) | Done | 52 |
+| Tab Bar Overlay | Done | 16 |
+| Settings UI | Done | 21 |
+| About Dialog | Done | 17 |
+| Overlay Rendering | Done | 6 |
+| Native Menu Data Layer | Done | 13 |
 
 ## License
 
