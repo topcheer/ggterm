@@ -10,10 +10,18 @@ use std::time::Duration;
 use ggterm_core::{Parser, Terminal};
 use ggterm_render::{ConsoleRenderer, CursorState, RenderTheme, Renderer};
 
+use crate::config::ConfigManager;
+use crate::command_nav::CommandNavState;
 use crate::event::{AppEvent, EventReceiver, EventSender};
 use crate::input::InputEncoder;
+#[cfg(feature = "plugin")]
+use crate::plugin_integration::{PluginBridge, build_context};
 use crate::tabs::TabManager;
 use crate::theme::AppTheme;
+#[cfg(feature = "plugin")]
+use ggterm_core::CommandMarkKind;
+#[cfg(feature = "plugin")]
+use ggterm_plugin::HookResult;
 
 /// The terminal application.
 ///
@@ -35,6 +43,13 @@ pub struct App {
     /// Phase 5: last AI response text (for display)
     #[cfg(feature = "ai")]
     last_ai_response: Option<String>,
+    /// Phase 6: plugin manager (None when plugin feature disabled or not configured)
+    #[cfg(feature = "plugin")]
+    plugins: Option<PluginBridge>,
+    /// Phase 8-B: configuration manager
+    config: Option<ConfigManager>,
+    /// Phase 8-D: command navigation overlay state
+    command_nav: CommandNavState,
 }
 
 impl App {
@@ -54,9 +69,66 @@ impl App {
             tabs: TabManager::new(cols, rows),
             #[cfg(feature = "ai")]
             last_ai_response: None,
+            #[cfg(feature = "plugin")]
+            plugins: None,
+            config: None,
+            command_nav: CommandNavState::new(),
         };
 
         (app, tx)
+    }
+
+    /// Create a new application with a config manager.
+    ///
+    /// Applies the config values at construction time:
+    /// - `appearance.theme` → sets the starting theme
+    /// - `terminal.scrollback_lines` → sets Grid scrollback
+    /// - `terminal.shell` → stored for PtySession to use
+    /// - `ai.*` → AI engine settings
+    pub fn with_config(cols: usize, rows: usize, mgr: ConfigManager) -> (Self, EventSender) {
+        let (mut app, tx) = Self::new(cols, rows);
+        app.apply_config(mgr.config());
+        app.config = Some(mgr);
+        (app, tx)
+    }
+
+    /// Apply config values to the running app state.
+    fn apply_config(&mut self, cfg: &crate::config::Config) {
+        // Theme: switch to the configured theme name.
+        // set_by_name returns true if the theme was found and applied.
+        self.theme.set_by_name(&cfg.appearance.theme);
+
+        // Scrollback limit
+        self.terminal
+            .grid_mut()
+            .set_scrollback(cfg.terminal.scrollback_lines);
+    }
+
+    /// Reload config from disk and apply any changes.
+    ///
+    /// Returns `Ok(true)` if the config changed and was applied.
+    pub fn reload_config(&mut self) -> Result<bool, crate::config::ConfigError> {
+        if let Some(ref mut mgr) = self.config {
+            let changed = mgr.reload()?;
+            if changed {
+                let cfg = mgr.config().clone();
+                self.apply_config(&cfg);
+            }
+            Ok(changed)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Get the current config, if a ConfigManager is attached.
+    pub fn config(&self) -> Option<&crate::config::Config> {
+        self.config.as_ref().map(|m| m.config())
+    }
+
+    /// Attach a ConfigManager to an existing app.
+    pub fn set_config(&mut self, mgr: ConfigManager) {
+        self.apply_config(mgr.config());
+        self.config = Some(mgr);
     }
 
     /// Attach a PTY writer for sending keyboard input to the child process.
@@ -78,8 +150,51 @@ impl App {
     pub fn handle_event(&mut self, event: AppEvent) -> bool {
         match event {
             AppEvent::PtyBytes(bytes) => {
+                #[cfg(feature = "plugin")]
+                let marks_before = self.terminal.command_marks().len();
+
                 self.parser.feed(&bytes, &mut self.terminal);
                 self.render();
+
+                // Phase 6: dispatch OnOutput hook (read-only)
+                #[cfg(feature = "plugin")]
+                if let Some(ref mut bridge) = self.plugins {
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    let ctx = build_context(
+                        self.renderer.cols(),
+                        self.renderer.rows(),
+                        self.theme.current_name(),
+                    );
+                    bridge.dispatch_output(&text, &ctx);
+
+                    // P6-D3: OSC 133 command block dispatch.
+                    // Detect new CommandStart (B) and CommandEnd (D) marks
+                    // produced by this PtyBytes event and fire the
+                    // corresponding hooks.
+                    let marks = self.terminal.command_marks();
+                    for (offset, mark) in marks[marks_before..].iter().enumerate() {
+                        match mark.kind {
+                            CommandMarkKind::CommandStart => {
+                                let cmd = self.terminal.extract_row_text(mark.row);
+                                bridge.dispatch_command_start(&cmd, &ctx);
+                            }
+                            CommandMarkKind::CommandEnd => {
+                                let exit_code = mark.exit_code.unwrap_or(-1);
+                                // Find nearest preceding CommandStart mark
+                                // to extract the command text.
+                                let global_idx = marks_before + offset;
+                                let cmd = marks[..global_idx]
+                                    .iter()
+                                    .rev()
+                                    .find(|m| m.kind == CommandMarkKind::CommandStart)
+                                    .map(|m| self.terminal.extract_row_text(m.row))
+                                    .unwrap_or_default();
+                                bridge.dispatch_command_end(&cmd, exit_code, &ctx);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
 
             AppEvent::Resize { cols, rows } => {
@@ -87,11 +202,43 @@ impl App {
                 self.renderer.resize(cols as usize, rows as usize);
                 self.tabs.resize_all(cols as usize, rows as usize);
                 self.render();
+
+                // Phase 6: dispatch OnResize hook
+                #[cfg(feature = "plugin")]
+                if let Some(ref mut bridge) = self.plugins {
+                    let ctx =
+                        build_context(cols as usize, rows as usize, self.theme.current_name());
+                    bridge.dispatch_resize(cols as usize, rows as usize, &ctx);
+                }
             }
 
             AppEvent::Keyboard(bytes) => {
-                if let Some(ref mut writer) = self.pty_writer {
-                    let _ = writer.write_all(&bytes);
+                // Phase 6: dispatch OnInput hook before PTY write
+                #[cfg(feature = "plugin")]
+                let effective_bytes: Option<Vec<u8>> = {
+                    if let Some(ref mut bridge) = self.plugins {
+                        let text = String::from_utf8_lossy(&bytes).into_owned();
+                        let ctx = build_context(
+                            self.renderer.cols(),
+                            self.renderer.rows(),
+                            self.theme.current_name(),
+                        );
+                        match bridge.dispatch_input(&text, &ctx) {
+                            HookResult::Deny => None,
+                            HookResult::Transform(new_text) => Some(new_text.into_bytes()),
+                            _ => Some(bytes.clone()),
+                        }
+                    } else {
+                        Some(bytes.clone())
+                    }
+                };
+                #[cfg(not(feature = "plugin"))]
+                let effective_bytes: Option<Vec<u8>> = Some(bytes);
+
+                if let Some(effective_bytes) = effective_bytes
+                    && let Some(ref mut writer) = self.pty_writer
+                {
+                    let _ = writer.write_all(&effective_bytes);
                     let _ = writer.flush();
                 }
             }
@@ -124,10 +271,38 @@ impl App {
 
             // ── Theme management (Phase 5-A) ──
             AppEvent::SetTheme(name) => {
+                #[cfg(feature = "plugin")]
+                let old_name = self.theme.current_name().to_string();
                 self.theme.set_by_name(&name);
+
+                // Phase 6: dispatch OnThemeChange hook
+                #[cfg(feature = "plugin")]
+                if let Some(ref mut bridge) = self.plugins {
+                    let ctx = build_context(
+                        self.renderer.cols(),
+                        self.renderer.rows(),
+                        self.theme.current_name(),
+                    );
+                    bridge.dispatch_theme_change(&old_name, &name, &ctx);
+                }
             }
             AppEvent::CycleTheme => {
+                #[cfg(feature = "plugin")]
+                let old_name = self.theme.current_name().to_string();
                 self.theme.cycle_next();
+
+                // Phase 6: dispatch OnThemeChange hook
+                #[cfg(feature = "plugin")]
+                if let Some(ref mut bridge) = self.plugins {
+                    let new_name = self.theme.current_name().to_string();
+                    let ctx = build_context(self.renderer.cols(), self.renderer.rows(), &new_name);
+                    bridge.dispatch_theme_change(&old_name, &new_name, &ctx);
+                }
+            }
+
+            // ── Config events (Phase 8-B) ──
+            AppEvent::ReloadConfig => {
+                let _ = self.reload_config();
             }
 
             // ── AI events (Phase 5-C) ──
@@ -142,9 +317,17 @@ impl App {
             #[cfg(feature = "ai")]
             AppEvent::AIRequest(_) => {
                 // AI requests are handled by AIBridge at the desktop level.
-                // At the App level, we just note that a request was made.
-                // The desktop layer (window.rs) owns the AIBridge and handles
-                // the actual execution, sending AIResponse back via the channel.
+            }
+
+            // ── Command navigation events ──
+            AppEvent::NextCommandBlock => {
+                self.command_nav.jump_next(&self.terminal);
+            }
+            AppEvent::PrevCommandBlock => {
+                self.command_nav.jump_prev(&self.terminal);
+            }
+            AppEvent::ToggleCommandNav => {
+                self.command_nav.toggle();
             }
         }
 
@@ -295,6 +478,28 @@ impl App {
     /// Get tab manager (mutable).
     pub fn tabs_mut(&mut self) -> &mut TabManager {
         &mut self.tabs
+    }
+
+    // ── Phase 6: Plugin accessors ──
+
+    /// Set the plugin bridge for hook dispatch.
+    ///
+    /// Pass `Some(bridge)` to enable plugin hooks, or `None` to disable.
+    #[cfg(feature = "plugin")]
+    pub fn set_plugins(&mut self, bridge: Option<PluginBridge>) {
+        self.plugins = bridge;
+    }
+
+    /// Get a reference to the plugin bridge (if configured).
+    #[cfg(feature = "plugin")]
+    pub fn plugins(&self) -> Option<&PluginBridge> {
+        self.plugins.as_ref()
+    }
+
+    /// Get a mutable reference to the plugin bridge (if configured).
+    #[cfg(feature = "plugin")]
+    pub fn plugins_mut(&mut self) -> Option<&mut PluginBridge> {
+        self.plugins.as_mut()
     }
 
     // ── Phase 5: AI accessors ──

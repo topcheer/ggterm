@@ -361,6 +361,15 @@ impl Grid {
         self.scrollback.get(index)
     }
 
+    /// Set the maximum scrollback capacity.
+    /// Truncates existing scrollback if new limit is smaller.
+    pub fn set_scrollback(&mut self, max: usize) {
+        self.max_scrollback = max;
+        while self.scrollback.len() > max {
+            self.scrollback.pop_front();
+        }
+    }
+
     /// Push a row to the scrollback, evicting oldest if over capacity.
     fn push_scrollback(&mut self, row: Row) {
         if self.scrollback.len() >= self.max_scrollback {

@@ -49,6 +49,20 @@ pub enum AppEvent {
     /// Cycle to the next built-in theme.
     CycleTheme,
 
+    // ── Config events (Phase 8-B) ──
+    /// Reload configuration from disk and apply changes.
+    ReloadConfig,
+
+    // ── Command navigation events (Phase 8-D) ──
+    /// Jump to the next command block in the scrollback.
+    NextCommandBlock,
+
+    /// Jump to the previous command block in the scrollback.
+    PrevCommandBlock,
+
+    /// Toggle the command navigation overlay visibility.
+    ToggleCommandNav,
+
     // ── AI events (Phase 5-C, feature-gated) ──
     /// Request an AI action (explain, suggest, error help, NL2cmd).
     #[cfg(feature = "ai")]
