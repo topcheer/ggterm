@@ -100,7 +100,7 @@ Platform Abstraction (ConPTY / POSIX)
 
 ### Phase 16-19: Desktop Integration & Polish
 - **Overlay Rendering**: GPU-accelerated tab bar, settings panel, about dialog overlays
-- **Window Splits**: Ctrl+Shift+D/S (horizontal/vertical split), Ctrl+Shift+[/] (pane focus), Ctrl+Shift+Alt+arrows (adjust ratio)
+- **Window Splits**: Ctrl+Shift+D (horizontal split), Ctrl+Shift+\ (vertical split), Ctrl+Shift+[/] (pane focus), Ctrl+Shift+Alt+arrows (adjust ratio)
 - **Application Menu**: MenuAction enum (16 variants) with thread-safe action queue
 - **Settings Panel**: 7 configurable fields (theme, font, scrollback, shell, AI settings), Ctrl+, toggle
 - **Tab Bar**: `1:zsh* | 2:vim | 3:logs!` format with dirty indicators
@@ -208,6 +208,12 @@ reset = "Ctrl+Shift+R"
 cycle_theme = "Ctrl+Shift+T"
 ```
 
+> **Note:** The following shortcuts are **not** customizable:
+> `Ctrl+Shift+D` (split horizontal), `Ctrl+Shift+\` (split vertical),
+> `Ctrl+Shift+[` / `Ctrl+Shift+]` (pane focus), `Ctrl+Shift+Alt+Arrows` (adjust ratio),
+> `Ctrl+Shift+B` (status bar), `Ctrl+,` (settings), `Ctrl+Shift+Enter` (maximize),
+> `Alt+1-9` / `Ctrl+Tab` (tab navigation).
+
 CLI options (e.g. `--theme`, `--shell`) override config file values.
 
 ### Custom Keybindings
@@ -290,7 +296,6 @@ For shells that need manual integration:
 |----------|--------|
 | `Ctrl+Shift+Up` | Previous command block |
 | `Ctrl+Shift+Down` | Next command block |
-| `Ctrl+Shift+H` | Toggle status bar |
 
 See [`docs/command-nav.md`](docs/command-nav.md) for details.
 
@@ -381,15 +386,17 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Esc` | Close search bar |
 | `Ctrl+Shift+Up/Down` | Navigate command blocks |
 
-### Window Splits & Panels (*)
+### Window Splits & Panels
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+D` | Split horizontal (left \| right) |
-| `Ctrl+Shift+S` | Split vertical (top / bottom) |
+| `Ctrl+Shift+\` | Split vertical (top / bottom) |
 | `Ctrl+Shift+]` | Focus next pane |
 | `Ctrl+Shift+[` | Focus previous pane |
-| `Ctrl+Shift+Alt+←→↑↓` | Adjust split ratio |
+| `Ctrl+Shift+Alt+Arrow Keys` | Adjust split ratio |
 | `Ctrl+Shift+B` | Toggle status bar |
+| `Ctrl+,` | Toggle settings overlay |
+| `Esc` | Close settings / about dialog |
 
 ## Building
 
@@ -418,7 +425,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 
 ## Status
 
-**1490 tests passing** (2 ignored PTY integration tests).
+**1490+ tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
