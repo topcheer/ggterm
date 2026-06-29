@@ -320,6 +320,7 @@ impl DesktopApp {
             ai_overlay: crate::ai_overlay::AIOverlayState::new(),
             #[cfg(feature = "ai")]
             ai_bridge: None,
+            search: crate::search::SearchState::new(),
         };
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
@@ -596,6 +597,21 @@ impl DesktopApp {
             }
         }
 
+        // P10-D: Ctrl+Shift+F - toggle search bar.
+        if self.mods.ctrl
+            && self.mods.shift
+            && let PhysicalKey::Code(KeyCode::KeyF) = &event.physical_key
+        {
+            self.search.toggle();
+            return;
+        }
+
+        // P10-D: When search bar is open, intercept all keyboard input.
+        if self.search.visible {
+            self.handle_search_input(event);
+            return;
+        }
+
         // P10-C: Esc dismisses AI overlay if visible.
         #[cfg(feature = "ai")]
         if self.ai_overlay.is_visible()
@@ -617,6 +633,39 @@ impl DesktopApp {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {
                 self.write_to_pty(&bytes);
+            }
+        }
+    }
+
+    // ── Scrollback search (P10-D) ───────────────────────────────
+
+    /// Handle keyboard input when the search bar is open.
+    fn handle_search_input(&mut self, event: &KeyEvent) {
+        // Direct field access for disjoint borrows: self.sessions (immutable)
+        // and self.search (mutable) are separate fields of self.
+        let grid = self.sessions[self.active].app().grid();
+        let search = &mut self.search;
+        match &event.physical_key {
+            PhysicalKey::Code(KeyCode::Escape) => {
+                search.close();
+            }
+            PhysicalKey::Code(KeyCode::Enter) => {
+                if self.mods.shift {
+                    search.prev_match();
+                } else {
+                    search.next_match();
+                }
+            }
+            PhysicalKey::Code(KeyCode::Backspace) => {
+                search.backspace(grid);
+            }
+            _ => {
+                if let Key::Character(s) = &event.logical_key
+                    && let Some(c) = s.chars().next()
+                    && !c.is_control()
+                {
+                    search.type_char(c, grid);
+                }
             }
         }
     }
