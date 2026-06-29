@@ -22,6 +22,7 @@ use std::io::{self, Read, Write};
 
 use portable_pty::cmdbuilder::CommandBuilder;
 use portable_pty::{Child, ChildKiller, MasterPty, PtySize, native_pty_system};
+use thiserror::Error;
 
 /// A PTY session managing a shell child process.
 ///
@@ -52,29 +53,14 @@ pub struct PtySession {
 }
 
 /// Error wrapper for PTY operations.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum PtyError {
     /// I/O error from the PTY system.
-    Io(io::Error),
+    #[error("PTY I/O error: {0}")]
+    Io(#[from] io::Error),
     /// portable-pty returned an error.
+    #[error("PTY error: {0}")]
     Pty(String),
-}
-
-impl std::fmt::Display for PtyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PtyError::Io(e) => write!(f, "PTY I/O error: {}", e),
-            PtyError::Pty(msg) => write!(f, "PTY error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for PtyError {}
-
-impl From<io::Error> for PtyError {
-    fn from(e: io::Error) -> Self {
-        PtyError::Io(e)
-    }
 }
 
 impl PtySession {

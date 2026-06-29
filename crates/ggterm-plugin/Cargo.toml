@@ -7,6 +7,7 @@ description = "Plugin system for GGTerm terminal emulator"
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
 log = "0.4"
+thiserror.workspace = true
 
 [features]
 default = []

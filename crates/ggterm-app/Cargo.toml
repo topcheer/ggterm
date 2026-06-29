@@ -27,6 +27,8 @@ plugin = ["dep:ggterm-plugin"]
 plugin-lua = ["plugin", "ggterm-plugin?/lua"]
 # WASM plugin runtime (implies plugin)
 plugin-wasm = ["plugin", "ggterm-plugin?/wasm"]
+# Config hot-reload via file system watching
+config-watch = ["dep:notify"]
 
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
@@ -35,6 +37,7 @@ ggterm-ai = { path = "../ggterm-ai", optional = true }
 log.workspace = true
 serde.workspace = true
 toml.workspace = true
+thiserror.workspace = true
 
 # Desktop-only dependencies (optional — enabled by `desktop` feature)
 winit = { workspace = true, optional = true }
@@ -45,6 +48,7 @@ portable-pty = { workspace = true, optional = true }
 raw-window-handle = { workspace = true, optional = true }
 env_logger = { workspace = true, optional = true }
 ggterm-plugin = { path = "../ggterm-plugin", optional = true }
+notify = { workspace = true, optional = true }
 
 [dev-dependencies]
 ggterm-plugin = { path = "../ggterm-plugin" }

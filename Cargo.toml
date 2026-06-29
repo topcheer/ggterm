@@ -42,6 +42,12 @@ ggterm-render-wgpu = { path = "crates/ggterm-render-wgpu" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 
+# File system watching
+notify = "8"
+
+# Error handling
+thiserror = "2"
+
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]
 opt-level = 1

@@ -25,10 +25,17 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "config-watch")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "config-watch")]
+use std::sync::Arc;
+
+use thiserror::Error;
+
 // ─── Config structs ──────────────────────────────────────────────────────
 
 /// Top-level GGTerm configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Config {
     /// Appearance settings (theme, font, cell dimensions).
     pub appearance: AppearanceConfig,
@@ -71,16 +78,6 @@ pub struct AiConfig {
     pub api_endpoint: String,
     /// Model identifier to use for suggestions.
     pub model: String,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            appearance: AppearanceConfig::default(),
-            terminal: TerminalConfig::default(),
-            ai: AiConfig::default(),
-        }
-    }
 }
 
 impl Default for AppearanceConfig {
@@ -230,6 +227,14 @@ pub struct ConfigManager {
     config: Config,
     config_path: Option<PathBuf>,
     on_change: Option<ConfigChangeCallback>,
+
+    /// File system watcher for auto-reload (behind `config-watch` feature).
+    #[cfg(feature = "config-watch")]
+    watcher: Option<notify::RecommendedWatcher>,
+
+    /// Set to `true` by the watcher callback when the config file changes.
+    #[cfg(feature = "config-watch")]
+    reload_pending: Arc<AtomicBool>,
 }
 
 impl ConfigManager {
@@ -239,6 +244,10 @@ impl ConfigManager {
             config: Config::default(),
             config_path: None,
             on_change: None,
+            #[cfg(feature = "config-watch")]
+            watcher: None,
+            #[cfg(feature = "config-watch")]
+            reload_pending: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -250,6 +259,10 @@ impl ConfigManager {
             config,
             config_path: path,
             on_change: None,
+            #[cfg(feature = "config-watch")]
+            watcher: None,
+            #[cfg(feature = "config-watch")]
+            reload_pending: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -260,6 +273,10 @@ impl ConfigManager {
             config,
             config_path: Some(path.to_path_buf()),
             on_change: None,
+            #[cfg(feature = "config-watch")]
+            watcher: None,
+            #[cfg(feature = "config-watch")]
+            reload_pending: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -292,12 +309,97 @@ impl ConfigManager {
             || new_config.ai.enabled != self.config.ai.enabled;
 
         self.config = new_config;
-        if changed {
-            if let Some(ref f) = self.on_change {
-                f(&self.config);
-            }
+        if changed && let Some(ref f) = self.on_change {
+            f(&self.config);
         }
         Ok(changed)
+    }
+
+    /// Get the config file path, if one was loaded.
+    pub fn config_path(&self) -> Option<&Path> {
+        self.config_path.as_deref()
+    }
+
+    // ── File system watching (config-watch feature) ─────────────────────
+
+    /// Start watching the config file for changes.
+    ///
+    /// When the file is modified, a flag is set.  Call [`poll_reload`]
+    /// from your event loop to perform the actual reload.
+    ///
+    /// Requires the `config-watch` feature.
+    #[cfg(feature = "config-watch")]
+    pub fn watch(&mut self) -> Result<(), ConfigError> {
+        use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+
+        let path = match &self.config_path {
+            Some(p) => p.clone(),
+            None => {
+                return Err(ConfigError::Watch(
+                    "no config path loaded".to_string(),
+                ));
+            }
+        };
+
+        // Set up the callback — stores a flag for the main loop to pick up.
+        let flag = self.reload_pending.clone();
+        let watcher = RecommendedWatcher::new(
+            move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(
+                        event.kind,
+                        notify::EventKind::Modify(_) | notify::EventKind::Create(_)
+                    ) {
+                        flag.store(true, Ordering::SeqCst);
+                    }
+                }
+            },
+            notify::Config::default(),
+        )
+        .map_err(|e| ConfigError::Watch(e.to_string()))?;
+
+        let mut watcher = watcher;
+        watcher
+            .watch(&path, RecursiveMode::NonRecursive)
+            .map_err(|e| ConfigError::Watch(e.to_string()))?;
+
+        self.watcher = Some(watcher);
+        log::info!("Watching config file: {}", path.display());
+        Ok(())
+    }
+
+    /// Stop watching the config file.
+    ///
+    /// Requires the `config-watch` feature.
+    #[cfg(feature = "config-watch")]
+    pub fn stop_watch(&mut self) {
+        if self.watcher.take().is_some() {
+            self.reload_pending.store(false, Ordering::SeqCst);
+            log::info!("Stopped watching config file");
+        }
+    }
+
+    /// Check whether the file watcher is active.
+    ///
+    /// Requires the `config-watch` feature.
+    #[cfg(feature = "config-watch")]
+    pub fn is_watching(&self) -> bool {
+        self.watcher.is_some()
+    }
+
+    /// Poll for pending config reloads.
+    ///
+    /// If the watcher detected a file change, this calls [`reload`]
+    /// and returns `Ok(true)`.  Returns `Ok(false)` when no change
+    /// is pending.
+    ///
+    /// Requires the `config-watch` feature.
+    #[cfg(feature = "config-watch")]
+    pub fn poll_reload(&mut self) -> Result<bool, ConfigError> {
+        if self.reload_pending.swap(false, Ordering::SeqCst) {
+            return self.reload();
+        }
+        Ok(false)
     }
 }
 
@@ -322,24 +424,19 @@ fn default_config_path() -> Option<PathBuf> {
 }
 
 /// Configuration errors.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ConfigError {
     /// TOML parse error.
-    Parse(toml::de::Error),
+    #[error("config parse error: {0}")]
+    Parse(#[from] toml::de::Error),
     /// File I/O error (path, source).
+    #[error("config I/O error ({0}): {1}")]
     Io(String, std::io::Error),
+    /// File-watch error (from the `notify` crate).
+    #[cfg(feature = "config-watch")]
+    #[error("config watch error: {0}")]
+    Watch(String),
 }
-
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConfigError::Parse(e) => write!(f, "config parse error: {e}"),
-            ConfigError::Io(path, e) => write!(f, "config I/O error ({path}): {e}"),
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {}
 
 // ─── Tests ───────────────────────────────────────────────────────────────
 
@@ -554,10 +651,191 @@ theme = "solarized"
         let err = ConfigError::Parse(toml::from_str::<toml::Value>("bad").unwrap_err());
         assert!(err.to_string().contains("parse error"));
 
-        let io_err = ConfigError::Io("/tmp/test".to_string(), std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "file not found",
-        ));
+        let io_err = ConfigError::Io(
+            "/tmp/test".to_string(),
+            std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"),
+        );
         assert!(io_err.to_string().contains("/tmp/test"));
+    }
+
+    #[test]
+    fn test_config_path() {
+        let mgr = ConfigManager::new();
+        assert!(mgr.config_path().is_none());
+
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_test_path.toml");
+        std::fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
+
+        let mgr = ConfigManager::load_from(&path).unwrap();
+        assert_eq!(mgr.config_path(), Some(path.as_path()));
+
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+// ─── config-watch tests ─────────────────────────────────────────────────
+
+#[cfg(all(test, feature = "config-watch"))]
+mod watch_tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use std::thread;
+    use std::time::Duration;
+
+    fn wait_for(mgr: &ConfigManager, expected: bool, timeout_ms: u64) {
+        let mut elapsed = 0u64;
+        loop {
+            if mgr.is_watching() == expected {
+                return;
+            }
+            if elapsed >= timeout_ms {
+                return;
+            }
+            thread::sleep(Duration::from_millis(50));
+            elapsed += 50;
+        }
+    }
+
+    #[test]
+    fn test_watch_no_path_returns_err() {
+        let mut mgr = ConfigManager::new();
+        let result = mgr.watch();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no config"));
+    }
+
+    #[test]
+    fn test_watch_with_path_succeeds() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_watch_start.toml");
+        std::fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
+
+        let mut mgr = ConfigManager::load_from(&path).unwrap();
+        assert!(!mgr.is_watching());
+
+        mgr.watch().unwrap();
+        assert!(mgr.is_watching());
+
+        mgr.stop_watch();
+        assert!(!mgr.is_watching());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_stop_watch_without_start_is_noop() {
+        let mut mgr = ConfigManager::new();
+        mgr.stop_watch(); // must not panic
+    }
+
+    #[test]
+    fn test_stop_watch_double_is_noop() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_watch_double.toml");
+        std::fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
+
+        let mut mgr = ConfigManager::load_from(&path).unwrap();
+        mgr.watch().unwrap();
+        mgr.stop_watch();
+        mgr.stop_watch(); // must not panic
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_watch_restart() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_watch_restart.toml");
+        std::fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
+
+        let mut mgr = ConfigManager::load_from(&path).unwrap();
+        mgr.watch().unwrap();
+        mgr.stop_watch();
+        mgr.watch().unwrap(); // restart
+        assert!(mgr.is_watching());
+
+        mgr.stop_watch();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_poll_reload_no_watch() {
+        let mut mgr = ConfigManager::new();
+        let changed = mgr.poll_reload().unwrap();
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_poll_reload_no_file_change() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_watch_poll.toml");
+        std::fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
+
+        let mut mgr = ConfigManager::load_from(&path).unwrap();
+        mgr.watch().unwrap();
+
+        // Drain any initial events from file creation.
+        thread::sleep(Duration::from_millis(300));
+        let _ = mgr.poll_reload();
+
+        // No change after draining.
+        let changed = mgr.poll_reload().unwrap();
+        assert!(!changed);
+
+        mgr.stop_watch();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_watch_triggers_reload_on_file_change() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_watch_real.toml");
+        std::fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
+
+        let mut mgr = ConfigManager::load_from(&path).unwrap();
+
+        let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let called_clone = called.clone();
+        mgr.on_change(Box::new(move |_| {
+            called_clone.store(true, Ordering::SeqCst);
+        }));
+
+        mgr.watch().unwrap();
+
+        // Drain initial events.
+        thread::sleep(Duration::from_millis(300));
+        let _ = mgr.poll_reload();
+
+        // Modify the config file.
+        std::fs::write(&path, "[appearance]\ntheme = \"light\"\n").unwrap();
+
+        // Wait for the watcher to detect the change.
+        thread::sleep(Duration::from_millis(500));
+
+        let changed = mgr.poll_reload().unwrap();
+        assert!(changed, "poll_reload should report a change after file modification");
+        assert_eq!(mgr.config().appearance.theme, "light");
+        assert!(called.load(Ordering::SeqCst), "on_change callback should have been fired");
+
+        mgr.stop_watch();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_watch_nonexistent_dir_returns_err() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("nonexistent_subdir_12345").join("config.toml");
+
+        let mut mgr = ConfigManager {
+            config: Config::default(),
+            config_path: Some(path),
+            on_change: None,
+            watcher: None,
+            reload_pending: Arc::new(AtomicBool::new(false)),
+        };
+
+        let result = mgr.watch();
+        assert!(result.is_err());
     }
 }

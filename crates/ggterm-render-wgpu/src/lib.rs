@@ -19,37 +19,17 @@ use glyphon::{
     FontSystem, Metrics, PrepareError, RenderError as GlyphonRenderError, Resolution, Shaping,
     SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
+use thiserror::Error;
 
 /// Unified error type for GPU text rendering operations.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum RenderError {
     /// Failed to prepare text (shaping, atlas allocation).
-    Prepare(PrepareError),
+    #[error("prepare error: {0}")]
+    Prepare(#[from] PrepareError),
     /// Failed to render text quads into the render pass.
-    Render(GlyphonRenderError),
-}
-
-impl std::fmt::Display for RenderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RenderError::Prepare(e) => write!(f, "prepare error: {e}"),
-            RenderError::Render(e) => write!(f, "render error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for RenderError {}
-
-impl From<PrepareError> for RenderError {
-    fn from(e: PrepareError) -> Self {
-        RenderError::Prepare(e)
-    }
-}
-
-impl From<GlyphonRenderError> for RenderError {
-    fn from(e: GlyphonRenderError) -> Self {
-        RenderError::Render(e)
-    }
+    #[error("render error: {0}")]
+    Render(#[from] GlyphonRenderError),
 }
 
 const DEFAULT_FONT_SIZE: f32 = 15.0;

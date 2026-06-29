@@ -10,31 +10,24 @@
 use crate::context::AIContext;
 use crate::prompt::{self, Action, ChatMessage};
 
+use thiserror::Error;
+
 /// Result type for AI operations.
 pub type AIResult<T> = Result<T, AIError>;
 
 /// Errors that can occur during AI operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AIError {
     /// No API key configured.
+    #[error("no API key configured")]
     NoApiKey,
     /// The LLM request failed (network, HTTP, or parse error).
+    #[error("request failed: {0}")]
     RequestFailed(String),
     /// The LLM returned an empty response.
+    #[error("empty response from LLM")]
     EmptyResponse,
 }
-
-impl std::fmt::Display for AIError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AIError::NoApiKey => write!(f, "no API key configured"),
-            AIError::RequestFailed(msg) => write!(f, "request failed: {msg}"),
-            AIError::EmptyResponse => write!(f, "empty response from LLM"),
-        }
-    }
-}
-
-impl std::error::Error for AIError {}
 
 /// Trait for LLM clients (mockable for testing).
 pub trait LLMProvider: Send + Sync {

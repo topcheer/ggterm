@@ -206,39 +206,21 @@ pub fn cursor_state(app: &crate::App) -> ggterm_render::CursorState {
 }
 
 /// Errors during GPU context initialization.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum GpuError {
-    CreateSurface(wgpu::CreateSurfaceError),
+    #[error("failed to create wgpu surface: {0}")]
+    CreateSurface(#[from] wgpu::CreateSurfaceError),
+    #[error("no suitable GPU adapter found")]
     NoAdapter,
-    RequestDevice(wgpu::RequestDeviceError),
+    #[error("failed to request GPU device: {0}")]
+    RequestDevice(#[from] wgpu::RequestDeviceError),
 }
-
-impl std::fmt::Display for GpuError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GpuError::CreateSurface(e) => write!(f, "failed to create wgpu surface: {e}"),
-            GpuError::NoAdapter => write!(f, "no suitable GPU adapter found"),
-            GpuError::RequestDevice(e) => write!(f, "failed to request GPU device: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for GpuError {}
 
 /// Errors during frame rendering.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RenderFrameError {
+    #[error("surface error: {0}")]
     Surface(String),
-    Render(ggterm_render_wgpu::RenderError),
+    #[error("render error: {0}")]
+    Render(#[from] ggterm_render_wgpu::RenderError),
 }
-
-impl std::fmt::Display for RenderFrameError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RenderFrameError::Surface(e) => write!(f, "surface error: {e}"),
-            RenderFrameError::Render(e) => write!(f, "render error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for RenderFrameError {}

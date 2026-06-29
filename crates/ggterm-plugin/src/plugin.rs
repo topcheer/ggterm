@@ -5,7 +5,8 @@
 //! [`PluginManager`](crate::manager::PluginManager) treats them uniformly.
 
 use std::collections::HashMap;
-use std::fmt;
+
+use thiserror::Error;
 
 use crate::hooks::{Hook, HookResult};
 
@@ -92,38 +93,27 @@ impl PluginContextBuilder {
 }
 
 /// Errors during plugin operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
 pub enum PluginError {
+    #[error("plugin init error: {0}")]
     Init(String),
+    #[error("plugin execution error: {0}")]
     Execution(String),
+    #[error("plugin config error: {0}")]
     Config(String),
+    #[error("plugin not found: {0}")]
     NotFound(String),
+    #[error("plugin already exists: {0}")]
     AlreadyExists(String),
     #[cfg(feature = "lua")]
+    #[error("lua plugin error: {0}")]
     Lua(String),
     #[cfg(feature = "wasm")]
+    #[error("wasm plugin error: {0}")]
     Wasm(String),
+    #[error("plugin permission denied: {0}")]
     Permission(String),
 }
-
-impl fmt::Display for PluginError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Init(m) => write!(f, "plugin init error: {m}"),
-            Self::Execution(m) => write!(f, "plugin execution error: {m}"),
-            Self::Config(m) => write!(f, "plugin config error: {m}"),
-            Self::NotFound(n) => write!(f, "plugin not found: {n}"),
-            Self::AlreadyExists(n) => write!(f, "plugin already exists: {n}"),
-            #[cfg(feature = "lua")]
-            Self::Lua(m) => write!(f, "lua plugin error: {m}"),
-            #[cfg(feature = "wasm")]
-            Self::Wasm(m) => write!(f, "wasm plugin error: {m}"),
-            Self::Permission(m) => write!(f, "plugin permission denied: {m}"),
-        }
-    }
-}
-
-impl std::error::Error for PluginError {}
 
 /// Runtime statistics for a plugin.
 #[derive(Debug, Clone, Default)]

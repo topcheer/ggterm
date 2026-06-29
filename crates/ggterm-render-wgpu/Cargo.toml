@@ -9,6 +9,7 @@ ggterm-core = { path = "../ggterm-core" }
 ggterm-render = { path = "../ggterm-render" }
 glyphon = "0.11"
 wgpu = "29"
+thiserror.workspace = true
 
 [dev-dependencies]
 ggterm-core = { path = "../ggterm-core" }
