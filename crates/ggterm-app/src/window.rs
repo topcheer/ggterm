@@ -626,6 +626,13 @@ impl DesktopApp {
                     self.selection.finish();
                     return;
                 }
+                // P11-D: Cycle through themes
+                KeyCode::KeyT => {
+                    // Note: Ctrl+Shift+T would conflict with "reopen closed tab"
+                    // in browsers, but in terminals it's available. We use it for theme cycling.
+                    self.cycle_theme();
+                    return;
+                }
                 // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N)
                 #[cfg(feature = "ai")]
                 KeyCode::KeyE => {
@@ -1081,6 +1088,33 @@ impl DesktopApp {
     }
     // ── Window controls (P11-C) ───────────────────────────────────
 
+    /// Apply the active theme from the App's ThemeManager to the GPU renderer (P11-D).
+    fn apply_theme_to_renderer(&mut self) {
+        // Clone the theme first to avoid borrow conflict between
+        // active_session() and renderer.
+        let theme = self
+            .active_session_mut()
+            .app_mut()
+            .theme_manager()
+            .current()
+            .clone();
+        if let Some(ref mut renderer) = self.renderer {
+            renderer.set_theme(theme);
+            log::debug!("Theme applied to renderer");
+        }
+    }
+
+    /// Cycle through available themes (P11-D).
+    fn cycle_theme(&mut self) {
+        let name = {
+            let mgr = self.active_session_mut().app_mut().theme_manager();
+            mgr.cycle_next();
+            mgr.current_name().to_owned()
+        };
+        self.apply_theme_to_renderer();
+        log::info!("Theme: {name}");
+    }
+
     /// Toggle fullscreen mode.
     fn toggle_fullscreen(&mut self) {
         if let Some(ref window) = self.window {
@@ -1166,6 +1200,9 @@ impl ApplicationHandler for DesktopApp {
         self.surface = Some(surface);
         self.gpu = Some(gpu);
         self.renderer = Some(renderer);
+
+        // P11-D: Apply active theme to renderer on startup.
+        self.apply_theme_to_renderer();
 
         log::info!("Window + GPU initialized");
     }

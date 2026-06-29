@@ -55,6 +55,8 @@ pub struct GlyphonRenderer {
     rows: usize,
     font_size: f32,
     line_height: f32,
+    /// Active render theme (P11-D).
+    theme: RenderTheme,
 }
 
 impl GlyphonRenderer {
@@ -108,6 +110,7 @@ impl GlyphonRenderer {
             rows,
             font_size: DEFAULT_FONT_SIZE,
             line_height: DEFAULT_LINE_HEIGHT,
+            theme: RenderTheme::default(),
         }
     }
 
@@ -119,6 +122,33 @@ impl GlyphonRenderer {
     /// Get the cell height in pixels.
     pub fn cell_height(&self) -> u32 {
         self.line_height.ceil() as u32
+    }
+
+    /// Set the active render theme (P11-D).
+    ///
+    /// The theme controls default foreground/background colors, cursor color,
+    /// and the ANSI 16-color palette used for text rendering.
+    pub fn set_theme(&mut self, theme: RenderTheme) {
+        self.theme = theme;
+    }
+
+    /// Get a reference to the current render theme.
+    pub fn current_theme(&self) -> &RenderTheme {
+        &self.theme
+    }
+
+    /// Set the font size and recompute cell metrics (P11-A).
+    ///
+    /// Line height is derived from font size with a 1.3x multiplier.
+    /// Cell width is derived from font size with a 0.6x multiplier.
+    pub fn set_font_size(&mut self, size: f32) {
+        self.font_size = size.clamp(6.0, 72.0);
+        self.line_height = self.font_size * 1.3;
+    }
+
+    /// Get the current font size.
+    pub fn font_size(&self) -> f32 {
+        self.font_size
     }
 
     /// Prepare text rendering: Grid → glyphon buffers → shape → prepare().
@@ -150,7 +180,7 @@ impl GlyphonRenderer {
         // Update viewport resolution
         self.viewport.update(queue, self.resolution);
 
-        let theme = RenderTheme::default();
+        let theme = &self.theme;
         let metrics = Metrics::new(self.font_size, self.line_height);
         let cell_h = self.cell_height() as f32;
 
@@ -164,12 +194,14 @@ impl GlyphonRenderer {
         let mut buffers: Vec<Buffer> = Vec::with_capacity(row_end - row_start);
 
         for row_idx in row_start..row_end {
-            let runs = converter::row_to_runs(grid, row_idx, &theme, Some(cursor));
+            let runs = converter::row_to_runs(grid, row_idx, theme, Some(cursor));
 
             let mut text = String::new();
+            let default_color = theme.default_fg;
+            let fg = theme.resolve_fg(&default_color);
             let default_attrs = Attrs::new()
                 .family(Family::Monospace)
-                .color(GlyphonColor::rgb(0xE0, 0xE0, 0xE0));
+                .color(GlyphonColor::rgb(fg.0, fg.1, fg.2));
             let mut attrs_list = AttrsList::new(&default_attrs);
 
             for run in &runs {
