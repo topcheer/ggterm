@@ -59,7 +59,11 @@ impl GpuContext {
             height: height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
-            alpha_mode: caps.alpha_modes[0],
+            alpha_mode: caps
+                .alpha_modes
+                .first()
+                .copied()
+                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
             view_formats: vec![],
         };
 

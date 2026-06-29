@@ -102,7 +102,10 @@ impl AIBridge {
             return false;
         }
 
-        let engine = self.engine.take().expect("engine must exist");
+        // Safety: checked above that engine is Some.
+        let Some(engine) = self.engine.take() else {
+            return false;
+        };
         let (tx, rx) = mpsc::channel::<(AIEngine, AIResponse)>();
         self.result_rx = Some(rx);
         self.busy = true;
