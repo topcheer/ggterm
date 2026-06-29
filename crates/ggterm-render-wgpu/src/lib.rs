@@ -258,10 +258,11 @@ impl GlyphonRenderer {
         self.highlights = highlights;
     }
 
-    /// Set the font size and recompute cell metrics (P11-A).
+    /// Set the font size and recompute cell metrics.
     ///
-    /// Line height is derived from font size with a 1.3x multiplier.
-    /// Cell width is derived from font size with a 0.6x multiplier.
+    /// Line height = font_size (1.0x, for seamless box-drawing chars).
+    /// Cell width = measured advance of 'M' in the terminal font (exact float).
+    /// Scale factor is applied to convert logical points to physical pixels.
     pub fn set_font_size(&mut self, size: f32) {
         // P18-A: size is logical points; multiply by scale_factor for physical pixels.
         let physical = size * self.scale_factor as f32;
