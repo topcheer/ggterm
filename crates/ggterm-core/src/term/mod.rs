@@ -1685,6 +1685,86 @@ mod tests {
     }
 
     #[test]
+    fn t_osc_8_set_hyperlink() {
+        // OSC 8 ; params ; URI ST → set current hyperlink
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        assert_eq!(t.current_hyperlink.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn t_osc_8_set_hyperlink_with_params() {
+        // OSC 8 ; id=123 ; URI ST → params ignored, URI captured
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]8;id=42;https://rust-lang.org\x07");
+        assert_eq!(
+            t.current_hyperlink.as_deref(),
+            Some("https://rust-lang.org")
+        );
+    }
+
+    #[test]
+    fn t_osc_8_clear_hyperlink() {
+        // OSC 8 with empty URI clears the hyperlink
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        assert!(t.current_hyperlink.is_some());
+        feed(&mut t, b"\x1b]8;;\x1b\\");
+        assert!(t.current_hyperlink.is_none());
+    }
+
+    #[test]
+    fn t_osc_8_hyperlink_applied_to_cells() {
+        // Set hyperlink, print text, verify cells carry the URI.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"Hi");
+        let cell0 = t.grid().cell(0, 0).unwrap();
+        let cell1 = t.grid().cell(1, 0).unwrap();
+        assert_eq!(cell0.hyperlink.as_deref(), Some("https://example.com"));
+        assert_eq!(cell1.hyperlink.as_deref(), Some("https://example.com"));
+        assert_eq!(cell0.ch, 'H');
+        assert_eq!(cell1.ch, 'i');
+    }
+
+    #[test]
+    fn t_osc_8_hyperlink_cleared_on_subsequent_text() {
+        // Set hyperlink, print, clear hyperlink, print more text.
+        // Subsequent cells should NOT carry the hyperlink.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"A");
+        feed(&mut t, b"\x1b]8;;\x1b\\");
+        feed(&mut t, b"B");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().hyperlink.as_deref(),
+            Some("https://example.com")
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().hyperlink, None);
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_osc_8_multichar_continuation() {
+        // Multiple characters under same hyperlink all carry it.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]8;;https://rust-lang.org\x07");
+        feed(&mut t, b"Click here");
+        for i in 0..5 {
+            let cell = t.grid().cell(i, 0).unwrap();
+            assert_eq!(
+                cell.hyperlink.as_deref(),
+                Some("https://rust-lang.org"),
+                "cell {i} should have hyperlink"
+            );
+        }
+        // After clearing, more text has no hyperlink.
+        feed(&mut t, b"\x1b]8;;\x07");
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(5, 0).unwrap().hyperlink, None);
+    }
+
+    #[test]
     fn t_bell_sets_flag() {
         let mut t = Terminal::new(80, 24);
         assert!(!t.take_bell());
