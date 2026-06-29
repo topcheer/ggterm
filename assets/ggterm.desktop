@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GGTerm
+GenericName=Terminal Emulator
+Comment=GPU-accelerated AI-native terminal emulator
+Exec=ggterm
+Icon=ggterm
+Terminal=false
+Categories=System;TerminalEmulator;Development;
+Keywords=terminal;emulator;console;shell;
+StartupWMClass=GGTerm

@@ -1,0 +1,48 @@
+# cargo-bundle configuration for cross-platform packaging.
+#
+# Install cargo-bundle: cargo install cargo-bundle
+# Build macOS app: cargo bundle --features "desktop ai plugin plugin-lua config-watch" --bundle macos
+#
+# For Linux/Windows packaging, we use platform-specific scripts.
+
+[package]
+name = "ggterm"
+version = "0.1.0"
+authors = ["GGTerm Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/topcheer/ggterm"
+description = "GPU-accelerated AI-native terminal emulator"
+
+# ── macOS ─────────────────────────────────────────────────────────────
+
+[package.metadata.bundle]
+name = "GGTerm"
+identifier = "dev.ggterm.GGTerm"
+icon = ["assets/icon.icns"]
+version = "0.1.0"
+copyright = "Copyright (c) 2024 GGTerm Contributors. MIT OR Apache-2.0."
+category = "DeveloperTool"
+short_description = "GPU-accelerated AI-native terminal emulator"
+long_description = """
+GGTerm is a high-performance terminal emulator built with Rust, wgpu, and glyphon.
+Features include multi-tab sessions, AI assistant integration, scrollback search,
+clipboard support, configurable themes, font zoom, and much more.
+"""
+
+# macOS-specific
+[package.metadata.bundle.macOS]
+minimum_system_version = "11.0"
+exception_domain = ""
+signing_identity = ""  # Set to your Developer ID for distribution
+
+# ── Linux ────────────────────────────────────────────────────────────
+
+[package.metadata.bundle.linux]
+# Used for .deb and .rpm packages
+section = "utils"
+# Assets to include (icons, .desktop file)
+assets = [
+    ["assets/ggterm.desktop", "/usr/share/applications/", "644"],
+    ["assets/icon-256.png", "/usr/share/icons/hicolor/256x256/apps/ggterm.png", "644"],
+    ["assets/icon-512.png", "/usr/share/icons/hicolor/512x512/apps/ggterm.png", "644"],
+]

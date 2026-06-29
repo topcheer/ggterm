@@ -27,6 +27,7 @@
 //! - **desktop**: Enables winit window + wgpu GPU rendering via
 //!   `GlyphonRenderer`. Adds winit, wgpu, pollster dependencies.
 
+pub mod about_dialog;
 pub mod app;
 pub mod clipboard;
 pub mod command_nav;
@@ -36,12 +37,16 @@ pub mod font;
 pub mod input;
 pub mod mouse;
 pub mod search;
+pub mod settings_ui;
 pub mod shell_integration;
+pub mod splits;
 pub mod status_bar;
+pub mod tab_bar;
 pub mod tab_session;
 pub mod tabs;
 pub mod terminal_actions;
 pub mod theme;
+pub mod version_info;
 
 #[cfg(feature = "ai")]
 pub mod ai_bridge;
