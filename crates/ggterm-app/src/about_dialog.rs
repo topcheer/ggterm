@@ -199,4 +199,74 @@ mod tests {
         // Should contain homepage
         assert!(lines.iter().any(|l| l.starts_with("https://")));
     }
+
+    // ── P19-H: Integration edge cases ─────────────────────────
+
+    #[test]
+    fn test_format_text_multi_line_structure() {
+        let dlg = AboutDialog::new();
+        let text = dlg.format_text();
+        let lines: Vec<&str> = text.lines().collect();
+        // Must have enough lines: app name, version, blank, tech header,
+        // 5 tech items, blank, homepage.
+        assert!(
+            lines.len() >= 10,
+            "expected >=10 lines, got {}",
+            lines.len()
+        );
+        // First line is app name.
+        assert_eq!(lines[0], "GGTerm");
+        // Contains blank separator before tech stack.
+        assert!(lines.iter().any(|l| l.is_empty()));
+    }
+
+    #[test]
+    fn test_overlay_lines_has_tech_items() {
+        let dlg = AboutDialog::new();
+        let lines = dlg.overlay_lines();
+        // Each tech_stack entry should appear as a line.
+        for tech in dlg.tech_stack {
+            assert!(
+                lines.iter().any(|l| l.contains(tech)),
+                "missing tech: {tech}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_equals_new() {
+        let d1 = AboutDialog::default();
+        let d2 = AboutDialog::new();
+        assert_eq!(d1.visible, d2.visible);
+        assert_eq!(d1.app_name, d2.app_name);
+        assert_eq!(d1.version, d2.version);
+        assert_eq!(d1.tech_stack.len(), d2.tech_stack.len());
+    }
+
+    #[test]
+    fn test_show_after_hide() {
+        let mut dlg = AboutDialog::new();
+        dlg.show();
+        assert!(dlg.visible);
+        dlg.hide();
+        assert!(!dlg.visible);
+        dlg.show(); // can show again after hiding
+        assert!(dlg.visible);
+    }
+
+    #[test]
+    fn test_overlay_lines_ends_with_homepage() {
+        let dlg = AboutDialog::new();
+        let lines = dlg.overlay_lines();
+        let last = lines.last().unwrap();
+        assert!(last.starts_with("https://"));
+    }
+
+    #[test]
+    fn test_git_hash_and_build_date_fields() {
+        let dlg = AboutDialog::new();
+        // Fields exist and are either "unknown" or have a value.
+        assert!(!dlg.git_hash.is_empty());
+        assert!(!dlg.build_date.is_empty());
+    }
 }

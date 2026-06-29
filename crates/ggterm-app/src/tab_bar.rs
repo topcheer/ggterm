@@ -182,4 +182,64 @@ mod tests {
         let tab = TabInfo::new("sh", 1, false);
         assert_eq!(tab.truncated_title(10), "sh");
     }
+
+    // ── P19-H: Integration edge cases ─────────────────────────
+
+    #[test]
+    fn t_active_dirty_suppresses_marker() {
+        // When active=true and dirty=true, dirty marker (!) is suppressed.
+        let mut tab = TabInfo::new("logs", 1, true);
+        tab.dirty = true;
+        // Should be "1:logs*" not "1:logs!*"
+        assert_eq!(tab.format(), "1:logs*");
+    }
+
+    #[test]
+    fn t_truncated_title_exact_boundary() {
+        // 12 chars exactly should NOT be truncated.
+        let tab = TabInfo::new("twelvechars!", 1, false);
+        assert_eq!(tab.truncated_title(12), "twelvechars!");
+        // 13 chars should be truncated.
+        let tab2 = TabInfo::new("thirteenchars", 1, false);
+        assert!(tab2.truncated_title(12).contains('\u{2026}'));
+    }
+
+    #[test]
+    fn t_tab_bar_many_tabs() {
+        let mut state = TabBarState::new();
+        let titles: Vec<&str> = (0..10).map(|_| "sh").collect();
+        state.update(&titles, 5);
+        assert!(state.visible);
+        assert_eq!(state.tabs.len(), 10);
+        // Tab 6 (index 5) should be active.
+        assert!(state.tabs[5].active);
+        assert!(!state.tabs[0].active);
+    }
+
+    #[test]
+    fn t_tab_info_clone_eq() {
+        let t1 = TabInfo::new("vim", 2, true);
+        let t2 = t1.clone();
+        assert_eq!(t1, t2);
+    }
+
+    #[test]
+    fn t_update_resets_dirty() {
+        // Even if a previous tab was dirty, update() resets all dirty flags.
+        let mut state = TabBarState::new();
+        state.update(&["a", "b"], 0);
+        state.tabs[1].dirty = true;
+        state.update(&["a", "b"], 0);
+        assert!(!state.tabs[1].dirty);
+    }
+
+    #[test]
+    fn t_format_inactive_last_tab() {
+        let mut state = TabBarState::new();
+        state.update(&["sh", "vim"], 0);
+        // Active is 0, so tab 1 is inactive.
+        let formatted = state.format();
+        assert!(formatted.contains("1:sh*"));
+        assert!(formatted.contains("2:vim"));
+    }
 }

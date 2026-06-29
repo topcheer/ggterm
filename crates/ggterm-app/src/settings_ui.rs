@@ -384,4 +384,107 @@ mod tests {
         assert!(summary.contains("font=14"));
         assert!(summary.contains("ai=off"));
     }
+
+    // ── P19-H: Integration edge cases ─────────────────────────
+
+    #[test]
+    fn t_full_navigation_cycle_down() {
+        // Navigate down through all 7 fields and verify wrap.
+        let mut s = SettingsState::new();
+        assert_eq!(s.selected, SettingsField::Theme);
+        s.move_down(); // → FontSize
+        s.move_down(); // → Scrollback
+        s.move_down(); // → Shell
+        s.move_down(); // → AiEnabled
+        s.move_down(); // → AiEndpoint
+        s.move_down(); // → AiModel
+        s.move_down(); // → Theme (wrap)
+        assert_eq!(s.selected, SettingsField::Theme);
+    }
+
+    #[test]
+    fn t_full_navigation_cycle_up() {
+        // Navigate up through all 7 fields and verify wrap.
+        let mut s = SettingsState::new();
+        assert_eq!(s.selected, SettingsField::Theme);
+        s.move_up(); // → AiModel (wrap)
+        assert_eq!(s.selected, SettingsField::AiModel);
+        s.move_up(); // → AiEndpoint
+        s.move_up(); // → AiEnabled
+        s.move_up(); // → Shell
+        s.move_up(); // → Scrollback
+        s.move_up(); // → FontSize
+        s.move_up(); // → Theme
+        assert_eq!(s.selected, SettingsField::Theme);
+    }
+
+    #[test]
+    fn t_cycle_theme_all_options() {
+        let mut s = SettingsState::new();
+        s.theme = "dark".to_string();
+        // Cycle through all THEME_OPTIONS.
+        for expected in THEME_OPTIONS.iter().cycle().skip(1) {
+            s.cycle_theme();
+            assert_eq!(s.theme, *expected);
+            if s.theme == "dark" {
+                break; // wrapped around
+            }
+        }
+    }
+
+    #[test]
+    fn t_open_resets_dirty_and_selected() {
+        let mut s = SettingsState::new();
+        s.open();
+        s.cycle_theme(); // sets dirty=true
+        s.move_down(); // selected = FontSize
+        assert!(s.dirty);
+        assert_eq!(s.selected, SettingsField::FontSize);
+
+        // Re-open should reset.
+        s.open();
+        assert!(!s.dirty);
+        assert_eq!(s.selected, SettingsField::Theme);
+    }
+
+    #[test]
+    fn t_scrollback_down_at_boundary() {
+        let mut s = SettingsState::new();
+        s.scrollback_lines = 1000; // exactly at boundary
+        s.scrollback_down();
+        assert_eq!(s.scrollback_lines, 100); // goes to min
+    }
+
+    #[test]
+    fn t_font_size_up_sets_dirty() {
+        let mut s = SettingsState::new();
+        s.dirty = false;
+        s.font_size_up();
+        assert!(s.dirty);
+    }
+
+    #[test]
+    fn t_format_summary_with_ai_on() {
+        let mut s = SettingsState::new();
+        s.ai_enabled = true;
+        let summary = s.format_summary();
+        assert!(summary.contains("ai=on"));
+    }
+
+    #[test]
+    fn t_load_from_config_resets_dirty() {
+        let mut s = SettingsState::new();
+        s.dirty = true;
+        let cfg = SettingsSnapshot {
+            theme: "dark".to_string(),
+            font_size: 14,
+            scrollback_lines: 10000,
+            shell: String::new(),
+            ai_enabled: false,
+            ai_endpoint: String::new(),
+            ai_model: String::new(),
+        };
+        s.load_from_config(&cfg);
+        assert!(!s.dirty);
+    }
 }

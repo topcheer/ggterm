@@ -1027,4 +1027,91 @@ mod tests {
         assert_eq!(tree.pane_count(), 6);
         assert_eq!(tree.pane_ids().len(), 6);
     }
+
+    // ── P19-H: Integration edge cases ─────────────────────────
+
+    #[test]
+    fn t_split_remove_split_cycle() {
+        // Split → remove → split again: new IDs must not reuse old ones.
+        let mut tree = SplitTree::new(0);
+        let id1 = tree.split_horizontal(0.5);
+        assert_eq!(id1, 1);
+        assert!(tree.remove(1));
+        // Tree is back to single pane, but next_id is still 2.
+        let id2 = tree.split_horizontal(0.5);
+        assert_eq!(id2, 2, "new pane should not reuse removed ID");
+        assert_eq!(tree.pane_count(), 2);
+    }
+
+    #[test]
+    fn t_remove_from_deep_nested_middle() {
+        // Build [[0 / 2] | [1 | 3]]
+        let mut tree = SplitTree::new(0);
+        tree.split_horizontal(0.5); // [0 | 1]
+        tree.split_vertical_pane(0, 0.5); // [[0 / 2] | 1]
+        tree.split_horizontal_pane(1, 0.5); // [[0 / 2] | [1 | 3]]
+        assert_eq!(tree.pane_count(), 4);
+
+        // Remove pane 2 (deep nested in left subtree).
+        assert!(tree.remove(2));
+        assert_eq!(tree.pane_count(), 3);
+        // Pane 0 should survive (collapsed from vertical split).
+        assert!(tree.pane_ids().contains(&0));
+        // Pane 1 and 3 should survive.
+        assert!(tree.pane_ids().contains(&1));
+        assert!(tree.pane_ids().contains(&3));
+    }
+
+    #[test]
+    fn t_focus_cycle_visits_all_panes() {
+        // In a 4-pane tree, focus_next should visit all 4 before wrapping.
+        let mut tree = SplitTree::new(0);
+        tree.split_horizontal(0.5); // [0 | 1]
+        tree.split_horizontal_pane(0, 0.5); // [[0 | 2] | 1]
+        tree.split_horizontal_pane(1, 0.5); // [[0 | 2] | [1 | 3]]
+
+        tree.set_active(0);
+        let mut visited = vec![tree.active()];
+        for _ in 0..3 {
+            tree.focus_next();
+            visited.push(tree.active());
+        }
+        // All 4 panes should be visited.
+        let unique: std::collections::HashSet<_> = visited.iter().collect();
+        assert_eq!(unique.len(), 4, "focus_next must visit all panes");
+        // One more should wrap back to start.
+        tree.focus_next();
+        assert_eq!(tree.active(), 0);
+    }
+
+    #[test]
+    fn t_areas_all_nonzero_in_complex_tree() {
+        let mut tree = SplitTree::new(0);
+        tree.split_horizontal(0.5);
+        tree.split_vertical(0.5);
+
+        let areas = tree.areas(Rect::new(0, 0, 200, 100));
+        for (id, r) in &areas {
+            assert!(r.width > 0, "pane {id} has zero width");
+            assert!(r.height > 0, "pane {id} has zero height");
+        }
+    }
+
+    #[test]
+    fn t_root_accessor() {
+        let tree = SplitTree::new(0);
+        assert!(matches!(tree.root(), SplitNode::Pane(0)));
+    }
+
+    #[test]
+    fn t_adjust_ratio_for_specific_pane() {
+        let mut tree = SplitTree::new(0);
+        tree.split_horizontal(0.5); // [0 | 1]
+        // Adjust ratio for pane 1 (not active).
+        assert!(tree.adjust_ratio(0, 0.2));
+        let areas = tree.areas(Rect::new(0, 0, 100, 50));
+        let r0 = areas.iter().find(|(id, _)| id == &0).unwrap().1;
+        // Left side grew by +0.2 (from 0.5 to 0.7).
+        assert!(r0.width > 60);
+    }
 }
