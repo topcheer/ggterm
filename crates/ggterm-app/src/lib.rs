@@ -28,6 +28,7 @@
 //!   `GlyphonRenderer`. Adds winit, wgpu, pollster dependencies.
 
 pub mod app;
+pub mod clipboard;
 pub mod command_nav;
 pub mod config;
 pub mod event;
@@ -36,6 +37,7 @@ pub mod mouse;
 pub mod search;
 pub mod shell_integration;
 pub mod tabs;
+pub mod tab_session;
 pub mod theme;
 
 #[cfg(feature = "ai")]
@@ -49,8 +51,6 @@ pub mod gpu;
 pub mod keymap;
 #[cfg(feature = "desktop")]
 pub mod resize;
-#[cfg(feature = "desktop")]
-pub mod clipboard;
 #[cfg(feature = "desktop")]
 pub mod window;
 

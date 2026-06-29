@@ -338,6 +338,9 @@ pub struct Terminal {
     pub(crate) cursor_style: CursorStyle,
     /// Device response buffer (DA/DSR replies).
     pub(crate) response_buffer: Vec<u8>,
+    /// Pending OSC 52 clipboard set request (base64-decoded bytes).
+    /// The app layer reads this and writes to the system clipboard.
+    pub(crate) pending_clipboard_set: Option<Vec<u8>>,
 }
 
 impl Terminal {
@@ -367,6 +370,7 @@ impl Terminal {
             last_printed_char: None,
             cursor_style: CursorStyle::default(),
             response_buffer: Vec::new(),
+            pending_clipboard_set: None,
         }
     }
 
@@ -413,9 +417,16 @@ impl Terminal {
     pub fn mouse_button_event_enabled(&self) -> bool {
         self.modes.mouse_button_event
     }
+
+    /// Return true if bracketed paste mode is active (DECSET 2004).
+    pub fn bracketed_paste(&self) -> bool {
+        self.modes.bracketed_paste
+    }
+
     pub fn cursor_style(&self) -> CursorStyle {
         self.cursor_style
     }
+
     pub fn title(&self) -> &str {
         &self.title
     }
@@ -751,6 +762,41 @@ impl Terminal {
             }
             i += 1;
         }
+    }
+
+    /// Take the pending OSC 52 clipboard set data, if any.
+    ///
+    /// Called by the app layer to apply the clipboard change
+    /// to the system clipboard.
+    pub fn take_pending_clipboard_set(&mut self) -> Option<Vec<u8>> {
+        self.pending_clipboard_set.take()
+    }
+
+    /// Simple base64 decoder for OSC 52 payloads.
+    fn decode_base64(input: &str) -> Option<Vec<u8>> {
+        let bytes = input.as_bytes();
+        let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+        let mut buf: u32 = 0;
+        let mut bits = 0;
+        for &b in bytes {
+            let val = match b {
+                b'A'..=b'Z' => b - b'A',
+                b'a'..=b'z' => b - b'a' + 26,
+                b'0'..=b'9' => b - b'0' + 52,
+                b'+' => 62,
+                b'/' => 63,
+                b'=' => break,
+                _ => continue,
+            };
+            buf = (buf << 6) | val as u32;
+            bits += 6;
+            if bits >= 8 {
+                bits -= 8;
+                out.push((buf >> bits) as u8);
+                buf &= (1 << bits) - 1;
+            }
+        }
+        Some(out)
     }
 }
 
@@ -1178,6 +1224,23 @@ impl Perform for Terminal {
             Some(0) | Some(2) => {
                 self.title = parts.next().unwrap_or("").to_string();
             }
+            Some(52) => {
+                // OSC 52 — Clipboard manipulation.
+                // Format: OSC 52 ; <selector> ; <base64-data> ST
+                // <selector>: 'c' = clipboard, 'p' = primary selection.
+                // With data: set clipboard.  Without data (empty): clear clipboard.
+                let payload = parts.next().unwrap_or("");
+                let base64_data = if let Some(idx) = payload.find(';') {
+                    &payload[idx + 1..]
+                } else {
+                    payload
+                };
+                if base64_data.is_empty() {
+                    self.pending_clipboard_set = Some(Vec::new());
+                } else if let Some(decoded) = Self::decode_base64(base64_data) {
+                    self.pending_clipboard_set = Some(decoded);
+                }
+            }
             Some(133) => {
                 let payload = parts.next().unwrap_or("");
                 let mut sub_parts = payload.splitn(2, ';');
@@ -1464,6 +1527,138 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]2;Title2\x1b\\");
         assert_eq!(t.title(), "Title2");
+    }
+
+    #[test]
+    fn t_osc_52_set_clipboard() {
+        let mut t = Terminal::new(80, 24);
+        // "hello" in base64 = "aGVsbG8="
+        feed(&mut t, b"\x1b]52;c;aGVsbG8=\x07");
+        assert_eq!(
+            t.take_pending_clipboard_set(),
+            Some(b"hello".to_vec())
+        );
+    }
+
+    #[test]
+    fn t_osc_52_set_clipboard_st_terminated() {
+        let mut t = Terminal::new(80, 24);
+        // "world" in base64 = "d29ybGQ="
+        feed(&mut t, b"\x1b]52;c;d29ybGQ=\x1b\\");
+        assert_eq!(
+            t.take_pending_clipboard_set(),
+            Some(b"world".to_vec())
+        );
+    }
+
+    #[test]
+    fn t_osc_52_clear_clipboard() {
+        let mut t = Terminal::new(80, 24);
+        // Empty data = clear clipboard
+        feed(&mut t, b"\x1b]52;c;\x07");
+        assert_eq!(t.take_pending_clipboard_set(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn t_osc_52_no_data() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;\x07");
+        // Should set empty clipboard
+        assert!(t.take_pending_clipboard_set().is_some());
+    }
+
+    #[test]
+    fn t_osc_52_take_clears() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;aGVsbG8=\x07");
+        assert!(t.take_pending_clipboard_set().is_some());
+        // Second take should return None
+        assert!(t.take_pending_clipboard_set().is_none());
+    }
+
+    #[test]
+    fn t_base64_decode_basic() {
+        assert_eq!(Terminal::decode_base64("aGVsbG8=").unwrap(), b"hello");
+        assert_eq!(Terminal::decode_base64("d29ybGQ=").unwrap(), b"world");
+        assert_eq!(Terminal::decode_base64("Zm9v").unwrap(), b"foo");
+    }
+
+    #[test]
+    fn t_base64_decode_empty() {
+        assert_eq!(Terminal::decode_base64("").unwrap(), b"");
+    }
+
+    #[test]
+    fn t_base64_decode_padding() {
+        assert_eq!(Terminal::decode_base64("Zg==").unwrap(), b"f");
+        assert_eq!(Terminal::decode_base64("Zm8=").unwrap(), b"fo");
+    }
+
+    #[test]
+    fn t_osc_52_set_clipboard_bell() {
+        // OSC 52 ; c ; <base64> BEL
+        // "Hi" → base64 = "SGk="
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;SGk=\x07");
+        let data = t.take_pending_clipboard_set().expect("clipboard data");
+        assert_eq!(data, b"Hi");
+    }
+
+    #[test]
+    fn t_osc_52_set_clipboard_st() {
+        // OSC 52 ; c ; <base64> ST
+        // "Hello" → base64 = "SGVsbG8="
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;SGVsbG8=\x1b\\");
+        let data = t.take_pending_clipboard_set().expect("clipboard data");
+        assert_eq!(data, b"Hello");
+    }
+
+    #[test]
+    fn t_osc_52_empty_clears_clipboard() {
+        // OSC 52 ; c ; (empty) → clear clipboard
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;\x07");
+        let data = t.take_pending_clipboard_set().expect("clipboard data");
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn t_osc_52_no_selector() {
+        // OSC 52 ; <base64> without clipboard selector
+        // "test" → base64 = "dGVzdA=="
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;dGVzdA==\x07");
+        let data = t.take_pending_clipboard_set().expect("clipboard data");
+        assert_eq!(data, b"test");
+    }
+
+    #[test]
+    fn t_osc_52_take_clears_pending() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;SGk=\x07");
+        assert!(t.take_pending_clipboard_set().is_some());
+        // Second call should return None.
+        assert!(t.take_pending_clipboard_set().is_none());
+    }
+
+    #[test]
+    fn t_osc_52_unicode_text() {
+        // "你好" in UTF-8 → base64 = "5L2g5aW9"
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]52;c;5L2g5aW9\x07");
+        let data = t.take_pending_clipboard_set().expect("clipboard data");
+        assert_eq!(data, "你好".as_bytes());
+    }
+
+    #[test]
+    fn t_bracketed_paste_accessor() {
+        let mut t = Terminal::new(80, 24);
+        assert!(!t.bracketed_paste());
+        feed(&mut t, b"\x1b[?2004h");
+        assert!(t.bracketed_paste());
+        feed(&mut t, b"\x1b[?2004l");
+        assert!(!t.bracketed_paste());
     }
 
     #[test]

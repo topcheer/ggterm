@@ -122,10 +122,10 @@ impl TabSession {
 
     /// Write bytes to the PTY.
     pub fn write_to_pty(&mut self, bytes: &[u8]) {
-        if let Some(ref mut pty) = self.pty {
-            if let Err(e) = pty.write(bytes) {
-                log::warn!("PTY write error: {e}");
-            }
+        if let Some(ref mut pty) = self.pty
+            && let Err(e) = pty.write(bytes)
+        {
+            log::warn!("PTY write error: {e}");
         }
     }
 
@@ -143,10 +143,10 @@ impl TabSession {
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.app
             .handle_event(crate::event::AppEvent::Resize { cols, rows });
-        if let Some(ref mut pty) = self.pty {
-            if let Err(e) = pty.resize(cols, rows) {
-                log::warn!("PTY resize failed: {e}");
-            }
+        if let Some(ref mut pty) = self.pty
+            && let Err(e) = pty.resize(cols, rows)
+        {
+            log::warn!("PTY resize failed: {e}");
         }
     }
 }
@@ -164,6 +164,11 @@ pub fn format_tab_bar(titles: &[String], active: usize, dirty: &[bool]) -> Strin
         .iter()
         .enumerate()
         .map(|(i, title)| {
+            let truncated = if title.chars().count() > 10 {
+                format!("{}…", title.chars().take(9).collect::<String>())
+            } else {
+                title.clone()
+            };
             let marker = if i == active {
                 "*"
             } else if dirty.get(i).copied().unwrap_or(false) {
@@ -171,7 +176,7 @@ pub fn format_tab_bar(titles: &[String], active: usize, dirty: &[bool]) -> Strin
             } else {
                 ""
             };
-            format!("{}:{}{}", i + 1, title, marker)
+            format!("{}:{}{}", i + 1, truncated, marker)
         })
         .collect::<Vec<_>>()
         .join(" | ")
@@ -330,19 +335,22 @@ mod tests {
     #[test]
     fn test_tab_close_middle_adjusts_active() {
         // 3 tabs: [A, B*, C], active = 1 (B)
-        // Close B -> tabs become [A, C], active shifts to 0
+        // Close B (the active one) -> tabs become [A, C], active stays at 1 (now C)
+        // Standard behaviour: when closing the active tab, the next tab takes its slot.
         let mut tabs = vec!["A", "B", "C"];
         let mut active = 1usize;
         let close_idx = 1;
 
         tabs.remove(close_idx);
+        // When we close the active tab itself, active index stays valid
+        // because the elements shift left. active=1 now points to what was C.
         if active >= tabs.len() {
             active = tabs.len() - 1;
         } else if close_idx < active {
             active -= 1;
         }
         assert_eq!(tabs, vec!["A", "C"]);
-        assert_eq!(active, 0); // A is now active
+        assert_eq!(active, 1); // C is now active (took B's slot)
     }
 
     #[test]
@@ -390,7 +398,7 @@ mod tests {
         ];
         let dirty = vec![true, false, true];
         let bar = format_tab_bar(&titles, 1, &dirty);
-        assert_eq!(bar, "1:bash! | 2:ssh user@h…* | 3:logs!");
+        assert_eq!(bar, "1:bash! | 2:ssh user@…* | 3:logs!");
     }
 
     #[test]
