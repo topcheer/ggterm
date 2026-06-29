@@ -10,8 +10,8 @@ use std::time::Duration;
 use ggterm_core::{Parser, Terminal};
 use ggterm_render::{ConsoleRenderer, CursorState, RenderTheme, Renderer};
 
-use crate::config::ConfigManager;
 use crate::command_nav::CommandNavState;
+use crate::config::ConfigManager;
 use crate::event::{AppEvent, EventReceiver, EventSender};
 use crate::input::InputEncoder;
 #[cfg(feature = "plugin")]
@@ -374,9 +374,24 @@ impl App {
         }
     }
 
+    /// Get a reference to the terminal.
+    pub fn terminal(&self) -> &Terminal {
+        &self.terminal
+    }
+
     /// Get the current terminal grid (read-only).
     pub fn grid(&self) -> &ggterm_core::Grid {
         self.terminal.grid()
+    }
+
+    /// Get command navigation overlay state (Phase 8-D).
+    pub fn command_nav(&self) -> &CommandNavState {
+        &self.command_nav
+    }
+
+    /// Get mutable command navigation overlay state (Phase 8-D).
+    pub fn command_nav_mut(&mut self) -> &mut CommandNavState {
+        &mut self.command_nav
     }
 
     /// Get the cursor position (x, y) and visibility.

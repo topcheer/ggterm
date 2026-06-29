@@ -345,13 +345,13 @@ impl ConfigManager {
         let flag = self.reload_pending.clone();
         let watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
-                if let Ok(event) = res {
-                    if matches!(
+                if let Ok(event) = res
+                    && matches!(
                         event.kind,
                         notify::EventKind::Modify(_) | notify::EventKind::Create(_)
-                    ) {
-                        flag.store(true, Ordering::SeqCst);
-                    }
+                    )
+                {
+                    flag.store(true, Ordering::SeqCst);
                 }
             },
             notify::Config::default(),

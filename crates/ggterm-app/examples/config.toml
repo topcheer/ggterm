@@ -1,0 +1,83 @@
+# GGTerm Configuration File
+#
+# Place this file at ~/.ggterm/config.toml to customize GGTerm.
+# All fields are optional — missing keys fall back to defaults.
+#
+# GGTerm watches this file for changes and hot-reloads automatically
+# when built with the `config-watch` feature.
+
+# ── Appearance ─────────────────────────────────────────────────
+# Controls the visual look of the terminal.
+
+[appearance]
+
+# Color theme. Built-in options:
+#   "dark"       — Dark background (default)
+#   "light"      — Light background
+##   "dracula"    — Dracula color scheme
+#   "solarized"  — Solarized Dark
+#
+# Default: "dark"
+theme = "dark"
+
+# Font family name. The renderer resolves this against system fonts.
+# Common choices: "monospace", "JetBrains Mono", "Fira Code", "Menlo"
+#
+# Default: "monospace"
+font_family = "monospace"
+
+# Font size in pixels.
+#
+# Default: 14
+font_size = 14
+
+# Cell dimensions in pixels. Adjust these to match your font metrics.
+# Most monospace fonts at 14 px are approximately 8 × 16.
+#
+# Default: 8 × 16
+cell_width = 8
+cell_height = 16
+
+
+# ── Terminal ───────────────────────────────────────────────────
+# Controls terminal behaviour.
+
+[terminal]
+
+# Maximum scrollback lines retained in the history buffer.
+# Higher values use more memory but let you scroll further back.
+#
+# Default: 10000
+scrollback_lines = 10000
+
+# Shell program path. When empty, GGTerm uses $SHELL or /bin/sh.
+#
+# Examples: "/bin/zsh", "/bin/bash", "/usr/bin/fish"
+#
+# Default: "" (auto-detect)
+shell = ""
+
+
+# ── AI Engine ──────────────────────────────────────────────────
+# Controls the built-in AI assistant (suggestions, explanations).
+
+[ai]
+
+# Whether the AI bridge is active at startup.
+# When disabled, AI features are unavailable until manually enabled.
+#
+# Default: false
+enabled = false
+
+# LLM API endpoint URL (OpenAI-compatible).
+# Works with OpenAI, DeepSeek, ZAI (GLM), local llama.cpp, etc.
+#
+# Default: "https://api.openai.com/v1"
+api_endpoint = "https://api.openai.com/v1"
+
+# Model identifier.
+#
+# Examples: "gpt-4o-mini", "gpt-4o", "glm-4-flash", "deepseek-chat"
+#
+# Default: "gpt-4o-mini"
+model = "gpt-4o-mini"

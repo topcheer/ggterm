@@ -29,10 +29,12 @@ use ggterm_render_wgpu::GlyphonRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::Key;
+use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::app::{App, spawn_pty_reader};
+#[cfg(feature = "config-watch")]
+use crate::config::ConfigManager;
 use crate::event::{AppEvent, EventSender};
 use crate::gpu::{GpuContext, cursor_state, init_wgpu};
 use crate::input::InputEncoder;
@@ -154,6 +156,11 @@ pub struct DesktopApp {
     _event_tx: EventSender,
     /// Input encoder for keyboard → PTY bytes.
     encoder: InputEncoder,
+
+    // ── Config hot-reload (config-watch feature) ──
+    /// Config manager with optional file-system watcher.
+    #[cfg(feature = "config-watch")]
+    config_mgr: Option<ConfigManager>,
 }
 
 impl DesktopApp {
@@ -189,7 +196,25 @@ impl DesktopApp {
             renderer: None,
             _event_tx: event_tx,
             encoder: InputEncoder::new(),
+            #[cfg(feature = "config-watch")]
+            config_mgr: None,
         };
+
+        // 5b. Load config and start watching (if config-watch is enabled).
+        #[cfg(feature = "config-watch")]
+        {
+            match ConfigManager::load_default() {
+                Ok(mut mgr) => {
+                    if let Err(e) = mgr.watch() {
+                        log::warn!("Config watch failed: {e}");
+                    }
+                    desktop.config_mgr = Some(mgr);
+                }
+                Err(e) => {
+                    log::warn!("Config load failed: {e}");
+                }
+            }
+        }
 
         // 6. Create winit event loop and run.
         let event_loop = EventLoop::new()?;
@@ -262,6 +287,24 @@ impl DesktopApp {
     fn handle_keyboard_input(&mut self, event: &KeyEvent) {
         if event.state != ElementState::Pressed {
             return;
+        }
+
+        // Phase 8-D: Ctrl+Shift+Up/Down for command block navigation
+        if self.mods.ctrl
+            && self.mods.shift
+            && let PhysicalKey::Code(code) = &event.physical_key
+        {
+            match code {
+                KeyCode::ArrowUp => {
+                    self.app.handle_event(AppEvent::PrevCommandBlock);
+                    return;
+                }
+                KeyCode::ArrowDown => {
+                    self.app.handle_event(AppEvent::NextCommandBlock);
+                    return;
+                }
+                _ => {}
+            }
         }
 
         // Extract logical text for printable character support.
@@ -407,6 +450,23 @@ impl ApplicationHandler for DesktopApp {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Pump PTY events.
         self.app.pump();
+
+        // Poll config watcher for hot-reload.
+        #[cfg(feature = "config-watch")]
+        if let Some(ref mut mgr) = self.config_mgr {
+            match mgr.poll_reload() {
+                Ok(true) => {
+                    let cfg = mgr.config();
+                    log::info!(
+                        "Config reloaded: theme={}, scrollback={}",
+                        cfg.appearance.theme,
+                        cfg.terminal.scrollback_lines
+                    );
+                }
+                Ok(false) => {}
+                Err(e) => log::warn!("Config reload error: {e}"),
+            }
+        }
 
         // Check exit.
         if !self.app.is_running() {
