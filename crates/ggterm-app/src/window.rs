@@ -172,6 +172,22 @@ pub struct DesktopApp {
     // ── URL hover/click (P17-C) ──
     /// Currently hovered URL (OSC 8 hyperlink or plain-text URL).
     hovered_link: Option<String>,
+
+    // ── Tab bar overlay (P19-C) ──
+    /// Tab bar display state for visual tab strip rendering.
+    tab_bar: crate::tab_bar::TabBarState,
+
+    // ── Settings overlay (P19-C) ──
+    /// Settings page state (theme, font, scrollback, AI, shell).
+    settings: crate::settings_ui::SettingsState,
+
+    // ── About dialog + Menu bar (P19-A) ──
+    /// About dialog state.
+    #[allow(dead_code)]
+    about: crate::about_dialog::AboutDialog,
+    /// Whether the menu bar has been installed.
+    #[allow(dead_code)]
+    menu_installed: bool,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -398,6 +414,10 @@ impl DesktopApp {
                 .unwrap_or(crate::font::DEFAULT_FONT_SIZE),
             status_bar_visible: true,
             hovered_link: None,
+            tab_bar: crate::tab_bar::TabBarState::new(),
+            settings: crate::settings_ui::SettingsState::new(),
+            about: crate::about_dialog::AboutDialog::new(),
+            menu_installed: false,
         };
 
         // ── Step 7b: Load config-driven keybindings (P14-D) ──
@@ -470,6 +490,40 @@ impl DesktopApp {
         match self.resolved_keybindings.get(action) {
             Some(&(kc, ksh, ka, ref kk)) => ctrl == kc && shift == ksh && alt == ka && key == kk,
             None => false,
+        }
+    }
+
+    // ── Settings overlay navigation (P19-C) ──
+
+    /// Handle Left arrow in settings (decrease/cycle backward).
+    fn handle_settings_left(&mut self) {
+        match self.settings.selected {
+            crate::settings_ui::SettingsField::Theme => {
+                // Cycle theme backward
+                let opts = crate::settings_ui::THEME_OPTIONS;
+                let idx = opts
+                    .iter()
+                    .position(|&t| t == self.settings.theme)
+                    .unwrap_or(0);
+                let prev = if idx == 0 { opts.len() - 1 } else { idx - 1 };
+                self.settings.theme = opts[prev].to_string();
+                self.settings.dirty = true;
+            }
+            crate::settings_ui::SettingsField::FontSize => self.settings.font_size_down(),
+            crate::settings_ui::SettingsField::Scrollback => self.settings.scrollback_down(),
+            crate::settings_ui::SettingsField::AiEnabled => self.settings.toggle_ai(),
+            _ => {}
+        }
+    }
+
+    /// Handle Right arrow in settings (increase/cycle forward).
+    fn handle_settings_right(&mut self) {
+        match self.settings.selected {
+            crate::settings_ui::SettingsField::Theme => self.settings.cycle_theme(),
+            crate::settings_ui::SettingsField::FontSize => self.settings.font_size_up(),
+            crate::settings_ui::SettingsField::Scrollback => self.settings.scrollback_up(),
+            crate::settings_ui::SettingsField::AiEnabled => self.settings.toggle_ai(),
+            _ => {}
         }
     }
 
@@ -674,11 +728,21 @@ impl DesktopApp {
         }
 
         // P17-D: Update status bar and log it.
-        // The status bar text is updated every frame and could be rendered
-        // as an overlay in the future; for now we emit it at debug level.
         if self.status_bar_visible {
             let status_text = self.status_bar.format();
             log::debug!("status: {}", status_text);
+        }
+
+        // P19-C: Update tab bar display data.
+        let titles: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
+        self.tab_bar.update(&titles, self.active);
+        if self.tab_bar.visible {
+            log::debug!("tab_bar: {}", self.tab_bar.format());
+        }
+
+        // P19-C: Settings overlay logging.
+        if self.settings.visible {
+            log::debug!("settings: {}", self.settings.format_summary());
         }
     }
 
@@ -844,6 +908,42 @@ impl DesktopApp {
         {
             self.status_bar_visible = !self.status_bar_visible;
             return;
+        }
+
+        // Ctrl+, (comma) → toggle settings overlay (P19-C)
+        if self.mods.ctrl
+            && !self.mods.shift
+            && let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key
+        {
+            self.settings.toggle();
+            return;
+        }
+
+        // P19-C: When settings overlay is open, intercept navigation keys.
+        if self.settings.visible {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.settings.close();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    self.settings.move_up();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    self.settings.move_down();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowLeft) => {
+                    self.handle_settings_left();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowRight) => {
+                    self.handle_settings_right();
+                    return;
+                }
+                _ => {}
+            }
         }
 
         // Ctrl+Shift+Return → toggle maximized (not configurable)
@@ -1495,6 +1595,72 @@ impl DesktopApp {
             log::info!("Maximized: {}", self.maximized);
         }
     }
+
+    // ── Menu dispatch (P19-A) ──────────────────────────────────────
+
+    /// Dispatch a menu action to the corresponding handler.
+    ///
+    /// This is called from `about_to_wait()` when a menu item was clicked.
+    /// Each action maps to the same handler as its keyboard shortcut.
+    pub fn handle_menu_action(&mut self, action: crate::menu_bar::MenuAction) {
+        use crate::menu_bar::MenuAction;
+        match action {
+            // File
+            MenuAction::NewTab => self.open_tab(),
+            MenuAction::CloseTab => self.close_tab(),
+            MenuAction::Quit => {
+                if let Some(ref window) = self.window {
+                    let _ = window.request_inner_size(winit::dpi::PhysicalSize::new(0, 0));
+                }
+            }
+            // Edit
+            MenuAction::Copy => self.copy_selection_to_clipboard(),
+            MenuAction::Paste => self.paste_from_clipboard(),
+            MenuAction::SelectAll => {
+                let grid = self.sessions[self.active].app().grid();
+                let range = crate::terminal_actions::select_all_range(grid);
+                self.selection
+                    .start(range.start_col as u16, range.start_row as u16);
+                self.selection
+                    .extend(range.end_col as u16, range.end_row as u16);
+                self.selection.finish();
+            }
+            MenuAction::ClearScrollback => {
+                crate::terminal_actions::clear_screen_and_scrollback(
+                    self.active_session_mut().app_mut().grid_mut(),
+                );
+            }
+            MenuAction::ResetTerminal => {
+                crate::terminal_actions::soft_reset(self.active_session_mut().app_mut().grid_mut());
+            }
+            // View
+            MenuAction::ZoomIn => {
+                self.font_zoom.zoom_in();
+                self.apply_font_size();
+            }
+            MenuAction::ZoomOut => {
+                self.font_zoom.zoom_out();
+                self.apply_font_size();
+            }
+            MenuAction::ZoomReset => {
+                self.font_zoom.reset();
+                self.apply_font_size();
+            }
+            MenuAction::ToggleFullscreen => self.toggle_fullscreen(),
+            MenuAction::ToggleStatusBar => {
+                self.status_bar_visible = !self.status_bar_visible;
+            }
+            MenuAction::CycleTheme => self.cycle_theme(),
+            // Shell
+            MenuAction::ScrollbackSearch => {
+                self.search.toggle();
+            }
+            // Help
+            MenuAction::About => {
+                self.about.toggle();
+            }
+        }
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1760,6 +1926,11 @@ impl ApplicationHandler for DesktopApp {
 
         // P11-E: Poll for bell events.
         self.poll_bell();
+
+        // P19-A: Poll for menu bar actions.
+        if let Some(action) = crate::menu_bar::poll_pending_action() {
+            self.handle_menu_action(action);
+        }
 
         // Apply deferred resize if debounce interval has elapsed.
         self.apply_pending_resize();

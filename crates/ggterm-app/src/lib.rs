@@ -60,6 +60,8 @@ pub mod gpu;
 #[cfg(feature = "desktop")]
 pub mod keymap;
 #[cfg(feature = "desktop")]
+pub mod menu_bar;
+#[cfg(feature = "desktop")]
 pub mod resize;
 #[cfg(feature = "desktop")]
 pub mod window;

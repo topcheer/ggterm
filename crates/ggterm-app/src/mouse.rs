@@ -200,6 +200,15 @@ impl MouseSelection {
         self.dragging = false;
     }
 
+    /// Select all cells in the grid (0,0) to (last_col, last_row).
+    pub fn select_all(&mut self, grid: &ggterm_core::grid::Grid) {
+        let last_col = grid.width().saturating_sub(1) as u16;
+        let last_row = grid.height().saturating_sub(1) as u16;
+        self.start = Some((0, 0));
+        self.end = Some((last_col, last_row));
+        self.dragging = false;
+    }
+
     /// Return true if a non-empty selection exists.
     pub fn is_active(&self) -> bool {
         match (self.start, self.end) {

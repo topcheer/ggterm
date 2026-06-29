@@ -535,6 +535,16 @@ impl Terminal {
         self.modes.alt_screen
     }
 
+    /// Perform a full terminal reset (RIS — ESC c).
+    ///
+    /// Resets the terminal to its initial state: clears the grid,
+    /// resets cursor, modes, attributes, and charset.
+    pub fn ris(&mut self) {
+        let w = self.grid.width();
+        let h = self.grid.height();
+        *self = Terminal::new(w, h);
+    }
+
     /// Return the dynamic foreground color if set via OSC 10 (P17-A).
     pub fn dynamic_fg(&self) -> Option<&Color> {
         self.dynamic_fg.as_ref()
