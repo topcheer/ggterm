@@ -527,7 +527,7 @@ impl DesktopApp {
                 _ => None,
             };
             if let Some(idx) = tab_idx {
-                self.switch_to(idx);
+                self.switch_tab(idx);
                 return;
             }
         }
