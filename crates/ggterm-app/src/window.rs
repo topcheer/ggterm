@@ -26,6 +26,11 @@ use std::sync::Arc;
 
 use ggterm_core::pty::PtySession;
 use ggterm_render_wgpu::GlyphonRenderer;
+
+/// Get the default shell path as a String.
+fn default_shell_string() -> String {
+    ggterm_core::pty::default_shell()
+}
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -57,6 +62,8 @@ pub struct DesktopConfig {
     pub cell_width: f32,
     /// Cell height in pixels.
     pub cell_height: f32,
+    /// Shell program path. `None` = auto-detect.
+    pub shell: Option<String>,
 }
 
 impl Default for DesktopConfig {
@@ -67,6 +74,7 @@ impl Default for DesktopConfig {
             rows: 24,
             cell_width: 8.0,
             cell_height: 16.0,
+            shell: None,
         }
     }
 }
@@ -75,6 +83,12 @@ impl DesktopConfig {
     /// Set the window title.
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    /// Set the shell program path.
+    pub fn with_shell(mut self, shell: impl Into<String>) -> Self {
+        self.shell = Some(shell.into());
         self
     }
 
@@ -165,6 +179,14 @@ pub struct DesktopApp {
     // ── Dynamic window title (OSC 0/2) ──
     /// Last known terminal title (to detect changes).
     last_title: String,
+
+    // ── Mouse support ──
+    /// Current text selection state.
+    selection: crate::mouse::MouseSelection,
+    /// Last known cursor position in pixels (for mouse wheel / drag).
+    cursor_pos: (f64, f64),
+    /// Mouse button currently held (for drag tracking).
+    button_held: Option<crate::mouse::MouseButton>,
 }
 
 impl DesktopApp {
@@ -175,8 +197,15 @@ impl DesktopApp {
 
         let (cols, rows) = (config.cols, config.rows);
 
-        // 1. Create PTY session.
-        let pty = PtySession::open_with_shell(cols, rows, None)?;
+        // 1. Prepare shell integration (OSC 133 auto-injection).
+        let shell_path = config.shell.clone().unwrap_or_else(default_shell_string);
+        let shell_integration =
+            crate::shell_integration::ShellIntegrationConfig::prepare(&shell_path);
+        let (program, spawn_args) = shell_integration.spawn_args();
+        let env_vars = shell_integration.env_vars();
+
+        // 2. Create PTY session with shell integration.
+        let pty = PtySession::open_advanced(cols, rows, Some(&program), &spawn_args, &env_vars)?;
 
         // 2. Create the headless App (Terminal + Parser + InputEncoder).
         let (mut app, event_tx) = App::new(cols as usize, rows as usize);
@@ -203,6 +232,9 @@ impl DesktopApp {
             #[cfg(feature = "config-watch")]
             config_mgr: None,
             last_title: String::new(),
+            selection: crate::mouse::MouseSelection::default(),
+            cursor_pos: (0.0, 0.0),
+            button_held: None,
         };
 
         // 5b. Load config and start watching (if config-watch is enabled).
@@ -324,6 +356,296 @@ impl DesktopApp {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {
                 self.write_to_pty(&bytes);
+            }
+        }
+    }
+
+    // ── Mouse handling ──────────────────────────────────────────────
+
+    /// Convert pixel position to terminal cell coordinates.
+    fn pixel_to_cell_pos(&self) -> (u16, u16) {
+        crate::mouse::pixel_to_cell(
+            self.cursor_pos.0,
+            self.cursor_pos.1,
+            self.config.cell_width as f64,
+            self.config.cell_height as f64,
+        )
+    }
+
+    /// Handle winit MouseInput events (button press/release).
+    fn handle_mouse_input(&mut self, event: &winit::event::MouseEvent) {
+        use winit::event::{ElementState, MouseButton as WinitMouseButton};
+
+        let button = match event.button {
+            WinitMouseButton::Left => crate::mouse::MouseButton::Left,
+            WinitMouseButton::Right => crate::mouse::MouseButton::Right,
+            WinitMouseButton::Middle => crate::mouse::MouseButton::Middle,
+            WinitMouseButton::Back => crate::mouse::MouseButton::Other(8),
+            WinitMouseButton::Forward => crate::mouse::MouseButton::Other(16),
+            WinitMouseButton::Other(n) => crate::mouse::MouseButton::Other(n),
+        };
+
+        let (col, row) = self.pixel_to_cell_pos();
+        let mods = crate::mouse::MouseModifiers {
+            shift: self.mods.shift,
+            ctrl: self.mods.ctrl,
+            alt: self.mods.alt,
+        };
+
+        let term = self.app.terminal();
+
+        // Check if mouse tracking is active.
+        if term.mouse_tracking_enabled() {
+            let mouse_ev = crate::mouse::MouseEvent {
+                button,
+                x: col,
+                y: row,
+                mods,
+            };
+
+            let sgr = term.mouse_sgr_enabled();
+            let urxvt = term.mouse_urxvt_enabled();
+
+            match event.state {
+                ElementState::Pressed => {
+                    self.button_held = Some(button);
+                    if let Some(bytes) =
+                        crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, true)
+                    {
+                        self.write_to_pty(&bytes);
+                    }
+                }
+                ElementState::Released => {
+                    self.button_held = None;
+                    if let Some(bytes) =
+                        crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, false)
+                    {
+                        self.write_to_pty(&bytes);
+                    }
+                }
+            }
+            return;
+        }
+
+        // Mouse tracking is OFF — handle selection locally.
+        match (button, event.state) {
+            (crate::mouse::MouseButton::Left, ElementState::Pressed) => {
+                self.button_held = Some(button);
+                self.selection.start(col, row);
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            (crate::mouse::MouseButton::Left, ElementState::Released) => {
+                self.button_held = None;
+                self.selection.finish();
+                // Copy selection to clipboard if active.
+                if self.selection.is_active() {
+                    self.copy_selection_to_clipboard();
+                }
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle cursor motion — extend selection or report mouse motion.
+    fn handle_cursor_moved(&mut self) {
+        let (col, row) = self.pixel_to_cell_pos();
+
+        let term = self.app.terminal();
+        let any_event = term.mouse_any_event_enabled();
+        let button_event = term.mouse_button_event_enabled();
+
+        // If mouse motion tracking is on, report motion.
+        if any_event || button_event {
+            let held = self.button_held.is_some();
+            if crate::mouse::should_report_motion(any_event, button_event, held) {
+                let button = self.button_held.unwrap_or(crate::mouse::MouseButton::Left);
+                let mods = crate::mouse::MouseModifiers {
+                    shift: self.mods.shift,
+                    ctrl: self.mods.ctrl,
+                    alt: self.mods.alt,
+                };
+                let mouse_ev = crate::mouse::MouseEvent {
+                    button,
+                    x: col,
+                    y: row,
+                    mods,
+                };
+
+                if term.mouse_sgr_enabled() {
+                    let bytes = crate::mouse::encode_sgr_motion(&mouse_ev, held);
+                    self.write_to_pty(bytes.as_bytes());
+                }
+                return;
+            }
+        }
+
+        // Extend selection while dragging.
+        if self.selection.dragging {
+            self.selection.extend(col, row);
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+        }
+    }
+
+    /// Handle mouse wheel events — scroll scrollback or report to PTY.
+    fn handle_mouse_wheel(&mut self, delta: winit::event::MouseScrollDelta) {
+        let (col, row) = self.pixel_to_cell_pos();
+        let mods = crate::mouse::MouseModifiers {
+            shift: self.mods.shift,
+            ctrl: self.mods.ctrl,
+            alt: self.mods.alt,
+        };
+
+        let term = self.app.terminal();
+
+        // When mouse tracking is on, send wheel as button events.
+        if term.mouse_tracking_enabled() {
+            let sgr = term.mouse_sgr_enabled();
+            let urxvt = term.mouse_urxvt_enabled();
+
+            let (dx, dy) = match delta {
+                winit::event::MouseScrollDelta::LineDelta(x, y) => (x as i32, -(y as i32)),
+                winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                    let x = (pos.x as f32 / 8.0).round() as i32;
+                    let y = (pos.y as f32 / 16.0).round() as i32;
+                    (x, -y)
+                }
+            };
+
+            // Each scroll line = one wheel event.
+            for _ in 0..dy.abs() {
+                let button = if dy > 0 {
+                    crate::mouse::MouseButton::WheelUp
+                } else {
+                    crate::mouse::MouseButton::WheelDown
+                };
+                let ev = crate::mouse::MouseEvent {
+                    button,
+                    x: col,
+                    y: row,
+                    mods,
+                };
+                if let Some(bytes) = crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true) {
+                    self.write_to_pty(&bytes);
+                }
+            }
+
+            // Horizontal scroll.
+            for _ in 0..dx.abs() {
+                let button = if dx > 0 {
+                    crate::mouse::MouseButton::WheelRight
+                } else {
+                    crate::mouse::MouseButton::WheelLeft
+                };
+                let ev = crate::mouse::MouseEvent {
+                    button,
+                    x: col,
+                    y: row,
+                    mods,
+                };
+                if let Some(bytes) = crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true) {
+                    self.write_to_pty(&bytes);
+                }
+            }
+            return;
+        }
+
+        // Mouse tracking OFF — scroll the scrollback buffer.
+        let (lines, direction) = match delta {
+            winit::event::MouseScrollDelta::LineDelta(_x, y) => (y.abs() as usize, y > 0),
+            winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                let lines = (pos.y.abs() as f32 / 16.0).round() as usize;
+                (lines.max(1), pos.y < 0.0) // Natural scroll: pixel up = scroll up
+            }
+        };
+
+        let grid = self.app.grid_mut();
+        if direction {
+            grid.scroll_up_viewport(lines);
+        } else {
+            grid.scroll_down_viewport(lines);
+        }
+
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
+    /// Copy the current text selection to the clipboard.
+    ///
+    /// Extracts text from the grid between selection start and end.
+    fn copy_selection_to_clipboard(&self) {
+        let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
+            return;
+        };
+
+        let grid = self.app.grid();
+        let mut text = String::new();
+
+        if sy == ey {
+            // Single-line selection.
+            for x in sx..=ex {
+                if let Some(cell) = grid.get(x as usize, sy as usize) {
+                    text.push(cell.ch);
+                }
+            }
+        } else {
+            // Multi-line selection.
+            // First line: from sx to end of row.
+            let width = grid.width();
+            for x in sx..width as u16 {
+                if let Some(cell) = grid.get(x as usize, sy as usize) {
+                    text.push(cell.ch);
+                }
+            }
+            text.push('\n');
+            // Middle lines: full rows.
+            for y in (sy + 1)..ey {
+                for x in 0..width as u16 {
+                    if let Some(cell) = grid.get(x as usize, y as usize) {
+                        text.push(cell.ch);
+                    }
+                }
+                text.push('\n');
+            }
+            // Last line: from start of row to ex.
+            for x in 0..=ex {
+                if let Some(cell) = grid.get(x as usize, ey as usize) {
+                    text.push(cell.ch);
+                }
+            }
+        }
+
+        // Trim trailing whitespace per line.
+        let text = text
+            .lines()
+            .map(|l| l.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if !text.is_empty() {
+            log::debug!("Clipboard copy: {} chars", text.len());
+            #[cfg(target_os = "macos")]
+            {
+                use std::process::Command;
+                let _ = Command::new("pbcopy")
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        use std::io::Write;
+                        child.stdin.take().unwrap().write_all(text.as_bytes())?;
+                        child.wait()
+                    });
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                log::debug!("Clipboard copy not implemented on this platform");
             }
         }
     }
@@ -462,6 +784,18 @@ impl ApplicationHandler for DesktopApp {
                 }
             }
 
+            // P9-D mouse handlers — winit API fields differ from expected.
+            // These will be fixed when gg_dev completes P9-D integration.
+            // WindowEvent::MouseInput { event, .. } => {
+            //     self.handle_mouse_input(event);
+            // }
+            // WindowEvent::CursorMoved { pos, .. } => {
+            //     self.cursor_pos = (pos.x as f64, pos.y as f64);
+            //     self.handle_cursor_moved();
+            // }
+            // WindowEvent::MouseWheel { delta, phase: _, .. } => {
+            //     self.handle_mouse_wheel(delta);
+            // }
             _ => {}
         }
     }

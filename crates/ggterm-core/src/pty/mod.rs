@@ -82,6 +82,23 @@ impl PtySession {
     ///
     /// If `shell` is `None`, auto-detects the default shell.
     pub fn open_with_shell(cols: u16, rows: u16, shell: Option<&str>) -> Result<Self, PtyError> {
+        Self::open_advanced(cols, rows, shell, &[], &[])
+    }
+
+    /// Create a PTY session with full control over env vars and spawn args.
+    ///
+    /// # Arguments
+    /// * `cols`, `rows` — Terminal dimensions.
+    /// * `shell` — Shell path. `None` = auto-detect.
+    /// * `args` — Extra arguments passed to the shell.
+    /// * `env_vars` — Extra environment variables `(key, value)` for the child.
+    pub fn open_advanced(
+        cols: u16,
+        rows: u16,
+        shell: Option<&str>,
+        args: &[String],
+        env_vars: &[(String, String)],
+    ) -> Result<Self, PtyError> {
         let size = PtySize {
             rows,
             cols,
@@ -100,9 +117,19 @@ impl PtySession {
         let shell_path = shell.map(String::from).unwrap_or_else(default_shell);
         let mut cmd = CommandBuilder::new(&shell_path);
 
+        // Pass extra args
+        for arg in args {
+            cmd.arg(arg);
+        }
+
         // Set reasonable defaults
         cmd.cwd(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")));
         cmd.env("TERM", "xterm-256color");
+
+        // Apply extra env vars
+        for (key, value) in env_vars {
+            cmd.env(key, value);
+        }
 
         // Spawn the child process
         let child = pair
@@ -400,6 +427,83 @@ mod tests {
 
         let pty = PtySession::open_with_shell(80, 24, Some(shell));
         assert!(pty.is_ok(), "should be able to open with explicit shell");
+    }
+
+    #[test]
+    fn test_pty_open_advanced_with_env() {
+        #[cfg(unix)]
+        let shell = "/bin/sh";
+        #[cfg(not(unix))]
+        let shell = "cmd.exe";
+
+        let env_vars = vec![
+            ("GGTERM".to_string(), "1".to_string()),
+            ("GGTERM_VERSION".to_string(), "test".to_string()),
+        ];
+
+        let pty = PtySession::open_advanced(80, 24, Some(shell), &[], &env_vars);
+        assert!(pty.is_ok(), "open_advanced should work with env vars");
+    }
+
+    #[test]
+    fn test_pty_open_advanced_with_args() {
+        #[cfg(unix)]
+        let shell = "/bin/sh";
+        #[cfg(not(unix))]
+        let shell = "cmd.exe";
+
+        // /bin/sh -c "exit" — the shell runs a command and exits immediately
+        let args = vec!["-c".to_string(), "exit".to_string()];
+
+        let mut pty = PtySession::open_advanced(80, 24, Some(shell), &args, &[])
+            .expect("open_advanced with args");
+
+        // Shell should exit very quickly
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(!pty.is_alive(), "shell with -c exit should have exited");
+    }
+
+    #[test]
+    fn test_pty_open_advanced_echo_env() {
+        #[cfg(unix)]
+        {
+            let shell = "/bin/sh";
+            let env_vars = vec![("MY_TEST_VAR".to_string(), "hello123".to_string())];
+
+            let mut pty =
+                PtySession::open_advanced(80, 24, Some(shell), &[], &env_vars).expect("open pty");
+
+            std::thread::sleep(std::time::Duration::from_millis(200));
+
+            // Echo the env var to verify it was set
+            pty.write(b"echo $MY_TEST_VAR\n").expect("write");
+
+            std::thread::sleep(std::time::Duration::from_millis(300));
+
+            let mut buf = [0u8; 8192];
+            let n = pty.try_read(&mut buf).expect("read");
+            assert!(n > 0);
+
+            let output = String::from_utf8_lossy(&buf[..n]);
+            assert!(
+                output.contains("hello123"),
+                "expected env var MY_TEST_VAR=hello123 in output, got: {}",
+                &output[..output.len().min(200)]
+            );
+        }
+    }
+
+    #[test]
+    fn test_pty_open_with_shell_delegates_to_advanced() {
+        // open_with_shell should be equivalent to open_advanced with empty args/env
+        #[cfg(unix)]
+        let shell = "/bin/sh";
+        #[cfg(not(unix))]
+        let shell = "cmd.exe";
+
+        let pty1 = PtySession::open_with_shell(80, 24, Some(shell));
+        let pty2 = PtySession::open_advanced(80, 24, Some(shell), &[], &[]);
+        assert!(pty1.is_ok() && pty2.is_ok());
     }
 
     #[test]
