@@ -1114,18 +1114,17 @@ mod tests {
     fn display_row_with_offset() {
         let mut g = Grid::with_scrollback(3, 2, 100);
         g[(0, 0)] = Cell::with_char('A');
-        g.scroll_up(1);
+        g.scroll_up(1); // 'A' goes to scrollback[0]
         g[(0, 0)] = Cell::with_char('B');
-        g.scroll_up(1);
-        // scrollback now has ['A', 'B'], active has [' ', ' ']
+        g.scroll_up(1); // 'B' goes to scrollback[1]
+        // scrollback = ['A', 'B'], active = [' ', ' ']
 
         g.scroll_up_viewport(2);
-        // With offset=2, display_row(0) should return last scrollback row.
-        assert_eq!(g.display_row(0).unwrap()[0].ch, 'B');
-        assert_eq!(g.display_row(1).unwrap()[0].ch, 'A');
-        // Rows beyond scrollback come from active grid.
-        // With offset=2, scrollback_visible=2, so row 2 = active row 0
-        // But grid height is 2, so row 2 is out of bounds.
+        // With offset=2, we show 2 rows from scrollback:
+        // display_row(0) → scrollback_start = 2-2=0, row 0 = scrollback[0] = 'A'
+        // display_row(1) → scrollback[1] = 'B'
+        assert_eq!(g.display_row(0).unwrap()[0].ch, 'A');
+        assert_eq!(g.display_row(1).unwrap()[0].ch, 'B');
     }
 
     #[test]
