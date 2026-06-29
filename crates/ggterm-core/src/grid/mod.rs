@@ -7,7 +7,7 @@ mod cell;
 mod damage;
 mod row;
 
-pub use cell::{char_width, str_width, Cell, CellFlags, Color};
+pub use cell::{Cell, CellFlags, Color, char_width, str_width};
 pub use damage::{DamageTracker, DirtyRect};
 pub use row::Row;
 
@@ -185,8 +185,7 @@ impl Grid {
             self.rows
                 .insert(self.scroll_bottom - 1, Row::new(self.width));
         }
-        self.damage
-            .mark_rows(self.scroll_top, region_height);
+        self.damage.mark_rows(self.scroll_top, region_height);
     }
 
     /// Scroll the content within the scroll region down by `n` lines.
@@ -213,8 +212,7 @@ impl Grid {
                 self.rows.insert(self.scroll_top, Row::new(self.width));
             }
         }
-        self.damage
-            .mark_rows(self.scroll_top, region_height);
+        self.damage.mark_rows(self.scroll_top, region_height);
     }
 
     /// Scroll up within the scroll region. Alias for [`scroll_up`](Self::scroll_up).
@@ -245,8 +243,7 @@ impl Grid {
             let _removed = self.rows.remove(self.scroll_bottom - 1);
             self.rows.insert(row, Row::new(self.width));
         }
-        self.damage
-            .mark_rows(row, self.scroll_bottom - row);
+        self.damage.mark_rows(row, self.scroll_bottom - row);
     }
 
     /// Delete `count` lines starting at `row` (ANSI DL — Delete Line).
@@ -264,8 +261,7 @@ impl Grid {
             self.rows
                 .insert(self.scroll_bottom - 1, Row::new(self.width));
         }
-        self.damage
-            .mark_rows(row, self.scroll_bottom - row);
+        self.damage.mark_rows(row, self.scroll_bottom - row);
     }
 
     // ------------------------------------------------------------------
@@ -440,8 +436,8 @@ mod tests {
     fn fill_grid(grid: &mut Grid) {
         for row in 0..grid.height() {
             for col in 0..grid.width() {
-                let ch = char::from_u32(b'A' as u32 + (row * grid.width() + col) as u32)
-                    .unwrap_or(' ');
+                let ch =
+                    char::from_u32(b'A' as u32 + (row * grid.width() + col) as u32).unwrap_or(' ');
                 grid[(col, row)] = Cell::with_char(ch);
             }
         }
@@ -624,7 +620,7 @@ mod tests {
     fn row_put_wide_overwrites_existing() {
         let mut r = Row::new(10);
         r.put_char(0, '中'); // wide at 0-1
-        r.put_char(0, 'A');  // overwrite with normal
+        r.put_char(0, 'A'); // overwrite with normal
         assert_eq!(r[0].ch, 'A');
         assert!(!r[0].is_wide());
         assert!(!r[1].is_wide_spacer());

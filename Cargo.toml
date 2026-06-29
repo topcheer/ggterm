@@ -5,6 +5,7 @@ members = [
     "crates/ggterm-render",
     "crates/ggterm-render-wgpu",
     "crates/ggterm-app",
+    "crates/ggterm-plugin",
 ]
 resolver = "2"
 

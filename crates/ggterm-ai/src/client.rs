@@ -203,8 +203,11 @@ impl LLMClient {
         };
 
         let url = self.config.chat_url();
-        debug!("LLM request to {url} (model: {}, key: {})",
-            self.config.model, self.config.masked_api_key());
+        debug!(
+            "LLM request to {url} (model: {}, key: {})",
+            self.config.model,
+            self.config.masked_api_key()
+        );
 
         let resp = self
             .client
@@ -222,9 +225,7 @@ impl LLMClient {
             return Err(format!("HTTP {status}: {body}"));
         }
 
-        let api_resp: ApiResponse = resp
-            .json()
-            .map_err(|e| format!("JSON parse error: {e}"))?;
+        let api_resp: ApiResponse = resp.json().map_err(|e| format!("JSON parse error: {e}"))?;
 
         api_resp
             .choices
@@ -238,7 +239,11 @@ impl LLMClient {
     /// Send a streaming chat completion, calling `on_delta` for each chunk.
     ///
     /// Returns the full concatenated response.
-    pub fn chat_stream<F>(&self, messages: &[ChatMessage], mut on_delta: F) -> Result<String, String>
+    pub fn chat_stream<F>(
+        &self,
+        messages: &[ChatMessage],
+        mut on_delta: F,
+    ) -> Result<String, String>
     where
         F: FnMut(&str),
     {
@@ -312,7 +317,8 @@ impl LLMClient {
 /// Implement LLMProvider trait for LLMClient so it can be used with AIEngine.
 impl crate::engine::LLMProvider for LLMClient {
     fn complete(&self, messages: &[ChatMessage]) -> crate::engine::AIResult<String> {
-        self.chat(messages).map_err(crate::engine::AIError::RequestFailed)
+        self.chat(messages)
+            .map_err(crate::engine::AIError::RequestFailed)
     }
 }
 
@@ -330,12 +336,16 @@ mod tests {
 
     // Helper: safely set env var (Rust 2024 makes set_var unsafe).
     fn set_env(key: &str, val: &str) {
-        unsafe { std::env::set_var(key, val); }
+        unsafe {
+            std::env::set_var(key, val);
+        }
     }
 
     // Helper: safely remove env var (Rust 2024 makes remove_var unsafe).
     fn remove_env(key: &str) {
-        unsafe { std::env::remove_var(key); }
+        unsafe {
+            std::env::remove_var(key);
+        }
     }
 
     #[test]
@@ -423,7 +433,10 @@ mod tests {
             base_url: "https://api.openai.com/v1".to_string(),
             ..Default::default()
         };
-        assert_eq!(config.chat_url(), "https://api.openai.com/v1/chat/completions");
+        assert_eq!(
+            config.chat_url(),
+            "https://api.openai.com/v1/chat/completions"
+        );
     }
 
     #[test]
@@ -444,7 +457,10 @@ mod tests {
             base_url: "https://custom.api.com".to_string(),
             ..Default::default()
         };
-        assert_eq!(config.chat_url(), "https://custom.api.com/v1/chat/completions");
+        assert_eq!(
+            config.chat_url(),
+            "https://custom.api.com/v1/chat/completions"
+        );
     }
 
     #[test]
@@ -453,7 +469,10 @@ mod tests {
             base_url: "https://api.openai.com/v1/".to_string(),
             ..Default::default()
         };
-        assert_eq!(config.chat_url(), "https://api.openai.com/v1/chat/completions");
+        assert_eq!(
+            config.chat_url(),
+            "https://api.openai.com/v1/chat/completions"
+        );
     }
 
     #[test]
@@ -499,7 +518,10 @@ mod tests {
         let json = r#"{"choices":[{"delta":{"content":"hello"}}]}"#;
         let chunk: ApiStreamChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(chunk.choices[0].delta.as_ref().unwrap().content.as_deref(), Some("hello"));
+        assert_eq!(
+            chunk.choices[0].delta.as_ref().unwrap().content.as_deref(),
+            Some("hello")
+        );
     }
 
     #[test]
@@ -537,7 +559,10 @@ mod tests {
         let json = r#"{"choices":[{"message":{"role":"assistant","content":"hello world"}}]}"#;
         let resp: ApiResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.choices.len(), 1);
-        assert_eq!(resp.choices[0].message.as_ref().unwrap().content, "hello world");
+        assert_eq!(
+            resp.choices[0].message.as_ref().unwrap().content,
+            "hello world"
+        );
     }
 
     #[test]

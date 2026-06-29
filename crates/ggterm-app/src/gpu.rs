@@ -82,13 +82,7 @@ impl GpuContext {
 
     /// Create a GlyphonRenderer configured for this surface's format.
     pub fn create_renderer(&self, cols: usize, rows: usize) -> GlyphonRenderer {
-        GlyphonRenderer::new(
-            &self.device,
-            &self.queue,
-            self.surface_format,
-            cols,
-            rows,
-        )
+        GlyphonRenderer::new(&self.device, &self.queue, self.surface_format, cols, rows)
     }
 
     /// Render a single frame: clears, renders terminal grid, presents.
@@ -112,9 +106,7 @@ impl GpuContext {
             wgpu::CurrentSurfaceTexture::Lost
             | wgpu::CurrentSurfaceTexture::Occluded
             | wgpu::CurrentSurfaceTexture::Validation => {
-                return Err(RenderFrameError::Surface(
-                    "surface lost or invalid".into(),
-                ));
+                return Err(RenderFrameError::Surface("surface lost or invalid".into()));
             }
         };
 
@@ -166,7 +158,9 @@ impl GpuContext {
 /// Create a wgpu Instance + Adapter + Surface from a window.
 ///
 /// Returns `(instance, surface, adapter)` ready for `GpuContext::from_surface()`.
-pub fn init_wgpu<W>(window: W) -> Result<(wgpu::Instance, wgpu::Surface<'static>, wgpu::Adapter), GpuError>
+pub fn init_wgpu<W>(
+    window: W,
+) -> Result<(wgpu::Instance, wgpu::Surface<'static>, wgpu::Adapter), GpuError>
 where
     W: raw_window_handle::HasWindowHandle
         + raw_window_handle::HasDisplayHandle

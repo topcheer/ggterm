@@ -22,7 +22,8 @@ impl Perform for Recorder {
     }
 
     fn csi(&mut self, intermediates: &[u8], params: &[u16], final_byte: u8) {
-        self.csis.push((intermediates.to_vec(), params.to_vec(), final_byte));
+        self.csis
+            .push((intermediates.to_vec(), params.to_vec(), final_byte));
     }
 
     fn esc(&mut self, intermediates: &[u8], final_byte: u8) {
@@ -805,7 +806,14 @@ fn test_param_cap_at_16() {
     let mut rec = Recorder::default();
 
     // 20 params: 1;2;3;...;20
-    let input: Vec<u8> = format!("\x1b[{}m", (1..=20).map(|n| n.to_string()).collect::<Vec<_>>().join(";")).into_bytes();
+    let input: Vec<u8> = format!(
+        "\x1b[{}m",
+        (1..=20)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(";")
+    )
+    .into_bytes();
     parser.feed(&input, &mut rec);
 
     assert_eq!(rec.csis.len(), 1);
@@ -862,7 +870,10 @@ fn test_realistic_terminal_sequence() {
     let mut parser = Parser::new();
     let mut rec = Recorder::default();
 
-    parser.feed(b"\x1b[2J\x1b[H\x1b[?25lHello\x1b[1;31mWorld\x1b[0m\x1b[?25h", &mut rec);
+    parser.feed(
+        b"\x1b[2J\x1b[H\x1b[?25lHello\x1b[1;31mWorld\x1b[0m\x1b[?25h",
+        &mut rec,
+    );
 
     // CSIs: 2J, H, ?25l, 1;31m, 0m, ?25h = 6 CSI sequences
     assert_eq!(rec.csis.len(), 6);

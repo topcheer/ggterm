@@ -32,9 +32,9 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::Key;
 use winit::window::{Window, WindowId};
 
-use crate::app::{spawn_pty_reader, App};
+use crate::app::{App, spawn_pty_reader};
 use crate::event::{AppEvent, EventSender};
-use crate::gpu::{cursor_state, init_wgpu, GpuContext};
+use crate::gpu::{GpuContext, cursor_state, init_wgpu};
 use crate::input::InputEncoder;
 use crate::keymap::map_winit_key;
 
@@ -214,10 +214,18 @@ impl DesktopApp {
         let new_cols = ((width as f32 / self.config.cell_width) as u16).max(1);
         let new_rows = ((height as f32 / self.config.cell_height) as u16).max(1);
 
-        log::debug!("Resize: {}x{}px → {}x{} cells", width, height, new_cols, new_rows);
+        log::debug!(
+            "Resize: {}x{}px → {}x{} cells",
+            width,
+            height,
+            new_cols,
+            new_rows
+        );
 
-        self.app
-            .handle_event(AppEvent::Resize { cols: new_cols, rows: new_rows });
+        self.app.handle_event(AppEvent::Resize {
+            cols: new_cols,
+            rows: new_rows,
+        });
 
         if let Some(ref mut pty) = self.pty {
             if let Err(e) = pty.resize(new_cols, new_rows) {
@@ -329,8 +337,7 @@ impl ApplicationHandler for DesktopApp {
         };
 
         // 4. Create GlyphonRenderer.
-        let renderer =
-            gpu.create_renderer(self.config.cols as usize, self.config.rows as usize);
+        let renderer = gpu.create_renderer(self.config.cols as usize, self.config.rows as usize);
 
         self.window = Some(window);
         self.surface = Some(surface);

@@ -97,9 +97,7 @@ impl RenderTheme {
                 let r = idx / 36;
                 let g = (idx % 36) / 6;
                 let b = idx % 6;
-                let component = |v: usize| -> u8 {
-                    if v == 0 { 0 } else { 55 + v as u8 * 40 }
-                };
+                let component = |v: usize| -> u8 { if v == 0 { 0 } else { 55 + v as u8 * 40 } };
                 (component(r), component(g), component(b))
             }
             232..=255 => {
@@ -212,7 +210,10 @@ pub struct ThemeManager {
 impl ThemeManager {
     /// Create a new ThemeManager with the given theme.
     pub fn new(theme: RenderTheme, name: impl Into<String>) -> Self {
-        Self { current: theme, current_name: name.into() }
+        Self {
+            current: theme,
+            current_name: name.into(),
+        }
     }
 
     /// Create a ThemeManager starting with the dark default theme.
@@ -267,7 +268,10 @@ mod tests {
     fn t_default_is_dark() {
         let theme = RenderTheme::default();
         let (r, g, b) = theme.default_bg_rgb();
-        assert!(r < 128 && g < 128 && b < 128, "default theme should have dark bg");
+        assert!(
+            r < 128 && g < 128 && b < 128,
+            "default theme should have dark bg"
+        );
     }
 
     #[test]

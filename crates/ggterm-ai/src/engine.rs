@@ -50,7 +50,9 @@ pub struct MockLLM {
 
 impl MockLLM {
     pub fn new(response: impl Into<String>) -> Self {
-        Self { response: response.into() }
+        Self {
+            response: response.into(),
+        }
     }
 }
 
@@ -183,7 +185,9 @@ mod tests {
     #[test]
     fn t_engine_nl2cmd_success() {
         let engine = AIEngine::with_mock("find . -type f -size +100M");
-        let result = engine.nl2cmd("find files larger than 100MB", &sample_ctx()).unwrap();
+        let result = engine
+            .nl2cmd("find files larger than 100MB", &sample_ctx())
+            .unwrap();
         assert_eq!(result, "find . -type f -size +100M");
     }
 
@@ -199,7 +203,10 @@ mod tests {
         let engine = AIEngine::failing(AIError::RequestFailed("network error".to_string()));
         let result = engine.explain(&sample_ctx());
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), AIError::RequestFailed("network error".to_string()));
+        assert_eq!(
+            result.unwrap_err(),
+            AIError::RequestFailed("network error".to_string())
+        );
     }
 
     #[test]
@@ -245,7 +252,10 @@ mod tests {
             AIError::RequestFailed("timeout".to_string()).to_string(),
             "request failed: timeout"
         );
-        assert_eq!(AIError::EmptyResponse.to_string(), "empty response from LLM");
+        assert_eq!(
+            AIError::EmptyResponse.to_string(),
+            "empty response from LLM"
+        );
     }
 
     #[test]

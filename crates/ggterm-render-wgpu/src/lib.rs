@@ -7,18 +7,18 @@
 pub mod colors;
 pub mod converter;
 
-pub use colors::{map_bg, map_color, map_fg, indexed_to_rgb, ANSI_16, DEFAULT_FG, DEFAULT_BG};
-pub use converter::{row_to_runs, row_to_text, TextRun};
+pub use colors::{ANSI_16, DEFAULT_BG, DEFAULT_FG, indexed_to_rgb, map_bg, map_color, map_fg};
+pub use converter::{TextRun, row_to_runs, row_to_text};
 
 use ggterm_core::{DirtyRect, Grid};
 use ggterm_render::theme::RenderTheme;
 use ggterm_render::{CursorState, Renderer};
+use glyphon::cosmic_text::LineEnding;
 use glyphon::{
     Attrs, AttrsList, Buffer, BufferLine, Cache as GlyphonCache, Color as GlyphonColor, Family,
     FontSystem, Metrics, PrepareError, RenderError as GlyphonRenderError, Resolution, Shaping,
-    SwashCache, TextAtlas, TextBounds, TextArea, TextRenderer, Viewport,
+    SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
-use glyphon::cosmic_text::LineEnding;
 
 /// Unified error type for GPU text rendering operations.
 #[derive(Debug)]
@@ -101,18 +101,17 @@ impl GlyphonRenderer {
         let cell_w = (DEFAULT_FONT_SIZE * 0.6).ceil() as u32;
         let cell_h = DEFAULT_LINE_HEIGHT.ceil() as u32;
 
-        let text_renderer = TextRenderer::new(
-            &mut atlas,
-            device,
-            wgpu::MultisampleState::default(),
-            None,
-        );
+        let text_renderer =
+            TextRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
 
         let mut viewport = Viewport::new(device, &cache);
-        viewport.update(queue, Resolution {
-            width: cols.max(1) as u32 * cell_w,
-            height: rows.max(1) as u32 * cell_h,
-        });
+        viewport.update(
+            queue,
+            Resolution {
+                width: cols.max(1) as u32 * cell_w,
+                height: rows.max(1) as u32 * cell_h,
+            },
+        );
 
         Self {
             font_system,
@@ -266,10 +265,7 @@ impl GlyphonRenderer {
     ///
     /// Call [`prepare_grid()`](Self::prepare_grid) first, then this method
     /// inside your render pass.
-    pub fn draw(
-        &self,
-        render_pass: &mut wgpu::RenderPass<'_>,
-    ) -> Result<(), GlyphonRenderError> {
+    pub fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) -> Result<(), GlyphonRenderError> {
         self.text_renderer
             .render(&self.atlas, &self.viewport, render_pass)
     }
@@ -333,12 +329,7 @@ impl GlyphonRenderer {
 }
 
 impl Renderer for GlyphonRenderer {
-    fn render(
-        &mut self,
-        _grid: &Grid,
-        _cursor: &CursorState,
-        _dirty: Option<&DirtyRect>,
-    ) {
+    fn render(&mut self, _grid: &Grid, _cursor: &CursorState, _dirty: Option<&DirtyRect>) {
         // GPU rendering requires a wgpu render pass from the surface.
         // The app layer (P1-F3: winit) calls render_to_pass() in its render loop.
         //
@@ -361,7 +352,7 @@ impl Renderer for GlyphonRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ggterm_core::{Grid, Cell};
+    use ggterm_core::{Cell, Grid};
 
     /// Verify that Grid → TextRun conversion produces correct text content.
     #[test]

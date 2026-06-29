@@ -19,7 +19,12 @@ pub struct DirtyRect {
 impl DirtyRect {
     /// Create a new dirty rectangle.
     pub fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Right edge (exclusive).
@@ -38,7 +43,12 @@ impl DirtyRect {
         let y = self.y.min(other.y);
         let right = self.right().max(other.right());
         let bottom = self.bottom().max(other.bottom());
-        Self { x, y, width: right - x, height: bottom - y }
+        Self {
+            x,
+            y,
+            width: right - x,
+            height: bottom - y,
+        }
     }
 }
 

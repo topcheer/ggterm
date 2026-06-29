@@ -180,7 +180,11 @@ fn test_color_from_sgr_unsupported() {
 #[test]
 fn test_color_default_palette_has_16_entries() {
     let palette = Color::default_palette();
-    assert_eq!(palette.len(), 16, "default palette should have exactly 16 entries");
+    assert_eq!(
+        palette.len(),
+        16,
+        "default palette should have exactly 16 entries"
+    );
 }
 
 #[test]
@@ -529,7 +533,11 @@ fn test_grid_resize_grow_then_shrink() {
     assert_eq!(grid.height(), 2);
     assert_eq!(grid.scrollback_len(), 2);
     // 'P' was in row 0, now in scrollback; visible rows are the ones that were at bottom
-    assert_eq!(grid[(0, 0)].ch, ' ', "visible content after shrink is from lower rows");
+    assert_eq!(
+        grid[(0, 0)].ch,
+        ' ',
+        "visible content after shrink is from lower rows"
+    );
 }
 
 #[test]
@@ -730,7 +738,11 @@ fn test_grid_scrollback_default_capacity_10000() {
         grid.scroll_up(1);
     }
 
-    assert_eq!(grid.scrollback_len(), 50, "50 scrolls should produce 50 scrollback rows");
+    assert_eq!(
+        grid.scrollback_len(),
+        50,
+        "50 scrolls should produce 50 scrollback rows"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -759,11 +771,7 @@ fn test_grid_write_scroll_write_pattern() {
 #[test]
 fn test_grid_write_all_cells_in_grid() {
     let mut grid = Grid::new(3, 3);
-    let chars = [
-        ['1', '2', '3'],
-        ['4', '5', '6'],
-        ['7', '8', '9'],
-    ];
+    let chars = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']];
 
     for (row_idx, row_chars) in chars.iter().enumerate() {
         for (col_idx, &ch) in row_chars.iter().enumerate() {

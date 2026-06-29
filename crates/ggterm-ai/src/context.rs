@@ -69,8 +69,7 @@ impl AIContext {
                 let (_, cy) = terminal.cursor();
                 cy
             });
-            ctx.last_output =
-                Some(extract_output(terminal, output_row, end_row, output_budget));
+            ctx.last_output = Some(extract_output(terminal, output_row, end_row, output_budget));
         }
 
         // Build recent command history (completed commands only, oldest first).
@@ -191,7 +190,10 @@ fn extract_output(terminal: &Terminal, output_row: usize, end_row: usize, budget
             // Truncate: add what fits, then an ellipsis marker.
             let remaining = budget.saturating_sub(total);
             if remaining > 3 {
-                lines.push(format!("{}...", &text[..remaining.saturating_sub(3).min(text.len())]));
+                lines.push(format!(
+                    "{}...",
+                    &text[..remaining.saturating_sub(3).min(text.len())]
+                ));
             } else {
                 lines.push("...".to_string());
             }
@@ -327,7 +329,9 @@ mod tests {
     fn t_context_output_budget_truncation() {
         let mut term = Terminal::new(200, 50);
         // Generate lots of output
-        let lines: Vec<String> = (0..30).map(|i| format!("This is line {} with some content", i)).collect();
+        let lines: Vec<String> = (0..30)
+            .map(|i| format!("This is line {} with some content", i))
+            .collect();
         let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
         emit_cycle(&mut term, &line_refs, Some(0));
 

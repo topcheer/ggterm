@@ -4,8 +4,8 @@
 //! Each run groups adjacent cells with identical SGR attributes.
 
 use ggterm_core::{CellFlags, Grid};
-use ggterm_render::theme::RenderTheme;
 use ggterm_render::CursorState;
+use ggterm_render::theme::RenderTheme;
 
 /// A contiguous run of text with identical SGR attributes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +65,11 @@ pub fn row_to_runs(
         let ch = cell.ch;
 
         let can_extend = current.as_ref().is_some_and(|c| {
-            c.fg == fg_rgb && c.bg == bg_rgb && c.bold == bold && c.italic == italic && c.underline == underline
+            c.fg == fg_rgb
+                && c.bg == bg_rgb
+                && c.bold == bold
+                && c.italic == italic
+                && c.underline == underline
         });
 
         if can_extend {

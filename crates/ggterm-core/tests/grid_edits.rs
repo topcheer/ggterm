@@ -146,7 +146,11 @@ fn test_insert_line_count_zero_is_noop() {
     let mut grid = Grid::new(3, 4);
     grid[(0, 0)] = Cell::with_char('X');
     grid.insert_line(0, 0);
-    assert_eq!(grid[(0, 0)].ch, 'X', "insert_line with count=0 should be no-op");
+    assert_eq!(
+        grid[(0, 0)].ch,
+        'X',
+        "insert_line with count=0 should be no-op"
+    );
 }
 
 #[test]
@@ -155,7 +159,11 @@ fn test_insert_line_outside_region_is_noop() {
     grid.set_scroll_region(0, 3); // only rows 0-2
     grid[(0, 4)] = Cell::with_char('X');
     grid.insert_line(4, 1); // row 4 is outside region
-    assert_eq!(grid[(0, 4)].ch, 'X', "outside-region insert should be no-op");
+    assert_eq!(
+        grid[(0, 4)].ch,
+        'X',
+        "outside-region insert should be no-op"
+    );
 }
 
 #[test]
@@ -264,7 +272,11 @@ fn test_grid_erase_char_does_not_shift() {
     assert_eq!(grid[(0, 0)].ch, 'A');
     assert!(grid.cell(1, 0).unwrap().is_blank());
     assert!(grid.cell(2, 0).unwrap().is_blank());
-    assert_eq!(grid[(3, 0)].ch, 'D', "col 3 unchanged (erase doesn't shift)");
+    assert_eq!(
+        grid[(3, 0)].ch,
+        'D',
+        "col 3 unchanged (erase doesn't shift)"
+    );
     assert_eq!(grid[(4, 0)].ch, 'E', "col 4 unchanged");
 }
 
@@ -351,8 +363,14 @@ fn test_grid_put_char_wide_cjk() {
     let consumed = grid.put_char(0, 0, '中');
     assert_eq!(consumed, 2, "CJK char should consume 2 cells");
     assert_eq!(grid[(0, 0)].ch, '中');
-    assert!(grid[(0, 0)].is_wide(), "lead cell should have WIDE_CHAR flag");
-    assert!(grid[(1, 0)].is_wide_spacer(), "next cell should be WIDE_SPACER");
+    assert!(
+        grid[(0, 0)].is_wide(),
+        "lead cell should have WIDE_CHAR flag"
+    );
+    assert!(
+        grid[(1, 0)].is_wide_spacer(),
+        "next cell should be WIDE_SPACER"
+    );
 }
 
 #[test]
@@ -451,7 +469,10 @@ fn test_cell_is_wide_after_set_char_narrow() {
     cell.set_char('你'); // wide
     assert!(cell.is_wide());
     cell.set_char('A'); // narrow — should clear WIDE_CHAR
-    assert!(!cell.is_wide(), "WIDE_CHAR should be removed after setting narrow char");
+    assert!(
+        !cell.is_wide(),
+        "WIDE_CHAR should be removed after setting narrow char"
+    );
 }
 
 // ===========================================================================
@@ -499,7 +520,11 @@ fn test_grid_clear_line() {
     }
     grid.clear_line(1);
     for col in 0..5 {
-        assert!(grid.cell(col, 1).unwrap().is_blank(), "col {} should be blank", col);
+        assert!(
+            grid.cell(col, 1).unwrap().is_blank(),
+            "col {} should be blank",
+            col
+        );
     }
     // Other rows untouched
     assert!(grid.cell(0, 0).unwrap().is_blank());
@@ -612,8 +637,16 @@ fn test_grid_dirty_rect_bounds() {
     let dirty = grid.dirty().unwrap();
     assert!(dirty.x <= 3, "dirty rect x ({}) should be <= 3", dirty.x);
     assert!(dirty.y <= 2, "dirty rect y ({}) should be <= 2", dirty.y);
-    assert!(dirty.right() >= 4, "dirty rect right ({}) should be >= 4", dirty.right());
-    assert!(dirty.bottom() >= 3, "dirty rect bottom ({}) should be >= 3", dirty.bottom());
+    assert!(
+        dirty.right() >= 4,
+        "dirty rect right ({}) should be >= 4",
+        dirty.right()
+    );
+    assert!(
+        dirty.bottom() >= 3,
+        "dirty rect bottom ({}) should be >= 3",
+        dirty.bottom()
+    );
 }
 
 #[test]

@@ -130,16 +130,32 @@ impl InputEncoder {
             SpecialKey::Insert => csi_tilde("2", mods),
             SpecialKey::Delete => csi_tilde("3", mods),
             SpecialKey::F1 => {
-                if has_mod(mods) { csi_modified("1", 'P', mods) } else { b"\x1bOP".to_vec() }
+                if has_mod(mods) {
+                    csi_modified("1", 'P', mods)
+                } else {
+                    b"\x1bOP".to_vec()
+                }
             }
             SpecialKey::F2 => {
-                if has_mod(mods) { csi_modified("1", 'Q', mods) } else { b"\x1bOQ".to_vec() }
+                if has_mod(mods) {
+                    csi_modified("1", 'Q', mods)
+                } else {
+                    b"\x1bOQ".to_vec()
+                }
             }
             SpecialKey::F3 => {
-                if has_mod(mods) { csi_modified("1", 'R', mods) } else { b"\x1bOR".to_vec() }
+                if has_mod(mods) {
+                    csi_modified("1", 'R', mods)
+                } else {
+                    b"\x1bOR".to_vec()
+                }
             }
             SpecialKey::F4 => {
-                if has_mod(mods) { csi_modified("1", 'S', mods) } else { b"\x1bOS".to_vec() }
+                if has_mod(mods) {
+                    csi_modified("1", 'S', mods)
+                } else {
+                    b"\x1bOS".to_vec()
+                }
             }
             SpecialKey::F5 => csi_tilde("15", mods),
             SpecialKey::F6 => csi_tilde("17", mods),
@@ -171,9 +187,15 @@ fn has_mod(mods: &KeyModifiers) -> bool {
 
 fn mod_code(mods: &KeyModifiers) -> u8 {
     let mut m = 1u8;
-    if mods.shift { m += 1; }
-    if mods.alt { m += 2; }
-    if mods.ctrl { m += 4; }
+    if mods.shift {
+        m += 1;
+    }
+    if mods.alt {
+        m += 2;
+    }
+    if mods.ctrl {
+        m += 4;
+    }
     m
 }
 
@@ -196,7 +218,9 @@ fn csi_tilde(num: &str, mods: &KeyModifiers) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    fn nomod() -> KeyModifiers { KeyModifiers::default() }
+    fn nomod() -> KeyModifiers {
+        KeyModifiers::default()
+    }
 
     // ── Character keys ─────────────────────────────────────────
 
@@ -221,14 +245,26 @@ mod tests {
     #[test]
     fn test_ctrl_c() {
         let enc = InputEncoder::new();
-        let key = InputKey::char_mod('c', KeyModifiers { ctrl: true, ..Default::default() });
+        let key = InputKey::char_mod(
+            'c',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x03");
     }
 
     #[test]
     fn test_ctrl_d() {
         let enc = InputEncoder::new();
-        let key = InputKey::char_mod('d', KeyModifiers { ctrl: true, ..Default::default() });
+        let key = InputKey::char_mod(
+            'd',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x04");
     }
 
@@ -241,7 +277,13 @@ mod tests {
     #[test]
     fn test_alt_char() {
         let enc = InputEncoder::new();
-        let key = InputKey::char_mod('a', KeyModifiers { alt: true, ..Default::default() });
+        let key = InputKey::char_mod(
+            'a',
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1ba");
     }
 
@@ -296,21 +338,39 @@ mod tests {
     #[test]
     fn test_shift_arrow_up() {
         let enc = InputEncoder::new();
-        let key = InputKey::special_mod(SpecialKey::Up, KeyModifiers { shift: true, ..Default::default() });
+        let key = InputKey::special_mod(
+            SpecialKey::Up,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1b[1;2A");
     }
 
     #[test]
     fn test_ctrl_arrow_right() {
         let enc = InputEncoder::new();
-        let key = InputKey::special_mod(SpecialKey::Right, KeyModifiers { ctrl: true, ..Default::default() });
+        let key = InputKey::special_mod(
+            SpecialKey::Right,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1b[1;5C");
     }
 
     #[test]
     fn test_alt_arrow_down() {
         let enc = InputEncoder::new();
-        let key = InputKey::special_mod(SpecialKey::Down, KeyModifiers { alt: true, ..Default::default() });
+        let key = InputKey::special_mod(
+            SpecialKey::Down,
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1b[1;3B");
     }
 
@@ -341,74 +401,140 @@ mod tests {
     #[test]
     fn test_page_up() {
         let enc = InputEncoder::new();
-        assert_eq!(enc.encode(&InputKey::special(SpecialKey::PageUp)), b"\x1b[5~");
+        assert_eq!(
+            enc.encode(&InputKey::special(SpecialKey::PageUp)),
+            b"\x1b[5~"
+        );
     }
 
     #[test]
     fn test_page_down() {
         let enc = InputEncoder::new();
-        assert_eq!(enc.encode(&InputKey::special(SpecialKey::PageDown)), b"\x1b[6~");
+        assert_eq!(
+            enc.encode(&InputKey::special(SpecialKey::PageDown)),
+            b"\x1b[6~"
+        );
     }
 
     #[test]
     fn test_insert() {
         let enc = InputEncoder::new();
-        assert_eq!(enc.encode(&InputKey::special(SpecialKey::Insert)), b"\x1b[2~");
+        assert_eq!(
+            enc.encode(&InputKey::special(SpecialKey::Insert)),
+            b"\x1b[2~"
+        );
     }
 
     #[test]
     fn test_delete() {
         let enc = InputEncoder::new();
-        assert_eq!(enc.encode(&InputKey::special(SpecialKey::Delete)), b"\x1b[3~");
+        assert_eq!(
+            enc.encode(&InputKey::special(SpecialKey::Delete)),
+            b"\x1b[3~"
+        );
     }
 
     #[test]
     fn test_ctrl_delete() {
         let enc = InputEncoder::new();
-        let key = InputKey::special_mod(SpecialKey::Delete, KeyModifiers { ctrl: true, ..Default::default() });
+        let key = InputKey::special_mod(
+            SpecialKey::Delete,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1b[3;5~");
     }
 
     // ── F1–F12 ─────────────────────────────────────────────────
 
     #[test]
-    fn test_f1() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F1)), b"\x1bOP"); }
+    fn test_f1() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F1)), b"\x1bOP");
+    }
     #[test]
-    fn test_f2() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F2)), b"\x1bOQ"); }
+    fn test_f2() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F2)), b"\x1bOQ");
+    }
     #[test]
-    fn test_f3() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F3)), b"\x1bOR"); }
+    fn test_f3() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F3)), b"\x1bOR");
+    }
     #[test]
-    fn test_f4() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F4)), b"\x1bOS"); }
+    fn test_f4() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F4)), b"\x1bOS");
+    }
     #[test]
-    fn test_f5() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F5)), b"\x1b[15~"); }
+    fn test_f5() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F5)), b"\x1b[15~");
+    }
     #[test]
-    fn test_f6() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F6)), b"\x1b[17~"); }
+    fn test_f6() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F6)), b"\x1b[17~");
+    }
     #[test]
-    fn test_f7() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F7)), b"\x1b[18~"); }
+    fn test_f7() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F7)), b"\x1b[18~");
+    }
     #[test]
-    fn test_f8() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F8)), b"\x1b[19~"); }
+    fn test_f8() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F8)), b"\x1b[19~");
+    }
     #[test]
-    fn test_f9() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F9)), b"\x1b[20~"); }
+    fn test_f9() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F9)), b"\x1b[20~");
+    }
     #[test]
-    fn test_f10() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F10)), b"\x1b[21~"); }
+    fn test_f10() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F10)), b"\x1b[21~");
+    }
     #[test]
-    fn test_f11() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F11)), b"\x1b[23~"); }
+    fn test_f11() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F11)), b"\x1b[23~");
+    }
     #[test]
-    fn test_f12() { let enc = InputEncoder::new(); assert_eq!(enc.encode(&InputKey::special(SpecialKey::F12)), b"\x1b[24~"); }
+    fn test_f12() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::special(SpecialKey::F12)), b"\x1b[24~");
+    }
 
     // ── Modified function keys ─────────────────────────────────
 
     #[test]
     fn test_shift_f5() {
         let enc = InputEncoder::new();
-        let key = InputKey::special_mod(SpecialKey::F5, KeyModifiers { shift: true, ..Default::default() });
+        let key = InputKey::special_mod(
+            SpecialKey::F5,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1b[15;2~");
     }
 
     #[test]
     fn test_ctrl_f1() {
         let enc = InputEncoder::new();
-        let key = InputKey::special_mod(SpecialKey::F1, KeyModifiers { ctrl: true, ..Default::default() });
+        let key = InputKey::special_mod(
+            SpecialKey::F1,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(enc.encode(&key), b"\x1b[1;5P");
     }
 
@@ -417,30 +543,80 @@ mod tests {
     #[test]
     fn test_has_mod() {
         assert!(!has_mod(&nomod()));
-        assert!(has_mod(&KeyModifiers { shift: true, ..Default::default() }));
+        assert!(has_mod(&KeyModifiers {
+            shift: true,
+            ..Default::default()
+        }));
     }
 
     #[test]
     fn test_mod_code() {
         assert_eq!(mod_code(&nomod()), 1);
-        assert_eq!(mod_code(&KeyModifiers { shift: true, ..Default::default() }), 2);
-        assert_eq!(mod_code(&KeyModifiers { alt: true, ..Default::default() }), 3);
-        assert_eq!(mod_code(&KeyModifiers { ctrl: true, ..Default::default() }), 5);
-        assert_eq!(mod_code(&KeyModifiers { shift: true, ctrl: true, ..Default::default() }), 6);
-        assert_eq!(mod_code(&KeyModifiers { shift: true, alt: true, ctrl: true }), 8);
+        assert_eq!(
+            mod_code(&KeyModifiers {
+                shift: true,
+                ..Default::default()
+            }),
+            2
+        );
+        assert_eq!(
+            mod_code(&KeyModifiers {
+                alt: true,
+                ..Default::default()
+            }),
+            3
+        );
+        assert_eq!(
+            mod_code(&KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            }),
+            5
+        );
+        assert_eq!(
+            mod_code(&KeyModifiers {
+                shift: true,
+                ctrl: true,
+                ..Default::default()
+            }),
+            6
+        );
+        assert_eq!(
+            mod_code(&KeyModifiers {
+                shift: true,
+                alt: true,
+                ctrl: true
+            }),
+            8
+        );
     }
 
     #[test]
     fn test_all_special_keys_produce_output() {
         let enc = InputEncoder::new();
         let all = [
-            SpecialKey::Up, SpecialKey::Down, SpecialKey::Left, SpecialKey::Right,
-            SpecialKey::Home, SpecialKey::End,
-            SpecialKey::PageUp, SpecialKey::PageDown,
-            SpecialKey::Insert, SpecialKey::Delete,
-            SpecialKey::F1, SpecialKey::F2, SpecialKey::F3, SpecialKey::F4,
-            SpecialKey::F5, SpecialKey::F6, SpecialKey::F7, SpecialKey::F8,
-            SpecialKey::F9, SpecialKey::F10, SpecialKey::F11, SpecialKey::F12,
+            SpecialKey::Up,
+            SpecialKey::Down,
+            SpecialKey::Left,
+            SpecialKey::Right,
+            SpecialKey::Home,
+            SpecialKey::End,
+            SpecialKey::PageUp,
+            SpecialKey::PageDown,
+            SpecialKey::Insert,
+            SpecialKey::Delete,
+            SpecialKey::F1,
+            SpecialKey::F2,
+            SpecialKey::F3,
+            SpecialKey::F4,
+            SpecialKey::F5,
+            SpecialKey::F6,
+            SpecialKey::F7,
+            SpecialKey::F8,
+            SpecialKey::F9,
+            SpecialKey::F10,
+            SpecialKey::F11,
+            SpecialKey::F12,
         ];
         for k in all {
             let result = enc.encode(&InputKey::special(k));

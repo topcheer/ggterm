@@ -3,10 +3,10 @@
 //! Pure CPU benchmarks — no GPU device required.
 //! Run with: `cargo bench -p ggterm-render-wgpu`
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use ggterm_core::{Cell, CellFlags, Color, Grid};
-use ggterm_render::theme::RenderTheme;
 use ggterm_render::CursorState;
+use ggterm_render::theme::RenderTheme;
 use ggterm_render_wgpu::colors::{indexed_to_rgb, map_bg, map_fg};
 use ggterm_render_wgpu::converter::{row_to_runs, row_to_text};
 
@@ -69,7 +69,11 @@ fn mixed_sgr_grid(w: usize, h: usize) -> Grid {
 fn bench_row_to_runs(c: &mut Criterion) {
     let theme = RenderTheme::default();
     let cursor = CursorState::hidden();
-    let sizes = [(80, 24, "80x24"), (200, 50, "200x50"), (500, 100, "500x100")];
+    let sizes = [
+        (80, 24, "80x24"),
+        (200, 50, "200x50"),
+        (500, 100, "500x100"),
+    ];
 
     let mut group = c.benchmark_group("row_to_runs");
 
@@ -115,7 +119,11 @@ fn bench_row_to_runs(c: &mut Criterion) {
 // ──── row_to_text benchmarks ────
 
 fn bench_row_to_text(c: &mut Criterion) {
-    let sizes = [(80, 24, "80x24"), (200, 50, "200x50"), (500, 100, "500x100")];
+    let sizes = [
+        (80, 24, "80x24"),
+        (200, 50, "200x50"),
+        (500, 100, "500x100"),
+    ];
 
     let mut group = c.benchmark_group("row_to_text");
 
@@ -204,7 +212,11 @@ fn bench_single_row(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("single_row");
 
-    for &(w, _, label) in &[(80, 24, "80cols"), (200, 50, "200cols"), (500, 100, "500cols")] {
+    for &(w, _, label) in &[
+        (80, 24, "80cols"),
+        (200, 50, "200cols"),
+        (500, 100, "500cols"),
+    ] {
         // ASCII row
         let grid_ascii = ascii_grid(w, 1);
         group.bench_with_input(BenchmarkId::new("ascii", label), &grid_ascii, |b, g| {

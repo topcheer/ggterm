@@ -22,7 +22,11 @@ pub struct Cursor {
 
 impl Default for Cursor {
     fn default() -> Self {
-        Self { x: 0, y: 0, pending_wrap: false }
+        Self {
+            x: 0,
+            y: 0,
+            pending_wrap: false,
+        }
     }
 }
 
@@ -206,38 +210,38 @@ impl Charset {
 
 /// DEC Special Graphics mapping for 0x5F-0x7E → Unicode.
 static DEC_SPECIAL_GRAPHICS: [char; 32] = [
-    '\u{00a0}',  // 0x5F '_'
-    '\u{25c6}',  // 0x60 '`' diamond
-    '\u{2592}',  // 0x61 'a' medium shade
-    '\u{2409}',  // 0x62 'b' HT
-    '\u{240c}',  // 0x63 'c' FF
-    '\u{240d}',  // 0x64 'd' CR
-    '\u{240a}',  // 0x65 'e' LF
-    '\u{00b0}',  // 0x66 'f' degree
-    '\u{00b1}',  // 0x67 'g' plus-minus
-    '\u{2424}',  // 0x68 'h' NL
-    '\u{240b}',  // 0x69 'i' VT
-    '\u{2518}',  // 0x6A 'j' ┘
-    '\u{2510}',  // 0x6B 'k' ┐
-    '\u{250c}',  // 0x6C 'l' ┌
-    '\u{2514}',  // 0x6D 'm' └
-    '\u{253c}',  // 0x6E 'n' ┼
-    '\u{239e}',  // 0x6F 'o'
-    '\u{239e}',  // 0x70 'p'
-    '\u{2500}',  // 0x71 'q' ─
-    '\u{23a0}',  // 0x72 'r'
-    '\u{23a2}',  // 0x73 's'
-    '\u{251c}',  // 0x74 't' ├
-    '\u{2524}',  // 0x75 'u' ┤
-    '\u{2534}',  // 0x76 'v' ┴
-    '\u{252c}',  // 0x77 'w' ┬
-    '\u{2502}',  // 0x78 'x' │
-    '\u{2264}',  // 0x79 'y' ≤
-    '\u{2265}',  // 0x7A 'z' ≥
-    '\u{03c0}',  // 0x7B '{' π
-    '\u{2260}',  // 0x7C '|' ≠
-    '\u{00a3}',  // 0x7D '}' £
-    '\u{00b7}',  // 0x7E '~' ·
+    '\u{00a0}', // 0x5F '_'
+    '\u{25c6}', // 0x60 '`' diamond
+    '\u{2592}', // 0x61 'a' medium shade
+    '\u{2409}', // 0x62 'b' HT
+    '\u{240c}', // 0x63 'c' FF
+    '\u{240d}', // 0x64 'd' CR
+    '\u{240a}', // 0x65 'e' LF
+    '\u{00b0}', // 0x66 'f' degree
+    '\u{00b1}', // 0x67 'g' plus-minus
+    '\u{2424}', // 0x68 'h' NL
+    '\u{240b}', // 0x69 'i' VT
+    '\u{2518}', // 0x6A 'j' ┘
+    '\u{2510}', // 0x6B 'k' ┐
+    '\u{250c}', // 0x6C 'l' ┌
+    '\u{2514}', // 0x6D 'm' └
+    '\u{253c}', // 0x6E 'n' ┼
+    '\u{239e}', // 0x6F 'o'
+    '\u{239e}', // 0x70 'p'
+    '\u{2500}', // 0x71 'q' ─
+    '\u{23a0}', // 0x72 'r'
+    '\u{23a2}', // 0x73 's'
+    '\u{251c}', // 0x74 't' ├
+    '\u{2524}', // 0x75 'u' ┤
+    '\u{2534}', // 0x76 'v' ┴
+    '\u{252c}', // 0x77 'w' ┬
+    '\u{2502}', // 0x78 'x' │
+    '\u{2264}', // 0x79 'y' ≤
+    '\u{2265}', // 0x7A 'z' ≥
+    '\u{03c0}', // 0x7B '{' π
+    '\u{2260}', // 0x7C '|' ≠
+    '\u{00a3}', // 0x7D '}' £
+    '\u{00b7}', // 0x7E '~' ·
 ];
 
 /// Cursor shape (DECSCUSR / `CSI Ps SP q`).
@@ -358,17 +362,35 @@ impl Terminal {
         }
     }
 
-    pub fn width(&self) -> usize { self.grid.width() }
-    pub fn height(&self) -> usize { self.grid.height() }
-    pub fn grid(&self) -> &Grid { &self.grid }
-    pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
-    pub fn cursor(&self) -> (usize, usize) { (self.cursor.x, self.cursor.y) }
-    pub fn cursor_visible(&self) -> bool { self.modes.cursor_visible }
-    pub fn cursor_style(&self) -> CursorStyle { self.cursor_style }
-    pub fn title(&self) -> &str { &self.title }
+    pub fn width(&self) -> usize {
+        self.grid.width()
+    }
+    pub fn height(&self) -> usize {
+        self.grid.height()
+    }
+    pub fn grid(&self) -> &Grid {
+        &self.grid
+    }
+    pub fn grid_mut(&mut self) -> &mut Grid {
+        &mut self.grid
+    }
+    pub fn cursor(&self) -> (usize, usize) {
+        (self.cursor.x, self.cursor.y)
+    }
+    pub fn cursor_visible(&self) -> bool {
+        self.modes.cursor_visible
+    }
+    pub fn cursor_style(&self) -> CursorStyle {
+        self.cursor_style
+    }
+    pub fn title(&self) -> &str {
+        &self.title
+    }
 
     /// Return the device response buffer (DA/DSR replies).
-    pub fn response_buffer(&self) -> &[u8] { &self.response_buffer }
+    pub fn response_buffer(&self) -> &[u8] {
+        &self.response_buffer
+    }
 
     /// Take the device response buffer, clearing it.
     pub fn take_response(&mut self) -> Vec<u8> {
@@ -376,11 +398,17 @@ impl Terminal {
     }
 
     /// Return the active G0 character set.
-    pub fn g0_charset(&self) -> Charset { self.g0_charset }
+    pub fn g0_charset(&self) -> Charset {
+        self.g0_charset
+    }
     /// Return the active G1 character set.
-    pub fn g1_charset(&self) -> Charset { self.g1_charset }
+    pub fn g1_charset(&self) -> Charset {
+        self.g1_charset
+    }
     /// Return true if G1 is the currently active charset (via SO/ShiftOut).
-    pub fn active_g1(&self) -> bool { self.active_g1 }
+    pub fn active_g1(&self) -> bool {
+        self.active_g1
+    }
 
     /// Return all OSC 133 command marks collected so far.
     pub fn command_marks(&self) -> &[CommandMark] {
@@ -450,7 +478,12 @@ impl Terminal {
 
     #[allow(dead_code)]
     fn make_cell(&self, ch: char) -> Cell {
-        Cell { ch, fg: self.fg, bg: self.bg, flags: self.flags }
+        Cell {
+            ch,
+            fg: self.fg,
+            bg: self.bg,
+            flags: self.flags,
+        }
     }
 
     /// Flush the UTF-8 byte buffer: decode and write the reassembled character.
@@ -513,7 +546,11 @@ impl Terminal {
 
         // Apply character set translation for ASCII range
         let ch = if ch.is_ascii() {
-            let cs = if self.active_g1 { self.g1_charset } else { self.g0_charset };
+            let cs = if self.active_g1 {
+                self.g1_charset
+            } else {
+                self.g0_charset
+            };
             cs.translate(ch)
         } else {
             ch
@@ -586,7 +623,10 @@ impl Terminal {
         match mode {
             7 => self.modes.auto_wrap = enable,
             25 => self.modes.cursor_visible = enable,
-            6 => { self.modes.origin = enable; self.set_cursor(0, 0); }
+            6 => {
+                self.modes.origin = enable;
+                self.set_cursor(0, 0);
+            }
             1 => self.modes.cursor_keys_app = enable,
             2004 => self.modes.bracketed_paste = enable,
             47 | 1047 | 1049 => self.modes.alt_screen = enable,
@@ -606,7 +646,11 @@ impl Terminal {
         while i < params.len() {
             let p = params[i];
             match p {
-                0 => { self.fg = Color::Default; self.bg = Color::Default; self.flags = CellFlags::empty(); }
+                0 => {
+                    self.fg = Color::Default;
+                    self.bg = Color::Default;
+                    self.flags = CellFlags::empty();
+                }
                 1 => self.flags |= CellFlags::BOLD,
                 2 => self.flags |= CellFlags::DIM,
                 3 => self.flags |= CellFlags::ITALIC,
@@ -634,14 +678,26 @@ impl Terminal {
                             5 => {
                                 if i + 2 < params.len() {
                                     let c = Color::Indexed(params[i + 2] as u8);
-                                    if p == 38 { self.fg = c; } else { self.bg = c; }
+                                    if p == 38 {
+                                        self.fg = c;
+                                    } else {
+                                        self.bg = c;
+                                    }
                                 }
                                 i += 2;
                             }
                             2 => {
                                 if i + 4 < params.len() {
-                                    let c = Color::Rgb(params[i+2] as u8, params[i+3] as u8, params[i+4] as u8);
-                                    if p == 38 { self.fg = c; } else { self.bg = c; }
+                                    let c = Color::Rgb(
+                                        params[i + 2] as u8,
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                    );
+                                    if p == 38 {
+                                        self.fg = c;
+                                    } else {
+                                        self.bg = c;
+                                    }
                                 }
                                 i += 4;
                             }
@@ -658,11 +714,25 @@ impl Terminal {
 
 /// Determine the expected length of a UTF-8 sequence from its leading byte.
 fn utf8_expected_len(lead: u8) -> usize {
-    if lead & 0x80 == 0 { 1 }          // 0xxxxxxx
-    else if lead & 0xe0 == 0xc0 { 2 }  // 110xxxxx
-    else if lead & 0xf0 == 0xe0 { 3 }  // 1110xxxx
-    else if lead & 0xf8 == 0xf0 { 4 }  // 11110xxx
-    else { 1 }                         // invalid leading byte
+    if lead & 0x80 == 0 {
+        1
+    }
+    // 0xxxxxxx
+    else if lead & 0xe0 == 0xc0 {
+        2
+    }
+    // 110xxxxx
+    else if lead & 0xf0 == 0xe0 {
+        3
+    }
+    // 1110xxxx
+    else if lead & 0xf8 == 0xf0 {
+        4
+    }
+    // 11110xxx
+    else {
+        1
+    } // invalid leading byte
 }
 
 impl Perform for Terminal {
@@ -690,18 +760,34 @@ impl Perform for Terminal {
         self.flush_utf8();
         match byte {
             0x07 => {} // BEL
-            0x08 => { if self.cursor.x > 0 { self.cursor.x -= 1; } self.cursor.pending_wrap = false; }
+            0x08 => {
+                if self.cursor.x > 0 {
+                    self.cursor.x -= 1;
+                }
+                self.cursor.pending_wrap = false;
+            }
             0x09 => {
                 let width = self.grid.width();
                 let mut next = self.cursor.x + 1;
-                while next < width && !self.tab_stops.get(next).copied().unwrap_or(false) { next += 1; }
+                while next < width && !self.tab_stops.get(next).copied().unwrap_or(false) {
+                    next += 1;
+                }
                 self.cursor.x = next.min(width.saturating_sub(1));
                 self.cursor.pending_wrap = false;
             }
-            0x0a | 0x0b | 0x0c => { self.line_feed(); }
-            0x0d => { self.cursor.x = 0; self.cursor.pending_wrap = false; }
-            0x0e => { self.active_g1 = true; }  // SO (Shift Out) — activate G1
-            0x0f => { self.active_g1 = false; } // SI (Shift In)  — activate G0
+            0x0a | 0x0b | 0x0c => {
+                self.line_feed();
+            }
+            0x0d => {
+                self.cursor.x = 0;
+                self.cursor.pending_wrap = false;
+            }
+            0x0e => {
+                self.active_g1 = true;
+            } // SO (Shift Out) — activate G1
+            0x0f => {
+                self.active_g1 = false;
+            } // SI (Shift In)  — activate G0
             _ => {}
         }
     }
@@ -709,16 +795,49 @@ impl Perform for Terminal {
     fn csi(&mut self, intermediates: &[u8], params: &[u16], final_byte: u8) {
         let is_private = intermediates.contains(&b'?');
         match final_byte {
-            b'A' => { let n = Self::param(params,0,1) as usize; let (top,_) = self.grid.scroll_region(); self.cursor.y = self.cursor.y.saturating_sub(n).max(top); self.cursor.pending_wrap = false; }
-            b'B' => { let n = Self::param(params,0,1) as usize; let (_,bottom) = self.grid.scroll_region(); self.cursor.y = (self.cursor.y+n).min(bottom.saturating_sub(1)); self.cursor.pending_wrap = false; }
-            b'C' => { let n = Self::param(params,0,1) as usize; self.cursor.x = (self.cursor.x+n).min(self.grid.width().saturating_sub(1)); self.cursor.pending_wrap = false; }
-            b'D' => { let n = Self::param(params,0,1) as usize; self.cursor.x = self.cursor.x.saturating_sub(n); self.cursor.pending_wrap = false; }
-            b'E' => { let n = Self::param(params,0,1) as usize; let (_,bottom) = self.grid.scroll_region(); self.cursor.y = (self.cursor.y+n).min(bottom.saturating_sub(1)); self.cursor.x = 0; self.cursor.pending_wrap = false; }
-            b'F' => { let n = Self::param(params,0,1) as usize; let (top,_) = self.grid.scroll_region(); self.cursor.y = self.cursor.y.saturating_sub(n).max(top); self.cursor.x = 0; self.cursor.pending_wrap = false; }
-            b'G' => { let col = Self::param(params,0,1) as usize; self.set_cursor(col.saturating_sub(1), self.cursor.y); }
+            b'A' => {
+                let n = Self::param(params, 0, 1) as usize;
+                let (top, _) = self.grid.scroll_region();
+                self.cursor.y = self.cursor.y.saturating_sub(n).max(top);
+                self.cursor.pending_wrap = false;
+            }
+            b'B' => {
+                let n = Self::param(params, 0, 1) as usize;
+                let (_, bottom) = self.grid.scroll_region();
+                self.cursor.y = (self.cursor.y + n).min(bottom.saturating_sub(1));
+                self.cursor.pending_wrap = false;
+            }
+            b'C' => {
+                let n = Self::param(params, 0, 1) as usize;
+                self.cursor.x = (self.cursor.x + n).min(self.grid.width().saturating_sub(1));
+                self.cursor.pending_wrap = false;
+            }
+            b'D' => {
+                let n = Self::param(params, 0, 1) as usize;
+                self.cursor.x = self.cursor.x.saturating_sub(n);
+                self.cursor.pending_wrap = false;
+            }
+            b'E' => {
+                let n = Self::param(params, 0, 1) as usize;
+                let (_, bottom) = self.grid.scroll_region();
+                self.cursor.y = (self.cursor.y + n).min(bottom.saturating_sub(1));
+                self.cursor.x = 0;
+                self.cursor.pending_wrap = false;
+            }
+            b'F' => {
+                let n = Self::param(params, 0, 1) as usize;
+                let (top, _) = self.grid.scroll_region();
+                self.cursor.y = self.cursor.y.saturating_sub(n).max(top);
+                self.cursor.x = 0;
+                self.cursor.pending_wrap = false;
+            }
+            b'G' => {
+                let col = Self::param(params, 0, 1) as usize;
+                self.set_cursor(col.saturating_sub(1), self.cursor.y);
+            }
             b'H' | b'f' => {
-                let row = Self::param(params,0,1) as usize;
-                let col = Self::param(params,1,1) as usize;
+                let row = Self::param(params, 0, 1) as usize;
+                let col = Self::param(params, 1, 1) as usize;
                 // Origin mode: CUP is relative to scroll region top
                 let actual_row = if self.modes.origin {
                     let (top, _) = self.grid.scroll_region();
@@ -728,14 +847,32 @@ impl Perform for Terminal {
                 };
                 self.set_cursor(col.saturating_sub(1), actual_row);
             }
-            b'd' => { let row = Self::param(params,0,1) as usize; self.set_cursor(self.cursor.x, row.saturating_sub(1)); }
+            b'd' => {
+                let row = Self::param(params, 0, 1) as usize;
+                self.set_cursor(self.cursor.x, row.saturating_sub(1));
+            }
             b'J' => {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
-                    0 => { self.grid.clear_line_from(self.cursor.x, self.cursor.y); for r in (self.cursor.y+1)..self.grid.height() { self.grid.clear_line(r); } }
-                    1 => { for r in 0..self.cursor.y { self.grid.clear_line(r); } self.grid.clear_line_to(self.cursor.x+1, self.cursor.y); }
-                    2 => { self.grid.clear(); }
-                    3 => { self.grid.clear(); self.grid.clear_scrollback(); }
+                    0 => {
+                        self.grid.clear_line_from(self.cursor.x, self.cursor.y);
+                        for r in (self.cursor.y + 1)..self.grid.height() {
+                            self.grid.clear_line(r);
+                        }
+                    }
+                    1 => {
+                        for r in 0..self.cursor.y {
+                            self.grid.clear_line(r);
+                        }
+                        self.grid.clear_line_to(self.cursor.x + 1, self.cursor.y);
+                    }
+                    2 => {
+                        self.grid.clear();
+                    }
+                    3 => {
+                        self.grid.clear();
+                        self.grid.clear_scrollback();
+                    }
                     _ => {}
                 }
             }
@@ -743,21 +880,31 @@ impl Perform for Terminal {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     0 => self.grid.clear_line_from(self.cursor.x, self.cursor.y),
-                    1 => self.grid.clear_line_to(self.cursor.x+1, self.cursor.y),
+                    1 => self.grid.clear_line_to(self.cursor.x + 1, self.cursor.y),
                     2 => self.grid.clear_line(self.cursor.y),
                     _ => {}
                 }
             }
-            b'S' => { let n = Self::param(params,0,1) as usize; self.grid.scroll_up(n); }
-            b'T' => { let n = Self::param(params,0,1) as usize; self.grid.scroll_down(n); }
+            b'S' => {
+                let n = Self::param(params, 0, 1) as usize;
+                self.grid.scroll_up(n);
+            }
+            b'T' => {
+                let n = Self::param(params, 0, 1) as usize;
+                self.grid.scroll_down(n);
+            }
             b'r' if !is_private => {
                 // CSI r (no params) or CSI 0;0r → reset to full screen
                 if params.is_empty() || params.iter().all(|&p| p == 0) {
                     self.grid.set_scroll_region(0, self.grid.height());
                     self.set_cursor(0, 0);
                 } else {
-                    let top = Self::param(params,0,1) as usize;
-                    let bottom = params.get(1).copied().unwrap_or(self.grid.height() as u16).max(1) as usize;
+                    let top = Self::param(params, 0, 1) as usize;
+                    let bottom = params
+                        .get(1)
+                        .copied()
+                        .unwrap_or(self.grid.height() as u16)
+                        .max(1) as usize;
                     if top < bottom && bottom <= self.grid.height() {
                         self.grid.set_scroll_region(top.saturating_sub(1), bottom);
                         // In origin mode, cursor goes to scroll region top
@@ -767,21 +914,90 @@ impl Perform for Terminal {
                 }
             }
             b'm' => self.sgr(params),
-            b'L' => { self.grid.insert_line(self.cursor.y, Self::param(params,0,1) as usize); }
-            b'M' => { self.grid.delete_line(self.cursor.y, Self::param(params,0,1) as usize); }
-            b'P' => { self.grid.delete_char(self.cursor.x, self.cursor.y, Self::param(params,0,1) as usize); }
-            b'@' => { self.grid.insert_char(self.cursor.x, self.cursor.y, Self::param(params,0,1) as usize); }
-            b'X' => { self.grid.erase_char(self.cursor.x, self.cursor.y, Self::param(params,0,1) as usize); }
-            b'I' => { let n = Self::param(params,0,1); for _ in 0..n { self.execute(0x09); } }
-            b'Z' => { let n = Self::param(params,0,1); for _ in 0..n { if self.cursor.x > 0 { let mut p = self.cursor.x-1; while p > 0 && !self.tab_stops.get(p).copied().unwrap_or(false) { p -= 1; } self.cursor.x = p; } } }
-            b'g' => { let m = params.first().copied().unwrap_or(0); match m { 0 => { if self.cursor.x < self.tab_stops.len() { self.tab_stops[self.cursor.x] = false; } } 3 => { for s in &mut self.tab_stops { *s = false; } } _ => {} } }
-            b'h' if is_private => { self.set_dec_mode(params.first().copied().unwrap_or(0), true); }
-            b'l' if is_private => { self.set_dec_mode(params.first().copied().unwrap_or(0), false); }
-            b'h' => { let m = params.first().copied().unwrap_or(0); if m == 4 { self.modes.insert = true; } }
-            b'l' => { let m = params.first().copied().unwrap_or(0); if m == 4 { self.modes.insert = false; } }
+            b'L' => {
+                self.grid
+                    .insert_line(self.cursor.y, Self::param(params, 0, 1) as usize);
+            }
+            b'M' => {
+                self.grid
+                    .delete_line(self.cursor.y, Self::param(params, 0, 1) as usize);
+            }
+            b'P' => {
+                self.grid.delete_char(
+                    self.cursor.x,
+                    self.cursor.y,
+                    Self::param(params, 0, 1) as usize,
+                );
+            }
+            b'@' => {
+                self.grid.insert_char(
+                    self.cursor.x,
+                    self.cursor.y,
+                    Self::param(params, 0, 1) as usize,
+                );
+            }
+            b'X' => {
+                self.grid.erase_char(
+                    self.cursor.x,
+                    self.cursor.y,
+                    Self::param(params, 0, 1) as usize,
+                );
+            }
+            b'I' => {
+                let n = Self::param(params, 0, 1);
+                for _ in 0..n {
+                    self.execute(0x09);
+                }
+            }
+            b'Z' => {
+                let n = Self::param(params, 0, 1);
+                for _ in 0..n {
+                    if self.cursor.x > 0 {
+                        let mut p = self.cursor.x - 1;
+                        while p > 0 && !self.tab_stops.get(p).copied().unwrap_or(false) {
+                            p -= 1;
+                        }
+                        self.cursor.x = p;
+                    }
+                }
+            }
+            b'g' => {
+                let m = params.first().copied().unwrap_or(0);
+                match m {
+                    0 => {
+                        if self.cursor.x < self.tab_stops.len() {
+                            self.tab_stops[self.cursor.x] = false;
+                        }
+                    }
+                    3 => {
+                        for s in &mut self.tab_stops {
+                            *s = false;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            b'h' if is_private => {
+                self.set_dec_mode(params.first().copied().unwrap_or(0), true);
+            }
+            b'l' if is_private => {
+                self.set_dec_mode(params.first().copied().unwrap_or(0), false);
+            }
+            b'h' => {
+                let m = params.first().copied().unwrap_or(0);
+                if m == 4 {
+                    self.modes.insert = true;
+                }
+            }
+            b'l' => {
+                let m = params.first().copied().unwrap_or(0);
+                if m == 4 {
+                    self.modes.insert = false;
+                }
+            }
             // REP — repeat preceding printable character N times
             b'b' => {
-                let n = Self::param(params,0,1) as usize;
+                let n = Self::param(params, 0, 1) as usize;
                 if let Some(ch) = self.last_printed_char {
                     for _ in 0..n {
                         self.put_printable_char(ch);
@@ -792,7 +1008,8 @@ impl Perform for Terminal {
             b'c' if !intermediates.contains(&b'>') => {
                 // Respond: CSI ? 62 ; 1 ; 2 ; 4 ; 6 ; 9 ; 15 ; 16 ; 22 c
                 // VT220-level, with basic capabilities
-                self.response_buffer.extend_from_slice(b"\x1b[?62;1;2;4;6;9;15;16;22c");
+                self.response_buffer
+                    .extend_from_slice(b"\x1b[?62;1;2;4;6;9;15;16;22c");
             }
             // DA2 — secondary device attributes (CSI > c)
             b'c' if intermediates.contains(&b'>') => {
@@ -817,9 +1034,14 @@ impl Perform for Terminal {
                 }
             }
             // SCP — save cursor position (legacy ANSI.SYS)
-            b's' => { self.saved_cursor = self.cursor; }
+            b's' => {
+                self.saved_cursor = self.cursor;
+            }
             // RCP — restore cursor position (legacy ANSI.SYS)
-            b'u' => { self.cursor = self.saved_cursor; self.cursor.pending_wrap = false; }
+            b'u' => {
+                self.cursor = self.saved_cursor;
+                self.cursor.pending_wrap = false;
+            }
             // DECSCUSR — cursor style (CSI Ps SP q)
             b'q' if intermediates.contains(&b' ') => {
                 let style = params.first().copied().unwrap_or(0);
@@ -848,9 +1070,9 @@ impl Perform for Terminal {
         // SCS: ESC ( <final> — designate G0 character set
         if intermediates.contains(&b'(') {
             match final_byte {
-                b'B' => self.g0_charset = Charset::Ascii,       // US ASCII
-                b'0' => self.g0_charset = Charset::DecSpecial,   // DEC Special Graphics
-                _ => {}  // Other charsets ignored (UK, etc.)
+                b'B' => self.g0_charset = Charset::Ascii,      // US ASCII
+                b'0' => self.g0_charset = Charset::DecSpecial, // DEC Special Graphics
+                _ => {}                                        // Other charsets ignored (UK, etc.)
             }
             return;
         }
@@ -888,11 +1110,23 @@ impl Perform for Terminal {
         match final_byte {
             b'7' => self.saved_cursor = self.cursor,
             b'8' => self.cursor = self.saved_cursor,
-            b'c' => { let w = self.grid.width(); let h = self.grid.height(); *self = Terminal::new(w, h); }
+            b'c' => {
+                let w = self.grid.width();
+                let h = self.grid.height();
+                *self = Terminal::new(w, h);
+            }
             b'D' => self.line_feed(),
-            b'E' => { self.cursor.x = 0; self.line_feed(); self.cursor.pending_wrap = false; }
+            b'E' => {
+                self.cursor.x = 0;
+                self.line_feed();
+                self.cursor.pending_wrap = false;
+            }
             b'M' => self.reverse_line_feed(),
-            b'H' => { if self.cursor.x < self.tab_stops.len() { self.tab_stops[self.cursor.x] = true; } }
+            b'H' => {
+                if self.cursor.x < self.tab_stops.len() {
+                    self.tab_stops[self.cursor.x] = true;
+                }
+            }
             _ => {}
         }
     }
@@ -902,7 +1136,9 @@ impl Perform for Terminal {
         let mut parts = s.splitn(2, ';');
         let cmd = parts.next().and_then(|s| s.parse::<u16>().ok());
         match cmd {
-            Some(0) | Some(2) => { self.title = parts.next().unwrap_or("").to_string(); }
+            Some(0) | Some(2) => {
+                self.title = parts.next().unwrap_or("").to_string();
+            }
             Some(133) => {
                 let payload = parts.next().unwrap_or("");
                 let mut sub_parts = payload.splitn(2, ';');
@@ -940,8 +1176,8 @@ mod tests {
     fn t_print_basic() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"Hi");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'i');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'i');
         assert_eq!(t.cursor(), (2, 0));
     }
 
@@ -949,18 +1185,18 @@ mod tests {
     fn t_auto_wrap() {
         let mut t = Terminal::new(4, 4);
         feed(&mut t, b"ABCDE");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
-        assert_eq!(t.grid().cell(3,0).unwrap().ch, 'D');
-        assert_eq!(t.grid().cell(0,1).unwrap().ch, 'E');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E');
     }
 
     #[test]
     fn t_cr_lf() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"AB\r\nCD");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
-        assert_eq!(t.grid().cell(0,1).unwrap().ch, 'C');
-        assert_eq!(t.grid().cell(1,1).unwrap().ch, 'D');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(1, 1).unwrap().ch, 'D');
     }
 
     #[test]
@@ -1011,94 +1247,100 @@ mod tests {
     fn t_ed_clear_all() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"Hello\x1b[2J");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
     }
 
     #[test]
     fn t_ed_clear_to_end() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"ABC\x1b[0J");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
     }
 
     #[test]
     fn t_el_clear_line() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"Hello\x1b[2K");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
     }
 
     #[test]
     fn t_el_clear_to_end() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"Hello\x1b[0K");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
-        assert_eq!(t.grid().cell(5,0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, ' ');
     }
 
     #[test]
     fn t_sgr_bold() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[1mX");
-        assert!(t.grid().cell(0,0).unwrap().flags.contains(CellFlags::BOLD));
+        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD));
     }
 
     #[test]
     fn t_sgr_underline() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[4mU");
-        assert!(t.grid().cell(0,0).unwrap().flags.contains(CellFlags::UNDERLINE));
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::UNDERLINE)
+        );
     }
 
     #[test]
     fn t_sgr_color_fg() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[31mR");
-        assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Indexed(1));
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(1));
     }
 
     #[test]
     fn t_sgr_color_bg() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[42mG");
-        assert_eq!(t.grid().cell(0,0).unwrap().bg, Color::Indexed(2));
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Indexed(2));
     }
 
     #[test]
     fn t_sgr_bright_color() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[91mR");
-        assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Indexed(9));
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(9));
     }
 
     #[test]
     fn t_sgr_truecolor() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[38;2;255;128;0mX");
-        assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Rgb(255,128,0));
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 128, 0));
     }
 
     #[test]
     fn t_sgr_256color() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[38;5;200mX");
-        assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Indexed(200));
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(200));
     }
 
     #[test]
     fn t_sgr_reset() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[1;31mA\x1b[0mB");
-        assert!(t.grid().cell(0,0).unwrap().flags.contains(CellFlags::BOLD));
-        assert!(!t.grid().cell(1,0).unwrap().flags.contains(CellFlags::BOLD));
-        assert_eq!(t.grid().cell(1,0).unwrap().fg, Color::Default);
+        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD));
+        assert!(!t.grid().cell(1, 0).unwrap().flags.contains(CellFlags::BOLD));
+        assert_eq!(t.grid().cell(1, 0).unwrap().fg, Color::Default);
     }
 
     #[test]
     fn t_sgr_multi_attr() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[1;3;4mX");
-        let c = t.grid().cell(0,0).unwrap();
+        let c = t.grid().cell(0, 0).unwrap();
         assert!(c.flags.contains(CellFlags::BOLD));
         assert!(c.flags.contains(CellFlags::ITALIC));
         assert!(c.flags.contains(CellFlags::UNDERLINE));
@@ -1112,7 +1354,7 @@ mod tests {
         // After R3 on row 3 (0-indexed=2, the last row), \r\n triggers scroll_up
         assert_eq!(t.grid().scrollback_len(), 1);
         // After scroll, row 0 has old row 1 content (R2)
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'R');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R');
     }
 
     #[test]
@@ -1160,7 +1402,7 @@ mod tests {
     fn t_esc_ris_reset() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[31mHello\x1bc");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
         assert_eq!(t.cursor(), (0, 0));
     }
 
@@ -1199,38 +1441,41 @@ mod tests {
     fn t_insert_line() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"A\nB\nC\x1b[1;1H\x1b[L");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, ' ');
-        assert_eq!(t.grid().cell(0,1).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A');
     }
 
     #[test]
     fn t_delete_line() {
         let mut t = Terminal::new(10, 4);
-        feed(&mut t, b"\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD\x1b[1;1H\x1b[M");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'B');
+        feed(
+            &mut t,
+            b"\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD\x1b[1;1H\x1b[M",
+        );
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
     }
 
     #[test]
     fn t_insert_char() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"ABC\x1b[1G\x1b[@");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, ' ');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
     }
 
     #[test]
     fn t_delete_char() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"ABC\x1b[1G\x1b[P");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
     }
 
     #[test]
     fn t_erase_char() {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"ABC\x1b[1G\x1b[X");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, ' ');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
     }
 
     #[test]
@@ -1238,8 +1483,8 @@ mod tests {
         let mut t = Terminal::new(10, 4);
         feed(&mut t, b"\x1b[4hAB");
         // In insert mode, each char pushes existing chars right.
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
     }
 
     #[test]
@@ -1283,17 +1528,17 @@ mod tests {
         // Clear, home, set color, print text, reset, newline.
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[2J\x1b[1;1H\x1b[32mHello\x1b[0m\r\nWorld");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
-        assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Indexed(2));
-        assert_eq!(t.grid().cell(0,1).unwrap().ch, 'W');
-        assert_eq!(t.grid().cell(0,1).unwrap().fg, Color::Default);
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(2));
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'W');
+        assert_eq!(t.grid().cell(0, 1).unwrap().fg, Color::Default);
     }
 
     #[test]
     fn t_tab_clear() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[3g"); // Clear all tabs
-        feed(&mut t, b"\t");     // Tab now does nothing (no stops)
+        feed(&mut t, b"\t"); // Tab now does nothing (no stops)
         assert_eq!(t.cursor().0, 79); // Moved to end (no tab stop found)
     }
 
@@ -1301,7 +1546,7 @@ mod tests {
     fn t_hts_set_tab() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[5G\x1bH"); // Move to col 5, set tab stop
-        feed(&mut t, b"\x1b[1G\t");    // Home, tab → should hit col 5
+        feed(&mut t, b"\x1b[1G\t"); // Home, tab → should hit col 5
         assert_eq!(t.cursor().0, 4);
     }
 
@@ -1312,8 +1557,8 @@ mod tests {
         let mut p = Parser::new();
         p.feed(b"\x1b[31", &mut t);
         p.feed(b"mRed", &mut t);
-        assert_eq!(t.grid().cell(0,0).unwrap().fg, Color::Indexed(1));
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'R');
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(1));
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R');
     }
 
     // -- UTF-8 tests --
@@ -1322,8 +1567,8 @@ mod tests {
     fn t_utf8_ascii() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"Hi");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'i');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'i');
         assert_eq!(t.cursor().0, 2);
     }
 
@@ -1332,8 +1577,8 @@ mod tests {
         // "你好" = E4BDA0 E5A5BD in UTF-8 (3 bytes per char, display width=2 each)
         let mut t = Terminal::new(80, 24);
         feed(&mut t, "你好".as_bytes());
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '你');
-        assert_eq!(t.grid().cell(2,0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '好');
         assert_eq!(t.cursor().0, 4); // 2 chars * 2 cells each
     }
 
@@ -1342,7 +1587,7 @@ mod tests {
         // 😀 = F09F9880 in UTF-8 (4 bytes, display width=2)
         let mut t = Terminal::new(80, 24);
         feed(&mut t, "😀".as_bytes());
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '😀');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '😀');
         assert_eq!(t.cursor().0, 2); // 1 emoji * 2 cells
     }
 
@@ -1351,12 +1596,12 @@ mod tests {
         // "AB你好CD" — mix ASCII (1 cell) and CJK (2 cells)
         let mut t = Terminal::new(80, 24);
         feed(&mut t, "AB你好CD".as_bytes());
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'B');
-        assert_eq!(t.grid().cell(2,0).unwrap().ch, '你');
-        assert_eq!(t.grid().cell(4,0).unwrap().ch, '好');
-        assert_eq!(t.grid().cell(6,0).unwrap().ch, 'C');
-        assert_eq!(t.grid().cell(7,0).unwrap().ch, 'D');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(6, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(7, 0).unwrap().ch, 'D');
         assert_eq!(t.cursor().0, 8); // 2+2+2+2 = 8
     }
 
@@ -1368,7 +1613,7 @@ mod tests {
         p.feed(&[0xE4], &mut t);
         p.feed(&[0xBD], &mut t);
         p.feed(&[0xA0], &mut t);
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
         assert_eq!(t.cursor().0, 2); // CJK = 2 cells
     }
 
@@ -1378,11 +1623,11 @@ mod tests {
         let mut t = Terminal::new(4, 24);
         feed(&mut t, b"AB");
         assert_eq!(t.cursor().0, 2);
-        feed(&mut t, "你".as_bytes());  // fills to end of line
-        assert_eq!(t.cursor().0, 3);     // cursor at last col, pending_wrap set
-        feed(&mut t, "C".as_bytes());   // wrap + write C
-        assert_eq!(t.cursor().0, 1);     // C at col 0, cursor at 1
-        assert_eq!(t.cursor().1, 1);     // wrapped to row 1
+        feed(&mut t, "你".as_bytes()); // fills to end of line
+        assert_eq!(t.cursor().0, 3); // cursor at last col, pending_wrap set
+        feed(&mut t, "C".as_bytes()); // wrap + write C
+        assert_eq!(t.cursor().0, 1); // C at col 0, cursor at 1
+        assert_eq!(t.cursor().1, 1); // wrapped to row 1
     }
 
     #[test]
@@ -1390,10 +1635,10 @@ mod tests {
         // Start a CJK sequence but interrupt with BS before completing
         let mut t = Terminal::new(80, 24);
         let mut p = Parser::new();
-        p.feed(&[0xE4, 0xBD], &mut t);  // incomplete '你'
-        p.feed(b"\x08", &mut t);         // BS (execute) — should flush (drop incomplete)
+        p.feed(&[0xE4, 0xBD], &mut t); // incomplete '你'
+        p.feed(b"\x08", &mut t); // BS (execute) — should flush (drop incomplete)
         feed(&mut t, b"X");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'X');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
     }
 
     #[test]
@@ -1403,8 +1648,8 @@ mod tests {
         feed(&mut t, &[0xFF]);
         // 0xFF is invalid → flush_utf8 emits U+FFFD when next byte arrives
         feed(&mut t, b"A");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{FFFD}');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{FFFD}');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
     }
 
     #[test]
@@ -1414,7 +1659,7 @@ mod tests {
         let mut p = Parser::new();
         p.feed(&[0xF0, 0x9F], &mut t);
         p.feed(&[0x98, 0x80], &mut t);
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '😀');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '😀');
         assert_eq!(t.cursor().0, 2);
     }
 
@@ -1471,11 +1716,14 @@ mod tests {
     fn t_utf8_wide_char_bg_on_spacer() {
         // Wide char with background color — spacer cell should inherit bg
         let mut t = Terminal::new(80, 24);
-        feed(&mut t, b"\x1b[42m");  // green bg
+        feed(&mut t, b"\x1b[42m"); // green bg
         feed(&mut t, "中".as_bytes());
         assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Indexed(2));
-        assert_eq!(t.grid().cell(1, 0).unwrap().bg, Color::Indexed(2),
-            "spacer cell should inherit bg color");
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().bg,
+            Color::Indexed(2),
+            "spacer cell should inherit bg color"
+        );
     }
 
     #[test]
@@ -1483,8 +1731,8 @@ mod tests {
         // Width=4: write ABC → cursor at col 3. CJK (width 2) doesn't fit at col 3.
         // Should wrap to next line when auto_wrap is on.
         let mut t = Terminal::new(4, 24);
-        feed(&mut t, b"ABC");   // A=col0, B=col1, C=col2, cursor at col3
-        feed(&mut t, "你".as_bytes());  // doesn't fit at col 3 → wrap
+        feed(&mut t, b"ABC"); // A=col0, B=col1, C=col2, cursor at col3
+        feed(&mut t, "你".as_bytes()); // doesn't fit at col 3 → wrap
         assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你');
         assert!(t.grid().cell(0, 1).unwrap().is_wide());
@@ -1501,9 +1749,18 @@ mod tests {
         feed(&mut t, b"\x1b[1;3m"); // Bold + italic
         feed(&mut t, "你".as_bytes());
         let cell = t.grid().cell(0, 0).unwrap();
-        assert!(cell.is_wide(), "WIDE_CHAR flag must be preserved after SGR merge");
-        assert!(cell.flags.contains(CellFlags::BOLD), "BOLD flag must be set");
-        assert!(cell.flags.contains(CellFlags::ITALIC), "ITALIC flag must be set");
+        assert!(
+            cell.is_wide(),
+            "WIDE_CHAR flag must be preserved after SGR merge"
+        );
+        assert!(
+            cell.flags.contains(CellFlags::BOLD),
+            "BOLD flag must be set"
+        );
+        assert!(
+            cell.flags.contains(CellFlags::ITALIC),
+            "ITALIC flag must be set"
+        );
     }
 
     #[test]
@@ -1532,8 +1789,13 @@ mod tests {
         feed(&mut t, b"\x1b#8"); // DECALN
         for y in 0..5 {
             for x in 0..10 {
-                assert_eq!(t.grid().cell(x, y).unwrap().ch, 'E',
-                    "cell ({},{}) should be 'E' after DECALN", x, y);
+                assert_eq!(
+                    t.grid().cell(x, y).unwrap().ch,
+                    'E',
+                    "cell ({},{}) should be 'E' after DECALN",
+                    x,
+                    y
+                );
             }
         }
     }
@@ -1545,7 +1807,10 @@ mod tests {
         feed(&mut t, b"\x1b[1;31m");
         feed(&mut t, b"\x1b#8");
         let cell = t.grid().cell(0, 0).unwrap();
-        assert!(!cell.flags.contains(CellFlags::BOLD), "DECALN should reset attributes");
+        assert!(
+            !cell.flags.contains(CellFlags::BOLD),
+            "DECALN should reset attributes"
+        );
         assert_eq!(cell.fg, Color::Default, "DECALN should reset fg");
         assert_eq!(cell.bg, Color::Default, "DECALN should reset bg");
     }
@@ -1780,14 +2045,22 @@ mod tests {
     fn t_osc133_unknown_subcommand_ignored() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]133;X\x07"); // unknown subcommand
-        assert_eq!(t.command_marks().len(), 0, "unknown subcommand should be ignored");
+        assert_eq!(
+            t.command_marks().len(),
+            0,
+            "unknown subcommand should be ignored"
+        );
     }
 
     #[test]
     fn t_osc133_empty_payload() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]133\x07"); // OSC 133 with no sub-mark
-        assert_eq!(t.command_marks().len(), 0, "OSC 133 with empty payload should be ignored");
+        assert_eq!(
+            t.command_marks().len(),
+            0,
+            "OSC 133 with empty payload should be ignored"
+        );
     }
 
     #[test]
@@ -1991,7 +2264,7 @@ mod tests {
     #[test]
     fn t_charset_scs_g0_dec_special() {
         let mut t = Terminal::new(80, 24);
-        feed(&mut t, b"\x1b(0");  // ESC ( 0
+        feed(&mut t, b"\x1b(0"); // ESC ( 0
         assert_eq!(t.g0_charset(), Charset::DecSpecial);
         assert!(!t.active_g1());
     }
@@ -2023,7 +2296,7 @@ mod tests {
     fn t_charset_so_shift_out_activates_g1() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b)0");
-        feed(&mut t, b"\x0e");  // SO
+        feed(&mut t, b"\x0e"); // SO
         assert!(t.active_g1());
     }
 
@@ -2038,69 +2311,69 @@ mod tests {
     fn t_charset_dec_special_g0_translation() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0q");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
     }
 
     #[test]
     fn t_charset_dec_special_g1_via_so() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b)0\x0ex");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2502}'); // │
     }
 
     #[test]
     fn t_charset_dec_special_corner_chars() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0lk mj");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{250C}'); // ┌
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{2510}'); // ┐
-        assert_eq!(t.grid().cell(3,0).unwrap().ch, '\u{2514}'); // └
-        assert_eq!(t.grid().cell(4,0).unwrap().ch, '\u{2518}'); // ┘
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250C}'); // ┌
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2510}'); // ┐
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{2514}'); // └
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2518}'); // ┘
     }
 
     #[test]
     fn t_charset_dec_special_cross_tee() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0ntuvw");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{253C}'); // ┼
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{251C}'); // ├
-        assert_eq!(t.grid().cell(2,0).unwrap().ch, '\u{2524}'); // ┤
-        assert_eq!(t.grid().cell(3,0).unwrap().ch, '\u{2534}'); // ┴
-        assert_eq!(t.grid().cell(4,0).unwrap().ch, '\u{252C}'); // ┬
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{253C}'); // ┼
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{251C}'); // ├
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2524}'); // ┤
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{2534}'); // ┴
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{252C}'); // ┬
     }
 
     #[test]
     fn t_charset_dec_special_special_chars() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0`afg");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{25C6}'); // ◆
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{2592}'); // ▒
-        assert_eq!(t.grid().cell(2,0).unwrap().ch, '\u{00B0}'); // °
-        assert_eq!(t.grid().cell(3,0).unwrap().ch, '\u{00B1}'); // ±
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{25C6}'); // ◆
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2592}'); // ▒
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{00B0}'); // °
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{00B1}'); // ±
     }
 
     #[test]
     fn t_charset_ascii_passes_through() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"Hello");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'H');
-        assert_eq!(t.grid().cell(4,0).unwrap().ch, 'o');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'o');
     }
 
     #[test]
     fn t_charset_dec_special_below_range_unchanged() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0A1");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, 'A');
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, '1');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '1');
     }
 
     #[test]
     fn t_charset_switch_back_to_ascii_restores_text() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0q\x1b(Bq");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2500}'); // ─
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'q');
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'q');
     }
 
     #[test]
@@ -2109,18 +2382,18 @@ mod tests {
         feed(&mut t, b"\x1b(0\x1b)B");
         // G0=DEC, G1=ASCII
         feed(&mut t, b"q");
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{2500}'); // G0 → ─
-        feed(&mut t, b"\x0eq");  // shift to G1
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, 'q');         // G1 → q
-        feed(&mut t, b"\x0fq");  // shift to G0
-        assert_eq!(t.grid().cell(2,0).unwrap().ch, '\u{2500}');  // G0 → ─
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // G0 → ─
+        feed(&mut t, b"\x0eq"); // shift to G1
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'q'); // G1 → q
+        feed(&mut t, b"\x0fq"); // shift to G0
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2500}'); // G0 → ─
     }
 
     #[test]
     fn t_charset_ris_resets() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b(0\x1b)0\x0e");
-        feed(&mut t, b"\x1bc");  // RIS
+        feed(&mut t, b"\x1bc"); // RIS
         assert_eq!(t.g0_charset(), Charset::Ascii);
         assert_eq!(t.g1_charset(), Charset::Ascii);
         assert!(!t.active_g1());
@@ -2130,16 +2403,16 @@ mod tests {
     fn t_charset_dec_special_box_drawing() {
         let mut t = Terminal::new(5, 3);
         feed(&mut t, b"\x1b(0");
-        feed(&mut t, b"lqqqk\r");   // ┌───┐
+        feed(&mut t, b"lqqqk\r"); // ┌───┐
         feed(&mut t, b"\nx   x\r"); // │   │
-        feed(&mut t, b"\nmqqqj");   // └───┘
-        assert_eq!(t.grid().cell(0,0).unwrap().ch, '\u{250C}'); // ┌
-        assert_eq!(t.grid().cell(1,0).unwrap().ch, '\u{2500}'); // ─
-        assert_eq!(t.grid().cell(4,0).unwrap().ch, '\u{2510}'); // ┐
-        assert_eq!(t.grid().cell(0,1).unwrap().ch, '\u{2502}'); // │
-        assert_eq!(t.grid().cell(4,1).unwrap().ch, '\u{2502}'); // │
-        assert_eq!(t.grid().cell(0,2).unwrap().ch, '\u{2514}'); // └
-        assert_eq!(t.grid().cell(4,2).unwrap().ch, '\u{2518}'); // ┘
+        feed(&mut t, b"\nmqqqj"); // └───┘
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250C}'); // ┌
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2510}'); // ┐
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(4, 1).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, '\u{2514}'); // └
+        assert_eq!(t.grid().cell(4, 2).unwrap().ch, '\u{2518}'); // ┘
     }
 
     #[test]
@@ -2167,8 +2440,8 @@ mod tests {
     #[test]
     fn t_command_blocks_single_command() {
         let mut t = Terminal::new(80, 24);
-        feed(&mut t, b"\x1b]133;A\x07");  // PromptStart
-        feed(&mut t, b"\x1b]133;C\x07");  // OutputStart
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart
+        feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
         feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd exit 0
         let blocks = t.command_blocks();
         assert_eq!(blocks.len(), 1);
@@ -2204,7 +2477,7 @@ mod tests {
     #[test]
     fn t_command_blocks_running() {
         let mut t = Terminal::new(80, 24);
-        feed(&mut t, b"\x1b]133;A\x07");  // PromptStart only
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart only
         let blocks = t.command_blocks();
         assert_eq!(blocks.len(), 1);
         assert!(!blocks[0].is_complete());
@@ -2242,9 +2515,21 @@ mod tests {
     fn t_group_command_blocks_stress() {
         let mut marks = Vec::new();
         for i in 0..100 {
-            marks.push(CommandMark { kind: CommandMarkKind::PromptStart, row: i * 3, exit_code: None });
-            marks.push(CommandMark { kind: CommandMarkKind::OutputStart, row: i * 3, exit_code: None });
-            marks.push(CommandMark { kind: CommandMarkKind::CommandEnd, row: i * 3 + 1, exit_code: Some(if i % 7 == 0 { 1 } else { 0 }) });
+            marks.push(CommandMark {
+                kind: CommandMarkKind::PromptStart,
+                row: i * 3,
+                exit_code: None,
+            });
+            marks.push(CommandMark {
+                kind: CommandMarkKind::OutputStart,
+                row: i * 3,
+                exit_code: None,
+            });
+            marks.push(CommandMark {
+                kind: CommandMarkKind::CommandEnd,
+                row: i * 3 + 1,
+                exit_code: Some(if i % 7 == 0 { 1 } else { 0 }),
+            });
         }
         let blocks = group_command_blocks(&marks);
         assert_eq!(blocks.len(), 100);

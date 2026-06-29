@@ -43,17 +43,26 @@ pub struct ChatMessage {
 impl ChatMessage {
     /// Create a system message.
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: Role::System, content: content.into() }
+        Self {
+            role: Role::System,
+            content: content.into(),
+        }
     }
 
     /// Create a user message.
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: Role::User, content: content.into() }
+        Self {
+            role: Role::User,
+            content: content.into(),
+        }
     }
 
     /// Create an assistant message.
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: Role::Assistant, content: content.into() }
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+        }
     }
 }
 
@@ -154,7 +163,10 @@ mod tests {
             last_command: Some("git push".to_string()),
             last_exit_code: Some(1),
             last_output: Some("error: failed to push some refs".to_string()),
-            recent_commands: vec!["git add -A".to_string(), "git commit -m \"init\"".to_string()],
+            recent_commands: vec![
+                "git add -A".to_string(),
+                "git commit -m \"init\"".to_string(),
+            ],
             cwd: Some("/home/user/project".to_string()),
             shell: Some("zsh".to_string()),
         }
@@ -257,16 +269,30 @@ mod tests {
     #[test]
     fn t_messages_always_start_with_system() {
         let ctx = sample_ctx();
-        for action in [Action::Explain, Action::Suggest, Action::ErrorHelp, Action::NL2Command] {
+        for action in [
+            Action::Explain,
+            Action::Suggest,
+            Action::ErrorHelp,
+            Action::NL2Command,
+        ] {
             let msgs = build_messages(action, &ctx);
-            assert_eq!(msgs[0].role, Role::System, "action {action:?} should start with system message");
+            assert_eq!(
+                msgs[0].role,
+                Role::System,
+                "action {action:?} should start with system message"
+            );
         }
     }
 
     #[test]
     fn t_messages_always_have_two_messages() {
         let ctx = sample_ctx();
-        for action in [Action::Explain, Action::Suggest, Action::ErrorHelp, Action::NL2Command] {
+        for action in [
+            Action::Explain,
+            Action::Suggest,
+            Action::ErrorHelp,
+            Action::NL2Command,
+        ] {
             let msgs = build_messages(action, &ctx);
             assert_eq!(msgs.len(), 2);
         }

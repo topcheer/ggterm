@@ -11,7 +11,6 @@ use ggterm_ai::Action;
 #[derive(Debug)]
 pub enum AppEvent {
     // ── Core terminal events (Phase 1) ──
-
     /// Raw bytes read from the PTY (sent from the PTY reader thread).
     PtyBytes(Vec<u8>),
 
@@ -28,7 +27,6 @@ pub enum AppEvent {
     Quit,
 
     // ── Tab management events (Phase 5-B) ──
-
     /// Open a new tab.
     NewTab,
 
@@ -45,7 +43,6 @@ pub enum AppEvent {
     PrevTab,
 
     // ── Theme events (Phase 5-A) ──
-
     /// Set the theme by name (e.g., "dark", "light", "dracula").
     SetTheme(String),
 
@@ -53,7 +50,6 @@ pub enum AppEvent {
     CycleTheme,
 
     // ── AI events (Phase 5-C, feature-gated) ──
-
     /// Request an AI action (explain, suggest, error help, NL2cmd).
     #[cfg(feature = "ai")]
     AIRequest(Action),
@@ -90,7 +86,11 @@ mod tests {
     #[test]
     fn t_event_resize() {
         let (tx, rx) = mpsc::channel();
-        tx.send(AppEvent::Resize { cols: 120, rows: 40 }).unwrap();
+        tx.send(AppEvent::Resize {
+            cols: 120,
+            rows: 40,
+        })
+        .unwrap();
         match rx.recv() {
             Ok(AppEvent::Resize { cols, rows }) => {
                 assert_eq!(cols, 120);

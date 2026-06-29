@@ -364,7 +364,8 @@ mod tests {
         let (mut app, tx) = App::new(40, 5);
 
         // Feed some bytes via the event channel
-        tx.send(AppEvent::PtyBytes(b"Hello World".to_vec())).unwrap();
+        tx.send(AppEvent::PtyBytes(b"Hello World".to_vec()))
+            .unwrap();
         app.pump();
 
         // Check that the terminal processed the bytes
@@ -376,7 +377,11 @@ mod tests {
     fn test_app_resize() {
         let (mut app, tx) = App::new(80, 24);
 
-        tx.send(AppEvent::Resize { cols: 120, rows: 40 }).unwrap();
+        tx.send(AppEvent::Resize {
+            cols: 120,
+            rows: 40,
+        })
+        .unwrap();
         app.pump();
 
         assert_eq!(app.grid().width(), 120);
@@ -407,7 +412,8 @@ mod tests {
     fn test_app_multiline_output() {
         let (mut app, tx) = App::new(20, 5);
 
-        tx.send(AppEvent::PtyBytes(b"Line 1\r\nLine 2\r\nLine 3".to_vec())).unwrap();
+        tx.send(AppEvent::PtyBytes(b"Line 1\r\nLine 2\r\nLine 3".to_vec()))
+            .unwrap();
         app.pump();
 
         let output = app.output().to_string();
@@ -420,7 +426,8 @@ mod tests {
     fn test_app_with_colors() {
         let (mut app, tx) = App::new(40, 3);
 
-        tx.send(AppEvent::PtyBytes(b"\x1b[1;31mError\x1b[0m".to_vec())).unwrap();
+        tx.send(AppEvent::PtyBytes(b"\x1b[1;31mError\x1b[0m".to_vec()))
+            .unwrap();
         app.pump();
 
         let output = app.output();
@@ -444,7 +451,8 @@ mod tests {
     fn test_app_cjk_text() {
         let (mut app, tx) = App::new(40, 5);
 
-        tx.send(AppEvent::PtyBytes("你好世界".as_bytes().to_vec())).unwrap();
+        tx.send(AppEvent::PtyBytes("你好世界".as_bytes().to_vec()))
+            .unwrap();
         app.pump();
 
         let output = app.output();
@@ -588,7 +596,11 @@ mod tests {
         tx.send(AppEvent::NewTab).unwrap();
         app.pump();
 
-        tx.send(AppEvent::Resize { cols: 120, rows: 40 }).unwrap();
+        tx.send(AppEvent::Resize {
+            cols: 120,
+            rows: 40,
+        })
+        .unwrap();
         app.pump();
 
         assert_eq!(app.tabs().tabs()[0].cols, 120);

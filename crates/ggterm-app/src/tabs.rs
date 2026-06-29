@@ -537,7 +537,10 @@ mod tests {
         assert!(mgr.active_tab().unwrap().dirty);
         mgr.switch_tab(0);
         mgr.switch_tab(1);
-        assert!(!mgr.active_tab().unwrap().dirty, "switching to tab marks it clean");
+        assert!(
+            !mgr.active_tab().unwrap().dirty,
+            "switching to tab marks it clean"
+        );
     }
 
     // ── next/prev ──

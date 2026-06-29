@@ -1,4 +1,4 @@
-use super::cell::{char_width, Cell, CellFlags};
+use super::cell::{Cell, CellFlags, char_width};
 
 /// A row of terminal cells.
 ///
@@ -63,7 +63,12 @@ impl Row {
 
     /// Get the text content of this row as a String (trailing spaces trimmed).
     pub fn text(&self) -> String {
-        self.cells.iter().map(|c| c.ch).collect::<String>().trim_end().to_string()
+        self.cells
+            .iter()
+            .map(|c| c.ch)
+            .collect::<String>()
+            .trim_end()
+            .to_string()
     }
 
     // --------------------------------------------------------------------
@@ -117,8 +122,7 @@ impl Row {
         };
         let count = count.min(len - actual_col);
         // Shift left
-        self.cells
-            .copy_within(actual_col + count..len, actual_col);
+        self.cells.copy_within(actual_col + count..len, actual_col);
         // Fill the vacated tail with blanks
         for cell in &mut self.cells[len - count..] {
             *cell = Cell::blank();

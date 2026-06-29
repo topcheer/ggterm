@@ -106,15 +106,27 @@ mod tests {
     }
 
     fn shift() -> KeyModifiers {
-        KeyModifiers { shift: true, ctrl: false, alt: false }
+        KeyModifiers {
+            shift: true,
+            ctrl: false,
+            alt: false,
+        }
     }
 
     fn ctrl() -> KeyModifiers {
-        KeyModifiers { shift: false, ctrl: true, alt: false }
+        KeyModifiers {
+            shift: false,
+            ctrl: true,
+            alt: false,
+        }
     }
 
     fn alt() -> KeyModifiers {
-        KeyModifiers { shift: false, ctrl: false, alt: true }
+        KeyModifiers {
+            shift: false,
+            ctrl: false,
+            alt: true,
+        }
     }
 
     // --- Arrow keys ---

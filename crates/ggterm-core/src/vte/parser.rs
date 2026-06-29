@@ -145,9 +145,7 @@ impl Parser {
             }
             // Final byte
             0x30..=0x7e => {
-                let inter = unsafe {
-                    self.intermediates.get_unchecked(..self.intermediate_count)
-                };
+                let inter = unsafe { self.intermediates.get_unchecked(..self.intermediate_count) };
                 perform.esc(inter, byte);
                 self.state = State::Ground;
             }
@@ -168,7 +166,10 @@ impl Parser {
             }
             b';' => {
                 self.state = State::CsiParam;
-                self.param_count = self.param_count.saturating_add(1).min(self.params.len() - 1);
+                self.param_count = self
+                    .param_count
+                    .saturating_add(1)
+                    .min(self.params.len() - 1);
                 self.param_set = false;
             }
             // Private mode prefixes: ?, <, >, = — treated as intermediates
@@ -276,12 +277,8 @@ impl Parser {
         } else {
             self.param_count
         };
-        let inter = unsafe {
-            self.intermediates.get_unchecked(..self.intermediate_count)
-        };
-        let params = unsafe {
-            self.params.get_unchecked(..count.min(self.params.len()))
-        };
+        let inter = unsafe { self.intermediates.get_unchecked(..self.intermediate_count) };
+        let params = unsafe { self.params.get_unchecked(..count.min(self.params.len())) };
         perform.csi(inter, params, final_byte);
     }
 

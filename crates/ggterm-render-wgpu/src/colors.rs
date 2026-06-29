@@ -36,9 +36,7 @@ pub fn indexed_to_rgb(idx: u8) -> (u8, u8, u8) {
         0..=15 => ANSI_16[idx as usize],
         16..=231 => {
             let i = (idx - 16) as usize;
-            let component = |v: usize| -> u8 {
-                if v == 0 { 0 } else { 55 + v as u8 * 40 }
-            };
+            let component = |v: usize| -> u8 { if v == 0 { 0 } else { 55 + v as u8 * 40 } };
             (
                 component(i / 36 % 6),
                 component(i / 6 % 6),

@@ -324,7 +324,10 @@ mod tests {
         let ctx = sample_ctx();
         let req = AIRequest::new(Action::Explain, ctx);
         bridge.request(req);
-        assert!(bridge.engine().is_none(), "engine should be in worker thread");
+        assert!(
+            bridge.engine().is_none(),
+            "engine should be in worker thread"
+        );
     }
 
     #[test]
@@ -408,7 +411,10 @@ mod tests {
 
         let response = bridge.wait_result();
         assert!(response.result.is_err());
-        assert_eq!(response.result.unwrap_err(), ggterm_ai::AIError::EmptyResponse);
+        assert_eq!(
+            response.result.unwrap_err(),
+            ggterm_ai::AIError::EmptyResponse
+        );
     }
 
     #[test]

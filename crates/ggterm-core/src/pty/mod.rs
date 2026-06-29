@@ -21,7 +21,7 @@
 use std::io::{self, Read, Write};
 
 use portable_pty::cmdbuilder::CommandBuilder;
-use portable_pty::{native_pty_system, Child, ChildKiller, MasterPty, PtySize};
+use portable_pty::{Child, ChildKiller, MasterPty, PtySize, native_pty_system};
 
 /// A PTY session managing a shell child process.
 ///
@@ -115,9 +115,7 @@ impl PtySession {
         let mut cmd = CommandBuilder::new(&shell_path);
 
         // Set reasonable defaults
-        cmd.cwd(
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")),
-        );
+        cmd.cwd(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")));
         cmd.env("TERM", "xterm-256color");
 
         // Spawn the child process
@@ -248,9 +246,7 @@ impl PtySession {
     /// Blocks until the child terminates.
     pub fn wait(&mut self) -> Result<(), PtyError> {
         if let Some(child) = self.child.as_mut() {
-            child
-                .wait()
-                .map_err(|e| PtyError::Pty(e.to_string()))?;
+            child.wait().map_err(|e| PtyError::Pty(e.to_string()))?;
         }
         Ok(())
     }

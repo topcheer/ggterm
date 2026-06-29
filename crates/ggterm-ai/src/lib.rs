@@ -30,8 +30,8 @@ pub mod engine;
 
 // Re-export key types
 pub use context::AIContext;
-pub use prompt::{Action, ChatMessage, Role, build_messages};
 pub use engine::{AIEngine, AIError, AIResult, LLMProvider};
+pub use prompt::{Action, ChatMessage, Role, build_messages};
 
 #[cfg(feature = "http")]
 pub use client::{AIConfig, LLMClient};

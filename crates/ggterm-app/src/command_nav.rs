@@ -141,10 +141,7 @@ impl CommandNavigator {
     /// Compute the scroll offset for a specific block index.
     /// Returns `None` if the index is out of bounds.
     pub fn scroll_to_index(&self, terminal: &Terminal, index: usize) -> Option<usize> {
-        terminal
-            .command_blocks()
-            .get(index)
-            .map(|b| b.prompt_row)
+        terminal.command_blocks().get(index).map(|b| b.prompt_row)
     }
 
     // ------------------------------------------------------------------
@@ -158,10 +155,7 @@ impl CommandNavigator {
 
     /// Return true if any command has failed (non-zero exit code).
     pub fn has_failures(&self, terminal: &Terminal) -> bool {
-        terminal
-            .command_blocks()
-            .iter()
-            .any(|b| b.is_failure())
+        terminal.command_blocks().iter().any(|b| b.is_failure())
     }
 
     /// Return the exit code of the selected command block.
@@ -188,10 +182,7 @@ impl CommandNavigator {
             .command_blocks()
             .into_iter()
             .filter(|b| b.is_complete())
-            .filter_map(|b| {
-                b.command_row
-                    .map(|row| terminal.extract_row_text(row))
-            })
+            .filter_map(|b| b.command_row.map(|row| terminal.extract_row_text(row)))
             .collect()
     }
 
@@ -200,10 +191,7 @@ impl CommandNavigator {
         terminal
             .command_blocks()
             .into_iter()
-            .filter_map(|b| {
-                b.command_row
-                    .map(|row| terminal.extract_row_text(row))
-            })
+            .filter_map(|b| b.command_row.map(|row| terminal.extract_row_text(row)))
             .collect()
     }
 
@@ -220,19 +208,16 @@ impl CommandNavigator {
     /// Find the index of the Nth command matching the query.
     pub fn find_command(&self, terminal: &Terminal, query: &str) -> Option<usize> {
         let lower = query.to_lowercase();
-        terminal
-            .command_blocks()
-            .iter()
-            .position(|b| {
-                if let Some(row) = b.command_row {
-                    terminal
-                        .extract_row_text(row)
-                        .to_lowercase()
-                        .contains(&lower)
-                } else {
-                    false
-                }
-            })
+        terminal.command_blocks().iter().position(|b| {
+            if let Some(row) = b.command_row {
+                terminal
+                    .extract_row_text(row)
+                    .to_lowercase()
+                    .contains(&lower)
+            } else {
+                false
+            }
+        })
     }
 
     // ------------------------------------------------------------------
@@ -719,7 +704,10 @@ mod tests {
 
         let nav = CommandNavigator::new();
         let results = nav.search_history(&term, "ls");
-        assert!(!results.is_empty(), "case-insensitive search should find 'LS'");
+        assert!(
+            !results.is_empty(),
+            "case-insensitive search should find 'LS'"
+        );
     }
 
     #[test]
@@ -780,9 +768,9 @@ mod tests {
     #[test]
     fn t_nav_exit_status_summary_mixed() {
         let mut term = Terminal::new(80, 30);
-        emit_cycle(&mut term, 0, Some(0));   // success
-        emit_cycle(&mut term, 2, Some(0));   // success
-        emit_cycle(&mut term, 4, Some(1));   // fail
+        emit_cycle(&mut term, 0, Some(0)); // success
+        emit_cycle(&mut term, 2, Some(0)); // success
+        emit_cycle(&mut term, 4, Some(1)); // fail
 
         let nav = CommandNavigator::new();
         let summary = nav.exit_status_summary(&term);
@@ -794,9 +782,9 @@ mod tests {
     #[test]
     fn t_nav_exit_status_summary_with_running() {
         let mut term = Terminal::new(80, 30);
-        emit_cycle(&mut term, 0, Some(0));   // completed
-        feed(&mut term, b"\x1b]133;A\x07");  // prompt start
-        feed(&mut term, b"\x1b]133;B\x07");  // command start (running, no D)
+        emit_cycle(&mut term, 0, Some(0)); // completed
+        feed(&mut term, b"\x1b]133;A\x07"); // prompt start
+        feed(&mut term, b"\x1b]133;B\x07"); // command start (running, no D)
 
         let nav = CommandNavigator::new();
         let summary = nav.exit_status_summary(&term);

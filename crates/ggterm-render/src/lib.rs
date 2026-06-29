@@ -75,12 +75,7 @@ pub trait Renderer {
     /// Render the grid with cursor state.
     ///
     /// `dirty`: `None` = full redraw, `Some(rect)` = partial update.
-    fn render(
-        &mut self,
-        grid: &Grid,
-        cursor: &CursorState,
-        dirty: Option<&DirtyRect>,
-    );
+    fn render(&mut self, grid: &Grid, cursor: &CursorState, dirty: Option<&DirtyRect>);
 
     /// Resize the renderer viewport (in cell columns/rows).
     fn resize(&mut self, cols: usize, rows: usize);
