@@ -8,9 +8,9 @@ A GPU-accelerated, AI-native, cross-platform terminal emulator built in Rust.
 - **AI-native**: shell integration (OSC 133), command blocks, AI suggestions
 - **Cross-platform**: macOS, Linux, Windows (desktop) + iOS, Android (mobile)
 - **Configurable**: TOML config with hot-reload, plugin system (Lua + WASM)
-- **Extensible**: Plugin system with Lua and WASM runtimes, hook into all I/O
-- **Extensible**: WASM + Lua plugin system
+- **Extensible**: WASM + Lua plugin system, hook into all I/O
 - **Customizable**: Multiple themes (dark, light, dracula) + multi-tab support
+- **Runnable**: Standalone binary with CLI args, shell integration, mouse + keyboard
 
 ## Architecture
 
@@ -54,18 +54,39 @@ Platform Abstraction (ConPTY / POSIX)
 - **AI Bridge**: Background AI requests without blocking the terminal
 - **Extended Events**: Tab/theme/AI events in the main event loop
 
+### Phase 6: Plugin System
+- **Lua Runtime**: Lua 5.4 plugins with hooks (input, output, render, command)
+- **WASM Runtime**: WebAssembly plugins via Wasmoth
+- **Plugin Manager**: Lifecycle, permissions, loading/unloading
+
+### Phase 8: Production
+- **Config System**: TOML config (`~/.ggterm/config.toml`) with hot-reload
+- **Config Watch**: File-system watcher for live config changes
+- **Error Handling**: Unified error types via thiserror
+- **Command Navigation**: OSC 133 block navigation with status bar
+
+### Phase 9: Desktop Terminal
+- **Binary CLI**: `ggterm` binary with clap (--cols, --rows, --shell, --theme, --font-size, -v)
+- **Shell Integration Auto-Injection**: OSC 133 hooks auto-injected for bash/zsh/fish
+- **Dynamic Window Title**: OSC 0/2 sequences set the window title
+- **Mouse Support**: SGR mouse (1006), wheel scroll, click-drag selection, clipboard copy
+- **Keyboard Refinement**: Full keymap (Ctrl/Alt/Shift/F-keys/nav keys, Ctrl+punctuation)
+- **PTY Enhancement**: Env vars (GGTERM=1), spawn args, shell integration wiring
+- **Config Startup Loading**: `~/.ggterm/config.toml` loaded on launch, CLI overrides config
+
 ## Status
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Terminal Core (VTE, Grid, PTY, Rendering) | ✅ Complete |
-| 2 | VT Compatibility (alt screen, CSI, charsets, scroll) | ✅ Complete |
-| 3 | Shell Integration (OSC 133, CommandBlock) | ✅ Complete |
-| 4 | AI Engine (context, prompts, LLM client) | ✅ Complete |
-| 5 | Modern UI (themes, tabs, AI bridge) | ✅ Complete |
-| 6 | Plugin System (WASM + Lua) | Planned |
+| 1 | Terminal Core (VTE, Grid, PTY, Rendering) | Done |
+| 2 | VT Compatibility (alt screen, CSI, charsets, scroll) | Done |
+| 3 | Shell Integration (OSC 133, CommandBlock) | Done |
+| 4 | AI Engine (context, prompts, LLM client) | Done |
+| 5 | Modern UI (themes, tabs, AI bridge) | Done |
+| 6 | Plugin System (WASM + Lua) | Done |
 | 7 | Mobile (Flutter + SSH) | Planned |
-| 8 | Production (packaging, CI, docs) | Planned |
+| 8 | Production (config, docs, thiserror) | Done |
+| 9 | Desktop Terminal (binary, mouse, keyboard, resize) | Done |
 
 ## Usage
 
@@ -128,8 +149,10 @@ model = "gpt-4o-mini"
 
 ## Command Navigation
 
-Jump between command blocks with keyboard shortcuts. Requires shell integration
-(OSC 133). See [`docs/command-nav.md`](docs/command-nav.md) for details.
+Jump between command blocks with keyboard shortcuts. GGTerm auto-injects
+OSC 133 shell integration hooks when spawning shells — no manual setup needed.
+
+For shells that need manual integration:
 
 | Shortcut | Action |
 |----------|--------|
@@ -137,15 +160,43 @@ Jump between command blocks with keyboard shortcuts. Requires shell integration
 | `Ctrl+Shift+Down` | Next command block |
 | `Ctrl+Shift+H` | Toggle status bar |
 
-Install shell integration:
+See [`docs/command-nav.md`](docs/command-nav.md) for details.
+
+## Binary Usage
+
 ```bash
-# bash
-echo 'source /path/to/ggterm/shell/bash.sh' >> ~/.bashrc
-# zsh
-echo 'source /path/to/ggterm/shell/zsh.zsh' >> ~/.zshrc
-# fish
-echo 'source /path/to/ggterm/shell/fish.fish' >> ~/.config/fish/config.fish
+# Build the binary
+cargo build --features desktop
+
+# Default 80x24 terminal
+./target/debug/ggterm
+
+# Custom dimensions and shell
+./target/debug/ggterm --cols 120 --rows 40 --shell /bin/zsh
+
+# Custom theme and font size
+./target/debug/ggterm --theme solarized --font-size 15
+
+# Show help
+./target/debug/ggterm --help
+
+# Verbose logging
+./target/debug/ggterm -v
 ```
+
+### CLI Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--cols <N>` | 80 | Initial terminal column count |
+| `--rows <N>` | 24 | Initial terminal row count |
+| `--shell <PATH>` | `$SHELL` | Shell program to execute |
+| `--title <TITLE>` | "GGTerm" | Initial window title |
+| `--theme <NAME>` | dark | Theme: dark, light, solarized |
+| `--font-size <N>` | 14 | Font size in pixels |
+| `-v` | — | Verbose logging (env_logger) |
+
+CLI options override `~/.ggterm/config.toml` values.
 
 ## Building
 
@@ -162,27 +213,41 @@ cargo build --features "desktop ai plugin plugin-lua"
 # All features
 cargo build --features "desktop ai plugin plugin-lua plugin-wasm"
 
-# Run tests (987 tests with all features)
-cargo test --features "desktop ai plugin plugin-lua" --workspace
+# Run the terminal!
+cargo run --features desktop
+
+# With CLI options
+cargo run --features desktop -- --cols 120 --rows 40 --shell /bin/zsh
+
+# Run tests (1151 tests with all features)
+cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 ```
 
 ## Status
 
-**987 tests passing** (1 ignored PTY integration test).
+**1151 tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
 | VTE Parser | Done | 58 |
 | Grid Model | Done | 116 |
 | Terminal State Machine | Done | 136 |
-| PTY Integration | Done | 12 |
+| PTY Integration | Done | 16 |
 | Renderer (Console + GPU) | Done | 49 |
 | App + Events + Input | Done | 295 |
 | Plugin System (Lua + WASM) | Done | 132 |
 | Shell Integration (OSC 133) | Done | 12 |
 | Command Navigation | Done | 32 |
 | Config System (TOML + Hot-reload) | Done | 15 |
+| Config File Watch | Done | 10 |
 | Error Handling (thiserror) | Done | — |
+| Binary CLI (clap) | Done | — |
+| Shell Integration Auto-Injection | Done | 11 |
+| Mouse Support (SGR + Selection) | Done | 23 |
+| Keyboard Refinement | Done | 63 |
+| PTY Enhancement (env + args) | Done | 4 |
+| Config Startup Loading | Done | 7 |
+| Resize Enhancement (debounce) | Done | 26 |
 
 ## License
 
