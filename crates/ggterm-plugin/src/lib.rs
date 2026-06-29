@@ -29,6 +29,8 @@
 
 pub mod config;
 pub mod hooks;
+#[cfg(feature = "lua")]
+pub mod lua;
 pub mod manager;
 pub mod plugin;
 #[cfg(feature = "wasm")]
@@ -37,8 +39,12 @@ pub mod wasm;
 // Re-export key types for convenience
 pub use config::{PluginConfig, PluginLoader, PluginManifest, PluginType};
 pub use hooks::{Hook, HookResult, HookResultAggregator, HookType};
+#[cfg(feature = "lua")]
+pub use lua::LuaPlugin;
 pub use manager::PluginManager;
 pub use plugin::{
     NativePlugin, NativePluginBuilder, Plugin, PluginContext, PluginContextBuilder, PluginError,
     PluginStats, native,
 };
+#[cfg(feature = "wasm")]
+pub use wasm::WasmPlugin;
