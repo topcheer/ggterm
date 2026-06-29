@@ -232,6 +232,126 @@ pub fn pixel_to_cell(px: f64, py: f64, cell_width: f64, cell_height: f64) -> (u1
     (col, row)
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+//  URL Detection (P17-C)
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Find a URL in a line of text that overlaps the given column position.
+///
+/// Returns `(byte_start, byte_end, url)` if a URL is found covering `col`,
+/// or `None` if no URL overlaps the position.
+///
+/// Detects `http://`, `https://`, `ftp://`, and `www.` prefixed URLs.
+pub fn detect_url_at_position(line: &str, col: usize) -> Option<(usize, usize, String)> {
+    for (start, url) in find_urls(line) {
+        // URL occupies columns [start, start + url.chars().count())
+        let end = start + url.chars().count();
+        if col >= start && col < end {
+            return Some((start, end, url));
+        }
+    }
+    None
+}
+
+/// Find all URLs in a line of text.
+///
+/// Returns a list of `(char_column_start, url_string)` pairs.
+/// Uses a simple state-machine parser rather than regex to avoid
+/// adding a regex dependency.
+pub fn find_urls(line: &str) -> Vec<(usize, String)> {
+    let mut results = Vec::new();
+    let chars: Vec<char> = line.chars().collect();
+    let schemes = ["https://", "http://", "ftp://", "www."];
+
+    let mut i = 0;
+    while i < chars.len() {
+        // Check if a known scheme starts at this position.
+        let remaining: String = chars[i..].iter().collect();
+        let matched = schemes.iter().find(|s| {
+            remaining
+                .to_ascii_lowercase()
+                .starts_with(&s.to_ascii_lowercase())
+        });
+
+        if let Some(scheme) = matched {
+            // Scan forward to find the end of the URL.
+            let url_start = i;
+            let mut j = i + scheme.len();
+            while j < chars.len() && is_url_char(chars[j]) {
+                j += 1;
+            }
+            // Trim trailing punctuation that's unlikely part of the URL.
+            while j > url_start + scheme.len()
+                && matches!(chars[j - 1], '.' | ',' | ';' | ')' | ']' | '}' | '\'')
+            {
+                j -= 1;
+            }
+
+            let url: String = chars[url_start..j].iter().collect();
+            if url.len() > scheme.len() {
+                results.push((url_start, url));
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    results
+}
+
+/// Characters that are valid inside a URL path.
+fn is_url_char(c: char) -> bool {
+    c.is_alphanumeric()
+        || matches!(
+            c,
+            '/' | ':'
+                | '.'
+                | '-'
+                | '_'
+                | '~'
+                | '?'
+                | '#'
+                | '['
+                | ']'
+                | '@'
+                | '!'
+                | '$'
+                | '&'
+                | '\''
+                | '('
+                | ')'
+                | '*'
+                | '+'
+                | ','
+                | ';'
+                | '='
+                | '%'
+        )
+}
+
+/// Open a URL in the platform's default browser.
+///
+/// Uses `open` on macOS, `xdg-open` on Linux, `start` on Windows.
+pub fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let program = "xdg-open";
+    #[cfg(windows)]
+    let program = "cmd";
+
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new(program)
+            .args(["/C", "start", url])
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new(program).arg(url).spawn();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,6 +601,74 @@ mod tests {
         assert_eq!(pixel_to_cell(7.9, 15.9, 8.0, 16.0), (0, 0));
         assert_eq!(pixel_to_cell(8.0, 16.0, 8.0, 16.0), (1, 1));
         assert_eq!(pixel_to_cell(80.0, 160.0, 8.0, 16.0), (10, 10));
+    }
+
+    // ── URL detection (P17-C) ───────────────────────────────────────────
+
+    #[test]
+    fn test_detect_url_in_text() {
+        let line = "Check https://example.com/path?q=1 for details";
+        // URL starts at char column 6
+        let result = detect_url_at_position(line, 8);
+        assert!(result.is_some());
+        let (start, end, url) = result.unwrap();
+        assert_eq!(start, 6);
+        assert!(url.contains("https://example.com/path?q=1"));
+        assert!(end > start);
+    }
+
+    #[test]
+    fn test_detect_url_multiple() {
+        let line = "Visit http://a.com and https://b.com";
+        let urls = find_urls(line);
+        assert_eq!(urls.len(), 2);
+        assert_eq!(urls[0].1, "http://a.com");
+        assert_eq!(urls[1].1, "https://b.com");
+    }
+
+    #[test]
+    fn test_detect_url_at_position_inside() {
+        let line = "See https://rust-lang.org/crates for more";
+        // Position inside the URL
+        assert!(detect_url_at_position(line, 15).is_some());
+        // Position at URL start
+        assert!(detect_url_at_position(line, 4).is_some());
+    }
+
+    #[test]
+    fn test_detect_url_at_position_outside() {
+        let line = "See https://rust-lang.org/crates for more";
+        // Position before the URL
+        assert!(detect_url_at_position(line, 0).is_none());
+        // Position after the URL
+        assert!(detect_url_at_position(line, 38).is_none());
+    }
+
+    #[test]
+    fn test_no_url_in_plain_text() {
+        assert!(find_urls("just some regular text").is_empty());
+        assert!(find_urls("").is_empty());
+        assert!(detect_url_at_position("hello world", 3).is_none());
+    }
+
+    #[test]
+    fn test_url_trailing_punctuation_trimmed() {
+        let urls = find_urls("Link: https://example.com.");
+        assert_eq!(urls.len(), 1);
+        // Trailing dot should be trimmed
+        assert_eq!(urls[0].1, "https://example.com");
+
+        let urls2 = find_urls("See (https://example.com) here");
+        assert_eq!(urls2.len(), 1);
+        // Trailing ) should be trimmed
+        assert_eq!(urls2[0].1, "https://example.com");
+    }
+
+    #[test]
+    fn test_www_url_detected() {
+        let urls = find_urls("Go to www.rust-lang.org now");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].1, "www.rust-lang.org");
     }
 
     #[test]

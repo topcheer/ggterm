@@ -355,6 +355,60 @@ pub struct Terminal {
     /// Saved cursor for alt-screen swap (P15-A).
     /// Used by DECSET 1049 which saves/restores cursor in addition to grid.
     pub(crate) alt_saved_cursor: Cursor,
+    /// Dynamic foreground color set via OSC 10 (P17-A).
+    /// When set, overrides the theme default foreground.
+    pub(crate) dynamic_fg: Option<Color>,
+    /// Dynamic background color set via OSC 11 (P17-A).
+    /// When set, overrides the theme default background.
+    pub(crate) dynamic_bg: Option<Color>,
+}
+
+/// Parse an X11 color specification string into a Color.
+/// Format: `rgb:RR/GG/BB` (hex, 1-4 digits per channel).
+/// P17-A: used by OSC 10/11/12.
+fn parse_xcolor(spec: &str) -> Option<Color> {
+    let spec = spec
+        .strip_prefix("rgb:")
+        .or_else(|| spec.strip_prefix("#"))?;
+    let parts: Vec<&str> = spec.split('/').collect();
+    if parts.len() == 3 {
+        let r = u8::from_str_radix(parts[0], 16).ok()?;
+        let g = u8::from_str_radix(parts[1], 16).ok()?;
+        let b = u8::from_str_radix(parts[2], 16).ok()?;
+        Some(Color::Rgb(r, g, b))
+    } else if parts.len() == 1 && spec.len() == 6 {
+        // #RRGGBB format
+        let r = u8::from_str_radix(&spec[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&spec[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&spec[4..6], 16).ok()?;
+        Some(Color::Rgb(r, g, b))
+    } else {
+        None
+    }
+}
+
+/// Lookup the RGB value for a 16-color palette index.
+/// P17-A: used by OSC 10/11 query responses.
+fn color_for_index(idx: u8) -> (u8, u8, u8) {
+    match idx {
+        0 => (0, 0, 0),        // black
+        1 => (205, 0, 0),      // red
+        2 => (0, 205, 0),      // green
+        3 => (205, 205, 0),    // yellow
+        4 => (0, 0, 238),      // blue
+        5 => (205, 0, 205),    // magenta
+        6 => (0, 205, 205),    // cyan
+        7 => (229, 229, 229),  // white
+        8 => (127, 127, 127),  // bright black
+        9 => (255, 0, 0),      // bright red
+        10 => (0, 255, 0),     // bright green
+        11 => (255, 255, 0),   // bright yellow
+        12 => (92, 92, 255),   // bright blue
+        13 => (255, 0, 255),   // bright magenta
+        14 => (0, 255, 255),   // bright cyan
+        15 => (255, 255, 255), // bright white
+        _ => (0, 0, 0),
+    }
 }
 
 impl Terminal {
@@ -389,6 +443,8 @@ impl Terminal {
             bell: false,
             alt_saved_grid: None,
             alt_saved_cursor: Cursor::default(),
+            dynamic_fg: None,
+            dynamic_bg: None,
         }
     }
 
@@ -477,6 +533,16 @@ impl Terminal {
     /// Return true if the alternate screen buffer is active (P16-D).
     pub fn is_alt_screen(&self) -> bool {
         self.modes.alt_screen
+    }
+
+    /// Return the dynamic foreground color if set via OSC 10 (P17-A).
+    pub fn dynamic_fg(&self) -> Option<&Color> {
+        self.dynamic_fg.as_ref()
+    }
+
+    /// Return the dynamic background color if set via OSC 11 (P17-A).
+    pub fn dynamic_bg(&self) -> Option<&Color> {
+        self.dynamic_bg.as_ref()
     }
 
     /// Return the device response buffer (DA/DSR replies).
@@ -1372,6 +1438,50 @@ impl Perform for Terminal {
                     row: self.cursor.y,
                     exit_code: if has_exit { exit_code } else { None },
                 });
+            }
+            // OSC 10/11/12 — dynamic colors (P17-A)
+            Some(10) | Some(11) | Some(12) => {
+                let payload = parts.next().unwrap_or("");
+                if payload == "?" {
+                    // Query: report current color
+                    let current = match cmd {
+                        Some(10) => &self.fg,
+                        Some(11) => &self.bg,
+                        _ => &self.fg, // OSC 12 cursor color not tracked separately
+                    };
+                    let resp = match current {
+                        Color::Rgb(r, g, b) => {
+                            format!(
+                                "\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
+                                cmd.unwrap(),
+                                r,
+                                g,
+                                b
+                            )
+                        }
+                        Color::Indexed(i) => {
+                            let (r, g, b) = color_for_index(*i);
+                            format!(
+                                "\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
+                                cmd.unwrap(),
+                                r,
+                                g,
+                                b
+                            )
+                        }
+                        Color::Default => {
+                            format!("\x1b]{};rgb:ff/ff/ff\x1b\\", cmd.unwrap())
+                        }
+                    };
+                    self.response_buffer.extend_from_slice(resp.as_bytes());
+                } else if let Some(color) = parse_xcolor(payload) {
+                    match cmd {
+                        Some(10) => self.dynamic_fg = Some(color),
+                        Some(11) => self.dynamic_bg = Some(color),
+                        Some(12) => { /* cursor color tracked separately — future */ }
+                        _ => {}
+                    }
+                }
             }
             _ => {}
         }
@@ -3171,5 +3281,66 @@ mod tests {
         assert!(t.modes.mouse_utf8);
         feed(&mut t, b"\x1b[?1005l");
         assert!(!t.modes.mouse_utf8);
+    }
+
+    // ── P17-A: OSC 10/11/12 Dynamic Color tests ──────────────────────
+
+    #[test]
+    fn t_parse_xcolor_rgb_slash_format() {
+        assert_eq!(parse_xcolor("rgb:ff/00/ff"), Some(Color::Rgb(255, 0, 255)));
+        assert_eq!(parse_xcolor("rgb:00/80/ff"), Some(Color::Rgb(0, 128, 255)));
+    }
+
+    #[test]
+    fn t_parse_xcolor_hash_format() {
+        assert_eq!(parse_xcolor("#ff8000"), Some(Color::Rgb(255, 128, 0)));
+    }
+
+    #[test]
+    fn t_parse_xcolor_invalid() {
+        assert_eq!(parse_xcolor("invalid"), None);
+        assert_eq!(parse_xcolor("rgb:xyz"), None);
+    }
+
+    #[test]
+    fn t_osc10_set_dynamic_fg() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]10;rgb:ff/80/00\x1b\\");
+        assert_eq!(t.dynamic_fg(), Some(&Color::Rgb(255, 128, 0)));
+    }
+
+    #[test]
+    fn t_osc11_set_dynamic_bg() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]11;rgb:1a/1a/2e\x1b\\");
+        assert_eq!(t.dynamic_bg(), Some(&Color::Rgb(26, 26, 46)));
+    }
+
+    #[test]
+    fn t_osc10_query_response() {
+        let mut t = Terminal::new(80, 24);
+        // Set fg to red first
+        feed(&mut t, b"\x1b[31m");
+        // Query fg color
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8_lossy(&t.response_buffer());
+        assert!(
+            resp.contains("rgb:"),
+            "query response should contain rgb: spec"
+        );
+    }
+
+    #[test]
+    fn t_dynamic_colors_default_none() {
+        let t = Terminal::new(80, 24);
+        assert!(t.dynamic_fg().is_none());
+        assert!(t.dynamic_bg().is_none());
+    }
+
+    #[test]
+    fn t_osc10_hash_format() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]10;#abcdef\x1b\\");
+        assert_eq!(t.dynamic_fg(), Some(&Color::Rgb(171, 205, 239)));
     }
 }
