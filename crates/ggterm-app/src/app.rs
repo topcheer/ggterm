@@ -723,12 +723,15 @@ mod tests {
     fn t_app_cycle_theme() {
         let (mut app, _tx) = App::new(80, 24);
         assert_eq!(app.theme_name(), "dark");
+        // Cycle through all themes: dark → light → dracula → solarized-dark → ...
+        let names = ggterm_render::ThemeManager::available_themes();
+        for &expected in &names[1..] {
+            app.cycle_theme();
+            assert_eq!(app.theme_name(), expected);
+        }
+        // After cycling all themes, should wrap back to "dark".
         app.cycle_theme();
-        assert_eq!(app.theme_name(), "light");
-        app.cycle_theme();
-        assert_eq!(app.theme_name(), "dracula");
-        app.cycle_theme();
-        assert_eq!(app.theme_name(), "dark"); // wraps
+        assert_eq!(app.theme_name(), "dark");
     }
 
     #[test]

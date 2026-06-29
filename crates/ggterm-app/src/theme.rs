@@ -160,12 +160,15 @@ mod tests {
     fn t_app_theme_cycle_next() {
         let mut at = AppTheme::new();
         assert_eq!(at.current_name(), "dark");
+        // Cycle through all 6 themes.
+        let names = ThemeManager::available_themes();
+        for &expected in &names[1..] {
+            at.cycle_next();
+            assert_eq!(at.current_name(), expected);
+        }
+        // Wrap back to dark.
         at.cycle_next();
-        assert_eq!(at.current_name(), "light");
-        at.cycle_next();
-        assert_eq!(at.current_name(), "dracula");
-        at.cycle_next();
-        assert_eq!(at.current_name(), "dark"); // wraps
+        assert_eq!(at.current_name(), "dark");
     }
 
     #[test]

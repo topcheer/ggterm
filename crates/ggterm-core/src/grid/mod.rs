@@ -33,6 +33,7 @@ use std::collections::VecDeque;
 /// └──────────────┘
 ///       width →
 /// ```
+#[derive(Clone)]
 pub struct Grid {
     /// Visible screen rows.
     rows: Vec<Row>,

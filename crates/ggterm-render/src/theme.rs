@@ -33,6 +33,26 @@ pub struct RenderTheme {
     pub selection_bg: Color,
 }
 
+/// Solarized 16-color ANSI palette (shared by both dark and light variants).
+const SOLARIZED_PALETTE: [Color; 16] = [
+    Color::Rgb(0x07, 0x36, 0x42), // 0  black (base02)
+    Color::Rgb(0xdc, 0x32, 0x2f), // 1  red
+    Color::Rgb(0x85, 0x99, 0x00), // 2  green
+    Color::Rgb(0xb5, 0x89, 0x00), // 3  yellow
+    Color::Rgb(0x26, 0x8b, 0xd2), // 4  blue
+    Color::Rgb(0xd3, 0x36, 0x82), // 5  magenta
+    Color::Rgb(0x2a, 0xa1, 0x98), // 6  cyan
+    Color::Rgb(0xee, 0xe8, 0xd5), // 7  white (base2)
+    Color::Rgb(0x00, 0x2b, 0x36), // 8  bright black (base03)
+    Color::Rgb(0xcb, 0x4b, 0x16), // 9  bright red (orange)
+    Color::Rgb(0x58, 0x6e, 0x75), // 10 bright green (base01)
+    Color::Rgb(0x65, 0x7b, 0x83), // 11 bright yellow (base00)
+    Color::Rgb(0x83, 0x94, 0x96), // 12 bright blue (base0)
+    Color::Rgb(0x6c, 0x71, 0xc4), // 13 bright magenta (violet)
+    Color::Rgb(0x93, 0xa1, 0xa1), // 14 bright cyan (base1)
+    Color::Rgb(0xfd, 0xf6, 0xe3), // 15 bright white (base3)
+];
+
 impl Default for RenderTheme {
     fn default() -> Self {
         Self::dark_default()
@@ -182,22 +202,121 @@ impl RenderTheme {
         }
     }
 
+    // ── P15-B: New built-in themes ──────────────────────────────
+
+    /// Clean light theme with white background and dark text.
+    pub fn light() -> Self {
+        Self {
+            default_fg: Color::Rgb(40, 40, 40),
+            default_bg: Color::Rgb(250, 250, 250),
+            cursor_fg: Color::Rgb(250, 250, 250),
+            cursor_bg: Color::Rgb(40, 40, 40),
+            cursor_style: CursorStyle::Block,
+            palette: [
+                Color::Rgb(0x00, 0x00, 0x00), // 0  black
+                Color::Rgb(0xcc, 0x00, 0x00), // 1  red
+                Color::Rgb(0x4e, 0x9a, 0x06), // 2  green
+                Color::Rgb(0xc4, 0xa0, 0x00), // 3  yellow
+                Color::Rgb(0x34, 0x65, 0xa4), // 4  blue
+                Color::Rgb(0x75, 0x50, 0x7b), // 5  magenta
+                Color::Rgb(0x06, 0x98, 0x9a), // 6  cyan
+                Color::Rgb(0xd3, 0xd7, 0xcf), // 7  white
+                Color::Rgb(0x55, 0x57, 0x53), // 8  bright black
+                Color::Rgb(0xef, 0x29, 0x29), // 9  bright red
+                Color::Rgb(0x8a, 0xe2, 0x34), // 10 bright green
+                Color::Rgb(0xfc, 0xe9, 0x4f), // 11 bright yellow
+                Color::Rgb(0x72, 0x9f, 0xcf), // 12 bright blue
+                Color::Rgb(0xad, 0x7f, 0xa8), // 13 bright magenta
+                Color::Rgb(0x34, 0xe2, 0xe2), // 14 bright cyan
+                Color::Rgb(0xee, 0xee, 0xec), // 15 bright white
+            ],
+            selection_bg: Color::Rgb(0xb0, 0xc4, 0xde),
+        }
+    }
+
+    /// Solarized Dark — Ethan Schoonover's scientific color scheme (dark variant).
+    pub fn solarized_dark() -> Self {
+        Self {
+            default_fg: Color::Rgb(0x83, 0x94, 0x96), // base0
+            default_bg: Color::Rgb(0x00, 0x2b, 0x36), // base03
+            cursor_fg: Color::Rgb(0x00, 0x2b, 0x36),
+            cursor_bg: Color::Rgb(0x83, 0x94, 0x96),
+            cursor_style: CursorStyle::Block,
+            palette: SOLARIZED_PALETTE,
+            selection_bg: Color::Rgb(0x07, 0x36, 0x42), // base02
+        }
+    }
+
+    /// Solarized Light — Ethan Schoonover's scientific color scheme (light variant).
+    pub fn solarized_light() -> Self {
+        Self {
+            default_fg: Color::Rgb(0x65, 0x7b, 0x83), // base00
+            default_bg: Color::Rgb(0xfd, 0xf6, 0xe3), // base3
+            cursor_fg: Color::Rgb(0xfd, 0xf6, 0xe3),
+            cursor_bg: Color::Rgb(0x65, 0x7b, 0x83),
+            cursor_style: CursorStyle::Block,
+            palette: SOLARIZED_PALETTE,
+            selection_bg: Color::Rgb(0xee, 0xe8, 0xd5), // base2
+        }
+    }
+
+    /// Gruvbox Dark — a retro groove color scheme.
+    pub fn gruvbox() -> Self {
+        Self {
+            default_fg: Color::Rgb(0xeb, 0xdb, 0xb2), // fg0
+            default_bg: Color::Rgb(0x28, 0x28, 0x28), // bg0
+            cursor_fg: Color::Rgb(0x28, 0x28, 0x28),
+            cursor_bg: Color::Rgb(0xeb, 0xdb, 0xb2),
+            cursor_style: CursorStyle::Block,
+            palette: [
+                Color::Rgb(0x28, 0x28, 0x28), // 0  black (bg0)
+                Color::Rgb(0xcc, 0x24, 0x1d), // 1  red
+                Color::Rgb(0x98, 0x97, 0x1a), // 2  green
+                Color::Rgb(0xd7, 0x99, 0x21), // 3  yellow
+                Color::Rgb(0x45, 0x85, 0x88), // 4  blue
+                Color::Rgb(0xb1, 0x62, 0x86), // 5  purple
+                Color::Rgb(0x68, 0x9d, 0x6a), // 6  aqua
+                Color::Rgb(0xa8, 0x99, 0x84), // 7  orange (fg1/gray)
+                Color::Rgb(0x92, 0x83, 0x74), // 8  bright black
+                Color::Rgb(0xfb, 0x49, 0x34), // 9  bright red
+                Color::Rgb(0xb8, 0xbb, 0x26), // 10 bright green
+                Color::Rgb(0xfa, 0xbd, 0x2f), // 11 bright yellow
+                Color::Rgb(0x83, 0xa5, 0x98), // 12 bright blue
+                Color::Rgb(0xd3, 0x86, 0x9b), // 13 bright purple
+                Color::Rgb(0x8e, 0xc0, 0x7c), // 14 bright aqua
+                Color::Rgb(0xfe, 0x80, 0x19), // 15 bright orange
+            ],
+            selection_bg: Color::Rgb(0x3c, 0x38, 0x36), // bg1
+        }
+    }
+
     /// Look up a built-in theme by name (case-insensitive).
     ///
     /// Returns `Some(theme)` for known names, `None` otherwise.
-    /// Supported names: "dark", "light", "dracula".
+    /// Supported names: "dark", "light", "dracula", "solarized-dark",
+    /// "solarized-light", "gruvbox".
     pub fn by_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "dark" | "dark-default" | "default" => Some(Self::dark_default()),
             "light" | "light-default" => Some(Self::light_default()),
             "dracula" => Some(Self::dracula()),
+            "solarized-dark" | "solarized_dark" => Some(Self::solarized_dark()),
+            "solarized-light" | "solarized_light" => Some(Self::solarized_light()),
+            "gruvbox" => Some(Self::gruvbox()),
             _ => None,
         }
     }
 
     /// Return all available built-in theme names.
     pub fn builtin_names() -> &'static [&'static str] {
-        &["dark", "light", "dracula"]
+        &[
+            "dark",
+            "light",
+            "dracula",
+            "solarized-dark",
+            "solarized-light",
+            "gruvbox",
+        ]
     }
 }
 
@@ -251,6 +370,20 @@ impl ThemeManager {
     /// List all available theme names.
     pub fn available_themes() -> &'static [&'static str] {
         RenderTheme::builtin_names()
+    }
+
+    /// Cycle to the next theme in the built-in list.
+    ///
+    /// Wraps around after the last theme. Returns the new theme name.
+    pub fn cycle_next(&mut self) -> &str {
+        let names = Self::available_themes();
+        let idx = names
+            .iter()
+            .position(|&n| n == self.current_name)
+            .map(|i| (i + 1) % names.len())
+            .unwrap_or(0);
+        self.set_by_name(names[idx]);
+        &self.current_name
     }
 }
 
@@ -352,6 +485,10 @@ mod tests {
         assert!(names.contains(&"dark"));
         assert!(names.contains(&"light"));
         assert!(names.contains(&"dracula"));
+        assert!(names.contains(&"solarized-dark"));
+        assert!(names.contains(&"solarized-light"));
+        assert!(names.contains(&"gruvbox"));
+        assert_eq!(names.len(), 6);
     }
 
     #[test]
@@ -470,5 +607,88 @@ mod tests {
         assert_eq!(mgr.current_name(), "dracula");
         mgr.set_by_name("dark");
         assert_eq!(mgr.current_name(), "dark");
+    }
+
+    // ── P15-B: New theme tests ──────────────────────────────────
+
+    #[test]
+    fn t_light_theme_colors() {
+        let theme = RenderTheme::light();
+        assert_eq!(theme.default_bg, Color::Rgb(250, 250, 250));
+        assert_eq!(theme.default_fg, Color::Rgb(40, 40, 40));
+    }
+
+    #[test]
+    fn t_solarized_dark_colors() {
+        let theme = RenderTheme::solarized_dark();
+        // bg = base03 (0, 43, 54)
+        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x2b, 0x36));
+        // fg = base0 (131, 148, 150)
+        assert_eq!(theme.default_fg, Color::Rgb(0x83, 0x94, 0x96));
+    }
+
+    #[test]
+    fn t_solarized_light_colors() {
+        let theme = RenderTheme::solarized_light();
+        // bg = base3 (253, 246, 227)
+        assert_eq!(theme.default_bg, Color::Rgb(0xfd, 0xf6, 0xe3));
+        // fg = base00 (101, 123, 131)
+        assert_eq!(theme.default_fg, Color::Rgb(0x65, 0x7b, 0x83));
+    }
+
+    #[test]
+    fn t_gruvbox_colors() {
+        let theme = RenderTheme::gruvbox();
+        // bg = bg0 (40, 40, 40)
+        assert_eq!(theme.default_bg, Color::Rgb(0x28, 0x28, 0x28));
+        // fg = fg0 (235, 219, 178)
+        assert_eq!(theme.default_fg, Color::Rgb(0xeb, 0xdb, 0xb2));
+    }
+
+    #[test]
+    fn t_by_name_new_themes() {
+        assert!(RenderTheme::by_name("solarized-dark").is_some());
+        assert!(RenderTheme::by_name("solarized-light").is_some());
+        assert!(RenderTheme::by_name("gruvbox").is_some());
+    }
+
+    #[test]
+    fn t_by_name_solarized_underscore() {
+        // Underscore variant should also work
+        assert!(RenderTheme::by_name("solarized_dark").is_some());
+        assert!(RenderTheme::by_name("solarized_light").is_some());
+    }
+
+    #[test]
+    fn t_builtin_names_includes_new() {
+        let names = RenderTheme::builtin_names();
+        assert!(names.contains(&"solarized-dark"));
+        assert!(names.contains(&"solarized-light"));
+        assert!(names.contains(&"gruvbox"));
+        assert_eq!(names.len(), 6);
+    }
+
+    #[test]
+    fn t_cycle_next_wraps_around() {
+        let mut mgr = ThemeManager::with_default();
+        let all = ThemeManager::available_themes().to_vec();
+        // Cycle through all themes and verify wrap-around
+        for i in 0..all.len() * 2 {
+            let name = mgr.cycle_next();
+            let expected = all[(i + 1) % all.len()];
+            assert_eq!(name, expected, "cycle {i}: expected {expected}, got {name}");
+        }
+    }
+
+    #[test]
+    fn t_cycle_next_visits_all_themes() {
+        let mut mgr = ThemeManager::with_default();
+        let total = ThemeManager::available_themes().len();
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..total {
+            let name = mgr.cycle_next().to_string();
+            seen.insert(name);
+        }
+        assert_eq!(seen.len(), total, "should have visited all {total} themes");
     }
 }

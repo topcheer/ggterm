@@ -348,6 +348,13 @@ pub struct Terminal {
     pub(crate) current_hyperlink: Option<String>,
     /// Bell flag — set when BEL (0x07) is received (P11-E).
     pub(crate) bell: bool,
+    /// Saved primary grid for alt-screen swap (P15-A).
+    /// When alt-screen is activated, the primary grid is saved here
+    /// and a fresh grid is installed. On exit, the primary grid is restored.
+    pub(crate) alt_saved_grid: Option<Grid>,
+    /// Saved cursor for alt-screen swap (P15-A).
+    /// Used by DECSET 1049 which saves/restores cursor in addition to grid.
+    pub(crate) alt_saved_cursor: Cursor,
 }
 
 impl Terminal {
@@ -380,6 +387,8 @@ impl Terminal {
             pending_clipboard_set: None,
             current_hyperlink: None,
             bell: false,
+            alt_saved_grid: None,
+            alt_saved_cursor: Cursor::default(),
         }
     }
 
@@ -711,7 +720,41 @@ impl Terminal {
             }
             1 => self.modes.cursor_keys_app = enable,
             2004 => self.modes.bracketed_paste = enable,
-            47 | 1047 | 1049 => self.modes.alt_screen = enable,
+            // Alt-screen modes — P15-A: properly save/restore grid
+            47 | 1047 => {
+                if enable && !self.modes.alt_screen {
+                    // Enter alt-screen: save primary grid, install fresh grid
+                    self.alt_saved_grid = Some(self.grid.clone());
+                    self.grid = Grid::new(self.width(), self.height());
+                    if mode == 1047 {
+                        // 1047: clear the alt screen (already fresh)
+                    }
+                    self.modes.alt_screen = true;
+                } else if !enable && self.modes.alt_screen {
+                    // Exit alt-screen: restore primary grid
+                    if let Some(saved) = self.alt_saved_grid.take() {
+                        self.grid = saved;
+                    }
+                    self.modes.alt_screen = false;
+                }
+            }
+            1049 => {
+                if enable && !self.modes.alt_screen {
+                    // Enter alt-screen: save cursor, save grid, install fresh grid
+                    self.alt_saved_cursor = self.cursor;
+                    self.alt_saved_grid = Some(self.grid.clone());
+                    self.grid = Grid::new(self.width(), self.height());
+                    self.cursor = Cursor::default();
+                    self.modes.alt_screen = true;
+                } else if !enable && self.modes.alt_screen {
+                    // Exit alt-screen: restore grid, restore cursor
+                    if let Some(saved) = self.alt_saved_grid.take() {
+                        self.grid = saved;
+                    }
+                    self.cursor = self.alt_saved_cursor;
+                    self.modes.alt_screen = false;
+                }
+            }
             // Mouse tracking modes
             9 => self.modes.mouse_tracking = enable, // X10
             1000 => self.modes.mouse_tracking = enable, // Normal
@@ -1576,6 +1619,117 @@ mod tests {
         feed(&mut t, b"\x1b[?1049h");
         assert!(t.modes.alt_screen);
         feed(&mut t, b"\x1b[?1049l");
+        assert!(!t.modes.alt_screen);
+    }
+
+    // ── P15-A: Alt-screen grid swap tests ───────────────────────────
+
+    #[test]
+    fn t_alt_screen_1049_saves_and_restores_content() {
+        let mut t = Terminal::new(10, 3);
+        // Write "Hello" on the primary screen.
+        feed(&mut t, b"Hello");
+        // Enter alt-screen (mode 1049).
+        feed(&mut t, b"\x1b[?1049h");
+        assert!(t.modes.alt_screen);
+        // The alt screen should be blank (not contain "Hello").
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            cell.ch == '\0' || cell.ch == ' ',
+            "alt screen should be blank, got '{}'",
+            cell.ch
+        );
+        // Write "World" on the alt screen.
+        feed(&mut t, b"World");
+        // Exit alt-screen.
+        feed(&mut t, b"\x1b[?1049l");
+        assert!(!t.modes.alt_screen);
+        // Primary screen should have "Hello" restored.
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'H');
+    }
+
+    #[test]
+    fn t_alt_screen_1049_saves_and_restores_cursor() {
+        let mut t = Terminal::new(10, 3);
+        // Move cursor to row 2, col 5.
+        feed(&mut t, b"\x1b[2;5H");
+        assert_eq!(t.cursor(), (4, 1));
+        // Enter alt-screen (saves cursor).
+        feed(&mut t, b"\x1b[?1049h");
+        // Cursor should be at origin on alt screen.
+        assert_eq!(t.cursor(), (0, 0));
+        // Move cursor on alt screen.
+        feed(&mut t, b"\x1b[3;3H");
+        assert_eq!(t.cursor(), (2, 2));
+        // Exit alt-screen (restores cursor).
+        feed(&mut t, b"\x1b[?1049l");
+        assert_eq!(t.cursor(), (4, 1));
+    }
+
+    #[test]
+    fn t_alt_screen_47_swaps_without_cursor_save() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[2;5H");
+        assert_eq!(t.cursor(), (4, 1));
+        // Enter alt-screen with mode 47 (no cursor save).
+        feed(&mut t, b"\x1b[?47h");
+        assert!(t.modes.alt_screen);
+        // Cursor is NOT reset by mode 47.
+        assert_eq!(t.cursor(), (4, 1), "mode 47 should not reset cursor");
+        // Exit.
+        feed(&mut t, b"\x1b[?47l");
+        assert!(!t.modes.alt_screen);
+    }
+
+    #[test]
+    fn t_alt_screen_content_preserved_through_swap() {
+        let mut t = Terminal::new(10, 3);
+        // Write line 1: "AAA"
+        feed(&mut t, b"AAA");
+        // Enter alt-screen.
+        feed(&mut t, b"\x1b[?1049h");
+        // Write on alt screen: "BBB"
+        feed(&mut t, b"BBB");
+        // Verify alt screen has BBB.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
+        // Exit alt-screen.
+        feed(&mut t, b"\x1b[?1049l");
+        // Primary screen should still have AAA.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_alt_screen_multiple_enter_exit_cycles() {
+        let mut t = Terminal::new(10, 3);
+        for i in 0..3 {
+            feed(&mut t, b"X");
+            feed(&mut t, b"\x1b[?1049h");
+            assert!(t.modes.alt_screen);
+            feed(&mut t, b"\x1b[?1049l");
+            assert!(!t.modes.alt_screen);
+        }
+        // After 3 cycles with 3 X's, cursor should be at col 3.
+        assert_eq!(t.cursor().0, 3);
+    }
+
+    #[test]
+    fn t_alt_screen_idempotent_enter() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1049h");
+        feed(&mut t, b"\x1b[?1049h"); // Double enter — should be no-op
+        assert!(t.modes.alt_screen);
+        assert!(t.alt_saved_grid.is_some());
+    }
+
+    #[test]
+    fn t_alt_screen_idempotent_exit() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1049h");
+        feed(&mut t, b"\x1b[?1049l");
+        feed(&mut t, b"\x1b[?1049l"); // Double exit — should be no-op
         assert!(!t.modes.alt_screen);
     }
 
