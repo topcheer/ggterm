@@ -103,6 +103,7 @@ Platform Abstraction (ConPTY / POSIX)
 | 10 | Multi-Tab & Integration (tabs, clipboard, AI overlay, search) | Done |
 | 11 | Usability & Polish (font zoom, utilities, fullscreen, themes, bell) | Done |
 | 12 | Rendering Quality & VT Compliance (theme bg, focus events, cleanup) | Done |
+| 13 | Terminal Completeness (SGR attrs, OSC 8 hyperlinks, keybindings, status bar, clipboard) | Done |
 
 ## Usage
 
@@ -283,13 +284,13 @@ cargo run --features desktop
 # With CLI options
 cargo run --features desktop -- --cols 120 --rows 40 --shell /bin/zsh
 
-# Run tests (1268 tests with all features)
+# Run tests (1295 tests with all features)
 cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 ```
 
 ## Status
 
-**1268 tests passing** (2 ignored PTY integration tests).
+**1295 tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
