@@ -74,6 +74,19 @@ Platform Abstraction (ConPTY / POSIX)
 - **PTY Enhancement**: Env vars (GGTERM=1), spawn args, shell integration wiring
 - **Config Startup Loading**: `~/.ggterm/config.toml` loaded on launch, CLI overrides config
 
+### Phase 10: Multi-Tab & Integration
+- **Multi-Tab Terminal**: `Vec<TabSession>` architecture, Ctrl+T/W (open/close), Alt+1-9 (switch), Ctrl+Tab (cycle)
+- **Clipboard Integration**: Ctrl+Shift+V (paste), OSC 52 clipboard sync, middle-click paste
+- **AI Assistant Overlay**: Ctrl+Shift+E/S/H/N (explain/suggest/help/nl2command), Esc dismiss
+- **Scrollback Search**: Ctrl+Shift+F (search bar), Enter/Shift+Enter (next/prev match)
+
+### Phase 11: Usability & Polish
+- **Font Zoom**: Ctrl+= / Ctrl+- / Ctrl+0 (increase/decrease/reset font size)
+- **Terminal Utilities**: Ctrl+Shift+C (copy), Ctrl+Shift+K (clear+scrollback), Ctrl+Shift+R (reset), Ctrl+Shift+A (select all)
+- **Fullscreen**: F11 toggle fullscreen, Ctrl+Shift+Enter toggle maximized
+- **Theme Rendering**: Active theme colors applied to GPU renderer, Ctrl+Shift+T (cycle themes)
+- **Bell Support**: BEL character detection with visual bell flash
+
 ## Status
 
 | Phase | Description | Status |
@@ -87,6 +100,8 @@ Platform Abstraction (ConPTY / POSIX)
 | 7 | Mobile (Flutter + SSH) | Planned |
 | 8 | Production (config, docs, thiserror) | Done |
 | 9 | Desktop Terminal (binary, mouse, keyboard, resize) | Done |
+| 10 | Multi-Tab & Integration (tabs, clipboard, AI overlay, search) | Done |
+| 11 | Usability & Polish (font zoom, utilities, fullscreen, themes, bell) | Done |
 
 ## Usage
 
@@ -198,6 +213,54 @@ cargo build --features desktop
 
 CLI options override `~/.ggterm/config.toml` values.
 
+## Keyboard Shortcuts
+
+### Tab Management
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+T` | New tab |
+| `Ctrl+W` | Close tab |
+| `Alt+1-9` | Switch to tab N |
+| `Ctrl+Tab` | Next tab |
+| `Ctrl+Shift+Tab` | Previous tab |
+
+### Terminal Utilities
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+C` | Copy selection to clipboard |
+| `Ctrl+Shift+V` | Paste from clipboard |
+| `Ctrl+Shift+K` | Clear screen + scrollback |
+| `Ctrl+Shift+R` | Reset terminal (RIS) |
+| `Ctrl+Shift+A` | Select all text |
+
+### Font & Display
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+=` | Zoom in (increase font size) |
+| `Ctrl+-` | Zoom out (decrease font size) |
+| `Ctrl+0` | Reset font size |
+| `Ctrl+Shift+T` | Cycle through themes |
+| `F11` | Toggle fullscreen |
+| `Ctrl+Shift+Enter` | Toggle maximized |
+
+### AI Assistant
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+E` | Explain current command |
+| `Ctrl+Shift+S` | Suggest improvements |
+| `Ctrl+Shift+H` | Help with error |
+| `Ctrl+Shift+N` | Natural language to command |
+| `Esc` | Dismiss AI overlay |
+
+### Search & Navigation
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+F` | Toggle scrollback search |
+| `Enter` | Next search match |
+| `Shift+Enter` | Previous search match |
+| `Esc` | Close search bar |
+| `Ctrl+Shift+Up/Down` | Navigate command blocks |
+
 ## Building
 
 ```bash
@@ -219,19 +282,19 @@ cargo run --features desktop
 # With CLI options
 cargo run --features desktop -- --cols 120 --rows 40 --shell /bin/zsh
 
-# Run tests (1151 tests with all features)
+# Run tests (1263 tests with all features)
 cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 ```
 
 ## Status
 
-**1151 tests passing** (2 ignored PTY integration tests).
+**1263 tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
 | VTE Parser | Done | 58 |
 | Grid Model | Done | 116 |
-| Terminal State Machine | Done | 136 |
+| Terminal State Machine | Done | 141 |
 | PTY Integration | Done | 16 |
 | Renderer (Console + GPU) | Done | 49 |
 | App + Events + Input | Done | 295 |
@@ -248,6 +311,13 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 | PTY Enhancement (env + args) | Done | 4 |
 | Config Startup Loading | Done | 7 |
 | Resize Enhancement (debounce) | Done | 26 |
+| Multi-Tab (TabSession) | Done | 21 |
+| Clipboard (OSC 52 + Paste) | Done | 15 |
+| AI Overlay | Done | 26 |
+| Scrollback Search | Done | 23 |
+| Terminal Utility Actions | Done | 12 |
+| Font Zoom | Done | 14 |
+| Bell Support | Done | 5 |
 
 ## License
 
