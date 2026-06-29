@@ -926,4 +926,107 @@ mod tests {
         assert!(s.contains("prepare error"), "got: {s}");
         assert!(s.contains("atlas"), "got: {s}");
     }
+
+    // ── P19-G: Overlay Rendering Tests ─────────────────────────────────
+
+    #[test]
+    fn test_overlay_text_spec_creation() {
+        let spec = OverlayTextSpec {
+            text: "1:zsh*".to_string(),
+            left: 10.0,
+            top: 0.0,
+            color: (220, 220, 220),
+        };
+        assert_eq!(spec.text, "1:zsh*");
+        assert_eq!(spec.left, 10.0);
+        assert_eq!(spec.color, (220, 220, 220));
+    }
+
+    #[test]
+    fn test_overlay_rect_creation() {
+        let rect = OverlayRect {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 20.0,
+            color: (0.12, 0.12, 0.15),
+        };
+        assert_eq!(rect.w, 800.0);
+        assert_eq!(rect.h, 20.0);
+    }
+
+    #[test]
+    fn test_push_rect_vertex_count() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            100.0,
+            50.0,
+            (1.0, 0.0, 0.0),
+            800.0,
+            600.0,
+        );
+        // Each rectangle = 6 vertices × 5 floats = 30 floats
+        assert_eq!(verts.len(), 30);
+    }
+
+    #[test]
+    fn test_push_rect_ndc_conversion() {
+        let mut verts: Vec<f32> = Vec::new();
+        let sw = 800.0_f32;
+        let sh = 600.0_f32;
+        // Full-screen rect: x=0,y=0,w=800,h=600
+        push_rect(&mut verts, 0.0, 0.0, sw, sh, (1.0, 1.0, 1.0), sw, sh);
+        // x0 = 0/sw*2 - 1 = -1.0 (left edge)
+        assert!(
+            (verts[0] + 1.0).abs() < 0.001,
+            "x0 should be -1.0, got {}",
+            verts[0]
+        );
+        // x1 = 800/800*2 - 1 = 1.0 (right edge)
+        assert!(
+            (verts[5] - 1.0).abs() < 0.001,
+            "x1 should be 1.0, got {}",
+            verts[5]
+        );
+        // y0 = 1 - 0/600*2 = 1.0 (top edge)
+        assert!(
+            (verts[1] - 1.0).abs() < 0.001,
+            "y0 should be 1.0, got {}",
+            verts[1]
+        );
+        // Color r=1.0 at index 2
+        assert!((verts[2] - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_push_rect_multiple() {
+        let mut verts: Vec<f32> = Vec::new();
+        let sw = 800.0_f32;
+        let sh = 600.0_f32;
+        // Push two rectangles
+        push_rect(&mut verts, 0.0, 0.0, 400.0, 20.0, (1.0, 0.0, 0.0), sw, sh);
+        push_rect(&mut verts, 400.0, 0.0, 400.0, 20.0, (0.0, 1.0, 0.0), sw, sh);
+        // Two rectangles = 60 floats
+        assert_eq!(verts.len(), 60);
+    }
+
+    #[test]
+    fn test_push_rect_empty() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            (1.0, 1.0, 1.0),
+            800.0,
+            600.0,
+        );
+        // Even a zero-size rect still produces 6 vertices
+        assert_eq!(verts.len(), 30);
+    }
 }
