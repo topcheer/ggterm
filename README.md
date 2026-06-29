@@ -105,6 +105,7 @@ Platform Abstraction (ConPTY / POSIX)
 | 12 | Rendering Quality & VT Compliance (theme bg, focus events, cleanup) | Done |
 | 13 | Terminal Completeness (SGR attrs, OSC 8 hyperlinks, keybindings, status bar, clipboard) | Done |
 | 14 | Search Highlighting, Config Keybindings, Module Extraction | Done |
+| 15 | Config-Driven Keybinding Dispatch, Documentation | Done |
 
 ## Usage
 
@@ -148,13 +149,15 @@ if let Some(response) = bridge.poll_result() {
 ## Configuration
 
 GGTerm reads settings from `~/.ggterm/config.toml` with hot-reload support.
-See [`docs/config.md`](docs/config.md) for the full reference, or copy
-[`config.example.toml`](config.example.toml) to get started.
+See [`config.example.toml`](config.example.toml) for a complete example.
 
 ```toml
 [appearance]
 theme = "dark"
+font_family = "monospace"
 font_size = 14
+cell_width = 8
+cell_height = 16
 
 [terminal]
 scrollback_lines = 10000
@@ -162,8 +165,94 @@ shell = "/bin/zsh"
 
 [ai]
 enabled = false
+api_endpoint = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
+
+[keybindings]
+new_tab = "Ctrl+T"
+close_tab = "Ctrl+W"
+paste = "Ctrl+Shift+V"
+copy = "Ctrl+Shift+C"
+search = "Ctrl+Shift+F"
+zoom_in = "Ctrl+="
+zoom_out = "Ctrl+-"
+zoom_reset = "Ctrl+0"
+fullscreen = "F11"
+clear = "Ctrl+Shift+K"
+reset = "Ctrl+Shift+R"
+cycle_theme = "Ctrl+Shift+T"
 ```
+
+CLI options (e.g. `--theme`, `--shell`) override config file values.
+
+### Custom Keybindings
+
+All keyboard shortcuts are customizable via the `[keybindings]` section in
+`~/.ggterm/config.toml`. Each key is optional — omit one to keep the default.
+
+**Format:** `"Modifier+Modifier+Key"`
+
+- **Modifiers**: `Ctrl`, `Shift`, `Alt` (case-insensitive, any order)
+- **Key**: Letter (`A`-`Z`), digit (`0`-`9`), punctuation (`=`, `-`), or function key (`F1`-`F24`)
+
+Examples:
+
+```toml
+[keybindings]
+# Remap paste to Ctrl+Shift+Insert
+paste = "Ctrl+Shift+Insert"
+
+# Remap new tab to Ctrl+N
+new_tab = "Ctrl+N"
+
+# Use F2 for fullscreen
+fullscreen = "F2"
+```
+
+**Available actions:**
+
+| Action | Default | Description |
+|--------|---------|-------------|
+| `new_tab` | Ctrl+T | Open a new tab |
+| `close_tab` | Ctrl+W | Close current tab |
+| `paste` | Ctrl+Shift+V | Paste from clipboard |
+| `copy` | Ctrl+Shift+C | Copy selection to clipboard |
+| `search` | Ctrl+Shift+F | Toggle scrollback search |
+| `zoom_in` | Ctrl+= | Increase font size |
+| `zoom_out` | Ctrl+- | Decrease font size |
+| `zoom_reset` | Ctrl+0 | Reset font size |
+| `fullscreen` | F11 | Toggle fullscreen |
+| `clear` | Ctrl+Shift+K | Clear screen + scrollback |
+| `reset` | Ctrl+Shift+R | Reset terminal (RIS) |
+| `cycle_theme` | Ctrl+Shift+T | Cycle through themes |
+
+### Themes
+
+Six built-in themes are available. Set via config or cycle at runtime with
+Ctrl+Shift+T:
+
+| Theme | Description |
+|-------|-------------|
+| `dark` | Default dark theme (black background) |
+| `light` | Light theme (white background) |
+| `dracula` | Dracula color scheme |
+| `solarized-dark` | Solarized dark palette |
+| `solarized-light` | Solarized light palette |
+| `gruvbox` | Gruvbox community theme |
+
+```toml
+[appearance]
+theme = "dracula"
+```
+
+### Config File Location
+
+GGTerm looks for the config file at:
+
+- **Linux/macOS**: `~/.ggterm/config.toml`
+- **Windows**: `%USERPROFILE%\.ggterm\config.toml`
+
+Changes are hot-reloaded automatically (no restart needed).
 
 ## Command Navigation
 
@@ -218,11 +307,14 @@ CLI options override `~/.ggterm/config.toml` values.
 
 ## Keyboard Shortcuts
 
+> All shortcuts marked with (*) are customizable via `[keybindings]` in `~/.ggterm/config.toml`.
+> See [Custom Keybindings](#custom-keybindings) below.
+
 ### Tab Management
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+T` | New tab |
-| `Ctrl+W` | Close tab |
+| `Ctrl+T` | New tab (*) |
+| `Ctrl+W` | Close tab (*) |
 | `Alt+1-9` | Switch to tab N |
 | `Ctrl+Tab` | Next tab |
 | `Ctrl+Shift+Tab` | Previous tab |
@@ -230,20 +322,20 @@ CLI options override `~/.ggterm/config.toml` values.
 ### Terminal Utilities
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+C` | Copy selection to clipboard |
-| `Ctrl+Shift+V` | Paste from clipboard |
-| `Ctrl+Shift+K` | Clear screen + scrollback |
-| `Ctrl+Shift+R` | Reset terminal (RIS) |
+| `Ctrl+Shift+C` | Copy selection to clipboard (*) |
+| `Ctrl+Shift+V` | Paste from clipboard (*) |
+| `Ctrl+Shift+K` | Clear screen + scrollback (*) |
+| `Ctrl+Shift+R` | Reset terminal (RIS) (*) |
 | `Ctrl+Shift+A` | Select all text |
 
 ### Font & Display
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+=` | Zoom in (increase font size) |
-| `Ctrl+-` | Zoom out (decrease font size) |
-| `Ctrl+0` | Reset font size |
-| `Ctrl+Shift+T` | Cycle through themes |
-| `F11` | Toggle fullscreen |
+| `Ctrl+=` | Zoom in (increase font size) (*) |
+| `Ctrl+-` | Zoom out (decrease font size) (*) |
+| `Ctrl+0` | Reset font size (*) |
+| `Ctrl+Shift+T` | Cycle through themes (*) |
+| `F11` | Toggle fullscreen (*) |
 | `Ctrl+Shift+Enter` | Toggle maximized |
 
 ### AI Assistant
@@ -258,7 +350,7 @@ CLI options override `~/.ggterm/config.toml` values.
 ### Search & Navigation
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+F` | Toggle scrollback search |
+| `Ctrl+Shift+F` | Toggle scrollback search (*) |
 | `Enter` | Next search match |
 | `Shift+Enter` | Previous search match |
 | `Esc` | Close search bar |
@@ -285,13 +377,13 @@ cargo run --features desktop
 # With CLI options
 cargo run --features desktop -- --cols 120 --rows 40 --shell /bin/zsh
 
-# Run tests (1301 tests with all features)
+# Run tests with all features
 cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 ```
 
 ## Status
 
-**1301 tests passing** (2 ignored PTY integration tests).
+**1309 tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
@@ -321,6 +413,8 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 | Terminal Utility Actions | Done | 12 |
 | Font Zoom | Done | 14 |
 | Bell Support | Done | 5 |
+| Status Bar | Done | 8 |
+| Config-Driven Keybindings | Done | 8 |
 
 ## License
 

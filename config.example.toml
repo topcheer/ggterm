@@ -3,7 +3,7 @@
 # All fields are optional — missing keys use built-in defaults.
 
 [appearance]
-# Theme: "dark", "light", "solarized"
+# Theme: "dark", "light", "dracula", "solarized-dark", "solarized-light", "gruvbox"
 theme = "dark"
 
 # Font family name (resolved by glyphon text shaping)
@@ -32,3 +32,46 @@ api_endpoint = "https://api.openai.com/v1"
 
 # Model identifier
 model = "gpt-4o-mini"
+
+# ──────────────────────────────────────────────────────────────────────
+# Keyboard Shortcuts (P14-D)
+# ──────────────────────────────────────────────────────────────────────
+# All keys are optional. Omit a key to use the built-in default.
+#
+# Format: "Modifier+Modifier+Key"
+#   Modifiers: Ctrl, Shift, Alt  (case-insensitive, order doesn't matter)
+#   Key: Single letter (A-Z), digit (0-9), punctuation (=, -), or F-key (F1-F24)
+#
+# Examples:
+#   "Ctrl+T"           → Ctrl + T
+#   "Ctrl+Shift+V"     → Ctrl + Shift + V
+#   "Alt+1"            → Alt + 1
+#   "F11"              → F11 (no modifiers)
+#   "Ctrl+="           → Ctrl + =
+
+[keybindings]
+# Tab management
+new_tab = "Ctrl+T"
+close_tab = "Ctrl+W"
+
+# Clipboard
+paste = "Ctrl+Shift+V"
+copy = "Ctrl+Shift+C"
+
+# Search
+search = "Ctrl+Shift+F"
+
+# Font zoom
+zoom_in = "Ctrl+="
+zoom_out = "Ctrl+-"
+zoom_reset = "Ctrl+0"
+
+# Window
+fullscreen = "F11"
+
+# Terminal actions
+clear = "Ctrl+Shift+K"
+reset = "Ctrl+Shift+R"
+
+# Theme cycling
+cycle_theme = "Ctrl+Shift+T"
