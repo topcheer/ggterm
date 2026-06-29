@@ -38,6 +38,7 @@ pub mod search;
 pub mod shell_integration;
 pub mod tab_session;
 pub mod tabs;
+pub mod terminal_actions;
 pub mod theme;
 
 #[cfg(feature = "ai")]

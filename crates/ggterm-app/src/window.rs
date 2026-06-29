@@ -572,6 +572,37 @@ impl DesktopApp {
                     self.paste_from_clipboard();
                     return;
                 }
+                // P11-B: Terminal utility shortcuts
+                KeyCode::KeyC => {
+                    // Ctrl+Shift+C → copy selection to clipboard
+                    self.copy_selection_to_clipboard();
+                    return;
+                }
+                KeyCode::KeyK => {
+                    // Ctrl+Shift+K → clear screen + scrollback
+                    crate::terminal_actions::clear_screen_and_scrollback(
+                        self.active_session_mut().app_mut().grid_mut(),
+                    );
+                    return;
+                }
+                KeyCode::KeyR => {
+                    // Ctrl+Shift+R → soft reset terminal
+                    crate::terminal_actions::soft_reset(
+                        self.active_session_mut().app_mut().grid_mut(),
+                    );
+                    return;
+                }
+                KeyCode::KeyA => {
+                    // Ctrl+Shift+A → select all text
+                    let grid = self.active_session().app().grid();
+                    let range = crate::terminal_actions::select_all_range(grid);
+                    self.selection
+                        .start(range.start_col as u16, range.start_row as u16);
+                    self.selection
+                        .extend(range.end_col as u16, range.end_row as u16);
+                    self.selection.finish();
+                    return;
+                }
                 // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N)
                 #[cfg(feature = "ai")]
                 KeyCode::KeyE => {
