@@ -1322,18 +1322,41 @@ impl ApplicationHandler for DesktopApp {
 
                 self.render_frame();
 
-                // Update window title if the terminal title changed (OSC 0/2).
+                // Update window title: show tab bar when multiple tabs, otherwise
+                // show terminal title (OSC 0/2).
                 let title = self.active_session().app().terminal().title().to_string();
-                if title != self.last_title
-                    && let Some(ref window) = self.window
-                {
-                    let display = if title.is_empty() {
-                        format!("GGTerm {}", env!("CARGO_PKG_VERSION"))
-                    } else {
-                        title.clone()
-                    };
-                    window.set_title(&display);
+                if title != self.last_title || self.sessions.len() > 1 {
                     self.last_title = title;
+                    if let Some(ref window) = self.window {
+                        let display = if self.sessions.len() > 1 {
+                            // Multi-tab: show tab bar in title bar.
+                            let titles: Vec<String> = self
+                                .sessions
+                                .iter()
+                                .enumerate()
+                                .map(|(i, s)| {
+                                    let t = s.app().terminal().title();
+                                    let label = if t.is_empty() {
+                                        format!("Tab {}", i + 1)
+                                    } else {
+                                        t.to_string()
+                                    };
+                                    let truncated: String = label.chars().take(12).collect();
+                                    if i == self.active {
+                                        format!("[{}*]", truncated)
+                                    } else {
+                                        format!("[{}]", truncated)
+                                    }
+                                })
+                                .collect();
+                            format!("GGTerm — {}", titles.join(" "))
+                        } else if self.last_title.is_empty() {
+                            format!("GGTerm {}", env!("CARGO_PKG_VERSION"))
+                        } else {
+                            self.last_title.clone()
+                        };
+                        window.set_title(&display);
+                    }
                 }
 
                 // Check PTY exit.

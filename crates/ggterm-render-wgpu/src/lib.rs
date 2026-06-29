@@ -57,6 +57,12 @@ pub struct GlyphonRenderer {
     line_height: f32,
     /// Active render theme (P11-D).
     theme: RenderTheme,
+    /// Underline render pipeline (P12-B fix).
+    underline_pipeline: Option<wgpu::RenderPipeline>,
+    /// Underline vertex buffer (P12-B fix).
+    underline_vertex_buffer: Option<wgpu::Buffer>,
+    /// Number of underline vertices (P12-B fix).
+    underline_vertex_count: u32,
 }
 
 impl GlyphonRenderer {
@@ -111,6 +117,9 @@ impl GlyphonRenderer {
             font_size: DEFAULT_FONT_SIZE,
             line_height: DEFAULT_LINE_HEIGHT,
             theme: RenderTheme::default(),
+            underline_pipeline: None,
+            underline_vertex_buffer: None,
+            underline_vertex_count: 0,
         }
     }
 
@@ -282,7 +291,136 @@ impl GlyphonRenderer {
     /// inside your render pass.
     pub fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) -> Result<(), GlyphonRenderError> {
         self.text_renderer
-            .render(&self.atlas, &self.viewport, render_pass)
+            .render(&self.atlas, &self.viewport, render_pass)?;
+        // P12-B fix: Draw underlines after text.
+        self.draw_underlines(render_pass);
+        Ok(())
+    }
+
+    /// Build the underline render pipeline lazily (P12-B fix).
+    fn ensure_underline_pipeline(&mut self, device: &wgpu::Device) {
+        if self.underline_pipeline.is_some() {
+            return;
+        }
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("underline shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/underline.wgsl").into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("underline pipeline layout"),
+            bind_group_layouts: &[],
+            ..Default::default()
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("underline pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: 20, // 2 floats (pos) + 3 floats (color) = 20 bytes
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x3],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.underline_pipeline = Some(pipeline);
+    }
+
+    /// Collect underline cells from grid and upload vertex data (P12-B fix).
+    fn prepare_underlines(&mut self, device: &wgpu::Device, grid: &Grid) {
+        let cell_w = self.cell_width() as f32;
+        let cell_h = self.cell_height() as f32;
+        let screen_w = self.resolution.width as f32;
+        let screen_h = self.resolution.height as f32;
+
+        // Each underline = 2 triangles (6 vertices), each vertex = (x, y, r, g, b)
+        let mut vertices: Vec<f32> = Vec::new();
+        let underline_y_offset = cell_h - 2.0; // 2px from bottom of cell
+        let underline_thickness = 1.0;
+
+        for row_idx in 0..grid.height().min(self.rows) {
+            for col_idx in 0..grid.width().min(self.cols) {
+                if let Some(cell) = grid.cell(col_idx, row_idx) {
+                    // Resolve underline color (use cell's fg, or theme default)
+                    let theme = &self.theme;
+                    let fg = theme.resolve_fg(&cell.fg);
+                    let (r, g, b) = (
+                        fg.0 as f32 / 255.0,
+                        fg.1 as f32 / 255.0,
+                        fg.2 as f32 / 255.0,
+                    );
+
+                    // Pixel coordinates
+                    let px = col_idx as f32 * cell_w;
+                    let py = row_idx as f32 * cell_h + underline_y_offset;
+
+                    // NDC coordinates
+                    let x0 = px / screen_w * 2.0 - 1.0;
+                    let x1 = (px + cell_w) / screen_w * 2.0 - 1.0;
+                    let y0 = 1.0 - py / screen_h * 2.0;
+                    let y1 = 1.0 - (py + underline_thickness) / screen_h * 2.0;
+
+                    // Two triangles: (x0,y0) (x1,y0) (x0,y1) and (x1,y0) (x1,y1) (x0,y1)
+                    for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)] {
+                        vertices.extend_from_slice(&[x, y, r, g, b]);
+                    }
+                }
+            }
+        }
+
+        self.underline_vertex_count = (vertices.len() / 5) as u32;
+        if vertices.is_empty() {
+            self.underline_vertex_buffer = None;
+            return;
+        }
+
+        let buffer_data: Vec<u8> = vertices.iter().flat_map(|f| f.to_ne_bytes()).collect();
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("underline vertices"),
+            size: (buffer_data.len().max(4)) as u64,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: true,
+        });
+        buffer
+            .slice(..)
+            .get_mapped_range_mut()
+            .copy_from_slice(&buffer_data);
+        buffer.unmap();
+        self.underline_vertex_buffer = Some(buffer);
+    }
+
+    /// Draw underline rectangles into the render pass (P12-B fix).
+    fn draw_underlines(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        if let (Some(pipeline), Some(buffer), count) = (
+            &self.underline_pipeline,
+            &self.underline_vertex_buffer,
+            self.underline_vertex_count,
+        ) && count > 0
+        {
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_vertex_buffer(0, buffer.slice(..));
+            render_pass.draw(0..count, 0..1);
+        }
     }
 
     /// Full render cycle: prepare grid + draw into render pass.
@@ -322,6 +460,8 @@ impl GlyphonRenderer {
         render_pass: &mut wgpu::RenderPass<'_>,
     ) -> Result<(), RenderError> {
         self.prepare_grid(device, queue, grid, cursor)?;
+        self.ensure_underline_pipeline(device);
+        self.prepare_underlines(device, grid);
         self.draw(render_pass)?;
         Ok(())
     }

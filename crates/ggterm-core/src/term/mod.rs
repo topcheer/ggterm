@@ -1163,6 +1163,27 @@ impl Perform for Terminal {
                     _ => {}
                 }
             }
+            // Text area size report (CSI Ps t)
+            b't' => {
+                let mode = params.first().copied().unwrap_or(0);
+                match mode {
+                    18 => {
+                        // Report text area size in characters: CSI 8 ; rows ; cols t
+                        let resp = format!("\x1b[8;{};{}t", self.grid.height(), self.grid.width());
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    14 => {
+                        // Report text area size in pixels: CSI 4 ; height ; width t
+                        let cw: usize = (15.0_f32 * 0.6).ceil() as usize;
+                        let ch: usize = (15.0_f32 * 1.3).ceil() as usize;
+                        let h = self.grid.height() * ch;
+                        let w = self.grid.width() * cw;
+                        let resp = format!("\x1b[4;{};{}t", h, w);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    _ => {}
+                }
+            }
             // SCP — save cursor position (legacy ANSI.SYS)
             b's' => {
                 self.saved_cursor = self.cursor;
@@ -1703,6 +1724,25 @@ mod tests {
         feed(&mut t, b"\x1b[?1004l");
         assert!(!t.focus_event_enabled());
         assert!(t.focus_in_report().is_empty());
+    }
+
+    #[test]
+    fn t_csi_18t_text_area_size_chars() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[18t");
+        // Response: CSI 8 ; rows ; cols t
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(resp.contains("8;24;80"), "got: {resp}");
+    }
+
+    #[test]
+    fn t_csi_14t_text_area_size_pixels() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[14t");
+        // Response: CSI 4 ; height ; width t
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(resp.starts_with("\x1b[4;"), "got: {resp}");
+        assert!(resp.ends_with('t'));
     }
 
     #[test]

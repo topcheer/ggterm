@@ -8,7 +8,7 @@ license.workspace = true
 ggterm-core = { path = "../ggterm-core" }
 ggterm-render = { path = "../ggterm-render" }
 glyphon = "0.11"
-wgpu = "29"
+wgpu = { version = "29", features = ["metal"] }
 thiserror.workspace = true
 
 [dev-dependencies]

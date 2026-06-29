@@ -198,11 +198,21 @@ where
 /// Build a [`CursorState`] from the app's cursor position and visibility.
 pub fn cursor_state(app: &crate::App) -> ggterm_render::CursorState {
     let (x, y) = app.cursor();
+    // Map terminal CursorStyle to renderer CursorShape.
+    let shape = match app.terminal().cursor_style() {
+        ggterm_core::CursorStyle::BlinkUnderline | ggterm_core::CursorStyle::SteadyUnderline => {
+            ggterm_render::CursorShape::Underline
+        }
+        ggterm_core::CursorStyle::BlinkBar | ggterm_core::CursorStyle::SteadyBar => {
+            ggterm_render::CursorShape::Bar
+        }
+        _ => ggterm_render::CursorShape::Block,
+    };
     ggterm_render::CursorState {
         x,
         y,
         visible: app.cursor_visible(),
-        shape: ggterm_render::CursorShape::Block,
+        shape,
     }
 }
 
