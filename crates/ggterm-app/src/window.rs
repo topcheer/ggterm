@@ -229,6 +229,10 @@ pub struct DesktopApp {
     /// AI bridge for background requests.
     #[cfg(feature = "ai")]
     ai_bridge: Option<crate::ai_bridge::AIBridge>,
+
+    // ── Scrollback search (P10-D) ──
+    /// Search bar state. When active, keyboard input goes to the search query.
+    search: crate::search::SearchState,
 }
 
 impl DesktopApp {
