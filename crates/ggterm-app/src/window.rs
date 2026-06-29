@@ -813,6 +813,66 @@ impl DesktopApp {
             }
         }
 
+        // P20-B: Pane border overlays — draw 1px separators between split panes.
+        let active = self.active;
+        let tree = &self.sessions[active].split_tree();
+        if !tree.is_single() {
+            let bounds = crate::splits::Rect::new(
+                0,
+                if self.tab_bar.visible {
+                    cell_h as u32
+                } else {
+                    0
+                },
+                screen_w as u32,
+                screen_h as u32,
+            );
+            let areas = tree.areas(bounds);
+            let active_id = tree.active();
+            let border_active = (0.4, 0.55, 0.85_f32);
+            let border_inactive = (0.15, 0.15, 0.2_f32);
+
+            for (pane_id, rect) in &areas {
+                let x = rect.x as f32;
+                let y = rect.y as f32;
+                let w = rect.width as f32;
+                let h = rect.height as f32;
+                let c = if *pane_id == active_id {
+                    border_active
+                } else {
+                    border_inactive
+                };
+                overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                    x,
+                    y,
+                    w,
+                    h: 1.0,
+                    color: c,
+                });
+                overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                    x,
+                    y: y + h - 1.0,
+                    w,
+                    h: 1.0,
+                    color: c,
+                });
+                overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                    x,
+                    y,
+                    w: 1.0,
+                    h,
+                    color: c,
+                });
+                overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                    x: x + w - 1.0,
+                    y,
+                    w: 1.0,
+                    h,
+                    color: c,
+                });
+            }
+        }
+
         // Settings overlay: semi-transparent mask + panel.
         if self.settings.visible {
             // Dark mask
