@@ -380,13 +380,18 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Shift+Enter` | Previous search match |
 | `Esc` | Close search bar |
 | `Ctrl+Shift+Up/Down` | Navigate command blocks |
+
+### Window Splits & Panels
+| Shortcut | Action |
+|----------|--------|
 | `Ctrl+Shift+D` | Split horizontal (left \| right) (*) |
 | `Ctrl+Shift+S` | Split vertical (top / bottom) (*) |
 | `Ctrl+Shift+[` | Focus previous pane (*) |
 | `Ctrl+Shift+]` | Focus next pane (*) |
 | `Ctrl+Shift+Alt+←→↑↓` | Adjust split ratio (*) |
 | `Ctrl+Shift+B` | Toggle status bar (*) |
-| `Ctrl+Shift+D` | Split pane horizontally |
+
+## Building
 | `Ctrl+Shift+S` | Split pane vertically |
 | `Ctrl+Shift+[` | Previous pane |
 | `Ctrl+Shift+]` | Next pane |
