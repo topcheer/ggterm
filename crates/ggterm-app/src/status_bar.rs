@@ -26,6 +26,8 @@ pub struct StatusBar {
     pub search_active: bool,
     /// Whether the AI overlay is visible.
     pub ai_active: bool,
+    /// Last command exit code (None = no command completed yet).
+    pub exit_code: Option<i32>,
 }
 
 impl Default for StatusBar {
@@ -45,6 +47,7 @@ impl StatusBar {
             bell_active: false,
             search_active: false,
             ai_active: false,
+            exit_code: None,
         }
     }
 
@@ -75,11 +78,16 @@ impl StatusBar {
         self.ai_active = active;
     }
 
+    /// Set the last command exit code (P17-E).
+    pub fn set_exit_code(&mut self, code: Option<i32>) {
+        self.exit_code = code;
+    }
+
     /// Format the status bar as a single-line string.
     ///
-    /// Example: `"Row:5 Col:10 | Tab 1/3 | bell | search | ai"`
+    /// Example: `"Row:5 Col:10 | Tab 1/3 | exit:0 | bell | search | ai"`
     pub fn format(&self) -> String {
-        let mut parts: Vec<String> = Vec::with_capacity(6);
+        let mut parts: Vec<String> = Vec::with_capacity(7);
 
         // Cursor position (always shown).
         parts.push(format!("Row:{} Col:{}", self.cursor_row, self.cursor_col));
@@ -87,6 +95,15 @@ impl StatusBar {
         // Tab info (only show "Tab x/y" when more than 1 tab).
         if self.tab_count > 1 {
             parts.push(format!("Tab {}/{}", self.active_tab + 1, self.tab_count));
+        }
+
+        // Command exit code (P17-E).
+        if let Some(code) = self.exit_code {
+            if code == 0 {
+                parts.push("exit:0".to_string());
+            } else {
+                parts.push(format!("exit:{}", code));
+            }
         }
 
         // Mode indicators.
@@ -182,5 +199,28 @@ mod tests {
         let mut sb = StatusBar::new();
         sb.set_search(true);
         assert_eq!(sb.format(), "Row:0 Col:0 | search");
+    }
+
+    // ── P17-E: Exit code tests ──────────────────────────────────────
+
+    #[test]
+    fn t_exit_code_zero_shows_ok() {
+        let mut sb = StatusBar::new();
+        sb.set_exit_code(Some(0));
+        assert_eq!(sb.format(), "Row:0 Col:0 | exit:0");
+    }
+
+    #[test]
+    fn t_exit_code_nonzero_shows_code() {
+        let mut sb = StatusBar::new();
+        sb.set_exit_code(Some(127));
+        assert_eq!(sb.format(), "Row:0 Col:0 | exit:127");
+    }
+
+    #[test]
+    fn t_exit_code_none_not_shown() {
+        let mut sb = StatusBar::new();
+        sb.set_exit_code(None);
+        assert_eq!(sb.format(), "Row:0 Col:0");
     }
 }

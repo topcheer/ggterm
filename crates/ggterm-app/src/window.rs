@@ -1572,6 +1572,9 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.set_ai(self.ai_overlay.is_visible());
                 #[cfg(not(feature = "ai"))]
                 self.status_bar.set_ai(false);
+                // P17-E: Update exit code from terminal's last command.
+                self.status_bar
+                    .set_exit_code(self.active_session().app().terminal().last_exit_code());
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).
