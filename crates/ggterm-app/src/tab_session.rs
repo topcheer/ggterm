@@ -1,8 +1,7 @@
 //! Tab session — bundles App + PtySession + event channel for one terminal tab.
 //!
-//! Each [`TabSession`] owns a complete terminal session: the [`App`] (which
-//! contains Terminal + Parser + Grid), a [`PtySession`] (the spawned shell),
-//! and an [`EventSender`] (mpsc channel from the PTY reader thread).
+//! Each [`TabSession`] owns one or more [`PaneSession`]s (terminal + PTY +
+//! event channel) managed by a [`SplitTree`] for tmux-style split panes.
 //!
 //! The [`DesktopApp`](crate::window::DesktopApp) holds a `Vec<TabSession>`
 //! and an `active` index to support multi-tab terminal sessions.
@@ -12,53 +11,79 @@ use ggterm_core::pty::PtySession;
 use crate::app::{App, spawn_pty_reader};
 use crate::event::EventSender;
 use crate::shell_integration::ShellIntegrationConfig;
+use crate::splits::{PaneId, SplitTree};
 
-/// A single terminal tab session.
-///
-/// Owns the App (Terminal + Parser), PtySession (shell process), and the
-/// event channel that the PTY reader thread uses to deliver bytes.
-pub struct TabSession {
+/// A single terminal pane — owns App (Terminal + Parser + Grid), PTY, event channel.
+struct PaneSession {
     /// Terminal application state (Parser + Terminal + Grid).
     app: App,
     /// PTY session (owned shell process).
     pty: Option<PtySession>,
     /// Event sender for the PTY reader thread.
     event_tx: EventSender,
-    /// Tab title (from OSC 0/2 or default).
-    title: String,
 }
 
-impl TabSession {
-    /// Create a new tab session: spawn a PTY, wire up the reader thread,
+impl PaneSession {
+    /// Create a new pane session: spawn a PTY, wire up the reader thread,
     /// and create a new App.
-    ///
-    /// # Arguments
-    /// * `cols`, `rows` — Terminal dimensions.
-    /// * `shell` — Shell program path.
-    /// * `config_mgr` — Optional config for theme/scrollback.
-    pub fn new(cols: u16, rows: u16, shell: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        // Prepare shell integration (OSC 133 auto-injection).
+    fn new(cols: u16, rows: u16, shell: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let shell_integration = ShellIntegrationConfig::prepare(shell);
         let (program, spawn_args) = shell_integration.spawn_args();
         let env_vars = shell_integration.env_vars();
 
-        // Create PTY session with shell integration.
         let pty = PtySession::open_advanced(cols, rows, Some(&program), &spawn_args, &env_vars)?;
 
-        // Create App.
         let (mut app, event_tx) = App::new(cols as usize, rows as usize);
         app.start();
 
-        // Spawn PTY reader thread.
         let reader = pty.try_clone_reader()?;
         spawn_pty_reader(reader, event_tx.clone());
-
-        let title = shell.rsplit('/').next().unwrap_or(shell).to_string();
 
         Ok(Self {
             app,
             pty: Some(pty),
             event_tx,
+        })
+    }
+
+    /// Create a test-only pane session with no real PTY.
+    #[cfg(test)]
+    fn new_test(cols: usize, rows: usize) -> Self {
+        let (mut app, event_tx) = App::new(cols, rows);
+        app.start();
+        Self {
+            app,
+            pty: None,
+            event_tx,
+        }
+    }
+}
+
+/// A single terminal tab session.
+///
+/// Owns one or more [`PaneSession`]s managed by a [`SplitTree`] for split panes.
+/// All existing accessor methods (app, app_mut, pump, etc.) operate on the
+/// **active pane** — the pane currently focused in the split tree.
+pub struct TabSession {
+    /// All panes in this tab. PaneId indexes directly into this Vec.
+    /// Dead panes (removed from split tree) remain in the Vec for stable indexing
+    /// but are not rendered or pumped.
+    panes: Vec<Option<PaneSession>>,
+    /// Split-pane layout tree.
+    split_tree: SplitTree,
+    /// Tab title (from OSC 0/2 or default).
+    title: String,
+}
+
+impl TabSession {
+    /// Create a new tab session with a single pane: spawn a PTY, wire up
+    /// the reader thread, and create a new App.
+    pub fn new(cols: u16, rows: u16, shell: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let pane = PaneSession::new(cols, rows, shell)?;
+        let title = shell.rsplit('/').next().unwrap_or(shell).to_string();
+        Ok(Self {
+            panes: vec![Some(pane)],
+            split_tree: SplitTree::new(0),
             title,
         })
     }
@@ -66,39 +91,39 @@ impl TabSession {
     /// Create a test-only TabSession with no real PTY.
     #[cfg(test)]
     pub fn new_test(cols: usize, rows: usize) -> Self {
-        let (mut app, event_tx) = App::new(cols, rows);
-        app.start();
+        let pane = PaneSession::new_test(cols, rows);
         Self {
-            app,
-            pty: None,
-            event_tx,
+            panes: vec![Some(pane)],
+            split_tree: SplitTree::new(0),
             title: "test".to_string(),
         }
     }
 
-    /// Get the App (Terminal + Parser + Grid).
+    // ── Active pane accessors (compatible with pre-split API) ──
+
+    /// Get the active pane's App (Terminal + Parser + Grid).
     pub fn app(&self) -> &App {
-        &self.app
+        &self.active_pane().app
     }
 
-    /// Get the App mutably.
+    /// Get the active pane's App mutably.
     pub fn app_mut(&mut self) -> &mut App {
-        &mut self.app
+        &mut self.active_pane_mut().app
     }
 
-    /// Get the PTY session.
+    /// Get the active pane's PTY session.
     pub fn pty(&self) -> Option<&PtySession> {
-        self.pty.as_ref()
+        self.active_pane().pty.as_ref()
     }
 
-    /// Get the PTY session mutably.
+    /// Get the active pane's PTY session mutably.
     pub fn pty_mut(&mut self) -> Option<&mut PtySession> {
-        self.pty.as_mut()
+        self.active_pane_mut().pty.as_mut()
     }
 
-    /// Get the event sender.
+    /// Get the active pane's event sender.
     pub fn event_tx(&self) -> &EventSender {
-        &self.event_tx
+        &self.active_pane().event_tx
     }
 
     /// Get the tab title.
@@ -111,39 +136,162 @@ impl TabSession {
         self.title = title.into();
     }
 
-    /// Pump events from the PTY reader thread into the App.
+    /// Pump events for **all** panes from their PTY reader threads.
     pub fn pump(&mut self) {
-        self.app.pump();
+        for pane in self.panes.iter_mut().flatten() {
+            pane.app.pump();
+        }
     }
 
-    /// Write bytes to the PTY.
+    /// Write bytes to the active pane's PTY.
     pub fn write_to_pty(&mut self, bytes: &[u8]) {
-        if let Some(ref mut pty) = self.pty
+        if let Some(ref mut pty) = self.active_pane_mut().pty
             && let Err(e) = pty.write(bytes)
         {
             log::warn!("PTY write error: {e}");
         }
     }
 
-    /// Check if the shell process is still alive.
+    /// Check if the active pane's shell process is still alive.
     pub fn is_alive(&mut self) -> bool {
-        self.pty.as_mut().is_some_and(|p| p.is_alive())
+        self.active_pane_mut()
+            .pty
+            .as_mut()
+            .is_some_and(|p| p.is_alive())
     }
 
-    /// Check if the app is still running.
+    /// Check if the active pane's app is still running.
     pub fn is_running(&self) -> bool {
-        self.app.is_running()
+        self.active_pane().app.is_running()
     }
 
-    /// Resize the terminal and PTY.
+    /// Resize **all** panes' terminals and PTYs to the given dimensions.
     pub fn resize(&mut self, cols: u16, rows: u16) {
-        self.app
-            .handle_event(crate::event::AppEvent::Resize { cols, rows });
-        if let Some(ref mut pty) = self.pty
-            && let Err(e) = pty.resize(cols, rows)
-        {
-            log::warn!("PTY resize failed: {e}");
+        for pane in self.panes.iter_mut().flatten() {
+            pane.app
+                .handle_event(crate::event::AppEvent::Resize { cols, rows });
+            if let Some(ref mut pty) = pane.pty
+                && let Err(e) = pty.resize(cols, rows)
+            {
+                log::warn!("PTY resize failed: {e}");
+            }
         }
+    }
+
+    // ── Split-pane management (P19-B) ──
+
+    /// Get the split-pane layout tree.
+    pub fn split_tree(&self) -> &SplitTree {
+        &self.split_tree
+    }
+
+    /// Get the split-pane layout tree mutably.
+    pub fn split_tree_mut(&mut self) -> &mut SplitTree {
+        &mut self.split_tree
+    }
+
+    /// Number of active panes in this tab.
+    pub fn pane_count(&self) -> usize {
+        self.split_tree.pane_count()
+    }
+
+    /// Collect all active pane IDs in visual order.
+    pub fn pane_ids(&self) -> Vec<PaneId> {
+        self.split_tree.pane_ids()
+    }
+
+    /// Get a specific pane's App by ID.
+    pub fn pane_app(&self, id: PaneId) -> Option<&App> {
+        self.panes.get(id).and_then(|p| p.as_ref()).map(|p| &p.app)
+    }
+
+    /// Get a specific pane's App mutably by ID.
+    pub fn pane_app_mut(&mut self, id: PaneId) -> Option<&mut App> {
+        self.panes
+            .get_mut(id)
+            .and_then(|p| p.as_mut())
+            .map(|p| &mut p.app)
+    }
+
+    /// Split the active pane horizontally (left | right).
+    ///
+    /// The new pane becomes the active pane. Returns the new pane ID.
+    pub fn split_horizontal(
+        &mut self,
+        cols: u16,
+        rows: u16,
+        shell: &str,
+    ) -> Result<PaneId, Box<dyn std::error::Error>> {
+        let pane = PaneSession::new(cols, rows, shell)?;
+        self.split_tree.split_horizontal(0.5);
+        let new_id = self.split_tree.active();
+        // PaneId matches Vec index — extend if needed.
+        while self.panes.len() <= new_id {
+            self.panes.push(None);
+        }
+        self.panes[new_id] = Some(pane);
+        Ok(new_id)
+    }
+
+    /// Split the active pane vertically (top / bottom).
+    ///
+    /// The new pane becomes the active pane. Returns the new pane ID.
+    pub fn split_vertical(
+        &mut self,
+        cols: u16,
+        rows: u16,
+        shell: &str,
+    ) -> Result<PaneId, Box<dyn std::error::Error>> {
+        let pane = PaneSession::new(cols, rows, shell)?;
+        self.split_tree.split_vertical(0.5);
+        let new_id = self.split_tree.active();
+        while self.panes.len() <= new_id {
+            self.panes.push(None);
+        }
+        self.panes[new_id] = Some(pane);
+        Ok(new_id)
+    }
+
+    /// Remove the active pane from the split tree.
+    ///
+    /// The PTY is closed (dropped). Focus moves to the previous pane.
+    /// Does nothing if this is the only pane (use `close_tab` instead).
+    pub fn remove_active_pane(&mut self) {
+        if self.split_tree.is_single() {
+            return;
+        }
+        let active = self.split_tree.active();
+        // Close PTY by dropping it.
+        if let Some(slot) = self.panes.get_mut(active) {
+            *slot = None;
+        }
+        self.split_tree.remove(active);
+    }
+
+    /// Cycle focus to the next pane.
+    pub fn focus_next_pane(&mut self) {
+        self.split_tree.focus_next();
+    }
+
+    /// Cycle focus to the previous pane.
+    pub fn focus_prev_pane(&mut self) {
+        self.split_tree.focus_prev();
+    }
+
+    // ── Internal helpers ──
+
+    fn active_pane(&self) -> &PaneSession {
+        let id = self.split_tree.active();
+        self.panes[id]
+            .as_ref()
+            .expect("active pane must exist in panes vec")
+    }
+
+    fn active_pane_mut(&mut self) -> &mut PaneSession {
+        let id = self.split_tree.active();
+        self.panes[id]
+            .as_mut()
+            .expect("active pane must exist in panes vec")
     }
 }
 
@@ -234,7 +382,7 @@ mod tests {
     fn test_tab_session_new_test() {
         let session = TabSession::new_test(80, 24);
         assert!(session.is_running());
-        assert!(session.pty.is_none());
+        assert!(session.pty().is_none());
         assert_eq!(session.title(), "test");
     }
 
@@ -248,46 +396,140 @@ mod tests {
     #[test]
     fn test_tab_session_pump() {
         let mut session = TabSession::new_test(80, 24);
-        // Should not panic
         session.pump();
     }
 
     #[test]
     fn test_tab_session_is_alive_no_pty() {
         let mut session = TabSession::new_test(80, 24);
-        // No PTY -> is_alive should return false
         assert!(!session.is_alive());
     }
 
     #[test]
     fn test_tab_session_write_no_pty() {
         let mut session = TabSession::new_test(80, 24);
-        // Should not panic even without a PTY
         session.write_to_pty(b"hello");
     }
 
-    // ── Tab navigation state tests (simulating DesktopApp tab ops) ──
+    // ── Split pane tests ──
+
+    #[test]
+    fn test_split_creates_second_pane() {
+        let mut session = TabSession::new_test(80, 24);
+        assert_eq!(session.pane_count(), 1);
+
+        // Create a test pane manually (no PTY needed).
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+
+        assert_eq!(session.pane_count(), 2);
+        assert_eq!(session.pane_ids(), vec![0, 1]);
+    }
+
+    #[test]
+    fn test_split_focus_switches_to_new_pane() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+        assert_eq!(session.split_tree.active(), 1);
+    }
+
+    #[test]
+    fn test_focus_next_cycles() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+        // panes [0, 1], active = 1
+        session.focus_next_pane();
+        assert_eq!(session.split_tree.active(), 0); // wraps to first
+        session.focus_next_pane();
+        assert_eq!(session.split_tree.active(), 1);
+    }
+
+    #[test]
+    fn test_focus_prev_cycles() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+        // active = 1
+        session.focus_prev_pane();
+        assert_eq!(session.split_tree.active(), 0);
+    }
+
+    #[test]
+    fn test_remove_pane_decreases_count() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+        assert_eq!(session.pane_count(), 2);
+
+        session.remove_active_pane();
+        assert_eq!(session.pane_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_single_pane_is_noop() {
+        let mut session = TabSession::new_test(80, 24);
+        session.remove_active_pane();
+        assert_eq!(session.pane_count(), 1);
+    }
+
+    #[test]
+    fn test_pane_app_by_id() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+
+        assert!(session.pane_app(0).is_some());
+        assert!(session.pane_app(1).is_some());
+        assert!(session.pane_app(99).is_none());
+    }
+
+    #[test]
+    fn test_active_pane_app_returns_correct_pane() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+        // active = 1 (new pane)
+        let app1 = session.app();
+        assert_eq!(app1.grid().width(), 40);
+
+        session.focus_prev_pane();
+        let app0 = session.app();
+        assert_eq!(app0.grid().width(), 80);
+    }
+
+    #[test]
+    fn test_resize_all_panes() {
+        let mut session = TabSession::new_test(80, 24);
+        session.panes.push(Some(PaneSession::new_test(40, 24)));
+        session.split_tree.split_horizontal(0.5);
+
+        session.resize(100, 30);
+        // Both panes should be resized
+        assert_eq!(session.pane_app(0).unwrap().grid().width(), 100);
+        assert_eq!(session.pane_app(1).unwrap().grid().width(), 100);
+    }
+
+    // ── Tab navigation state tests ──
 
     #[test]
     fn test_tab_nav_next_wraps() {
         let count = 3;
         let mut active = 0usize;
-        // Ctrl+Tab: next (wrap)
         active = (active + 1) % count;
         assert_eq!(active, 1);
         active = (active + 1) % count;
         assert_eq!(active, 2);
         active = (active + 1) % count;
-        assert_eq!(active, 0); // wraps
+        assert_eq!(active, 0);
     }
 
     #[test]
     fn test_tab_nav_prev_wraps() {
         let count = 3;
         let mut active = 0usize;
-        // Ctrl+Shift+Tab: prev (wrap)
         active = if active == 0 { count - 1 } else { active - 1 };
-        assert_eq!(active, 2); // wraps to last
+        assert_eq!(active, 2);
         active = if active == 0 { count - 1 } else { active - 1 };
         assert_eq!(active, 1);
     }
@@ -295,12 +537,10 @@ mod tests {
     #[test]
     fn test_tab_switch_by_index() {
         let count = 5;
-        // Alt+1 -> index 0, Alt+2 -> index 1, etc.
         for key in 1..=count {
             let index = (key - 1).min(count - 1);
             assert_eq!(index, key - 1);
         }
-        // Alt+9 with only 5 tabs -> clamp to last
         let key = 9;
         let index = (key - 1).min(count - 1);
         assert_eq!(index, 4);
@@ -326,29 +566,22 @@ mod tests {
 
     #[test]
     fn test_tab_close_middle_adjusts_active() {
-        // 3 tabs: [A, B*, C], active = 1 (B)
-        // Close B (the active one) -> tabs become [A, C], active stays at 1 (now C)
-        // Standard behaviour: when closing the active tab, the next tab takes its slot.
         let mut tabs = vec!["A", "B", "C"];
         let mut active = 1usize;
         let close_idx = 1;
 
         tabs.remove(close_idx);
-        // When we close the active tab itself, active index stays valid
-        // because the elements shift left. active=1 now points to what was C.
         if active >= tabs.len() {
             active = tabs.len() - 1;
         } else if close_idx < active {
             active -= 1;
         }
         assert_eq!(tabs, vec!["A", "C"]);
-        assert_eq!(active, 1); // C is now active (took B's slot)
+        assert_eq!(active, 1);
     }
 
     #[test]
     fn test_tab_close_first_keeps_active_zero() {
-        // 3 tabs: [A*, B, C], active = 0
-        // Close A -> tabs become [B, C], active stays at 0 (now B)
         let mut tabs = vec!["A", "B", "C"];
         let mut active = 0usize;
         let close_idx = 0;
@@ -365,8 +598,6 @@ mod tests {
 
     #[test]
     fn test_tab_close_last_decrements_active() {
-        // 3 tabs: [A, B, C*], active = 2
-        // Close C -> tabs become [A, B], active = 1 (B)
         let mut tabs = vec!["A", "B", "C"];
         let mut active = 2usize;
         let close_idx = 2;
@@ -395,7 +626,6 @@ mod tests {
 
     #[test]
     fn test_tab_bar_active_overrides_dirty() {
-        // Active tab should show * even if also dirty
         let titles = vec!["a".to_string(), "b".to_string()];
         let dirty = vec![true, false];
         let bar = format_tab_bar(&titles, 0, &dirty);

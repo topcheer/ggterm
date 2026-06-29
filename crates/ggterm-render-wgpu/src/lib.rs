@@ -130,6 +130,43 @@ pub struct GlyphonRenderer {
     dynamic_fg: Option<(u8, u8, u8)>,
     /// Dynamic background color (OSC 11) — overrides theme default bg.
     dynamic_bg: Option<(u8, u8, u8)>,
+    // ── P19-G: UI Overlay rendering ──
+    /// Overlay text specs: (text, left_px, top_px, (r,g,b)).
+    overlay_text: Vec<OverlayTextSpec>,
+    /// Overlay rectangle specs: (x_px, y_px, w_px, h_px, (r,g,b)).
+    overlay_rects: Vec<OverlayRect>,
+    /// Overlay rectangle vertices buffer.
+    overlay_vertex_buffer: Option<wgpu::Buffer>,
+    /// Number of overlay vertices.
+    overlay_vertex_count: u32,
+}
+
+/// P19-G: Overlay text specification for tab bar / settings / about rendering.
+#[derive(Debug, Clone)]
+pub struct OverlayTextSpec {
+    /// Text content.
+    pub text: String,
+    /// X position in physical pixels.
+    pub left: f32,
+    /// Y position in physical pixels.
+    pub top: f32,
+    /// Text color (r, g, b).
+    pub color: (u8, u8, u8),
+}
+
+/// P19-G: Overlay rectangle specification for UI backgrounds and panels.
+#[derive(Debug, Clone)]
+pub struct OverlayRect {
+    /// X position in physical pixels.
+    pub x: f32,
+    /// Y position in physical pixels.
+    pub y: f32,
+    /// Width in physical pixels.
+    pub w: f32,
+    /// Height in physical pixels.
+    pub h: f32,
+    /// Fill color (r, g, b) in [0, 1].
+    pub color: (f32, f32, f32),
 }
 
 impl GlyphonRenderer {
@@ -220,12 +257,26 @@ impl GlyphonRenderer {
             highlights: Vec::new(),
             dynamic_fg: None,
             dynamic_bg: None,
+            overlay_text: Vec::new(),
+            overlay_rects: Vec::new(),
+            overlay_vertex_buffer: None,
+            overlay_vertex_count: 0,
         }
     }
 
     /// Get the cell width in pixels (measured from actual font).
     pub fn cell_width(&self) -> u32 {
         self.measured_cell_width
+    }
+
+    /// Get the surface width in physical pixels.
+    pub fn resolution_width(&self) -> u32 {
+        self.resolution.width
+    }
+
+    /// Get the surface height in physical pixels.
+    pub fn resolution_height(&self) -> u32 {
+        self.resolution.height
     }
 
     /// Get the cell height in pixels.
@@ -412,6 +463,27 @@ impl GlyphonRenderer {
             }
         }
 
+        // P19-G: Append overlay text (tab bar, settings, about) as extra buffers.
+        let overlay_texts = std::mem::take(&mut self.overlay_text);
+        for ot in &overlay_texts {
+            let attrs = Attrs::new()
+                .family(Family::Name(TERMINAL_FONT))
+                .color(GlyphonColor::rgb(ot.color.0, ot.color.1, ot.color.2));
+            let attrs_list = AttrsList::new(&attrs);
+            let mut buffer = Buffer::new(&mut self.font_system, metrics);
+            buffer.lines = vec![BufferLine::new(
+                ot.text.clone(),
+                LineEnding::None,
+                attrs_list,
+                Shaping::Advanced,
+            )];
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            let buf_idx = buffers.len();
+            buffers.push(buffer);
+            text_area_specs.push((buf_idx, ot.left, ot.top, ot.color));
+        }
+        self.overlay_text = overlay_texts; // restore for next frame
+
         // Build TextArea references after all buffers are created.
         let text_areas: Vec<TextArea> = text_area_specs
             .iter()
@@ -452,8 +524,8 @@ impl GlyphonRenderer {
     pub fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) -> Result<(), GlyphonRenderError> {
         self.text_renderer
             .render(&self.atlas, &self.viewport, render_pass)?;
-        // P12-B/P13-A: Draw underlines and strikethroughs after text.
         self.draw_decorations(render_pass);
+        self.draw_overlay(render_pass);
         Ok(())
     }
 
@@ -604,6 +676,57 @@ impl GlyphonRenderer {
         }
     }
 
+    // ── P19-G: UI Overlay Rendering ──────────────────────────────────
+
+    /// Set overlay text specs for this frame. Call before `render_to_pass()`.
+    pub fn set_overlay_text(&mut self, texts: Vec<OverlayTextSpec>) {
+        self.overlay_text = texts;
+    }
+
+    /// Set overlay rectangle specs for this frame. Call before `render_to_pass()`.
+    pub fn set_overlay_rects(&mut self, rects: Vec<OverlayRect>) {
+        self.overlay_rects = rects;
+    }
+
+    /// Clear all overlay data.
+    pub fn clear_overlay(&mut self) {
+        self.overlay_text.clear();
+        self.overlay_rects.clear();
+        self.overlay_vertex_count = 0;
+        self.overlay_vertex_buffer = None;
+    }
+
+    /// Generate overlay vertices from `overlay_rects` and upload to GPU.
+    fn prepare_overlay(&mut self, device: &wgpu::Device) {
+        let screen_w = self.resolution.width as f32;
+        let screen_h = self.resolution.height as f32;
+        let mut verts: Vec<f32> = Vec::new();
+
+        for r in &self.overlay_rects {
+            push_rect(&mut verts, r.x, r.y, r.w, r.h, r.color, screen_w, screen_h);
+        }
+
+        upload_vertices(
+            device,
+            &verts,
+            &mut self.overlay_vertex_buffer,
+            &mut self.overlay_vertex_count,
+            "overlay",
+        );
+    }
+
+    /// Draw overlay rectangles using the underline pipeline.
+    fn draw_overlay(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        if let Some(ref pipeline) = self.underline_pipeline
+            && let Some(ref buffer) = self.overlay_vertex_buffer
+            && self.overlay_vertex_count > 0
+        {
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_vertex_buffer(0, buffer.slice(..));
+            render_pass.draw(0..self.overlay_vertex_count, 0..1);
+        }
+    }
+
     /// Full render cycle: prepare grid + draw into render pass.
     ///
     /// Convenience method combining [`prepare_grid()`](Self::prepare_grid) and
@@ -643,6 +766,7 @@ impl GlyphonRenderer {
         self.prepare_grid(device, queue, grid, cursor)?;
         self.ensure_underline_pipeline(device);
         self.prepare_decorations(device, grid);
+        self.prepare_overlay(device);
         self.draw(render_pass)?;
         Ok(())
     }
@@ -687,6 +811,33 @@ impl Renderer for GlyphonRenderer {
 }
 
 /// Upload vertex data to a GPU buffer (helper for decoration rendering).
+/// Push a rectangle's 6 vertices (2 triangles) into the vertex buffer.
+/// Coordinates are in pixel space, converted to NDC.
+#[allow(clippy::too_many_arguments)]
+fn push_rect(
+    verts: &mut Vec<f32>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: (f32, f32, f32),
+    screen_w: f32,
+    screen_h: f32,
+) {
+    let (r, g, b) = color;
+    // Convert pixel coords to NDC: [-1, 1]
+    let x0 = (x / screen_w) * 2.0 - 1.0;
+    let x1 = ((x + w) / screen_w) * 2.0 - 1.0;
+    let y0 = 1.0 - (y / screen_h) * 2.0;
+    let y1 = 1.0 - ((y + h) / screen_h) * 2.0;
+    // Two triangles: top-left, top-right, bottom-right + top-left, bottom-right, bottom-left
+    // Each vertex: [x, y, r, g, b] (matches underline pipeline layout)
+    verts.extend_from_slice(&[
+        x0, y0, r, g, b, x1, y0, r, g, b, x1, y1, r, g, b, x0, y0, r, g, b, x1, y1, r, g, b, x0,
+        y1, r, g, b,
+    ]);
+}
+
 fn upload_vertices(
     device: &wgpu::Device,
     vertices: &[f32],

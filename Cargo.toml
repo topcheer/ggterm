@@ -51,6 +51,13 @@ thiserror = "2"
 # CLI argument parsing
 clap = { version = "4.5", features = ["derive"] }
 
+# macOS native APIs (objc2)
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSObject", "NSString", "NSValue"] }
+objc2-app-kit = { version = "0.3", features = ["NSMenu", "NSMenuItem", "NSApplication", "NSEvent", "NSResponder"] }
+cocoa = "0.26"
+objc = "2.0"
+
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]
 opt-level = 1

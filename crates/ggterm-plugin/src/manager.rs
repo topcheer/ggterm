@@ -236,7 +236,7 @@ mod tests {
         PluginContext::default()
     }
 
-    fn make_plugin(name: &str, hooks: Vec<HookType>) -> Box<dyn Plugin> {
+    fn make_plugin(name: &str, _hooks: Vec<HookType>) -> Box<dyn Plugin> {
         Box::new(
             native(name)
                 .hook(HookType::OnInput) // always add OnInput for test simplicity

@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn t_dark_default_colors() {
         let theme = RenderTheme::dark_default();
-        let (r, g, b) = theme.resolve_fg(&Color::Default);
+        let (r, _g, _b) = theme.resolve_fg(&Color::Default);
         assert!(r > 200, "dark theme fg should be very bright");
         let (r, g, b) = theme.resolve_bg(&Color::Default);
         assert_eq!((r, g, b), (0, 0, 0), "dark theme bg should be pure black");

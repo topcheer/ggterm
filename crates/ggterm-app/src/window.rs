@@ -583,6 +583,37 @@ impl DesktopApp {
         self.active_session_mut().write_to_pty(bytes);
     }
 
+    // ── P19-B: Split pane management ──
+
+    /// Split the active pane horizontally (left | right).
+    ///
+    /// Creates a new PTY + App for the new pane.
+    fn split_pane_horizontal(&mut self) {
+        let cols = self.config.cols;
+        let rows = self.config.rows;
+        let shell = self.shell().to_string();
+        match self
+            .active_session_mut()
+            .split_horizontal(cols, rows, &shell)
+        {
+            Ok(id) => log::info!("Horizontal split → new pane {id}"),
+            Err(e) => log::error!("Failed to split horizontal: {e}"),
+        }
+    }
+
+    /// Split the active pane vertically (top / bottom).
+    ///
+    /// Creates a new PTY + App for the new pane.
+    fn split_pane_vertical(&mut self) {
+        let cols = self.config.cols;
+        let rows = self.config.rows;
+        let shell = self.shell().to_string();
+        match self.active_session_mut().split_vertical(cols, rows, &shell) {
+            Ok(id) => log::info!("Vertical split → new pane {id}"),
+            Err(e) => log::error!("Failed to split vertical: {e}"),
+        }
+    }
+
     /// Handle window resize: store pending dimensions for debounced apply.
     ///
     /// During a drag-resize, winit fires many `Resized` events. We store the
@@ -723,6 +754,178 @@ impl DesktopApp {
             _ => unreachable!("dynamic_bg stores Rgb"),
         }));
 
+        // P19-G: Build overlay data (tab bar + settings + about).
+        let cell_h = renderer.cell_height() as f32;
+        let screen_w = renderer.resolution_width() as f32;
+        let screen_h = renderer.resolution_height() as f32;
+        let mut overlay_rects: Vec<ggterm_render_wgpu::OverlayRect> = Vec::new();
+        let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::new();
+
+        // Update tab bar data.
+        let titles: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
+        self.tab_bar.update(&titles, self.active);
+
+        // Tab bar overlay: backgrounds + text.
+        if self.tab_bar.visible {
+            let bar_h = cell_h;
+            // Dark background strip
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: 0.0,
+                y: 0.0,
+                w: screen_w,
+                h: bar_h,
+                color: (0.12, 0.12, 0.15),
+            });
+            let tab_max_w = screen_w / self.tab_bar.tabs.len() as f32;
+            for (i, tab) in self.tab_bar.tabs.iter().enumerate() {
+                let x = i as f32 * tab_max_w;
+                if tab.active {
+                    overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                        x,
+                        y: 0.0,
+                        w: tab_max_w,
+                        h: bar_h,
+                        color: (0.2, 0.2, 0.3),
+                    });
+                }
+                // Separator line
+                if i > 0 {
+                    overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                        x,
+                        y: 0.0,
+                        w: 1.0,
+                        h: bar_h,
+                        color: (0.3, 0.3, 0.35),
+                    });
+                }
+                // Tab title text
+                let title = tab.format();
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: title,
+                    left: x + 4.0,
+                    top: 0.0,
+                    color: if tab.active {
+                        (220, 220, 220)
+                    } else {
+                        (160, 160, 160)
+                    },
+                });
+            }
+        }
+
+        // Settings overlay: semi-transparent mask + panel.
+        if self.settings.visible {
+            // Dark mask
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: 0.0,
+                y: 0.0,
+                w: screen_w,
+                h: screen_h,
+                color: (0.05, 0.05, 0.05),
+            });
+            // Center panel
+            let pw = screen_w * 0.6;
+            let ph = screen_h * 0.5;
+            let px = (screen_w - pw) * 0.5;
+            let py = (screen_h - ph) * 0.5;
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: ph,
+                color: (0.1, 0.1, 0.12),
+            });
+            // Panel border (top + bottom)
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: 2.0,
+                color: (0.35, 0.35, 0.4),
+            });
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: px,
+                y: py + ph - 2.0,
+                w: pw,
+                h: 2.0,
+                color: (0.35, 0.35, 0.4),
+            });
+            // Settings text lines
+            let theme_str = self.settings.theme.clone();
+            let font_str = self.settings.font_size.to_string();
+            let scrollback_str = self.settings.scrollback_lines.to_string();
+            let shell_str = self.settings.shell.clone();
+            let ai_str = (if self.settings.ai_enabled {
+                "on"
+            } else {
+                "off"
+            })
+            .to_string();
+            let endpoint_str = self.settings.ai_endpoint.clone();
+            let model_str = self.settings.ai_model.clone();
+            let fields: [(&str, &str); 7] = [
+                ("Theme", &theme_str),
+                ("Font Size", &font_str),
+                ("Scrollback", &scrollback_str),
+                ("Shell", &shell_str),
+                ("AI", &ai_str),
+                ("AI Endpoint", &endpoint_str),
+                ("AI Model", &model_str),
+            ];
+            for (i, (label, value)) in fields.iter().enumerate() {
+                let line = format!(
+                    "  {}  {}: {}",
+                    if i as u8 == self.settings.selected as u8 {
+                        ">"
+                    } else {
+                        " "
+                    },
+                    label,
+                    value
+                );
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: line,
+                    left: px + 10.0,
+                    top: py + 10.0 + i as f32 * cell_h,
+                    color: (200, 200, 200),
+                });
+            }
+        }
+
+        // About dialog overlay
+        if self.about.visible {
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: 0.0,
+                y: 0.0,
+                w: screen_w,
+                h: screen_h,
+                color: (0.05, 0.05, 0.05),
+            });
+            let pw = screen_w * 0.4;
+            let ph = screen_h * 0.3;
+            let px = (screen_w - pw) * 0.5;
+            let py = (screen_h - ph) * 0.5;
+            overlay_rects.push(ggterm_render_wgpu::OverlayRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: ph,
+                color: (0.1, 0.1, 0.12),
+            });
+            let about_text = self.about.format_text();
+            for (i, line) in about_text.lines().enumerate() {
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: line.to_string(),
+                    left: px + 10.0,
+                    top: py + 10.0 + i as f32 * cell_h,
+                    color: (200, 200, 200),
+                });
+            }
+        }
+
+        renderer.set_overlay_rects(overlay_rects);
+        renderer.set_overlay_text(overlay_texts);
+
         if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
             log::error!("Render error: {e}");
         }
@@ -770,7 +973,7 @@ impl DesktopApp {
                 self.open_tab();
                 return;
             }
-            // Ctrl+W → close tab
+            // Ctrl+W → close tab (or close active pane if splits exist)
             if self.check_keybinding(
                 "close_tab",
                 self.mods.ctrl,
@@ -778,7 +981,12 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) {
-                self.close_tab();
+                if self.active_session().pane_count() > 1 {
+                    // Multiple panes: close the active pane instead of the tab.
+                    self.active_session_mut().remove_active_pane();
+                } else {
+                    self.close_tab();
+                }
                 return;
             }
             // Ctrl+= → zoom in
@@ -898,6 +1106,79 @@ impl DesktopApp {
             ) {
                 self.search.toggle();
                 return;
+            }
+        }
+
+        // ── P19-B: Split pane shortcuts (not configurable) ──
+
+        // Ctrl+Shift+D → horizontal split (left | right)
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyD) = &event.physical_key
+        {
+            self.split_pane_horizontal();
+            return;
+        }
+
+        // Ctrl+Shift+S → vertical split (top / bottom)
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyS) = &event.physical_key
+        {
+            self.split_pane_vertical();
+            return;
+        }
+
+        // Ctrl+Shift+] → focus next pane
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::BracketRight) = &event.physical_key
+        {
+            self.active_session_mut().focus_next_pane();
+            return;
+        }
+
+        // Ctrl+Shift+[ → focus previous pane
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::BracketLeft) = &event.physical_key
+        {
+            self.active_session_mut().focus_prev_pane();
+            return;
+        }
+
+        // Ctrl+Shift+Alt+Arrows → adjust split ratio
+        if self.mods.ctrl && self.mods.shift && self.mods.alt {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::ArrowLeft) => {
+                    self.active_session_mut()
+                        .split_tree_mut()
+                        .adjust_active_ratio(-0.05);
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowRight) => {
+                    self.active_session_mut()
+                        .split_tree_mut()
+                        .adjust_active_ratio(0.05);
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    self.active_session_mut()
+                        .split_tree_mut()
+                        .adjust_active_ratio(0.05);
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    self.active_session_mut()
+                        .split_tree_mut()
+                        .adjust_active_ratio(-0.05);
+                    return;
+                }
+                _ => {}
             }
         }
 

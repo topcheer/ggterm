@@ -989,6 +989,7 @@ mod watch_tests {
     use std::thread;
     use std::time::Duration;
 
+    #[allow(dead_code)]
     fn wait_for(mgr: &ConfigManager, expected: bool, timeout_ms: u64) {
         let mut elapsed = 0u64;
         loop {

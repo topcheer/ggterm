@@ -61,6 +61,10 @@ pub mod gpu;
 pub mod keymap;
 #[cfg(feature = "desktop")]
 pub mod menu_bar;
+/// macOS native menu bar (desktop feature, macOS-only).
+#[cfg(all(feature = "desktop", target_os = "macos"))]
+#[cfg(target_os = "macos")]
+pub mod native_menu;
 #[cfg(feature = "desktop")]
 pub mod resize;
 #[cfg(feature = "desktop")]

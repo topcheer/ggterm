@@ -575,7 +575,6 @@ mod tests {
 
     /// Feed raw bytes into the terminal as if received from the PTY.
     fn feed(term: &mut Terminal, data: &[u8]) {
-        use ggterm_core::Perform;
         let mut p = ggterm_core::Parser::new();
         p.feed(data, term);
     }

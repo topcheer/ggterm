@@ -1830,7 +1830,7 @@ mod tests {
     #[test]
     fn t_alt_screen_multiple_enter_exit_cycles() {
         let mut t = Terminal::new(10, 3);
-        for i in 0..3 {
+        for _ in 0..3 {
             feed(&mut t, b"X");
             feed(&mut t, b"\x1b[?1049h");
             assert!(t.modes.alt_screen);

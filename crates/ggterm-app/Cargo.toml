@@ -19,6 +19,9 @@ desktop = [
     "dep:raw-window-handle",
     "dep:env_logger",
     "dep:clap",
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:objc2-app-kit",
 ]
 # AI integration: enables ggterm-ai engine bridge
 ai = ["dep:ggterm-ai"]
@@ -42,6 +45,9 @@ thiserror.workspace = true
 
 # Desktop-only dependencies (optional — enabled by `desktop` feature)
 winit = { workspace = true, optional = true }
+objc2 = { workspace = true, optional = true }
+objc2-foundation = { workspace = true, optional = true }
+objc2-app-kit = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 ggterm-render-wgpu = { path = "../ggterm-render-wgpu", optional = true }
 pollster = { workspace = true, optional = true }
