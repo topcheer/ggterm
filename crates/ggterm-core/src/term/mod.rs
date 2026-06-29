@@ -1749,7 +1749,7 @@ mod tests {
         // Multiple characters under same hyperlink all carry it.
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]8;;https://rust-lang.org\x07");
-        feed(&mut t, b"Click here");
+        feed(&mut t, b"Click"); // 5 chars at positions 0-4
         for i in 0..5 {
             let cell = t.grid().cell(i, 0).unwrap();
             assert_eq!(
@@ -1760,7 +1760,7 @@ mod tests {
         }
         // After clearing, more text has no hyperlink.
         feed(&mut t, b"\x1b]8;;\x07");
-        feed(&mut t, b"X");
+        feed(&mut t, b"X"); // at position 5
         assert_eq!(t.grid().cell(5, 0).unwrap().hyperlink, None);
     }
 
