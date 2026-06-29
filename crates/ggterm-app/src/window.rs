@@ -24,8 +24,9 @@
 
 use std::sync::Arc;
 
-use ggterm_core::pty::PtySession;
 use ggterm_render_wgpu::GlyphonRenderer;
+
+use crate::tab_session::TabSession;
 
 /// Get the default shell path as a String.
 fn default_shell_string() -> String {
@@ -37,9 +38,8 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-use crate::app::{App, spawn_pty_reader};
 use crate::config::ConfigManager;
-use crate::event::{AppEvent, EventSender};
+use crate::event::AppEvent;
 use crate::gpu::{GpuContext, cursor_state, init_wgpu};
 use crate::input::InputEncoder;
 use crate::keymap::map_winit_key;
@@ -175,10 +175,10 @@ impl From<ModsState> for crate::input::KeyModifiers {
 /// `resumed()`.
 #[allow(dead_code)] // P9-D mouse fields/methods pending integration
 pub struct DesktopApp {
-    /// Terminal state (Parser + Terminal + Grid).
-    app: App,
-    /// PTY session (owned, kept alive for the lifetime of the app).
-    pty: Option<PtySession>,
+    /// Terminal sessions (one per tab).
+    sessions: Vec<TabSession>,
+    /// Index of the active tab.
+    active: usize,
     /// Configuration.
     config: DesktopConfig,
     /// Current key modifiers state.
@@ -195,9 +195,7 @@ pub struct DesktopApp {
     /// Glyphon text renderer.
     renderer: Option<GlyphonRenderer>,
 
-    // ── PTY communication ──
-    /// Event sender (cloned for the PTY reader thread).
-    _event_tx: EventSender,
+    // ── Keyboard encoding (shared across tabs) ──
     /// Input encoder for keyboard → PTY bytes.
     encoder: InputEncoder,
 
@@ -280,41 +278,31 @@ impl DesktopApp {
         }
         desktop_config.shell = Some(effective_shell.clone());
 
-        // ── Step 3: Prepare shell integration (OSC 133 auto-injection) ──
-        let shell_integration =
-            crate::shell_integration::ShellIntegrationConfig::prepare(&effective_shell);
-        let (program, spawn_args) = shell_integration.spawn_args();
-        let env_vars = shell_integration.env_vars();
-
-        // ── Step 4: Create PTY session with shell integration ──
-        let pty = PtySession::open_advanced(cols, rows, Some(&program), &spawn_args, &env_vars)?;
-
-        // ── Step 5: Create App and apply config (theme + scrollback) ──
-        let (mut app, event_tx) = App::new(cols as usize, rows as usize);
+        // ── Step 3: Create initial tab session ──
+        let mut session = TabSession::new(cols, rows, &effective_shell)?;
         if let Some(ref mgr) = config_mgr {
             let cfg = mgr.config();
-            app.theme_manager().set_by_name(&cfg.appearance.theme);
-            app.terminal_mut()
+            session
+                .app_mut()
+                .theme_manager()
+                .set_by_name(&cfg.appearance.theme);
+            session
+                .app_mut()
+                .terminal_mut()
                 .grid_mut()
                 .set_scrollback(cfg.terminal.scrollback_lines);
         }
 
-        // ── Step 6: Spawn PTY reader thread ──
-        let reader = pty.try_clone_reader()?;
-        spawn_pty_reader(reader, event_tx.clone());
-        app.start();
-
-        // ── Step 7: Build DesktopApp ──
+        // ── Step 4: Build DesktopApp ──
         let mut desktop = DesktopApp {
-            app,
-            pty: Some(pty),
+            sessions: vec![session],
+            active: 0,
             config: desktop_config,
             mods: ModsState::default(),
             window: None,
             surface: None,
             gpu: None,
             renderer: None,
-            _event_tx: event_tx,
             encoder: InputEncoder::new(),
             #[cfg(feature = "config-watch")]
             config_mgr: None,
@@ -350,13 +338,75 @@ impl DesktopApp {
 
     // ── Helpers ──
 
-    /// Write encoded keyboard bytes to the PTY.
-    fn write_to_pty(&mut self, bytes: &[u8]) {
-        if let Some(ref mut pty) = self.pty
-            && let Err(e) = pty.write(bytes)
-        {
-            log::warn!("PTY write error: {e}");
+    /// Get the active session (immutable).
+    fn active_session(&self) -> &TabSession {
+        &self.sessions[self.active]
+    }
+
+    /// Get the active session (mutable).
+    fn active_session_mut(&mut self) -> &mut TabSession {
+        &mut self.sessions[self.active]
+    }
+
+    /// Get the shell path for creating new tabs.
+    fn shell(&self) -> &str {
+        self.config.shell.as_deref().unwrap_or("/bin/sh")
+    }
+
+    // ── Tab management (P10-A) ──
+
+    /// Open a new tab: create a TabSession with a fresh PTY.
+    fn open_tab(&mut self) {
+        let cols = self.config.cols;
+        let rows = self.config.rows;
+        match TabSession::new(cols, rows, self.shell()) {
+            Ok(session) => {
+                self.sessions.push(session);
+                self.active = self.sessions.len() - 1;
+                log::info!("Opened tab {}", self.active + 1);
+            }
+            Err(e) => {
+                log::error!("Failed to open tab: {e}");
+            }
         }
+    }
+
+    /// Close the active tab (keep at least 1).
+    fn close_tab(&mut self) {
+        if self.sessions.len() <= 1 {
+            return;
+        }
+        self.sessions.remove(self.active);
+        if self.active >= self.sessions.len() {
+            self.active = self.sessions.len() - 1;
+        }
+        log::info!("Closed tab, active={}", self.active + 1);
+    }
+
+    /// Switch to a specific tab by index (0-based).
+    fn switch_tab(&mut self, index: usize) {
+        if index < self.sessions.len() {
+            self.active = index;
+        }
+    }
+
+    /// Switch to the next tab (wraps).
+    fn next_tab(&mut self) {
+        self.active = (self.active + 1) % self.sessions.len();
+    }
+
+    /// Switch to the previous tab (wraps).
+    fn prev_tab(&mut self) {
+        self.active = if self.active == 0 {
+            self.sessions.len() - 1
+        } else {
+            self.active - 1
+        };
+    }
+
+    /// Write encoded keyboard bytes to the active PTY.
+    fn write_to_pty(&mut self, bytes: &[u8]) {
+        self.active_session_mut().write_to_pty(bytes);
     }
 
     /// Handle window resize: store pending dimensions for debounced apply.
@@ -401,16 +451,7 @@ impl DesktopApp {
             new_rows
         );
 
-        self.app.handle_event(AppEvent::Resize {
-            cols: new_cols,
-            rows: new_rows,
-        });
-
-        if let Some(ref mut pty) = self.pty
-            && let Err(e) = pty.resize(new_cols, new_rows)
-        {
-            log::warn!("PTY resize failed: {e}");
-        }
+        self.active_session_mut().resize(new_cols, new_rows);
 
         if let (Some(gpu), Some(surface)) = (&mut self.gpu, &self.surface) {
             gpu.resize(surface, width.max(1), height.max(1));
@@ -426,13 +467,17 @@ impl DesktopApp {
 
     /// Render one frame.
     fn render_frame(&mut self) {
+        // Use raw index to avoid borrowing self for the grid data,
+        // so we can separately borrow self.gpu/surface/renderer as mutable.
+        let active = self.active;
+        let session = &self.sessions[active];
+        let grid = session.app().grid();
+        let cursor = cursor_state(session.app());
+
         let (gpu, surface, renderer) = match (&mut self.gpu, &self.surface, &mut self.renderer) {
             (Some(g), Some(s), Some(r)) => (g, s, r),
             _ => return,
         };
-
-        let grid = self.app.grid();
-        let cursor = cursor_state(&self.app);
 
         if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor) {
             log::error!("Render error: {e}");
@@ -445,6 +490,60 @@ impl DesktopApp {
             return;
         }
 
+        // P10-A: Tab management shortcuts
+        // Ctrl+T → new tab, Ctrl+W → close tab
+        if self.mods.ctrl
+            && !self.mods.shift
+            && let PhysicalKey::Code(code) = &event.physical_key
+        {
+            match code {
+                KeyCode::KeyT => {
+                    self.open_tab();
+                    return;
+                }
+                KeyCode::KeyW => {
+                    self.close_tab();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // Alt+1-9 → switch to tab N
+        if self.mods.alt
+            && !self.mods.ctrl
+            && let PhysicalKey::Code(code) = &event.physical_key
+        {
+            let tab_idx = match code {
+                KeyCode::Digit1 => Some(0),
+                KeyCode::Digit2 => Some(1),
+                KeyCode::Digit3 => Some(2),
+                KeyCode::Digit4 => Some(3),
+                KeyCode::Digit5 => Some(4),
+                KeyCode::Digit6 => Some(5),
+                KeyCode::Digit7 => Some(6),
+                KeyCode::Digit8 => Some(7),
+                KeyCode::Digit9 => Some(8),
+                _ => None,
+            };
+            if let Some(idx) = tab_idx {
+                self.switch_to(idx);
+                return;
+            }
+        }
+
+        // Ctrl+Tab → next tab, Ctrl+Shift+Tab → prev tab
+        if self.mods.ctrl
+            && let PhysicalKey::Code(KeyCode::Tab) = &event.physical_key
+        {
+            if self.mods.shift {
+                self.prev_tab();
+            } else {
+                self.next_tab();
+            }
+            return;
+        }
+
         // Phase 8-D: Ctrl+Shift+Up/Down for command block navigation
         if self.mods.ctrl
             && self.mods.shift
@@ -452,11 +551,15 @@ impl DesktopApp {
         {
             match code {
                 KeyCode::ArrowUp => {
-                    self.app.handle_event(AppEvent::PrevCommandBlock);
+                    self.active_session_mut()
+                        .app_mut()
+                        .handle_event(AppEvent::PrevCommandBlock);
                     return;
                 }
                 KeyCode::ArrowDown => {
-                    self.app.handle_event(AppEvent::NextCommandBlock);
+                    self.active_session_mut()
+                        .app_mut()
+                        .handle_event(AppEvent::NextCommandBlock);
                     return;
                 }
                 KeyCode::KeyV => {
@@ -526,7 +629,7 @@ impl DesktopApp {
         self.ai_overlay.start_request(action);
 
         // Build context from terminal.
-        let ctx = ggterm_ai::AIContext::from_terminal(self.app.terminal());
+        let ctx = ggterm_ai::AIContext::from_terminal(self.active_session().app().terminal());
         let req = crate::ai_bridge::AIRequest::new(action, ctx);
 
         if let Some(ref mut bridge) = self.ai_bridge {
@@ -584,7 +687,7 @@ impl DesktopApp {
             alt: self.mods.alt,
         };
 
-        let term = self.app.terminal();
+        let term = self.active_session().app().terminal();
 
         // Check if mouse tracking is active.
         if term.mouse_tracking_enabled() {
@@ -651,7 +754,7 @@ impl DesktopApp {
     fn handle_cursor_moved(&mut self) {
         let (col, row) = self.pixel_to_cell_pos();
 
-        let term = self.app.terminal();
+        let term = self.active_session().app().terminal();
         let any_event = term.mouse_any_event_enabled();
         let button_event = term.mouse_button_event_enabled();
 
@@ -698,7 +801,7 @@ impl DesktopApp {
             alt: self.mods.alt,
         };
 
-        let term = self.app.terminal();
+        let term = self.active_session().app().terminal();
 
         // When mouse tracking is on, send wheel as button events.
         if term.mouse_tracking_enabled() {
@@ -761,7 +864,11 @@ impl DesktopApp {
             }
         };
 
-        let grid = self.app.terminal_mut().grid_mut();
+        let grid = self
+            .active_session_mut()
+            .app_mut()
+            .terminal_mut()
+            .grid_mut();
         if direction {
             grid.scroll_up_viewport(lines);
         } else {
@@ -781,7 +888,7 @@ impl DesktopApp {
             return;
         };
 
-        let grid = self.app.grid();
+        let grid = self.active_session().app().grid();
         let mut text = String::new();
 
         if sy == ey {
@@ -844,7 +951,7 @@ impl DesktopApp {
             return;
         }
 
-        let bracketed = self.app.terminal().bracketed_paste();
+        let bracketed = self.active_session().app().terminal().bracketed_paste();
         let bytes = crate::clipboard::bracket_paste(&text, bracketed);
         log::debug!("Paste: {} bytes (bracketed={})", bytes.len(), bracketed);
         self.write_to_pty(&bytes);
@@ -855,7 +962,12 @@ impl DesktopApp {
     /// Called from `about_to_wait` to apply any OSC 52 clipboard changes
     /// that programs have requested.
     fn poll_osc52_clipboard(&mut self) {
-        if let Some(data) = self.app.terminal_mut().take_pending_clipboard_set() {
+        if let Some(data) = self
+            .active_session_mut()
+            .app_mut()
+            .terminal_mut()
+            .take_pending_clipboard_set()
+        {
             log::debug!("OSC 52 clipboard set: {} bytes", data.len());
             crate::clipboard::set_clipboard_bytes(&data);
         }
@@ -942,10 +1054,10 @@ impl ApplicationHandler for DesktopApp {
 
             WindowEvent::RedrawRequested => {
                 // Pump PTY events before rendering.
-                self.app.pump();
+                self.active_session_mut().pump();
 
                 // Check exit.
-                if !self.app.is_running() {
+                if !self.active_session().is_running() {
                     event_loop.exit();
                     return;
                 }
@@ -953,7 +1065,7 @@ impl ApplicationHandler for DesktopApp {
                 self.render_frame();
 
                 // Update window title if the terminal title changed (OSC 0/2).
-                let title = self.app.terminal().title().to_string();
+                let title = self.active_session().app().terminal().title().to_string();
                 if title != self.last_title
                     && let Some(ref window) = self.window
                 {
@@ -966,10 +1078,8 @@ impl ApplicationHandler for DesktopApp {
                     self.last_title = title;
                 }
 
-                // Check PTY exit.,
-                if let Some(ref mut pty) = self.pty
-                    && !pty.is_alive()
-                {
+                // Check PTY exit.
+                if !self.active_session_mut().is_alive() {
                     log::info!("PTY exited");
                     event_loop.exit();
                 }
@@ -1012,7 +1122,7 @@ impl ApplicationHandler for DesktopApp {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Pump PTY events.
-        self.app.pump();
+        self.active_session_mut().pump();
 
         // P10-C: Poll AI bridge for results.
         #[cfg(feature = "ai")]
@@ -1042,14 +1152,14 @@ impl ApplicationHandler for DesktopApp {
         }
 
         // Check exit.
-        if !self.app.is_running() {
+        if !self.active_session().is_running() {
             event_loop.exit();
             return;
         }
 
-        if let Some(ref mut pty) = self.pty
-            && !pty.is_alive()
-        {
+        // Check PTY exit.
+        if !self.active_session_mut().is_alive() {
+            log::info!("PTY exited");
             event_loop.exit();
         }
 
