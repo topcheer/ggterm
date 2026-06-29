@@ -264,6 +264,18 @@ pub struct Modes {
     pub alt_screen: bool,
     /// Insert mode (IRM, SM/RM 4).
     pub insert: bool,
+    /// Mouse tracking — X10 / normal mode (DECSET 1000).
+    pub mouse_tracking: bool,
+    /// Mouse tracking — button-event mode (DECSET 1002).
+    pub mouse_button_event: bool,
+    /// Mouse tracking — any-motion mode (DECSET 1003).
+    pub mouse_any_event: bool,
+    /// SGR mouse formatting (DECSET 1006).
+    pub mouse_sgr: bool,
+    /// UTF-8 mouse formatting (DECSET 1005).
+    pub mouse_utf8: bool,
+    /// URXVT mouse formatting (DECSET 1015).
+    pub mouse_urxvt: bool,
 }
 
 impl Modes {
@@ -277,6 +289,12 @@ impl Modes {
             bracketed_paste: false,
             alt_screen: false,
             insert: false,
+            mouse_tracking: false,
+            mouse_button_event: false,
+            mouse_any_event: false,
+            mouse_sgr: false,
+            mouse_utf8: false,
+            mouse_urxvt: false,
         }
     }
 }
@@ -369,6 +387,31 @@ impl Terminal {
     }
     pub fn cursor_visible(&self) -> bool {
         self.modes.cursor_visible
+    }
+
+    /// Return true if any mouse tracking mode is active.
+    pub fn mouse_tracking_enabled(&self) -> bool {
+        self.modes.mouse_tracking || self.modes.mouse_button_event || self.modes.mouse_any_event
+    }
+
+    /// Return true if SGR mouse encoding is active (DECSET 1006).
+    pub fn mouse_sgr_enabled(&self) -> bool {
+        self.modes.mouse_sgr
+    }
+
+    /// Return true if URXVT mouse encoding is active (DECSET 1015).
+    pub fn mouse_urxvt_enabled(&self) -> bool {
+        self.modes.mouse_urxvt
+    }
+
+    /// Return true if any-event mouse tracking is active (DECSET 1003).
+    pub fn mouse_any_event_enabled(&self) -> bool {
+        self.modes.mouse_any_event
+    }
+
+    /// Return true if button-event mouse tracking is active (DECSET 1002).
+    pub fn mouse_button_event_enabled(&self) -> bool {
+        self.modes.mouse_button_event
     }
     pub fn cursor_style(&self) -> CursorStyle {
         self.cursor_style
@@ -621,6 +664,14 @@ impl Terminal {
             1 => self.modes.cursor_keys_app = enable,
             2004 => self.modes.bracketed_paste = enable,
             47 | 1047 | 1049 => self.modes.alt_screen = enable,
+            // Mouse tracking modes
+            9 => self.modes.mouse_tracking = enable, // X10
+            1000 => self.modes.mouse_tracking = enable, // Normal
+            1002 => self.modes.mouse_button_event = enable, // Button-event
+            1003 => self.modes.mouse_any_event = enable, // Any-motion
+            1005 => self.modes.mouse_utf8 = enable,  // UTF-8 encoding
+            1006 => self.modes.mouse_sgr = enable,   // SGR encoding
+            1015 => self.modes.mouse_urxvt = enable, // URXVT encoding
             _ => {}
         }
     }
@@ -2529,5 +2580,75 @@ mod tests {
                 assert!(b.is_success());
             }
         }
+    }
+
+    // ── Mouse mode tracking ──────────────────────────────────────────
+
+    #[test]
+    fn t_mouse_tracking_mode_1000() {
+        let mut t = Terminal::new(80, 24);
+        assert!(!t.mouse_tracking_enabled());
+        feed(&mut t, b"\x1b[?1000h");
+        assert!(t.mouse_tracking_enabled());
+        assert!(t.modes.mouse_tracking);
+        feed(&mut t, b"\x1b[?1000l");
+        assert!(!t.mouse_tracking_enabled());
+    }
+
+    #[test]
+    fn t_mouse_tracking_mode_9() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?9h");
+        assert!(t.modes.mouse_tracking);
+        assert!(t.mouse_tracking_enabled());
+    }
+
+    #[test]
+    fn t_mouse_button_event_mode_1002() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1002h");
+        assert!(t.modes.mouse_button_event);
+        assert!(t.mouse_tracking_enabled());
+        assert!(t.mouse_button_event_enabled());
+        feed(&mut t, b"\x1b[?1002l");
+        assert!(!t.mouse_button_event_enabled());
+    }
+
+    #[test]
+    fn t_mouse_any_event_mode_1003() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1003h");
+        assert!(t.modes.mouse_any_event);
+        assert!(t.mouse_tracking_enabled());
+        assert!(t.mouse_any_event_enabled());
+        feed(&mut t, b"\x1b[?1003l");
+        assert!(!t.mouse_any_event_enabled());
+    }
+
+    #[test]
+    fn t_mouse_sgr_mode_1006() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1006h");
+        assert!(t.mouse_sgr_enabled());
+        feed(&mut t, b"\x1b[?1006l");
+        assert!(!t.mouse_sgr_enabled());
+    }
+
+    #[test]
+    fn t_mouse_urxvt_mode_1015() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1015h");
+        assert!(t.mouse_urxvt_enabled());
+        feed(&mut t, b"\x1b[?1015l");
+        assert!(!t.mouse_urxvt_enabled());
+    }
+
+    #[test]
+    fn t_mouse_utf8_mode_1005() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1005h");
+        assert!(t.modes.mouse_utf8);
+        feed(&mut t, b"\x1b[?1005l");
+        assert!(!t.modes.mouse_utf8);
     }
 }

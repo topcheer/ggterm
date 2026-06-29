@@ -144,6 +144,7 @@ impl From<ModsState> for crate::input::KeyModifiers {
 /// Implements winit's `ApplicationHandler` trait to receive OS events.
 /// GPU resources (surface, device, renderer) are lazily initialized in
 /// `resumed()`.
+#[allow(dead_code)] // P9-D mouse fields/methods pending integration
 pub struct DesktopApp {
     /// Terminal state (Parser + Terminal + Grid).
     app: App,
@@ -360,9 +361,10 @@ impl DesktopApp {
         }
     }
 
-    // ── Mouse handling ──────────────────────────────────────────────
+    // ── Mouse handling (P9-D, pending integration) ────────────────
 
     /// Convert pixel position to terminal cell coordinates.
+    #[allow(dead_code)]
     fn pixel_to_cell_pos(&self) -> (u16, u16) {
         crate::mouse::pixel_to_cell(
             self.cursor_pos.0,
@@ -373,16 +375,15 @@ impl DesktopApp {
     }
 
     /// Handle winit MouseInput events (button press/release).
-    fn handle_mouse_input(&mut self, event: &winit::event::MouseEvent) {
-        use winit::event::{ElementState, MouseButton as WinitMouseButton};
-
-        let button = match event.button {
-            WinitMouseButton::Left => crate::mouse::MouseButton::Left,
-            WinitMouseButton::Right => crate::mouse::MouseButton::Right,
-            WinitMouseButton::Middle => crate::mouse::MouseButton::Middle,
-            WinitMouseButton::Back => crate::mouse::MouseButton::Other(8),
-            WinitMouseButton::Forward => crate::mouse::MouseButton::Other(16),
-            WinitMouseButton::Other(n) => crate::mouse::MouseButton::Other(n),
+    #[allow(dead_code)]
+    fn handle_mouse_input(&mut self, state: ElementState, button: winit::event::MouseButton) {
+        let mouse_button = match button {
+            winit::event::MouseButton::Left => crate::mouse::MouseButton::Left,
+            winit::event::MouseButton::Right => crate::mouse::MouseButton::Right,
+            winit::event::MouseButton::Middle => crate::mouse::MouseButton::Middle,
+            winit::event::MouseButton::Back => crate::mouse::MouseButton::Other(8),
+            winit::event::MouseButton::Forward => crate::mouse::MouseButton::Other(16),
+            winit::event::MouseButton::Other(n) => crate::mouse::MouseButton::Other(n as u8),
         };
 
         let (col, row) = self.pixel_to_cell_pos();
@@ -397,7 +398,7 @@ impl DesktopApp {
         // Check if mouse tracking is active.
         if term.mouse_tracking_enabled() {
             let mouse_ev = crate::mouse::MouseEvent {
-                button,
+                button: mouse_button,
                 x: col,
                 y: row,
                 mods,
@@ -406,9 +407,9 @@ impl DesktopApp {
             let sgr = term.mouse_sgr_enabled();
             let urxvt = term.mouse_urxvt_enabled();
 
-            match event.state {
+            match state {
                 ElementState::Pressed => {
-                    self.button_held = Some(button);
+                    self.button_held = Some(mouse_button);
                     if let Some(bytes) =
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, true)
                     {
@@ -428,9 +429,9 @@ impl DesktopApp {
         }
 
         // Mouse tracking is OFF — handle selection locally.
-        match (button, event.state) {
+        match (mouse_button, state) {
             (crate::mouse::MouseButton::Left, ElementState::Pressed) => {
-                self.button_held = Some(button);
+                self.button_held = Some(mouse_button);
                 self.selection.start(col, row);
                 if let Some(ref window) = self.window {
                     window.request_redraw();
@@ -558,14 +559,14 @@ impl DesktopApp {
 
         // Mouse tracking OFF — scroll the scrollback buffer.
         let (lines, direction) = match delta {
-            winit::event::MouseScrollDelta::LineDelta(_x, y) => (y.abs() as usize, y > 0),
+            winit::event::MouseScrollDelta::LineDelta(_x, y) => (y.abs() as usize, y > 0.0),
             winit::event::MouseScrollDelta::PixelDelta(pos) => {
                 let lines = (pos.y.abs() as f32 / 16.0).round() as usize;
                 (lines.max(1), pos.y < 0.0) // Natural scroll: pixel up = scroll up
             }
         };
 
-        let grid = self.app.grid_mut();
+        let grid = self.app.terminal_mut().grid_mut();
         if direction {
             grid.scroll_up_viewport(lines);
         } else {
@@ -591,7 +592,7 @@ impl DesktopApp {
         if sy == ey {
             // Single-line selection.
             for x in sx..=ex {
-                if let Some(cell) = grid.get(x as usize, sy as usize) {
+                if let Some(cell) = grid.cell(x as usize, sy as usize) {
                     text.push(cell.ch);
                 }
             }
@@ -600,7 +601,7 @@ impl DesktopApp {
             // First line: from sx to end of row.
             let width = grid.width();
             for x in sx..width as u16 {
-                if let Some(cell) = grid.get(x as usize, sy as usize) {
+                if let Some(cell) = grid.cell(x as usize, sy as usize) {
                     text.push(cell.ch);
                 }
             }
@@ -608,7 +609,7 @@ impl DesktopApp {
             // Middle lines: full rows.
             for y in (sy + 1)..ey {
                 for x in 0..width as u16 {
-                    if let Some(cell) = grid.get(x as usize, y as usize) {
+                    if let Some(cell) = grid.cell(x as usize, y as usize) {
                         text.push(cell.ch);
                     }
                 }
@@ -616,7 +617,7 @@ impl DesktopApp {
             }
             // Last line: from start of row to ex.
             for x in 0..=ex {
-                if let Some(cell) = grid.get(x as usize, ey as usize) {
+                if let Some(cell) = grid.cell(x as usize, ey as usize) {
                     text.push(cell.ch);
                 }
             }
@@ -784,18 +785,17 @@ impl ApplicationHandler for DesktopApp {
                 }
             }
 
-            // P9-D mouse handlers — winit API fields differ from expected.
-            // These will be fixed when gg_dev completes P9-D integration.
-            // WindowEvent::MouseInput { event, .. } => {
-            //     self.handle_mouse_input(event);
-            // }
-            // WindowEvent::CursorMoved { pos, .. } => {
-            //     self.cursor_pos = (pos.x as f64, pos.y as f64);
-            //     self.handle_cursor_moved();
-            // }
-            // WindowEvent::MouseWheel { delta, phase: _, .. } => {
-            //     self.handle_mouse_wheel(delta);
-            // }
+            // P9-D mouse handlers
+            WindowEvent::MouseInput { state, button, .. } => {
+                self.handle_mouse_input(state, button);
+            }
+            WindowEvent::CursorMoved { position: pos, .. } => {
+                self.cursor_pos = (pos.x, pos.y);
+                self.handle_cursor_moved();
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.handle_mouse_wheel(delta);
+            }
             _ => {}
         }
     }

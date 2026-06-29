@@ -211,7 +211,10 @@ mod tests {
     #[test]
     fn t_detect_zsh() {
         assert_eq!(ShellKind::from_path("/bin/zsh"), ShellKind::Zsh);
-        assert_eq!(ShellKind::from_path("/opt/homebrew/bin/zsh"), ShellKind::Zsh);
+        assert_eq!(
+            ShellKind::from_path("/opt/homebrew/bin/zsh"),
+            ShellKind::Zsh
+        );
     }
 
     #[test]

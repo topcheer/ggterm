@@ -74,11 +74,16 @@ fn map_char_key(
 ) -> Option<InputKey> {
     use winit::keyboard::KeyCode;
 
-    // Named keys that produce specific control characters
+    // Named keys that produce specific control characters.
+    // For Ctrl+Backspace, use a distinct char so the encoder can
+    // differentiate Ctrl+Backspace from plain Backspace.
     let ch = match code {
         KeyCode::Tab => '\t',
         KeyCode::Enter => '\r',
-        KeyCode::Backspace => '\x7f', // DEL — what most terminals expect
+        KeyCode::NumpadEnter => '\r',
+        // Use 0x08 for Backspace physical key; the encoder
+        // converts to 0x7f (DEL) for plain, 0x17 (^W) for Ctrl+.
+        KeyCode::Backspace => '\x08',
         KeyCode::Escape => '\x1b',
         KeyCode::Space => ' ',
         _ => {
@@ -278,7 +283,7 @@ mod tests {
     #[test]
     fn backspace_key() {
         let key = map_winit_key(&pk(KeyCode::Backspace), None, &no_mods());
-        assert_eq!(key, Some(InputKey::char('\x7f')));
+        assert_eq!(key, Some(InputKey::char('\x08')));
     }
 
     #[test]
@@ -382,5 +387,180 @@ mod tests {
         let key = map_winit_key(&pk(KeyCode::F1), None, &no_mods()).unwrap();
         let bytes = encoder.encode(&key);
         assert_eq!(bytes, b"\x1bOP");
+    }
+
+    // ── P9-F: Keyboard Input Refinement tests ──
+
+    #[test]
+    fn ctrl_space_maps_to_nul() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Space), Some(" "), &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x00");
+    }
+
+    #[test]
+    fn ctrl_backspace_word_delete() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Backspace), None, &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x17"); // ^W
+    }
+
+    #[test]
+    fn ctrl_enter_lf() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Enter), None, &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\n");
+    }
+
+    #[test]
+    fn shift_tab_reverse() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Tab), None, &shift()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[Z");
+    }
+
+    #[test]
+    fn ctrl_bracket_esc() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::BracketLeft), Some("["), &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b");
+    }
+
+    #[test]
+    fn ctrl_backslash_fs() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Backslash), Some("\\"), &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1c");
+    }
+
+    #[test]
+    fn ctrl_bracket_right_gs() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::BracketRight), Some("]"), &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1d");
+    }
+
+    #[test]
+    fn ctrl_slash_us() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Slash), Some("/"), &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1f");
+    }
+
+    #[test]
+    fn alt_digit_prefix() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Digit1), Some("1"), &alt()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b1");
+    }
+
+    #[test]
+    fn alt_letter_prefix() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::KeyB), Some("b"), &alt()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1bb");
+    }
+
+    #[test]
+    fn ctrl_shift_a_same_as_ctrl_a() {
+        let encoder = crate::input::InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        };
+        let key = map_winit_key(&pk(KeyCode::KeyA), Some("A"), &mods).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x01"); // Same as Ctrl+A
+    }
+
+    #[test]
+    fn shift_arrow_up_csi_1_2_a() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::ArrowUp), None, &shift()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[1;2A");
+    }
+
+    #[test]
+    fn ctrl_arrow_right_csi_1_5_c() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::ArrowRight), None, &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[1;5C");
+    }
+
+    #[test]
+    fn ctrl_shift_arrow_left_csi_1_6_d() {
+        let encoder = crate::input::InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        };
+        let key = map_winit_key(&pk(KeyCode::ArrowLeft), None, &mods).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[1;6D");
+    }
+
+    #[test]
+    fn ctrl_home_csi_1_5_h() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Home), None, &ctrl()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[1;5H");
+    }
+
+    #[test]
+    fn alt_page_down_csi_6_3_tilde() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::PageDown), None, &alt()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[6;3~");
+    }
+
+    #[test]
+    fn shift_delete_csi_3_2_tilde() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Delete), None, &shift()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[3;2~");
+    }
+
+    #[test]
+    fn ctrl_shift_f5_csi_15_6_tilde() {
+        let encoder = crate::input::InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        };
+        let key = map_winit_key(&pk(KeyCode::F5), None, &mods).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x1b[15;6~");
+    }
+
+    #[test]
+    fn backspace_then_encode_is_del() {
+        let encoder = crate::input::InputEncoder::new();
+        let key = map_winit_key(&pk(KeyCode::Backspace), None, &no_mods()).unwrap();
+        let bytes = encoder.encode(&key);
+        assert_eq!(bytes, b"\x7f"); // DEL
+    }
+
+    #[test]
+    fn numpad_enter_maps_to_enter() {
+        let key = map_winit_key(&pk(KeyCode::NumpadEnter), None, &no_mods());
+        assert_eq!(key, Some(InputKey::char('\r')));
     }
 }

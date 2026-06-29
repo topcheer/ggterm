@@ -73,11 +73,9 @@ fn main() -> ExitCode {
         2 => "debug",
         _ => "trace",
     };
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(log_level),
-    )
-    .format_timestamp_millis()
-    .try_init();
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
+        .format_timestamp_millis()
+        .try_init();
 
     log::info!(
         "GGTerm starting: {}x{}, shell={:?}, theme={}",

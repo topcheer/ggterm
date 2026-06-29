@@ -26,9 +26,9 @@
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "config-watch")]
-use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(feature = "config-watch")]
 use std::sync::Arc;
+#[cfg(feature = "config-watch")]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use thiserror::Error;
 
@@ -335,9 +335,7 @@ impl ConfigManager {
         let path = match &self.config_path {
             Some(p) => p.clone(),
             None => {
-                return Err(ConfigError::Watch(
-                    "no config path loaded".to_string(),
-                ));
+                return Err(ConfigError::Watch("no config path loaded".to_string()));
             }
         };
 
@@ -814,9 +812,15 @@ mod watch_tests {
         thread::sleep(Duration::from_millis(500));
 
         let changed = mgr.poll_reload().unwrap();
-        assert!(changed, "poll_reload should report a change after file modification");
+        assert!(
+            changed,
+            "poll_reload should report a change after file modification"
+        );
         assert_eq!(mgr.config().appearance.theme, "light");
-        assert!(called.load(Ordering::SeqCst), "on_change callback should have been fired");
+        assert!(
+            called.load(Ordering::SeqCst),
+            "on_change callback should have been fired"
+        );
 
         mgr.stop_watch();
         let _ = std::fs::remove_file(&path);

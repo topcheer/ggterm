@@ -32,6 +32,7 @@ pub mod command_nav;
 pub mod config;
 pub mod event;
 pub mod input;
+pub mod mouse;
 pub mod shell_integration;
 pub mod tabs;
 pub mod theme;

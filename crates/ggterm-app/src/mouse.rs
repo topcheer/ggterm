@@ -1,0 +1,491 @@
+//! Mouse support for the desktop terminal.
+//!
+//! Handles three concerns:
+//!
+//! 1. **SGR mouse reporting** — when the terminal enables mouse tracking
+//!    (DECSET 1000/1002/1003), mouse events are encoded and sent to the
+//!    child process as escape sequences.
+//! 2. **Mouse wheel scrolling** — when mouse tracking is *off*, the wheel
+//!    scrolls the scrollback buffer.
+//! 3. **Text selection** — click-drag selects text; release copies to the
+//!    system clipboard (via OSC 52 or the platform clipboard).
+
+/// Mouse button for SGR encoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    WheelUp,
+    WheelDown,
+    WheelLeft,
+    WheelRight,
+    Other(u8),
+}
+
+impl MouseButton {
+    /// SGR button code (the lower 2 bits of the Cb parameter).
+    fn sgr_code(&self) -> u8 {
+        match self {
+            MouseButton::Left => 0,
+            MouseButton::Middle => 1,
+            MouseButton::Right => 2,
+            MouseButton::WheelUp => 64,
+            MouseButton::WheelDown => 65,
+            MouseButton::WheelLeft => 66,
+            MouseButton::WheelRight => 67,
+            MouseButton::Other(n) => *n,
+        }
+    }
+}
+
+/// Modifier keys held during a mouse event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MouseModifiers {
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+}
+
+impl MouseModifiers {
+    fn sgr_code(&self) -> u8 {
+        let mut bits = 0u8;
+        if self.shift {
+            bits |= 4;
+        }
+        if self.alt {
+            bits |= 8;
+        }
+        if self.ctrl {
+            bits |= 16;
+        }
+        bits
+    }
+}
+
+/// Mouse press / release event.
+#[derive(Debug, Clone, Copy)]
+pub struct MouseEvent {
+    pub button: MouseButton,
+    pub x: u16, // 0-based column
+    pub y: u16, // 0-based row
+    pub mods: MouseModifiers,
+}
+
+/// Encode a mouse press event using SGR (mode 1006) encoding.
+///
+/// Format: `CSI < Cb ; Cx ; Cy M`  (press)
+/// Format: `CSI < Cb ; Cx ; Cy m`  (release)
+///
+/// `Cb` = button code + modifier flags.
+pub fn encode_sgr_press(ev: &MouseEvent) -> String {
+    let cb = ev.button.sgr_code() | ev.mods.sgr_code();
+    format!("\x1b[<{cb};{};{}M", ev.x + 1, ev.y + 1)
+}
+
+/// Encode a mouse release event using SGR encoding.
+pub fn encode_sgr_release(ev: &MouseEvent) -> String {
+    let cb = ev.button.sgr_code() | ev.mods.sgr_code();
+    format!("\x1b[<{cb};{};{}m", ev.x + 1, ev.y + 1)
+}
+
+/// Encode a mouse event using URXVT (mode 1015) encoding.
+///
+/// Format: `CSI Cb ; Cx ; Cy M`
+pub fn encode_urxvt(ev: &MouseEvent, pressed: bool) -> String {
+    let cb = ev.button.sgr_code() | (ev.mods.sgr_code() + if pressed { 0 } else { 3 });
+    format!("\x1b[{cb};{};{}M", ev.x + 1, ev.y + 1)
+}
+
+/// Encode a mouse event using legacy (X10 / mode 1000) encoding.
+///
+/// Format: `CSI Mb ; Mx ; My M` (all as raw bytes + 32)
+/// Only works for coordinates 0..=222.
+pub fn encode_legacy(ev: &MouseEvent) -> Option<Vec<u8>> {
+    if ev.x + 32 > 255 || ev.y + 32 > 255 {
+        return None;
+    }
+    let cb = ev.button.sgr_code() | ev.mods.sgr_code();
+    let b = cb + 32;
+    let x = ev.x as u8 + 32;
+    let y = ev.y as u8 + 32;
+    Some(vec![0x1b, b'[', b, x, y, b'M'])
+}
+
+/// Encode a mouse motion event (used in modes 1002/1003).
+///
+/// `pressed` is true when the button is held during motion.
+pub fn encode_sgr_motion(ev: &MouseEvent, pressed: bool) -> String {
+    // For motion events, bit 6 (32) is added to Cb.
+    let cb = ev.button.sgr_code() | 32 | ev.mods.sgr_code();
+    if pressed {
+        format!("\x1b[<{cb};{};{}M", ev.x + 1, ev.y + 1)
+    } else {
+        format!("\x1b[<{cb};{};{}m", ev.x + 1, ev.y + 1)
+    }
+}
+
+/// Determine whether a mouse motion event should be reported.
+///
+/// - Mode 1003 (any-event): report all motion
+/// - Mode 1002 (button-event): report only when a button is held
+pub fn should_report_motion(any_event: bool, button_event: bool, button_held: bool) -> bool {
+    any_event || (button_event && button_held)
+}
+
+/// Encode a mouse event using the active encoding mode.
+///
+/// Returns the bytes to send to the PTY, or `None` if the event
+/// should not be reported (e.g. legacy encoding with out-of-range coords).
+pub fn encode_mouse_event(
+    ev: &MouseEvent,
+    sgr: bool,
+    urxvt: bool,
+    pressed: bool,
+) -> Option<Vec<u8>> {
+    let s = if sgr {
+        if pressed {
+            encode_sgr_press(ev)
+        } else {
+            encode_sgr_release(ev)
+        }
+    } else if urxvt {
+        encode_urxvt(ev, pressed)
+    } else {
+        // Legacy encoding (X10 / 1000)
+        String::from_utf8(encode_legacy(ev)?).ok()?
+    };
+    Some(s.into_bytes())
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  Text Selection
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Selection state machine for click-drag text selection.
+#[derive(Debug, Clone, Default)]
+pub struct MouseSelection {
+    /// Start cell (col, row), or None if no selection active.
+    pub start: Option<(u16, u16)>,
+    /// Current end cell (col, row).
+    pub end: Option<(u16, u16)>,
+    /// True while the user is actively dragging.
+    pub dragging: bool,
+}
+
+impl MouseSelection {
+    /// Begin a new selection at the given cell.
+    pub fn start(&mut self, x: u16, y: u16) {
+        self.start = Some((x, y));
+        self.end = Some((x, y));
+        self.dragging = true;
+    }
+
+    /// Extend the selection to a new end cell while dragging.
+    pub fn extend(&mut self, x: u16, y: u16) {
+        if self.dragging {
+            self.end = Some((x, y));
+        }
+    }
+
+    /// Finalize the selection (mouse released).
+    pub fn finish(&mut self) {
+        self.dragging = false;
+    }
+
+    /// Clear the selection entirely.
+    pub fn clear(&mut self) {
+        self.start = None;
+        self.end = None;
+        self.dragging = false;
+    }
+
+    /// Return true if a non-empty selection exists.
+    pub fn is_active(&self) -> bool {
+        match (self.start, self.end) {
+            (Some(s), Some(e)) => s != e || self.dragging,
+            _ => false,
+        }
+    }
+
+    /// Return the selection as an ordered (start, end) pair where
+    /// start <= end in (row, col) order.
+    pub fn normalized(&self) -> Option<((u16, u16), (u16, u16))> {
+        let (sx, sy) = self.start?;
+        let (ex, ey) = self.end?;
+        if (sy, sx) <= (ey, ex) {
+            Some(((sx, sy), (ex, ey)))
+        } else {
+            Some(((ex, ey), (sx, sy)))
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  Coordinate conversion
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Convert pixel coordinates to terminal cell coordinates.
+pub fn pixel_to_cell(px: f64, py: f64, cell_width: f64, cell_height: f64) -> (u16, u16) {
+    let col = (px / cell_width).floor() as u16;
+    let row = (py / cell_height).floor() as u16;
+    (col, row)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── SGR encoding ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_sgr_press_left_click() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 10,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_sgr_press(&ev);
+        assert_eq!(s, "\x1b[<0;6;11M");
+    }
+
+    #[test]
+    fn test_sgr_release_left_click() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 10,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_sgr_release(&ev);
+        assert_eq!(s, "\x1b[<0;6;11m");
+    }
+
+    #[test]
+    fn test_sgr_with_modifiers() {
+        let ev = MouseEvent {
+            button: MouseButton::Right,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers {
+                shift: true,
+                ctrl: true,
+                alt: false,
+            },
+        };
+        // Right = 2, shift = 4, ctrl = 16 → 2 + 4 + 16 = 22
+        let s = encode_sgr_press(&ev);
+        assert_eq!(s, "\x1b[<22;1;1M");
+    }
+
+    #[test]
+    fn test_sgr_wheel_up() {
+        let ev = MouseEvent {
+            button: MouseButton::WheelUp,
+            x: 20,
+            y: 30,
+            mods: MouseModifiers::default(),
+        };
+        // WheelUp = 64
+        let s = encode_sgr_press(&ev);
+        assert_eq!(s, "\x1b[<64;21;31M");
+    }
+
+    #[test]
+    fn test_sgr_wheel_down() {
+        let ev = MouseEvent {
+            button: MouseButton::WheelDown,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_sgr_press(&ev);
+        assert_eq!(s, "\x1b[<65;1;1M");
+    }
+
+    // ── Motion encoding ───────────────────────────────────────────────
+
+    #[test]
+    fn test_sgr_motion_pressed() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 3,
+            y: 7,
+            mods: MouseModifiers::default(),
+        };
+        // Motion adds bit 32: 0 + 32 = 32
+        let s = encode_sgr_motion(&ev, true);
+        assert_eq!(s, "\x1b[<32;4;8M");
+    }
+
+    #[test]
+    fn test_sgr_motion_released() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 3,
+            y: 7,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_sgr_motion(&ev, false);
+        assert_eq!(s, "\x1b[<32;4;8m");
+    }
+
+    // ── Motion filtering ──────────────────────────────────────────────
+
+    #[test]
+    fn test_should_report_any_event() {
+        assert!(should_report_motion(true, false, false));
+        assert!(should_report_motion(true, false, true));
+    }
+
+    #[test]
+    fn test_should_report_button_event_with_held() {
+        assert!(should_report_motion(false, true, true));
+        assert!(!should_report_motion(false, true, false));
+    }
+
+    #[test]
+    fn test_should_report_neither_mode() {
+        assert!(!should_report_motion(false, false, true));
+    }
+
+    // ── Legacy encoding ───────────────────────────────────────────────
+
+    #[test]
+    fn test_legacy_encoding() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_legacy(&ev).unwrap();
+        assert_eq!(bytes, vec![0x1b, b'[', 32, 32, 32, b'M']);
+    }
+
+    #[test]
+    fn test_legacy_encoding_out_of_range() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 300,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        assert!(encode_legacy(&ev).is_none());
+    }
+
+    // ── URXVT encoding ────────────────────────────────────────────────
+
+    #[test]
+    fn test_urxvt_encoding() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 10,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_urxvt(&ev, true);
+        assert!(s.starts_with("\x1b["));
+        assert!(s.ends_with('M'));
+    }
+
+    // ── encode_mouse_event dispatcher ─────────────────────────────────
+
+    #[test]
+    fn test_encode_mouse_event_sgr() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event(&ev, true, false, true).unwrap();
+        assert_eq!(bytes, b"\x1b[<0;1;1M");
+    }
+
+    #[test]
+    fn test_encode_mouse_event_legacy_none() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 300,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        // Legacy + out of range → None
+        assert!(encode_mouse_event(&ev, false, false, true).is_none());
+    }
+
+    // ── Selection ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_selection_basic() {
+        let mut sel = MouseSelection::default();
+        assert!(!sel.is_active());
+
+        sel.start(5, 3);
+        assert!(sel.dragging);
+        assert!(sel.is_active());
+
+        sel.extend(10, 3);
+        let ((sx, sy), (ex, ey)) = sel.normalized().unwrap();
+        assert_eq!((sx, sy), (5, 3));
+        assert_eq!((ex, ey), (10, 3));
+
+        sel.finish();
+        assert!(!sel.dragging);
+        assert!(sel.is_active());
+
+        sel.clear();
+        assert!(!sel.is_active());
+    }
+
+    #[test]
+    fn test_selection_reversed() {
+        let mut sel = MouseSelection::default();
+        sel.start(10, 5);
+        sel.extend(3, 2);
+
+        let ((sx, sy), (ex, ey)) = sel.normalized().unwrap();
+        // Start should be earlier (top-left) even though user dragged backward
+        assert_eq!((sx, sy), (3, 2));
+        assert_eq!((ex, ey), (10, 5));
+    }
+
+    #[test]
+    fn test_selection_single_cell() {
+        let mut sel = MouseSelection::default();
+        sel.start(5, 5);
+        sel.finish();
+        // Single-cell selection is active while not dragging? No — single cell
+        // with same start/end and not dragging means click without drag.
+        assert!(!sel.is_active());
+    }
+
+    #[test]
+    fn test_selection_single_cell_dragging() {
+        let mut sel = MouseSelection::default();
+        sel.start(5, 5);
+        // While dragging, even a same-cell "selection" is active
+        assert!(sel.is_active());
+        sel.finish();
+        // After release, single cell is not a selection
+        assert!(!sel.is_active());
+    }
+
+    // ── Pixel conversion ──────────────────────────────────────────────
+
+    #[test]
+    fn test_pixel_to_cell() {
+        assert_eq!(pixel_to_cell(0.0, 0.0, 8.0, 16.0), (0, 0));
+        assert_eq!(pixel_to_cell(7.9, 15.9, 8.0, 16.0), (0, 0));
+        assert_eq!(pixel_to_cell(8.0, 16.0, 8.0, 16.0), (1, 1));
+        assert_eq!(pixel_to_cell(80.0, 160.0, 8.0, 16.0), (10, 10));
+    }
+
+    #[test]
+    fn test_pixel_to_cell_negative() {
+        // Negative coords clamp to 0
+        assert_eq!(pixel_to_cell(-5.0, -5.0, 8.0, 16.0), (0, 0));
+    }
+}

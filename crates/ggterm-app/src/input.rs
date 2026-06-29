@@ -97,22 +97,61 @@ impl InputEncoder {
     }
 
     fn encode_char(&self, ch: char, mods: &KeyModifiers) -> Vec<u8> {
+        // ── Named control characters ──
+        // These are intercepted first so that modifiers can override them.
         match ch {
-            '\r' | '\n' => return b"\r".to_vec(),
-            '\t' => return b"\t".to_vec(),
-            '\x08' => return b"\x7f".to_vec(),
+            '\r' | '\n' => {
+                // Ctrl+Enter → ^J (LF); plain Enter → CR
+                if mods.ctrl {
+                    return b"\n".to_vec();
+                }
+                return b"\r".to_vec();
+            }
+            '\t' => {
+                // Ctrl+Tab is rare; most terminals send a plain tab.
+                // Shift+Tab sends the reverse-tab (CSI Z) sequence.
+                if mods.shift {
+                    return b"\x1b[Z".to_vec();
+                }
+                return b"\t".to_vec();
+            }
+            '\x08' | '\x7f' => {
+                // Ctrl+Backspace → ^W (delete word, common in shells)
+                // Plain Backspace → DEL (0x7f)
+                if mods.ctrl {
+                    return b"\x17".to_vec(); // ^W
+                }
+                return b"\x7f".to_vec();
+            }
             '\x1b' => return b"\x1b".to_vec(),
             _ => {}
         }
-        if mods.ctrl && ch.is_ascii_alphabetic() {
-            return vec![(ch.to_ascii_lowercase() as u8) & 0x1f];
+
+        // ── Ctrl combinations ──
+        if mods.ctrl {
+            // Ctrl+Space → NUL
+            if ch == ' ' {
+                return vec![0x00];
+            }
+            // Ctrl+letter → 0x01..0x1A
+            if ch.is_ascii_alphabetic() {
+                return vec![(ch.to_ascii_lowercase() as u8) & 0x1f];
+            }
+            // Ctrl+non-alpha control characters (punctuation + digits)
+            if let Some(b) = ctrl_char(ch) {
+                return vec![b];
+            }
         }
+
+        // ── Alt (Meta) combinations ──
         if mods.alt {
             let mut out = vec![0x1b];
             let mut buf = [0u8; 4];
             out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
             return out;
         }
+
+        // ── Plain character ──
         let mut buf = [0u8; 4];
         ch.encode_utf8(&mut buf).as_bytes().to_vec()
     }
@@ -180,6 +219,30 @@ impl InputEncoder {
 }
 
 // ── Helpers ────────────────────────────────────────────────────
+
+/// Map non-alpha Ctrl+key combinations to their control codes.
+///
+/// These cover the standard ASCII control character mappings used by
+/// US-layout terminals. Returns `None` for characters without a
+/// well-known Ctrl mapping.
+fn ctrl_char(ch: char) -> Option<u8> {
+    match ch {
+        // Punctuation → control chars
+        '[' => Some(0x1b),                   // ESC
+        '\\' => Some(0x1c),                  // FS
+        ']' => Some(0x1d),                   // GS
+        '^' | '6' => Some(0x1e),             // RS
+        '_' | '/' | '-' | '=' => Some(0x1f), // US
+        '?' => Some(0x7f),                   // DEL
+        '@' | '`' | '2' => Some(0x00),       // NUL
+        '3' => Some(0x1b),                   // ESC
+        '4' => Some(0x1c),                   // FS
+        '5' => Some(0x1d),                   // GS
+        '7' => Some(0x1f),                   // US
+        '8' => Some(0x7f),                   // DEL
+        _ => None,
+    }
+}
 
 fn has_mod(mods: &KeyModifiers) -> bool {
     mods.shift || mods.ctrl || mods.alt
@@ -623,5 +686,599 @@ mod tests {
             assert!(!result.is_empty(), "{:?} produced empty output", k);
             assert!(result.starts_with(b"\x1b"), "{:?} should start with ESC", k);
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  P9-F: Keyboard Input Refinement — comprehensive tests
+    // ════════════════════════════════════════════════════════════════
+
+    // ── Ctrl+non-alpha → control characters ──
+
+    #[test]
+    fn test_ctrl_space_nul() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            ' ',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x00");
+    }
+
+    #[test]
+    fn test_ctrl_enter_lf() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '\r',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\n");
+    }
+
+    #[test]
+    fn test_ctrl_backspace_word_delete() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '\x08',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x17"); // ^W
+    }
+
+    #[test]
+    fn test_shift_tab_reverse_tab() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '\t',
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[Z"); // CSI Z
+    }
+
+    #[test]
+    fn test_ctrl_open_bracket_esc() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '[',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b");
+    }
+
+    #[test]
+    fn test_ctrl_close_bracket_gs() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            ']',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1d");
+    }
+
+    #[test]
+    fn test_ctrl_backslash_fs() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '\\',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1c");
+    }
+
+    #[test]
+    fn test_ctrl_slash_us() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '/',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1f");
+    }
+
+    #[test]
+    fn test_ctrl_backtick_nul() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '`',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x00");
+    }
+
+    #[test]
+    fn test_ctrl_caret_rs() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '^',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1e");
+    }
+
+    #[test]
+    fn test_ctrl_underscore_us() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '_',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1f");
+    }
+
+    #[test]
+    fn test_ctrl_minus_us() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '-',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1f");
+    }
+
+    #[test]
+    fn test_ctrl_equal_us() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '=',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1f");
+    }
+
+    // ── Ctrl+digits (US keyboard) ──
+
+    #[test]
+    fn test_ctrl_2_nul() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '2',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x00");
+    }
+
+    #[test]
+    fn test_ctrl_3_esc() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '3',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b");
+    }
+
+    #[test]
+    fn test_ctrl_4_fs() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '4',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1c");
+    }
+
+    #[test]
+    fn test_ctrl_5_gs() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '5',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1d");
+    }
+
+    #[test]
+    fn test_ctrl_6_rs() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '6',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1e");
+    }
+
+    #[test]
+    fn test_ctrl_7_us() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '7',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1f");
+    }
+
+    #[test]
+    fn test_ctrl_8_del() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            '8',
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x7f");
+    }
+
+    // ── Ctrl+letter full alphabet ──
+
+    #[test]
+    fn test_ctrl_a_through_z() {
+        let enc = InputEncoder::new();
+        for c in 'a'..='z' {
+            let key = InputKey::char_mod(
+                c,
+                KeyModifiers {
+                    ctrl: true,
+                    ..Default::default()
+                },
+            );
+            let expected = vec![(c as u8) & 0x1f];
+            assert_eq!(enc.encode(&key), expected, "Ctrl+{}", c);
+        }
+        // Uppercase should produce the same control codes
+        for c in 'A'..='Z' {
+            let key = InputKey::char_mod(
+                c,
+                KeyModifiers {
+                    ctrl: true,
+                    ..Default::default()
+                },
+            );
+            let expected = vec![(c.to_ascii_lowercase() as u8) & 0x1f];
+            assert_eq!(enc.encode(&key), expected, "Ctrl+Shift+{}", c);
+        }
+    }
+
+    // ── Alt+digit ──
+
+    #[test]
+    fn test_alt_digits() {
+        let enc = InputEncoder::new();
+        for n in '0'..='9' {
+            let key = InputKey::char_mod(
+                n,
+                KeyModifiers {
+                    alt: true,
+                    ..Default::default()
+                },
+            );
+            let mut expected = vec![0x1b];
+            expected.push(n as u8);
+            assert_eq!(enc.encode(&key), expected, "Alt+{}", n);
+        }
+    }
+
+    // ── Alt+letter ──
+
+    #[test]
+    fn test_alt_lowercase_letter() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            'x',
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1bx");
+    }
+
+    #[test]
+    fn test_alt_uppercase_letter() {
+        let enc = InputEncoder::new();
+        let key = InputKey::char_mod(
+            'X',
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1bX");
+    }
+
+    // ── Shift+arrows (modified cursor keys) ──
+
+    #[test]
+    fn test_shift_arrow_left() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Left,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;2D");
+    }
+
+    #[test]
+    fn test_shift_arrow_right() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Right,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;2C");
+    }
+
+    #[test]
+    fn test_shift_arrow_down() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Down,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;2B");
+    }
+
+    // ── Ctrl+Shift+arrows ──
+
+    #[test]
+    fn test_ctrl_shift_arrow_right() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Right,
+            KeyModifiers {
+                shift: true,
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;6C"); // mod=6 (shift+ctrl)
+    }
+
+    #[test]
+    fn test_ctrl_shift_arrow_left() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Left,
+            KeyModifiers {
+                shift: true,
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;6D");
+    }
+
+    // ── Ctrl+Shift+Alt (all modifiers) ──
+
+    #[test]
+    fn test_all_modifiers_arrow() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Up,
+            KeyModifiers {
+                shift: true,
+                ctrl: true,
+                alt: true,
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;8A"); // mod=8 (shift+alt+ctrl)
+    }
+
+    // ── Modified navigation keys ──
+
+    #[test]
+    fn test_ctrl_home() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Home,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;5H");
+    }
+
+    #[test]
+    fn test_ctrl_end() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::End,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;5F");
+    }
+
+    #[test]
+    fn test_shift_page_up() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::PageUp,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[5;2~");
+    }
+
+    #[test]
+    fn test_alt_insert() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::Insert,
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[2;3~");
+    }
+
+    // ── Modified function keys ──
+
+    #[test]
+    fn test_alt_f1() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::F1,
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[1;3P");
+    }
+
+    #[test]
+    fn test_shift_ctrl_f5() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::F5,
+            KeyModifiers {
+                shift: true,
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[15;6~");
+    }
+
+    #[test]
+    fn test_ctrl_f11() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::F11,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[23;5~");
+    }
+
+    #[test]
+    fn test_alt_f12() {
+        let enc = InputEncoder::new();
+        let key = InputKey::special_mod(
+            SpecialKey::F12,
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\x1b[24;3~");
+    }
+
+    // ── ctrl_char helper ──
+
+    #[test]
+    fn test_ctrl_char_mappings() {
+        assert_eq!(ctrl_char('['), Some(0x1b));
+        assert_eq!(ctrl_char(']'), Some(0x1d));
+        assert_eq!(ctrl_char('\\'), Some(0x1c));
+        assert_eq!(ctrl_char('/'), Some(0x1f));
+        assert_eq!(ctrl_char('^'), Some(0x1e));
+        assert_eq!(ctrl_char('_'), Some(0x1f));
+        assert_eq!(ctrl_char('`'), Some(0x00));
+        assert_eq!(ctrl_char('@'), Some(0x00));
+        assert_eq!(ctrl_char('?'), Some(0x7f));
+        assert_eq!(ctrl_char('a'), None); // letters handled separately
+        assert_eq!(ctrl_char('!'), None); // no mapping
+    }
+
+    // ── No modifier regressions ──
+
+    #[test]
+    fn test_plain_backspace_still_del() {
+        let enc = InputEncoder::new();
+        // Plain Backspace → DEL (0x7f)
+        assert_eq!(enc.encode(&InputKey::char('\x08')), b"\x7f");
+        assert_eq!(enc.encode(&InputKey::char('\x7f')), b"\x7f");
+    }
+
+    #[test]
+    fn test_plain_enter_still_cr() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::char('\r')), b"\r");
+    }
+
+    #[test]
+    fn test_plain_tab_still_tab() {
+        let enc = InputEncoder::new();
+        assert_eq!(enc.encode(&InputKey::char('\t')), b"\t");
+    }
+
+    #[test]
+    fn test_alt_enter() {
+        let enc = InputEncoder::new();
+        // Alt+Enter should still send CR (the named char check comes first)
+        let key = InputKey::char_mod(
+            '\r',
+            KeyModifiers {
+                alt: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(enc.encode(&key), b"\r");
     }
 }

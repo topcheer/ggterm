@@ -88,8 +88,10 @@ fn main() {
 
     print_section("2. Register on_change callback");
     mgr.on_change(Box::new(|cfg| {
-        println!("  >> on_change fired! New theme: {}, font_size: {}",
-            cfg.appearance.theme, cfg.appearance.font_size);
+        println!(
+            "  >> on_change fired! New theme: {}, font_size: {}",
+            cfg.appearance.theme, cfg.appearance.font_size
+        );
     }));
     println!("  Callback registered.");
 
@@ -121,15 +123,16 @@ api_endpoint = "https://open.bigmodel.cn/api/paas/v4"
 model = "glm-4-flash"
 "#;
 
-    std::fs::write(&config_path, initial_toml)
-        .expect("failed to write temp config");
+    std::fs::write(&config_path, initial_toml).expect("failed to write temp config");
     println!("  Wrote temp config to: {}", config_path.display());
 
     mgr = ConfigManager::load_from(&config_path).expect("load_from failed");
     // Re-register callback (load_from creates a fresh manager).
     mgr.on_change(Box::new(|cfg| {
-        println!("  >> on_change fired! New theme: {}, font_size: {}",
-            cfg.appearance.theme, cfg.appearance.font_size);
+        println!(
+            "  >> on_change fired! New theme: {}, font_size: {}",
+            cfg.appearance.theme, cfg.appearance.font_size
+        );
     }));
     print_config(&mgr);
 
@@ -158,8 +161,7 @@ api_endpoint = "https://api.openai.com/v1"
 model = "gpt-4o"
 "#;
 
-    std::fs::write(&config_path, updated_toml)
-        .expect("failed to write updated config");
+    std::fs::write(&config_path, updated_toml).expect("failed to write updated config");
     println!("  File modified. Calling reload()...");
 
     match mgr.reload() {
@@ -216,8 +218,7 @@ font_size = 12
 [terminal]
 scrollback_lines = 5000
 "#;
-        std::fs::write(&config_path, watched_toml)
-            .expect("failed to write watched config");
+        std::fs::write(&config_path, watched_toml).expect("failed to write watched config");
         println!("  File modified. Waiting for watcher...");
 
         // Give the watcher time to fire.

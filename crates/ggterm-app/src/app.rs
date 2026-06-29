@@ -379,9 +379,19 @@ impl App {
         &self.terminal
     }
 
+    /// Get a mutable reference to the terminal.
+    pub fn terminal_mut(&mut self) -> &mut Terminal {
+        &mut self.terminal
+    }
+
     /// Get the current terminal grid (read-only).
     pub fn grid(&self) -> &ggterm_core::Grid {
         self.terminal.grid()
+    }
+
+    /// Get the current terminal grid (mutable).
+    pub fn grid_mut(&mut self) -> &mut ggterm_core::Grid {
+        self.terminal.grid_mut()
     }
 
     /// Get command navigation overlay state (Phase 8-D).

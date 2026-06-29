@@ -48,6 +48,8 @@ pub struct Grid {
     scroll_top: usize,
     /// Scroll region bottom (exclusive). Defaults to `height`.
     scroll_bottom: usize,
+    /// How many scrollback lines are shown above the visible grid (0 = bottom).
+    display_offset: usize,
     /// Damage tracker for efficient partial rendering.
     damage: DamageTracker,
 }
@@ -69,6 +71,7 @@ impl Grid {
             height,
             scroll_top: 0,
             scroll_bottom: height,
+            display_offset: 0,
             damage: DamageTracker::new(width),
         }
     }
@@ -97,6 +100,7 @@ impl Grid {
         self.height = height;
         self.scroll_top = 0;
         self.scroll_bottom = height;
+        self.display_offset = 0;
         self.damage = DamageTracker::new(width);
         self.damage.mark_all(height);
     }
@@ -185,6 +189,8 @@ impl Grid {
             self.rows
                 .insert(self.scroll_bottom - 1, Row::new(self.width));
         }
+        // Reset viewport when new content causes scrolling.
+        self.display_offset = 0;
         self.damage.mark_rows(self.scroll_top, region_height);
     }
 
@@ -376,6 +382,67 @@ impl Grid {
             self.scrollback.pop_front();
         }
         self.scrollback.push_back(row);
+    }
+
+    // ------------------------------------------------------------------
+    //  Viewport scrolling (mouse wheel scrollback)
+    // ------------------------------------------------------------------
+
+    /// Scroll the viewport up by `n` lines (towards older scrollback).
+    /// This does NOT modify the grid content — it just changes which
+    /// scrollback rows are visible above the active grid.
+    pub fn scroll_up_viewport(&mut self, n: usize) {
+        let max = self.scrollback.len();
+        self.display_offset = (self.display_offset + n).min(max);
+        self.damage.mark_all(self.height);
+    }
+
+    /// Scroll the viewport down by `n` lines (towards the active bottom).
+    pub fn scroll_down_viewport(&mut self, n: usize) {
+        self.display_offset = self.display_offset.saturating_sub(n);
+        self.damage.mark_all(self.height);
+    }
+
+    /// Reset the viewport to the bottom (show active content).
+    pub fn reset_viewport(&mut self) {
+        if self.display_offset > 0 {
+            self.display_offset = 0;
+            self.damage.mark_all(self.height);
+        }
+    }
+
+    /// Return the current display offset (0 = at the active bottom).
+    pub fn display_offset(&self) -> usize {
+        self.display_offset
+    }
+
+    /// Return true if the viewport is scrolled into scrollback history.
+    pub fn is_scrolled(&self) -> bool {
+        self.display_offset > 0
+    }
+
+    /// Get a row considering the display offset.
+    ///
+    /// If `row` is within the visible area but `display_offset > 0`,
+    /// returns rows from scrollback instead.
+    pub fn display_row(&self, row: usize) -> Option<&Row> {
+        if self.display_offset == 0 {
+            return self.rows.get(row);
+        }
+        let scrollback_visible = self.display_offset.min(self.scrollback.len());
+        let scrollback_start = self.scrollback.len() - scrollback_visible;
+        if row < scrollback_visible {
+            // Row comes from scrollback.
+            self.scrollback.get(scrollback_start + row)
+        } else {
+            // Row comes from the active grid, offset.
+            self.rows.get(row - scrollback_visible)
+        }
+    }
+
+    /// Get a cell considering the display offset.
+    pub fn display_cell(&self, col: usize, row: usize) -> Option<&Cell> {
+        self.display_row(row).and_then(|r| r.cell(col))
     }
 
     // ------------------------------------------------------------------
@@ -988,5 +1055,84 @@ mod tests {
             g.scroll_up(1);
         }
         assert_eq!(g.scrollback_len(), 3); // capped
+    }
+
+    // ── Viewport scrolling ───────────────────────────────────────────
+
+    #[test]
+    fn viewport_scroll_up_down() {
+        let mut g = Grid::with_scrollback(3, 2, 100);
+        // Fill some content and scroll it into history.
+        g[(0, 0)] = Cell::with_char('A');
+        g.scroll_up(1);
+        g[(0, 0)] = Cell::with_char('B');
+        g.scroll_up(1);
+
+        assert_eq!(g.scrollback_len(), 2);
+        assert_eq!(g.display_offset(), 0);
+        assert!(!g.is_scrolled());
+
+        // Scroll viewport up.
+        g.scroll_up_viewport(1);
+        assert_eq!(g.display_offset(), 1);
+        assert!(g.is_scrolled());
+
+        // Scroll viewport up again.
+        g.scroll_up_viewport(5); // over-scroll clamps
+        assert_eq!(g.display_offset(), 2); // clamped to scrollback_len
+
+        // Scroll back down.
+        g.scroll_down_viewport(1);
+        assert_eq!(g.display_offset(), 1);
+        g.scroll_down_viewport(5);
+        assert_eq!(g.display_offset(), 0);
+    }
+
+    #[test]
+    fn viewport_reset() {
+        let mut g = Grid::with_scrollback(3, 2, 100);
+        g.scroll_up(1); // push to scrollback
+        g.scroll_up_viewport(1);
+        assert!(g.is_scrolled());
+        g.reset_viewport();
+        assert!(!g.is_scrolled());
+        assert_eq!(g.display_offset(), 0);
+    }
+
+    #[test]
+    fn viewport_resets_on_new_scroll() {
+        let mut g = Grid::with_scrollback(3, 2, 100);
+        g.scroll_up(1);
+        g.scroll_up_viewport(1);
+        assert_eq!(g.display_offset(), 1);
+        // New content scrolls — viewport resets.
+        g.scroll_up(1);
+        assert_eq!(g.display_offset(), 0);
+    }
+
+    #[test]
+    fn display_row_with_offset() {
+        let mut g = Grid::with_scrollback(3, 2, 100);
+        g[(0, 0)] = Cell::with_char('A');
+        g.scroll_up(1);
+        g[(0, 0)] = Cell::with_char('B');
+        g.scroll_up(1);
+        // scrollback now has ['A', 'B'], active has [' ', ' ']
+
+        g.scroll_up_viewport(2);
+        // With offset=2, display_row(0) should return last scrollback row.
+        assert_eq!(g.display_row(0).unwrap()[0].ch, 'B');
+        assert_eq!(g.display_row(1).unwrap()[0].ch, 'A');
+        // Rows beyond scrollback come from active grid.
+        // With offset=2, scrollback_visible=2, so row 2 = active row 0
+        // But grid height is 2, so row 2 is out of bounds.
+    }
+
+    #[test]
+    fn display_cell_no_offset() {
+        let mut g = Grid::with_scrollback(3, 2, 100);
+        g[(0, 0)] = Cell::with_char('X');
+        // No offset — display_cell == regular cell.
+        assert_eq!(g.display_cell(0, 0).unwrap().ch, 'X');
     }
 }
