@@ -44,6 +44,12 @@ impl GpuContext {
 
         let caps = surface.get_capabilities(adapter);
 
+        // Clamp surface dimensions to the GPU's maximum texture size.
+        // wgpu will panic if we exceed this (e.g. on a Retina display with scaling).
+        let max_dim = adapter.limits().max_texture_dimension_2d;
+        let width = width.min(max_dim).max(1);
+        let height = height.min(max_dim).max(1);
+
         // Prefer an sRGB format for correct color rendering.
         let surface_format = caps
             .formats
@@ -79,14 +85,28 @@ impl GpuContext {
 
     /// Reconfigure the surface after a window resize.
     pub fn resize(&mut self, surface: &wgpu::Surface, width: u32, height: u32) {
-        self.config.width = width.max(1);
-        self.config.height = height.max(1);
+        // Clamp to GPU max texture size to prevent wgpu validation panic.
+        let max_dim = self.device.limits().max_texture_dimension_2d;
+        self.config.width = width.min(max_dim).max(1);
+        self.config.height = height.min(max_dim).max(1);
         surface.configure(&self.device, &self.config);
     }
 
     /// Create a GlyphonRenderer configured for this surface's format.
-    pub fn create_renderer(&self, cols: usize, rows: usize) -> GlyphonRenderer {
-        GlyphonRenderer::new(&self.device, &self.queue, self.surface_format, cols, rows)
+    pub fn create_renderer(
+        &self,
+        surface_w: u32,
+        surface_h: u32,
+        scale_factor: f64,
+    ) -> GlyphonRenderer {
+        GlyphonRenderer::new(
+            &self.device,
+            &self.queue,
+            self.surface_format,
+            surface_w,
+            surface_h,
+            scale_factor,
+        )
     }
 
     /// Render a single frame: clears, renders terminal grid, presents.

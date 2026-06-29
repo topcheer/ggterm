@@ -13,6 +13,7 @@ pub use converter::{TextRun, row_to_runs, row_to_text};
 use ggterm_core::{DirtyRect, Grid};
 use ggterm_render::theme::RenderTheme;
 use ggterm_render::{CursorState, Renderer};
+use glyphon::cosmic_text::LayoutRun;
 use glyphon::cosmic_text::LineEnding;
 use glyphon::{
     Attrs, AttrsList, Buffer, BufferLine, Cache as GlyphonCache, Color as GlyphonColor, Family,
@@ -33,7 +34,90 @@ pub enum RenderError {
 }
 
 const DEFAULT_FONT_SIZE: f32 = 15.0;
-const DEFAULT_LINE_HEIGHT: f32 = 20.0;
+/// Line height must equal font_size for seamless box-drawing chars.
+const DEFAULT_LINE_HEIGHT: f32 = 15.0;
+
+/// Terminal font family — platform-specific for best box-drawing support.
+#[cfg(target_os = "macos")]
+const TERMINAL_FONT: &str = "Menlo";
+#[cfg(all(unix, not(target_os = "macos")))]
+const TERMINAL_FONT: &str = "DejaVu Sans Mono"; // Linux — widely available
+#[cfg(target_os = "windows")]
+const TERMINAL_FONT: &str = "Cascadia Mono"; // Windows 11 default terminal font
+
+/// Measure the actual monospace advance width from the font system.
+/// Returns the pixel width of a single character at the given font size.
+/// Falls back to `font_size * 0.6` if measurement fails.
+fn measure_cell_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
+    let metrics = Metrics::new(font_size, font_size);
+    let attrs = Attrs::new().family(Family::Name(TERMINAL_FONT));
+    let attrs_list = AttrsList::new(&attrs);
+
+    // Use 'M' as a representative monospace character.
+    let mut buffer = Buffer::new(font_system, metrics);
+    buffer.lines = vec![BufferLine::new(
+        "MMMMMMMMMM".to_string(), // 10 M's for stable measurement
+        LineEnding::None,
+        attrs_list,
+        Shaping::Advanced, // Advanced needed for CJK font fallback
+    )];
+    buffer.shape_until_scroll(font_system, false);
+
+    // Get the layout runs and measure the advance width of the first glyph.
+    let runs: Vec<LayoutRun> = buffer.layout_runs().collect();
+    if let Some(run) = runs.first() {
+        if run.glyphs.len() >= 2 {
+            // Compare positions of first two glyphs to get advance width.
+            let advance = run.glyphs[1].x - run.glyphs[0].x;
+            if advance > 0.0 {
+                return advance;
+            }
+        }
+        // Fallback: total width / number of glyphs
+        if run.glyphs.len() >= 10 {
+            let total = run.glyphs.last().unwrap().x + run.glyphs.last().unwrap().w;
+            return total / 10.0;
+        }
+    }
+
+    // Fallback to estimate.
+    font_size * 0.6
+}
+
+/// Measure the advance width of a CJK character (e.g. '已').
+/// For perfect grid alignment: cell_w should be cjk_advance / 2.
+/// This ensures 2 cells = 1 CJK glyph with no cumulative drift.
+fn measure_cjk_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
+    let metrics = Metrics::new(font_size, font_size);
+    let attrs = Attrs::new().family(Family::Name(TERMINAL_FONT));
+    let attrs_list = AttrsList::new(&attrs);
+
+    let mut buffer = Buffer::new(font_system, metrics);
+    buffer.lines = vec![BufferLine::new(
+        "已已已已已".to_string(), // 5 CJK chars
+        LineEnding::None,
+        attrs_list,
+        Shaping::Advanced,
+    )];
+    buffer.shape_until_scroll(font_system, false);
+
+    let runs: Vec<LayoutRun> = buffer.layout_runs().collect();
+    if let Some(run) = runs.first() {
+        if run.glyphs.len() >= 2 {
+            let advance = run.glyphs[1].x - run.glyphs[0].x;
+            if advance > 0.0 {
+                return advance;
+            }
+        }
+        if run.glyphs.len() >= 5 {
+            let total = run.glyphs.last().unwrap().x + run.glyphs.last().unwrap().w;
+            return total / 5.0;
+        }
+    }
+
+    // Fallback: CJK chars are typically square (same as font height).
+    font_size
+}
 
 /// GPU-accelerated terminal renderer using wgpu + glyphon.
 ///
@@ -55,6 +139,12 @@ pub struct GlyphonRenderer {
     rows: usize,
     font_size: f32,
     line_height: f32,
+    /// Measured cell width from actual font metrics (P18-B). Float for precise positioning.
+    cell_width_f32: f32,
+    /// Cell width rounded to integer for grid computations.
+    measured_cell_width: u32,
+    /// DPI scale factor (e.g. 2.0 on Retina). P18-A.
+    scale_factor: f64,
     /// Active render theme (P11-D).
     theme: RenderTheme,
     /// Underline render pipeline (P12-B fix).
@@ -84,16 +174,43 @@ impl GlyphonRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
-        cols: usize,
-        rows: usize,
+        surface_width: u32,
+        surface_height: u32,
+        scale_factor: f64,
     ) -> Self {
-        let font_system = FontSystem::new();
+        let mut font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
         let cache = GlyphonCache::new(device);
         let mut atlas = TextAtlas::new(device, queue, &cache, surface_format);
 
-        let cell_w = (DEFAULT_FONT_SIZE * 0.6).ceil() as u32;
-        let cell_h = DEFAULT_LINE_HEIGHT.ceil() as u32;
+        // P18-A: Scale font by DPI factor for crisp Retina rendering.
+        let sf = scale_factor as f32;
+        let scaled_font = DEFAULT_FONT_SIZE * sf;
+        let scaled_lh = DEFAULT_LINE_HEIGHT * sf;
+
+        // P18-B: Measure real font advance widths.
+        // CRITICAL: CJK chars take 2 cells in the terminal model.
+        // If cell_w != cjk_advance/2, CJK rows drift from ASCII rows.
+        // Fix: derive cell_w from CJK advance / 2 so they're always aligned.
+        let cjk_advance = measure_cjk_width(&mut font_system, scaled_font);
+        let cell_w_from_cjk = (cjk_advance / 2.0).round() as u32;
+        let cell_w_from_ascii = measure_cell_width(&mut font_system, scaled_font).round() as u32;
+        // Use the larger of the two to avoid clipping characters.
+        let cell_w = cell_w_from_cjk.max(cell_w_from_ascii);
+        let cell_h = scaled_lh.round() as u32;
+        // letter_spacing adjusts each char to exactly cell_w pixels.
+        // If natural advance is 9.3 and cell_w is 9, add 0 to keep natural.
+        // This avoids cumulative drift from sub-pixel differences.
+
+        // P18-C: Viewport resolution MUST match the GPU surface texture size.
+        // If they differ, glyphon's output gets stretched/compressed onto the
+        // surface, causing character misalignment and border drift.
+        let viewport_w = surface_width.max(1);
+        let viewport_h = surface_height.max(1);
+
+        // Derive cols/rows from cell dimensions.
+        let cols = (viewport_w / cell_w.max(1)) as usize;
+        let rows = (viewport_h / cell_h.max(1)) as usize;
 
         let text_renderer =
             TextRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
@@ -102,8 +219,8 @@ impl GlyphonRenderer {
         viewport.update(
             queue,
             Resolution {
-                width: cols.max(1) as u32 * cell_w,
-                height: rows.max(1) as u32 * cell_h,
+                width: viewport_w,
+                height: viewport_h,
             },
         );
 
@@ -115,13 +232,16 @@ impl GlyphonRenderer {
             text_renderer,
             viewport,
             resolution: Resolution {
-                width: cols.max(1) as u32 * cell_w,
-                height: rows.max(1) as u32 * cell_h,
+                width: viewport_w,
+                height: viewport_h,
             },
             cols,
             rows,
-            font_size: DEFAULT_FONT_SIZE,
-            line_height: DEFAULT_LINE_HEIGHT,
+            font_size: scaled_font,
+            line_height: scaled_lh,
+            cell_width_f32: cell_w as f32,
+            measured_cell_width: cell_w,
+            scale_factor,
             theme: RenderTheme::default(),
             underline_pipeline: None,
             underline_vertex_buffer: None,
@@ -132,14 +252,24 @@ impl GlyphonRenderer {
         }
     }
 
-    /// Get the estimated cell width in pixels.
+    /// Get the cell width in pixels (measured from actual font).
     pub fn cell_width(&self) -> u32 {
-        (self.font_size * 0.6).ceil() as u32
+        self.measured_cell_width
     }
 
     /// Get the cell height in pixels.
     pub fn cell_height(&self) -> u32 {
         self.line_height.ceil() as u32
+    }
+
+    /// Get the number of columns (derived from surface/cell dimensions).
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+
+    /// Get the number of rows (derived from surface/cell dimensions).
+    pub fn rows(&self) -> usize {
+        self.rows
     }
 
     /// Set the active render theme (P11-D).
@@ -168,8 +298,15 @@ impl GlyphonRenderer {
     /// Line height is derived from font size with a 1.3x multiplier.
     /// Cell width is derived from font size with a 0.6x multiplier.
     pub fn set_font_size(&mut self, size: f32) {
-        self.font_size = size.clamp(6.0, 72.0);
-        self.line_height = self.font_size * 1.3;
+        // P18-A: size is logical points; multiply by scale_factor for physical pixels.
+        let physical = size * self.scale_factor as f32;
+        self.font_size = physical.clamp(6.0, 144.0);
+        // P18-B: line_height = font_size for seamless box-drawing character tiling.
+        self.line_height = self.font_size;
+        // P18-B: Re-measure cell width for the new font size.
+        let measured = measure_cell_width(&mut self.font_system, self.font_size);
+        self.cell_width_f32 = measured;
+        self.measured_cell_width = measured.round() as u32;
     }
 
     /// Get the current font size.
@@ -216,11 +353,24 @@ impl GlyphonRenderer {
             None => (0, grid.height()),
         };
 
-        // Build one glyphon Buffer per visible row
-        let mut buffers: Vec<Buffer> = Vec::with_capacity(row_end - row_start);
+        // P18-D: Use the EXACT float advance for positioning.
+        // glyphon renders chars at their natural float advance. If we round
+        // to integer for positioning, long runs drift: 40 chars × 9.3px = 372px,
+        // but grid position = 40 × 9 = 360px → 12px misalignment.
+        // Using the exact float advance eliminates this.
+        let cell_w = self.cell_width_f32;
+        let cell_h_f32 = cell_h;
+
+        // P18-D: Build one glyphon Buffer PER TEXT RUN (not per row).
+        // Each run is positioned at its exact grid column: left = start_col * cell_w.
+        // This ensures perfect alignment for ASCII, CJK, emoji, and box-drawing chars.
+        // Wide chars (CJK/emoji) always start their own run so they don't drift
+        // subsequent characters within the same run.
+        let mut buffers: Vec<Buffer> = Vec::new();
+        type AreaSpec = (usize, f32, f32, (u8, u8, u8));
+        let mut text_area_specs: Vec<AreaSpec> = Vec::new();
 
         for row_idx in row_start..row_end {
-            // Collect highlight ranges for this row (P14-B)
             let row_highlights: Vec<(usize, usize)> = self
                 .highlights
                 .iter()
@@ -230,67 +380,57 @@ impl GlyphonRenderer {
 
             let runs = converter::row_to_runs(grid, row_idx, theme, Some(cursor), &row_highlights);
 
-            let mut text = String::new();
-            let default_color = theme.default_fg;
-            let fg = theme.resolve_fg(&default_color);
-            let default_attrs = Attrs::new()
-                .family(Family::Monospace)
-                .color(GlyphonColor::rgb(fg.0, fg.1, fg.2));
-            let mut attrs_list = AttrsList::new(&default_attrs);
-
             for run in &runs {
-                let start = text.len();
-                text.push_str(&run.text);
-                let end = text.len();
+                if run.text.is_empty() {
+                    continue;
+                }
 
-                let mut attrs = Attrs::new()
-                    .family(Family::Monospace)
+                let attrs = Attrs::new()
+                    .family(Family::Name(TERMINAL_FONT))
                     .color(GlyphonColor::rgb(run.fg.0, run.fg.1, run.fg.2));
-
+                let mut attrs = attrs;
                 if run.bold {
                     attrs = attrs.weight(glyphon::Weight::BOLD);
                 }
                 if run.italic {
                     attrs = attrs.style(glyphon::Style::Italic);
                 }
-                // Underline is rendered via a separate wgpu pipeline (draw_underlines).
+                let attrs_list = AttrsList::new(&attrs);
 
-                attrs_list.add_span(start..end, &attrs);
+                let mut buffer = Buffer::new(&mut self.font_system, metrics);
+                buffer.lines = vec![BufferLine::new(
+                    run.text.clone(),
+                    LineEnding::None,
+                    attrs_list,
+                    Shaping::Advanced,
+                )];
+                buffer.shape_until_scroll(&mut self.font_system, false);
+
+                let buf_idx = buffers.len();
+                buffers.push(buffer);
+
+                let abs_x = run.start_col as f32 * cell_w;
+                let abs_y = row_idx as f32 * cell_h_f32;
+                text_area_specs.push((buf_idx, abs_x, abs_y, run.fg));
             }
-
-            let mut buffer = Buffer::new(&mut self.font_system, metrics);
-            buffer.lines = vec![BufferLine::new(
-                text,
-                LineEnding::None,
-                attrs_list,
-                Shaping::Advanced,
-            )];
-            // Shape the buffer so layout_runs() returns glyph data for prepare().
-            // Without this, LayoutRunIter skips lines with shape_opt=None.
-            buffer.shape_until_scroll(&mut self.font_system, false);
-            buffers.push(buffer);
         }
 
-        // Build TextArea references — each buffer positioned at its absolute row
-        let text_areas: Vec<TextArea> = buffers
+        // Build TextArea references after all buffers are created.
+        let text_areas: Vec<TextArea> = text_area_specs
             .iter()
-            .enumerate()
-            .map(|(i, buf)| {
-                let abs_row = row_start + i;
-                TextArea {
-                    buffer: buf,
-                    left: 0.0,
-                    top: abs_row as f32 * cell_h,
-                    scale: 1.0,
-                    bounds: TextBounds {
-                        left: 0,
-                        top: 0,
-                        right: self.resolution.width as i32,
-                        bottom: self.resolution.height as i32,
-                    },
-                    default_color: GlyphonColor::rgb(0xE0, 0xE0, 0xE0),
-                    custom_glyphs: &[],
-                }
+            .map(|&(buf_idx, x, y, fg)| TextArea {
+                buffer: &buffers[buf_idx],
+                left: x,
+                top: y,
+                scale: 1.0,
+                bounds: TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: self.resolution.width as i32,
+                    bottom: self.resolution.height as i32,
+                },
+                default_color: GlyphonColor::rgb(fg.0, fg.1, fg.2),
+                custom_glyphs: &[],
             })
             .collect();
 
@@ -371,7 +511,7 @@ impl GlyphonRenderer {
 
     /// Collect underline + strikethrough cells from grid and upload vertex data.
     fn prepare_decorations(&mut self, device: &wgpu::Device, grid: &Grid) {
-        let cell_w = self.cell_width() as f32;
+        let cell_w = self.cell_width_f32;
         let cell_h = self.cell_height() as f32;
         let screen_w = self.resolution.width as f32;
         let screen_h = self.resolution.height as f32;
@@ -539,6 +679,7 @@ impl Renderer for GlyphonRenderer {
     fn resize(&mut self, cols: usize, rows: usize) {
         self.cols = cols;
         self.rows = rows;
+        // Keep resolution in sync — cols/rows * cell dimensions.
         let cell_w = self.cell_width();
         let cell_h = self.cell_height();
         self.resolution = Resolution {

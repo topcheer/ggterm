@@ -115,6 +115,8 @@ pub struct DesktopApp {
     cursor_pos: (f64, f64),
     /// Mouse button currently held (for drag tracking).
     button_held: Option<crate::mouse::MouseButton>,
+    /// DPI scale factor (2.0 on Retina, 1.0 on standard). P18-A.
+    scale_factor: f64,
 
     // ── Resize debouncing (P9-H) ──
     /// Pending resize dimensions (stored during drag, applied after debounce).
@@ -372,6 +374,7 @@ impl DesktopApp {
             selection: crate::mouse::MouseSelection::default(),
             cursor_pos: (0.0, 0.0),
             button_held: None,
+            scale_factor: 1.0,
             pending_resize: None,
             last_resize_time: None,
             #[cfg(feature = "ai")]
@@ -556,9 +559,29 @@ impl DesktopApp {
         self.pending_resize = None;
         self.last_resize_time = None;
 
-        // Compute new cell dimensions with minimum size (10x3).
-        let new_cols = ((width as f32 / self.config.cell_width) as u16).max(10);
-        let new_rows = ((height as f32 / self.config.cell_height) as u16).max(3);
+        // Resize GPU surface to match physical window.
+        if let (Some(gpu), Some(surface)) = (&mut self.gpu, &self.surface) {
+            gpu.resize(surface, width.max(1), height.max(1));
+        }
+
+        // Recreate renderer with surface dimensions — it computes cols/rows internally.
+        if let Some(gpu) = &self.gpu {
+            self.renderer = Some(gpu.create_renderer(width, height, self.scale_factor));
+        }
+
+        // Get actual cols/rows from renderer.
+        let new_cols = self
+            .renderer
+            .as_ref()
+            .map(|r| r.cols() as u16)
+            .unwrap_or(80)
+            .max(10);
+        let new_rows = self
+            .renderer
+            .as_ref()
+            .map(|r| r.rows() as u16)
+            .unwrap_or(24)
+            .max(3);
 
         log::debug!(
             "Resize: {}x{}px → {}x{} cells",
@@ -569,15 +592,6 @@ impl DesktopApp {
         );
 
         self.active_session_mut().resize(new_cols, new_rows);
-
-        if let (Some(gpu), Some(surface)) = (&mut self.gpu, &self.surface) {
-            gpu.resize(surface, width.max(1), height.max(1));
-        }
-
-        // Recreate renderer with new dimensions.
-        if let Some(gpu) = &self.gpu {
-            self.renderer = Some(gpu.create_renderer(new_cols as usize, new_rows as usize));
-        }
 
         true
     }
@@ -1025,12 +1039,16 @@ impl DesktopApp {
 
     /// Convert pixel position to terminal cell coordinates.
     fn pixel_to_cell_pos(&self) -> (u16, u16) {
-        crate::mouse::pixel_to_cell(
-            self.cursor_pos.0,
-            self.cursor_pos.1,
-            self.config.cell_width as f64,
-            self.config.cell_height as f64,
-        )
+        // P18: Use actual renderer cell dimensions (DPI-aware, font-measured).
+        let (cw, ch) = if let Some(ref renderer) = self.renderer {
+            (renderer.cell_width() as f64, renderer.cell_height() as f64)
+        } else {
+            (
+                self.config.cell_width as f64,
+                self.config.cell_height as f64,
+            )
+        };
+        crate::mouse::pixel_to_cell(self.cursor_pos.0, self.cursor_pos.1, cw, ch)
     }
 
     /// Handle winit MouseInput events (button press/release).
@@ -1480,12 +1498,13 @@ impl ApplicationHandler for DesktopApp {
 
         log::info!("Initializing window + GPU");
 
-        // 1. Create the window.
+        // 1. Create the window with logical (pre-scale) dimensions.
+        //    We'll resize to physical dimensions after getting scale_factor.
         let attrs = Window::default_attributes()
             .with_title(&self.config.title)
-            .with_inner_size(winit::dpi::PhysicalSize::new(
-                self.config.window_width(),
-                self.config.window_height(),
+            .with_inner_size(winit::dpi::LogicalSize::new(
+                self.config.window_width() as f64,
+                self.config.window_height() as f64,
             ));
 
         let window = match event_loop.create_window(attrs) {
@@ -1496,6 +1515,18 @@ impl ApplicationHandler for DesktopApp {
                 return;
             }
         };
+
+        // P18-A: Get scale_factor and resize window to proper physical dimensions.
+        let scale_factor = window.scale_factor();
+        self.scale_factor = scale_factor;
+        let phys_w = (self.config.window_width() as f64 * scale_factor).round() as u32;
+        let phys_h = (self.config.window_height() as f64 * scale_factor).round() as u32;
+        log::info!(
+            "DPI scale_factor={}, physical window: {}x{}",
+            scale_factor,
+            phys_w,
+            phys_h
+        );
 
         // 2. Initialize wgpu (Instance + Surface + Adapter).
         //    Pass Arc::clone so we keep a reference for redraw requests.
@@ -1508,13 +1539,8 @@ impl ApplicationHandler for DesktopApp {
             }
         };
 
-        // 3. Create GPU context.
-        let gpu = match GpuContext::from_surface(
-            &surface,
-            &adapter,
-            self.config.window_width().max(1),
-            self.config.window_height().max(1),
-        ) {
+        // 3. Create GPU context with physical dimensions.
+        let gpu = match GpuContext::from_surface(&surface, &adapter, phys_w.max(1), phys_h.max(1)) {
             Ok(g) => g,
             Err(e) => {
                 log::error!("Failed to create GPU context: {e}");
@@ -1523,13 +1549,30 @@ impl ApplicationHandler for DesktopApp {
             }
         };
 
-        // 4. Create GlyphonRenderer.
-        let renderer = gpu.create_renderer(self.config.cols as usize, self.config.rows as usize);
+        // 4. Create GlyphonRenderer with surface dimensions.
+        let renderer = gpu.create_renderer(phys_w, phys_h, scale_factor);
+
+        // Update cols/rows from renderer's computed dimensions.
+        self.config.cols = renderer.cols().max(10) as u16;
+        self.config.rows = renderer.rows().max(3) as u16;
 
         self.window = Some(window);
         self.surface = Some(surface);
         self.gpu = Some(gpu);
         self.renderer = Some(renderer);
+
+        // P18-C: CRITICAL — resize terminal sessions to match renderer.
+        // Without this the PTY/grid think 80x24 while the window shows different.
+        let actual_cols = self.config.cols;
+        let actual_rows = self.config.rows;
+        for session in &mut self.sessions {
+            session.resize(actual_cols, actual_rows);
+        }
+        log::info!(
+            "Terminal resized to {}x{} to match renderer",
+            actual_cols,
+            actual_rows
+        );
 
         // P11-D: Apply active theme to renderer on startup.
         self.apply_theme_to_renderer();
@@ -1634,6 +1677,22 @@ impl ApplicationHandler for DesktopApp {
 
             WindowEvent::Resized(size) => {
                 self.handle_resize(size.width, size.height);
+            }
+
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                // P18-A: Update scale_factor and rebuild renderer.
+                log::info!("Scale factor changed: {}", scale_factor);
+                self.scale_factor = scale_factor;
+                if let (Some(gpu), Some(window)) = (&self.gpu, &self.window) {
+                    let size = window.inner_size();
+                    self.renderer =
+                        Some(gpu.create_renderer(size.width, size.height, scale_factor));
+                    // Re-apply theme + font after recreating renderer.
+                    self.apply_theme_to_renderer();
+                    self.apply_font_size();
+                    // Resize surface to new physical dimensions.
+                    self.handle_resize(size.width, size.height);
+                }
             }
 
             WindowEvent::KeyboardInput { event, .. } => {

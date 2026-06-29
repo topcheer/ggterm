@@ -91,7 +91,7 @@ impl RenderTheme {
         match self.default_fg {
             Color::Rgb(r, g, b) => (r, g, b),
             Color::Indexed(n) => self.resolve_indexed(n),
-            Color::Default => (0xe0, 0xe0, 0xe0),
+            Color::Default => (0xff, 0xff, 0xff),
         }
     }
 
@@ -99,7 +99,7 @@ impl RenderTheme {
         match self.default_bg {
             Color::Rgb(r, g, b) => (r, g, b),
             Color::Indexed(n) => self.resolve_indexed(n),
-            Color::Default => (0x1a, 0x1a, 0x1a),
+            Color::Default => (0x00, 0x00, 0x00),
         }
     }
 
@@ -129,16 +129,33 @@ impl RenderTheme {
 
     // ── Built-in Themes ──────────────────────────────────────────
 
-    /// Dark default theme (matching the original Phase 1 defaults).
+    /// Dark default theme — pure black bg + bright white fg for maximum contrast.
     pub fn dark_default() -> Self {
         Self {
-            default_fg: Color::Rgb(0xe0, 0xe0, 0xe0),
-            default_bg: Color::Rgb(0x1a, 0x1a, 0x1a),
-            cursor_fg: Color::Rgb(0x1a, 0x1a, 0x1a),
-            cursor_bg: Color::Rgb(0xe0, 0xe0, 0xe0),
+            default_fg: Color::Rgb(0xff, 0xff, 0xff), // pure white
+            default_bg: Color::Rgb(0x00, 0x00, 0x00), // pure black
+            cursor_fg: Color::Rgb(0x00, 0x00, 0x00),
+            cursor_bg: Color::Rgb(0xff, 0xff, 0xff),
             cursor_style: CursorStyle::Block,
-            palette: Color::default_palette(),
-            selection_bg: Color::Rgb(0x44, 0x44, 0x66),
+            palette: [
+                Color::Rgb(0x00, 0x00, 0x00), // 0  black
+                Color::Rgb(0xff, 0x55, 0x55), // 1  red (bright)
+                Color::Rgb(0x50, 0xfa, 0x7b), // 2  green (bright)
+                Color::Rgb(0xf1, 0xfa, 0x8c), // 3  yellow (bright)
+                Color::Rgb(0x6a, 0xbf, 0xff), // 4  blue (bright)
+                Color::Rgb(0xff, 0x79, 0xc6), // 5  magenta (bright)
+                Color::Rgb(0x8b, 0xe9, 0xfd), // 6  cyan (bright)
+                Color::Rgb(0xb0, 0xb0, 0xb0), // 7  white (light gray)
+                Color::Rgb(0x4d, 0x4d, 0x4d), // 8  bright black
+                Color::Rgb(0xff, 0x6e, 0x67), // 9  bright red
+                Color::Rgb(0x5a, 0xff, 0x7a), // 10 bright green
+                Color::Rgb(0xf4, 0xf9, 0x9f), // 11 bright yellow
+                Color::Rgb(0x8b, 0xd9, 0xff), // 12 bright blue
+                Color::Rgb(0xff, 0x92, 0xd0), // 13 bright magenta
+                Color::Rgb(0x9a, 0xff, 0xed), // 14 bright cyan
+                Color::Rgb(0xff, 0xff, 0xff), // 15 bright white
+            ],
+            selection_bg: Color::Rgb(0x33, 0x33, 0x55),
         }
     }
 
@@ -158,7 +175,8 @@ impl RenderTheme {
                 Color::Rgb(0x34, 0x65, 0xa4), // 4  blue
                 Color::Rgb(0x75, 0x50, 0x7b), // 5  magenta
                 Color::Rgb(0x06, 0x98, 0x9a), // 6  cyan
-                Color::Rgb(0xd3, 0xd7, 0xcf), // 7  white
+                // P18-B: Use dark gray instead of light gray for visibility on white.
+                Color::Rgb(0x55, 0x57, 0x53), // 7  white (dark gray)
                 Color::Rgb(0x55, 0x57, 0x53), // 8  bright black
                 Color::Rgb(0xef, 0x29, 0x29), // 9  bright red
                 Color::Rgb(0x8a, 0xe2, 0x34), // 10 bright green
@@ -172,12 +190,12 @@ impl RenderTheme {
         }
     }
 
-    /// Dracula-inspired dark theme with vibrant accent colors.
+    /// Dracula — pure black bg variant for maximum contrast.
     pub fn dracula() -> Self {
         Self {
             default_fg: Color::Rgb(0xf8, 0xf8, 0xf2),
-            default_bg: Color::Rgb(0x28, 0x2a, 0x36),
-            cursor_fg: Color::Rgb(0x28, 0x2a, 0x36),
+            default_bg: Color::Rgb(0x00, 0x00, 0x00), // pure black instead of #282a36
+            cursor_fg: Color::Rgb(0x00, 0x00, 0x00),
             cursor_bg: Color::Rgb(0xf8, 0xf8, 0xf2),
             cursor_style: CursorStyle::Bar,
             palette: [
@@ -220,7 +238,8 @@ impl RenderTheme {
                 Color::Rgb(0x34, 0x65, 0xa4), // 4  blue
                 Color::Rgb(0x75, 0x50, 0x7b), // 5  magenta
                 Color::Rgb(0x06, 0x98, 0x9a), // 6  cyan
-                Color::Rgb(0xd3, 0xd7, 0xcf), // 7  white
+                // P18-B: Use dark gray for visibility on white.
+                Color::Rgb(0x55, 0x57, 0x53), // 7  white (dark gray)
                 Color::Rgb(0x55, 0x57, 0x53), // 8  bright black
                 Color::Rgb(0xef, 0x29, 0x29), // 9  bright red
                 Color::Rgb(0x8a, 0xe2, 0x34), // 10 bright green
@@ -234,39 +253,40 @@ impl RenderTheme {
         }
     }
 
-    /// Solarized Dark — Ethan Schoonover's scientific color scheme (dark variant).
+    /// Solarized Dark — high contrast variant: deep dark bg + bright fg.
     pub fn solarized_dark() -> Self {
         Self {
-            default_fg: Color::Rgb(0x83, 0x94, 0x96), // base0
-            default_bg: Color::Rgb(0x00, 0x2b, 0x36), // base03
-            cursor_fg: Color::Rgb(0x00, 0x2b, 0x36),
-            cursor_bg: Color::Rgb(0x83, 0x94, 0x96),
+            default_fg: Color::Rgb(0xfd, 0xf6, 0xe3), // base3 — maximum brightness
+            default_bg: Color::Rgb(0x00, 0x1a, 0x20), // darker than base03 for contrast
+            cursor_fg: Color::Rgb(0x00, 0x1a, 0x20),
+            cursor_bg: Color::Rgb(0xfd, 0xf6, 0xe3),
             cursor_style: CursorStyle::Block,
             palette: SOLARIZED_PALETTE,
-            selection_bg: Color::Rgb(0x07, 0x36, 0x42), // base02
+            selection_bg: Color::Rgb(0x07, 0x36, 0x42),
         }
     }
 
-    /// Solarized Light — Ethan Schoonover's scientific color scheme (light variant).
+    /// Solarized Light — improved contrast for maximum readability.
     pub fn solarized_light() -> Self {
         Self {
-            default_fg: Color::Rgb(0x65, 0x7b, 0x83), // base00
+            // P18-B: Use base01 instead of base00 for higher contrast.
+            default_fg: Color::Rgb(0x58, 0x6e, 0x75), // base01
             default_bg: Color::Rgb(0xfd, 0xf6, 0xe3), // base3
             cursor_fg: Color::Rgb(0xfd, 0xf6, 0xe3),
-            cursor_bg: Color::Rgb(0x65, 0x7b, 0x83),
+            cursor_bg: Color::Rgb(0x58, 0x6e, 0x75),
             cursor_style: CursorStyle::Block,
             palette: SOLARIZED_PALETTE,
             selection_bg: Color::Rgb(0xee, 0xe8, 0xd5), // base2
         }
     }
 
-    /// Gruvbox Dark — a retro groove color scheme.
+    /// Gruvbox Dark — high contrast variant.
     pub fn gruvbox() -> Self {
         Self {
-            default_fg: Color::Rgb(0xeb, 0xdb, 0xb2), // fg0
-            default_bg: Color::Rgb(0x28, 0x28, 0x28), // bg0
-            cursor_fg: Color::Rgb(0x28, 0x28, 0x28),
-            cursor_bg: Color::Rgb(0xeb, 0xdb, 0xb2),
+            default_fg: Color::Rgb(0xfe, 0x80, 0x19), // bright orange instead of fg0 for contrast
+            default_bg: Color::Rgb(0x00, 0x00, 0x00), // pure black instead of bg0
+            cursor_fg: Color::Rgb(0x00, 0x00, 0x00),
+            cursor_bg: Color::Rgb(0xfe, 0x80, 0x19),
             cursor_style: CursorStyle::Block,
             palette: [
                 Color::Rgb(0x28, 0x28, 0x28), // 0  black (bg0)
@@ -402,8 +422,8 @@ mod tests {
         let theme = RenderTheme::default();
         let (r, g, b) = theme.default_bg_rgb();
         assert!(
-            r < 128 && g < 128 && b < 128,
-            "default theme should have dark bg"
+            r < 10 && g < 10 && b < 10,
+            "default theme should have near-pure black bg"
         );
     }
 
@@ -411,9 +431,9 @@ mod tests {
     fn t_dark_default_colors() {
         let theme = RenderTheme::dark_default();
         let (r, g, b) = theme.resolve_fg(&Color::Default);
-        assert!(r > 128, "dark theme fg should be light");
+        assert!(r > 200, "dark theme fg should be very bright");
         let (r, g, b) = theme.resolve_bg(&Color::Default);
-        assert!(r < 128, "dark theme bg should be dark");
+        assert_eq!((r, g, b), (0, 0, 0), "dark theme bg should be pure black");
     }
 
     #[test]
@@ -428,9 +448,9 @@ mod tests {
     #[test]
     fn t_dracula_colors() {
         let theme = RenderTheme::dracula();
-        // Dracula background is #282a36
+        // Dracula bg now pure black
         let (r, g, b) = theme.resolve_bg(&Color::Default);
-        assert_eq!((r, g, b), (0x28, 0x2a, 0x36));
+        assert_eq!((r, g, b), (0x00, 0x00, 0x00));
         // Dracula foreground is #f8f8f2
         let (r, g, b) = theme.resolve_fg(&Color::Default);
         assert_eq!((r, g, b), (0xf8, 0xf8, 0xf2));
@@ -445,7 +465,7 @@ mod tests {
     #[test]
     fn t_by_name_dark() {
         let theme = RenderTheme::by_name("dark").unwrap();
-        assert_eq!(theme.default_bg, Color::Rgb(0x1a, 0x1a, 0x1a));
+        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x00, 0x00));
     }
 
     #[test]
@@ -457,7 +477,7 @@ mod tests {
     #[test]
     fn t_by_name_dracula() {
         let theme = RenderTheme::by_name("dracula").unwrap();
-        assert_eq!(theme.default_bg, Color::Rgb(0x28, 0x2a, 0x36));
+        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x00, 0x00));
     }
 
     #[test]
@@ -529,7 +549,7 @@ mod tests {
     #[test]
     fn t_selection_bg_dark() {
         let theme = RenderTheme::dark_default();
-        assert!(matches!(theme.selection_bg, Color::Rgb(0x44, 0x44, 0x66)));
+        assert!(matches!(theme.selection_bg, Color::Rgb(0x33, 0x33, 0x55)));
     }
 
     #[test]
@@ -556,7 +576,7 @@ mod tests {
     fn t_manager_current() {
         let mgr = ThemeManager::with_default();
         let theme = mgr.current();
-        assert_eq!(theme.default_bg, Color::Rgb(0x1a, 0x1a, 0x1a));
+        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x00, 0x00));
     }
 
     #[test]
@@ -621,10 +641,8 @@ mod tests {
     #[test]
     fn t_solarized_dark_colors() {
         let theme = RenderTheme::solarized_dark();
-        // bg = base03 (0, 43, 54)
-        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x2b, 0x36));
-        // fg = base0 (131, 148, 150)
-        assert_eq!(theme.default_fg, Color::Rgb(0x83, 0x94, 0x96));
+        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x1a, 0x20));
+        assert_eq!(theme.default_fg, Color::Rgb(0xfd, 0xf6, 0xe3));
     }
 
     #[test]
@@ -632,17 +650,15 @@ mod tests {
         let theme = RenderTheme::solarized_light();
         // bg = base3 (253, 246, 227)
         assert_eq!(theme.default_bg, Color::Rgb(0xfd, 0xf6, 0xe3));
-        // fg = base00 (101, 123, 131)
-        assert_eq!(theme.default_fg, Color::Rgb(0x65, 0x7b, 0x83));
+        // P18-B: fg = base01 (88, 110, 117) for higher contrast
+        assert_eq!(theme.default_fg, Color::Rgb(0x58, 0x6e, 0x75));
     }
 
     #[test]
     fn t_gruvbox_colors() {
         let theme = RenderTheme::gruvbox();
-        // bg = bg0 (40, 40, 40)
-        assert_eq!(theme.default_bg, Color::Rgb(0x28, 0x28, 0x28));
-        // fg = fg0 (235, 219, 178)
-        assert_eq!(theme.default_fg, Color::Rgb(0xeb, 0xdb, 0xb2));
+        assert_eq!(theme.default_bg, Color::Rgb(0x00, 0x00, 0x00));
+        assert_eq!(theme.default_fg, Color::Rgb(0xfe, 0x80, 0x19));
     }
 
     #[test]

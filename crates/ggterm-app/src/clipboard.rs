@@ -4,6 +4,7 @@
 //! - **macOS**: `pbpaste` / `pbcopy`
 //! - **Linux (X11)**: `xclip` or `xsel`
 //! - **Linux (Wayland)**: `wl-copy` / `wl-paste`
+//! - **Windows**: `powershell Get-Clipboard` / `clip`
 //! - **Other**: stub (returns `None` / `false`)
 
 // ══════════════════════════════════════════════════════════════════
@@ -17,6 +18,7 @@ enum DisplayServer {
     Macos,
     Wayland,
     X11,
+    Windows,
     Unsupported,
 }
 
@@ -27,7 +29,12 @@ fn detect_display_server() -> DisplayServer {
         DisplayServer::Macos
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        DisplayServer::Windows
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         if std::env::var("WAYLAND_DISPLAY").is_ok() {
             return DisplayServer::Wayland;
@@ -35,6 +42,11 @@ fn detect_display_server() -> DisplayServer {
         if std::env::var("DISPLAY").is_ok() {
             return DisplayServer::X11;
         }
+        DisplayServer::Unsupported
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", unix)))]
+    {
         DisplayServer::Unsupported
     }
 }
@@ -49,6 +61,7 @@ fn detect_display_server() -> DisplayServer {
 pub fn read_clipboard() -> Option<String> {
     match detect_display_server() {
         DisplayServer::Macos => read_macos(),
+        DisplayServer::Windows => read_windows(),
         DisplayServer::Wayland => read_wayland(),
         DisplayServer::X11 => read_x11(),
         DisplayServer::Unsupported => {
@@ -64,6 +77,7 @@ pub fn read_clipboard() -> Option<String> {
 pub fn write_clipboard(text: &str) -> bool {
     match detect_display_server() {
         DisplayServer::Macos => write_macos(text),
+        DisplayServer::Windows => write_windows(text),
         DisplayServer::Wayland => write_wayland(text),
         DisplayServer::X11 => write_x11(text),
         DisplayServer::Unsupported => {
@@ -120,6 +134,38 @@ fn read_macos() -> Option<String> {
 fn write_macos(text: &str) -> bool {
     use std::process::Command;
     let result = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            child.wait()
+        });
+    result.is_ok()
+}
+
+// ── Windows ──────────────────────────────────────────────────────────
+
+fn read_windows() -> Option<String> {
+    use std::process::Command;
+    let result = Command::new("powershell")
+        .args(["-NoProfile", "-Command", "Get-Clipboard"])
+        .output();
+    match result {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout).to_string();
+            let text = text.trim_end_matches('\r').to_string();
+            if text.is_empty() { None } else { Some(text) }
+        }
+        _ => None,
+    }
+}
+
+fn write_windows(text: &str) -> bool {
+    use std::process::Command;
+    let result = Command::new("clip")
         .stdin(std::process::Stdio::piped())
         .spawn()
         .and_then(|mut child| {
@@ -273,7 +319,10 @@ mod tests {
         #[cfg(not(target_os = "macos"))]
         assert!(matches!(
             ds,
-            DisplayServer::Wayland | DisplayServer::X11 | DisplayServer::Unsupported
+            DisplayServer::Windows
+                | DisplayServer::Wayland
+                | DisplayServer::X11
+                | DisplayServer::Unsupported
         ));
     }
 

@@ -110,14 +110,14 @@ mod tests {
     fn test_map_fg_default() {
         let theme = RenderTheme::default();
         let rgb = map_fg(Color::Default, &theme);
-        assert_eq!(rgb, (0xE0, 0xE0, 0xE0));
+        assert_eq!(rgb, (0xFF, 0xFF, 0xFF)); // pure white
     }
 
     #[test]
     fn test_map_bg_default() {
         let theme = RenderTheme::default();
         let rgb = map_bg(Color::Default, &theme);
-        assert_eq!(rgb, (0x1A, 0x1A, 0x1A));
+        assert_eq!(rgb, (0x00, 0x00, 0x00)); // pure black
     }
 
     #[test]

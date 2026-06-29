@@ -11,6 +11,8 @@ use ggterm_render::theme::RenderTheme;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextRun {
     pub text: String,
+    /// Starting column in the grid (0-based). Used for absolute positioning.
+    pub start_col: usize,
     pub fg: (u8, u8, u8),
     pub bg: (u8, u8, u8),
     pub bold: bool,
@@ -99,15 +101,20 @@ pub fn row_to_runs(
         let strikethrough = cell.flags.contains(CellFlags::STRIKETHROUGH);
 
         let ch = cell.ch;
+        let is_wide = cell.flags.contains(CellFlags::WIDE_CHAR);
 
-        let can_extend = current.as_ref().is_some_and(|c| {
-            c.fg == fg_rgb
-                && c.bg == bg_rgb
-                && c.bold == bold
-                && c.italic == italic
-                && c.underline == underline
-                && c.strikethrough == strikethrough
-        });
+        // P18-D: Always split runs at wide character boundaries.
+        // This ensures each CJK/emoji char gets its own TextArea positioned
+        // at the exact grid column, preventing cumulative drift.
+        let can_extend = !is_wide
+            && current.as_ref().is_some_and(|c: &TextRun| {
+                c.fg == fg_rgb
+                    && c.bg == bg_rgb
+                    && c.bold == bold
+                    && c.italic == italic
+                    && c.underline == underline
+                    && c.strikethrough == strikethrough
+            });
 
         if can_extend {
             current.as_mut().unwrap().text.push(ch);
@@ -117,6 +124,7 @@ pub fn row_to_runs(
             }
             current = Some(TextRun {
                 text: ch.to_string(),
+                start_col: col,
                 fg: fg_rgb,
                 bg: bg_rgb,
                 bold,
