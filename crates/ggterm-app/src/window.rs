@@ -250,6 +250,10 @@ pub struct DesktopApp {
     // ── Visual bell (P11-E) ──
     /// Remaining frames for the visual bell flash (0 = no flash).
     visual_bell_frames: u32,
+
+    // ── Status bar (P13-D) ──
+    /// Aggregated terminal status for window title display.
+    status_bar: crate::status_bar::StatusBar,
 }
 
 impl DesktopApp {
@@ -342,6 +346,7 @@ impl DesktopApp {
             maximized: false,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
+            status_bar: crate::status_bar::StatusBar::new(),
         };
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
@@ -1321,6 +1326,18 @@ impl ApplicationHandler for DesktopApp {
                 }
 
                 self.render_frame();
+
+                // Update status bar from active session state.
+                let (row, col) = self.active_session().app().cursor();
+                self.status_bar.update_cursor(row, col);
+                self.status_bar
+                    .update_tabs(self.sessions.len(), self.active);
+                self.status_bar.set_bell(self.visual_bell_frames > 0);
+                self.status_bar.set_search(self.search.visible);
+                #[cfg(feature = "ai")]
+                self.status_bar.set_ai(self.ai_overlay.is_visible());
+                #[cfg(not(feature = "ai"))]
+                self.status_bar.set_ai(false);
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).

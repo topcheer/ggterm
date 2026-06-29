@@ -37,6 +37,7 @@ pub mod input;
 pub mod mouse;
 pub mod search;
 pub mod shell_integration;
+pub mod status_bar;
 pub mod tab_session;
 pub mod tabs;
 pub mod terminal_actions;

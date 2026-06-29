@@ -21,6 +21,13 @@
 //! enabled = false
 //! api_endpoint = "https://api.openai.com/v1"
 //! model = "gpt-4o-mini"
+//!
+//! [keybindings]
+//! new_tab = "Ctrl+T"
+//! close_tab = "Ctrl+W"
+//! paste = "Ctrl+Shift+V"
+//! search = "Ctrl+Shift+F"
+//! fullscreen = "F11"
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -43,6 +50,8 @@ pub struct Config {
     pub terminal: TerminalConfig,
     /// AI engine settings.
     pub ai: AiConfig,
+    /// Keyboard shortcut overrides.
+    pub keybindings: KeybindingsConfig,
 }
 
 /// Appearance / rendering configuration.
@@ -101,6 +110,41 @@ impl Default for TerminalConfig {
     }
 }
 
+/// User-configurable keyboard shortcuts.
+///
+/// Each field is `None` by default, meaning the built-in shortcut is used.
+/// When set to `Some("Ctrl+Shift+V")`, the [`parse_keybinding`] helper converts
+/// the string into modifier flags + key name.
+#[derive(Debug, Clone, Default)]
+pub struct KeybindingsConfig {
+    /// New tab.
+    pub new_tab: Option<String>,
+    /// Close tab.
+    pub close_tab: Option<String>,
+    /// Switch to tab 1.
+    pub switch_tab_1: Option<String>,
+    /// Paste from clipboard.
+    pub paste: Option<String>,
+    /// Copy selection to clipboard.
+    pub copy: Option<String>,
+    /// Toggle scrollback search.
+    pub search: Option<String>,
+    /// Zoom in (increase font).
+    pub zoom_in: Option<String>,
+    /// Zoom out (decrease font).
+    pub zoom_out: Option<String>,
+    /// Reset font zoom.
+    pub zoom_reset: Option<String>,
+    /// Toggle fullscreen.
+    pub fullscreen: Option<String>,
+    /// Clear screen + scrollback.
+    pub clear: Option<String>,
+    /// Reset terminal (RIS).
+    pub reset: Option<String>,
+    /// Cycle to next theme.
+    pub cycle_theme: Option<String>,
+}
+
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
@@ -123,6 +167,7 @@ mod raw {
         pub appearance: Appearance,
         pub terminal: Terminal,
         pub ai: Ai,
+        pub keybindings: Keybindings,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -148,6 +193,24 @@ mod raw {
         pub enabled: Option<bool>,
         pub api_endpoint: Option<String>,
         pub model: Option<String>,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(default)]
+    pub struct Keybindings {
+        pub new_tab: Option<String>,
+        pub close_tab: Option<String>,
+        pub switch_tab_1: Option<String>,
+        pub paste: Option<String>,
+        pub copy: Option<String>,
+        pub search: Option<String>,
+        pub zoom_in: Option<String>,
+        pub zoom_out: Option<String>,
+        pub zoom_reset: Option<String>,
+        pub fullscreen: Option<String>,
+        pub clear: Option<String>,
+        pub reset: Option<String>,
+        pub cycle_theme: Option<String>,
     }
 }
 
@@ -213,7 +276,36 @@ impl Config {
             config.ai.model = v;
         }
 
+        let kb = raw.keybindings;
+        config.keybindings.new_tab = kb.new_tab;
+        config.keybindings.close_tab = kb.close_tab;
+        config.keybindings.switch_tab_1 = kb.switch_tab_1;
+        config.keybindings.paste = kb.paste;
+        config.keybindings.copy = kb.copy;
+        config.keybindings.search = kb.search;
+        config.keybindings.zoom_in = kb.zoom_in;
+        config.keybindings.zoom_out = kb.zoom_out;
+        config.keybindings.zoom_reset = kb.zoom_reset;
+        config.keybindings.fullscreen = kb.fullscreen;
+        config.keybindings.clear = kb.clear;
+        config.keybindings.reset = kb.reset;
+        config.keybindings.cycle_theme = kb.cycle_theme;
+
         config
+    }
+
+    // ── Keybinding parsing ─────────────────────────────────────────────
+
+    /// Parse a keybinding string like `"Ctrl+Shift+V"` into modifier flags
+    /// and a key name.
+    ///
+    /// Returns `(ctrl, shift, alt, key)` where the first three elements are
+    /// `bool` flags and `key` is the final component (e.g. `"V"`, `"F11"`, `"="`).
+    ///
+    /// Returns `None` if the string is empty, contains only modifiers with no
+    /// key, or has an unrecognized modifier.
+    pub fn parse_keybinding(s: &str) -> Option<(bool, bool, bool, &str)> {
+        parse_keybinding(s)
     }
 }
 
@@ -306,7 +398,11 @@ impl ConfigManager {
             || new_config.appearance.cell_height != self.config.appearance.cell_height
             || new_config.terminal.scrollback_lines != self.config.terminal.scrollback_lines
             || new_config.terminal.shell != self.config.terminal.shell
-            || new_config.ai.enabled != self.config.ai.enabled;
+            || new_config.ai.enabled != self.config.ai.enabled
+            || new_config.keybindings.new_tab != self.config.keybindings.new_tab
+            || new_config.keybindings.paste != self.config.keybindings.paste
+            || new_config.keybindings.search != self.config.keybindings.search
+            || new_config.keybindings.fullscreen != self.config.keybindings.fullscreen;
 
         self.config = new_config;
         if changed && let Some(ref f) = self.on_change {
@@ -408,6 +504,100 @@ impl Default for ConfigManager {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
+
+// ─── Keybinding parsing ───────────────────────────────────────────────────
+
+/// Parse a keybinding string like `"Ctrl+Shift+V"` into modifier flags
+/// and a key name.
+///
+/// Returns `(ctrl, shift, alt, key)` where the first three elements are
+/// `bool` flags and `key` is the final component (e.g. `"V"`, `"F11"`, `"="`).
+///
+/// # Examples
+/// ```
+/// # use ggterm_app::config::parse_keybinding;
+/// assert_eq!(parse_keybinding("Ctrl+Shift+V"), Some((true, true, false, "V")));
+/// assert_eq!(parse_keybinding("Alt+F4"), Some((false, false, true, "F4")));
+/// assert_eq!(parse_keybinding("F11"), Some((false, false, false, "F11")));
+/// ```
+///
+/// Returns `None` if the string is empty, contains only modifiers with no
+/// key, or has an unrecognized modifier.
+pub fn parse_keybinding(s: &str) -> Option<(bool, bool, bool, &str)> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut ctrl = false;
+    let mut shift = false;
+    let mut alt = false;
+
+    // Split on '+' and treat all parts except the last as modifiers.
+    let parts: Vec<&str> = trimmed.split('+').collect();
+
+    // If there is only one part, it must be the key (no modifiers).
+    if parts.len() == 1 {
+        let key = parts[0].trim();
+        if key.is_empty() {
+            return None;
+        }
+        // Reject bare modifier names (e.g. "Ctrl", "Shift") — they need a key.
+        let lower = key.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "ctrl"
+                | "control"
+                | "shift"
+                | "alt"
+                | "opt"
+                | "option"
+                | "super"
+                | "cmd"
+                | "meta"
+                | "win"
+        ) {
+            return None;
+        }
+        return Some((false, false, false, key));
+    }
+
+    // Process modifier parts (all but the last).
+    for &part in &parts[..parts.len() - 1] {
+        match part.trim().to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "shift" => shift = true,
+            "alt" | "opt" | "option" => alt = true,
+            // "super" / "cmd" are accepted but not tracked separately.
+            "super" | "cmd" | "meta" | "win" => {}
+            _ => return None,
+        }
+    }
+
+    let key = parts.last().unwrap().trim();
+    if key.is_empty() {
+        return None;
+    }
+    // Reject if the "key" is actually a bare modifier name.
+    let lower_key = key.to_ascii_lowercase();
+    if matches!(
+        lower_key.as_str(),
+        "ctrl" | "control" | "shift" | "alt" | "opt" | "option" | "super" | "cmd" | "meta" | "win"
+    ) {
+        return None;
+    }
+
+    // Reject modifier names used as the final key (e.g. "Ctrl+Shift" → key "Shift").
+    let lower = key.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "ctrl" | "control" | "shift" | "alt" | "opt" | "option" | "super" | "cmd" | "meta" | "win"
+    ) {
+        return None;
+    }
+
+    Some((ctrl, shift, alt, key))
+}
 
 /// Returns the user's home directory, if determinable.
 fn home_dir() -> Option<PathBuf> {
@@ -654,6 +844,124 @@ theme = "solarized"
             std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"),
         );
         assert!(io_err.to_string().contains("/tmp/test"));
+    }
+
+    #[test]
+    fn test_parse_keybinding_ctrl_shift_v() {
+        let (ctrl, shift, alt, key) = parse_keybinding("Ctrl+Shift+V").unwrap();
+        assert!(ctrl);
+        assert!(shift);
+        assert!(!alt);
+        assert_eq!(key, "V");
+    }
+
+    #[test]
+    fn test_parse_keybinding_various_combos() {
+        // Ctrl+T
+        assert_eq!(parse_keybinding("Ctrl+T"), Some((true, false, false, "T")));
+        // Alt+1
+        assert_eq!(parse_keybinding("Alt+1"), Some((false, false, true, "1")));
+        // F11 (no modifiers)
+        assert_eq!(parse_keybinding("F11"), Some((false, false, false, "F11")));
+        // Ctrl+Shift+Alt+A (all modifiers)
+        assert_eq!(
+            parse_keybinding("Ctrl+Shift+Alt+A"),
+            Some((true, true, true, "A"))
+        );
+        // Ctrl+= (special char key)
+        assert_eq!(parse_keybinding("Ctrl+="), Some((true, false, false, "=")));
+        // Cmd+K (super modifier is accepted but not tracked)
+        assert_eq!(parse_keybinding("Cmd+K"), Some((false, false, false, "K")));
+        // Control is alias for Ctrl
+        assert_eq!(
+            parse_keybinding("Control+C"),
+            Some((true, false, false, "C"))
+        );
+        // Whitespace is trimmed
+        assert_eq!(
+            parse_keybinding("  Ctrl + Shift + F  "),
+            Some((true, true, false, "F"))
+        );
+    }
+
+    #[test]
+    fn test_parse_keybinding_empty_returns_none() {
+        assert_eq!(parse_keybinding(""), None);
+        assert_eq!(parse_keybinding("   "), None);
+    }
+
+    #[test]
+    fn test_parse_keybinding_only_modifiers_returns_none() {
+        // No key after modifiers
+        assert_eq!(parse_keybinding("Ctrl"), None);
+        assert_eq!(parse_keybinding("Ctrl+Shift"), None);
+        assert_eq!(parse_keybinding("Ctrl+"), None);
+    }
+
+    #[test]
+    fn test_parse_keybinding_unknown_modifier_returns_none() {
+        assert_eq!(parse_keybinding("Foo+T"), None);
+        assert_eq!(parse_keybinding("Ctrl+Bar+V"), None);
+    }
+
+    #[test]
+    fn test_default_keybindings_all_none() {
+        let config = Config::default();
+        assert!(config.keybindings.new_tab.is_none());
+        assert!(config.keybindings.paste.is_none());
+        assert!(config.keybindings.search.is_none());
+        assert!(config.keybindings.fullscreen.is_none());
+        assert!(config.keybindings.zoom_in.is_none());
+        assert!(config.keybindings.cycle_theme.is_none());
+    }
+
+    #[test]
+    fn test_toml_with_keybindings() {
+        let toml = r#"[keybindings]
+new_tab = "Ctrl+T"
+close_tab = "Ctrl+W"
+paste = "Ctrl+Shift+V"
+search = "Ctrl+Shift+F"
+fullscreen = "F11"
+cycle_theme = "Ctrl+Shift+T"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.keybindings.new_tab.as_deref(), Some("Ctrl+T"));
+        assert_eq!(config.keybindings.close_tab.as_deref(), Some("Ctrl+W"));
+        assert_eq!(config.keybindings.paste.as_deref(), Some("Ctrl+Shift+V"));
+        assert_eq!(config.keybindings.search.as_deref(), Some("Ctrl+Shift+F"));
+        assert_eq!(config.keybindings.fullscreen.as_deref(), Some("F11"));
+        assert_eq!(
+            config.keybindings.cycle_theme.as_deref(),
+            Some("Ctrl+Shift+T")
+        );
+        // Unspecified fields stay None
+        assert!(config.keybindings.copy.is_none());
+        assert!(config.keybindings.zoom_in.is_none());
+    }
+
+    #[test]
+    fn test_toml_without_keybindings_uses_default() {
+        let toml = r#"[appearance]
+theme = "light"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.keybindings.new_tab.is_none());
+        assert!(config.keybindings.paste.is_none());
+        // Other config still works
+        assert_eq!(config.appearance.theme, "light");
+    }
+
+    #[test]
+    fn test_keybindings_partial_config() {
+        let toml = r#"[keybindings]
+new_tab = "Ctrl+N"
+paste = "Ctrl+V"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.keybindings.new_tab.as_deref(), Some("Ctrl+N"));
+        assert_eq!(config.keybindings.paste.as_deref(), Some("Ctrl+V"));
+        assert!(config.keybindings.search.is_none());
     }
 
     #[test]

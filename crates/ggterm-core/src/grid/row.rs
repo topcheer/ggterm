@@ -93,9 +93,11 @@ impl Row {
             self.cells[col - 1].clear();
             self.cells[col].clear();
         }
-        // Shift right
+        // Shift right (Cell is Clone, not Copy, so use clone)
         let src_end = len - count;
-        self.cells.copy_within(col..src_end, col + count);
+        for i in (col..src_end).rev() {
+            self.cells[i + count] = self.cells[i].clone();
+        }
         // Fill the gap with blanks
         for cell in &mut self.cells[col..col + count] {
             *cell = Cell::blank();
@@ -122,7 +124,13 @@ impl Row {
         };
         let count = count.min(len - actual_col);
         // Shift left
-        self.cells.copy_within(actual_col + count..len, actual_col);
+        // Shift left (Cell is Clone, not Copy, so use clone)
+        let len = self.cells.len();
+        let actual_col = col.min(len);
+        let actual_count = count.min(len - actual_col);
+        for i in actual_col + actual_count..len {
+            self.cells[i - actual_count] = self.cells[i].clone();
+        }
         // Fill the vacated tail with blanks
         for cell in &mut self.cells[len - count..] {
             *cell = Cell::blank();

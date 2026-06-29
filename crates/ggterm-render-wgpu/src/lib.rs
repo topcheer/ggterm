@@ -63,6 +63,10 @@ pub struct GlyphonRenderer {
     underline_vertex_buffer: Option<wgpu::Buffer>,
     /// Number of underline vertices (P12-B fix).
     underline_vertex_count: u32,
+    /// Strikethrough vertex buffer (P13-A).
+    strike_vertex_buffer: Option<wgpu::Buffer>,
+    /// Number of strikethrough vertices (P13-A).
+    strike_vertex_count: u32,
 }
 
 impl GlyphonRenderer {
@@ -120,6 +124,8 @@ impl GlyphonRenderer {
             underline_pipeline: None,
             underline_vertex_buffer: None,
             underline_vertex_count: 0,
+            strike_vertex_buffer: None,
+            strike_vertex_count: 0,
         }
     }
 
@@ -290,8 +296,8 @@ impl GlyphonRenderer {
     pub fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) -> Result<(), GlyphonRenderError> {
         self.text_renderer
             .render(&self.atlas, &self.viewport, render_pass)?;
-        // P12-B fix: Draw underlines after text.
-        self.draw_underlines(render_pass);
+        // P12-B/P13-A: Draw underlines and strikethroughs after text.
+        self.draw_decorations(render_pass);
         Ok(())
     }
 
@@ -344,22 +350,22 @@ impl GlyphonRenderer {
         self.underline_pipeline = Some(pipeline);
     }
 
-    /// Collect underline cells from grid and upload vertex data (P12-B fix).
-    fn prepare_underlines(&mut self, device: &wgpu::Device, grid: &Grid) {
+    /// Collect underline + strikethrough cells from grid and upload vertex data.
+    fn prepare_decorations(&mut self, device: &wgpu::Device, grid: &Grid) {
         let cell_w = self.cell_width() as f32;
         let cell_h = self.cell_height() as f32;
         let screen_w = self.resolution.width as f32;
         let screen_h = self.resolution.height as f32;
 
-        // Each underline = 2 triangles (6 vertices), each vertex = (x, y, r, g, b)
-        let mut vertices: Vec<f32> = Vec::new();
-        let underline_y_offset = cell_h - 2.0; // 2px from bottom of cell
-        let underline_thickness = 1.0;
+        let mut underline_verts: Vec<f32> = Vec::new();
+        let mut strike_verts: Vec<f32> = Vec::new();
+        let underline_y = cell_h - 2.0;
+        let strike_y = cell_h * 0.5; // mid-line for strikethrough
+        let thickness = 1.0;
 
         for row_idx in 0..grid.height().min(self.rows) {
             for col_idx in 0..grid.width().min(self.cols) {
                 if let Some(cell) = grid.cell(col_idx, row_idx) {
-                    // Resolve underline color (use cell's fg, or theme default)
                     let theme = &self.theme;
                     let fg = theme.resolve_fg(&cell.fg);
                     let (r, g, b) = (
@@ -368,56 +374,77 @@ impl GlyphonRenderer {
                         fg.2 as f32 / 255.0,
                     );
 
-                    // Pixel coordinates
                     let px = col_idx as f32 * cell_w;
-                    let py = row_idx as f32 * cell_h + underline_y_offset;
-
-                    // NDC coordinates
                     let x0 = px / screen_w * 2.0 - 1.0;
                     let x1 = (px + cell_w) / screen_w * 2.0 - 1.0;
-                    let y0 = 1.0 - py / screen_h * 2.0;
-                    let y1 = 1.0 - (py + underline_thickness) / screen_h * 2.0;
 
-                    // Two triangles: (x0,y0) (x1,y0) (x0,y1) and (x1,y0) (x1,y1) (x0,y1)
-                    for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)] {
-                        vertices.extend_from_slice(&[x, y, r, g, b]);
+                    // Underline
+                    if cell.flags.contains(ggterm_core::CellFlags::UNDERLINE) {
+                        let py = row_idx as f32 * cell_h + underline_y;
+                        let y0 = 1.0 - py / screen_h * 2.0;
+                        let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                        for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
+                        {
+                            underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                        }
+                    }
+
+                    // Strikethrough (P13-A)
+                    if cell.flags.contains(ggterm_core::CellFlags::STRIKETHROUGH) {
+                        let py = row_idx as f32 * cell_h + strike_y;
+                        let y0 = 1.0 - py / screen_h * 2.0;
+                        let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                        for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
+                        {
+                            strike_verts.extend_from_slice(&[x, y, r, g, b]);
+                        }
                     }
                 }
             }
         }
 
-        self.underline_vertex_count = (vertices.len() / 5) as u32;
-        if vertices.is_empty() {
-            self.underline_vertex_buffer = None;
-            return;
-        }
+        // Upload underline vertices
+        upload_vertices(
+            device,
+            &underline_verts,
+            &mut self.underline_vertex_buffer,
+            &mut self.underline_vertex_count,
+            "underline",
+        );
 
-        let buffer_data: Vec<u8> = vertices.iter().flat_map(|f| f.to_ne_bytes()).collect();
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("underline vertices"),
-            size: (buffer_data.len().max(4)) as u64,
-            usage: wgpu::BufferUsages::VERTEX,
-            mapped_at_creation: true,
-        });
-        buffer
-            .slice(..)
-            .get_mapped_range_mut()
-            .copy_from_slice(&buffer_data);
-        buffer.unmap();
-        self.underline_vertex_buffer = Some(buffer);
+        // Upload strikethrough vertices
+        upload_vertices(
+            device,
+            &strike_verts,
+            &mut self.strike_vertex_buffer,
+            &mut self.strike_vertex_count,
+            "strikethrough",
+        );
     }
 
-    /// Draw underline rectangles into the render pass (P12-B fix).
-    fn draw_underlines(&self, render_pass: &mut wgpu::RenderPass<'_>) {
-        if let (Some(pipeline), Some(buffer), count) = (
-            &self.underline_pipeline,
-            &self.underline_vertex_buffer,
-            self.underline_vertex_count,
-        ) && count > 0
+    /// Draw underline + strikethrough rectangles into the render pass.
+    fn draw_decorations(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        let pipeline = match &self.underline_pipeline {
+            Some(p) => p,
+            None => return,
+        };
+
+        // Draw underlines
+        if let Some(ref buffer) = self.underline_vertex_buffer
+            && self.underline_vertex_count > 0
         {
             render_pass.set_pipeline(pipeline);
             render_pass.set_vertex_buffer(0, buffer.slice(..));
-            render_pass.draw(0..count, 0..1);
+            render_pass.draw(0..self.underline_vertex_count, 0..1);
+        }
+
+        // Draw strikethroughs (reuse same pipeline shape)
+        if let Some(ref buffer) = self.strike_vertex_buffer
+            && self.strike_vertex_count > 0
+        {
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_vertex_buffer(0, buffer.slice(..));
+            render_pass.draw(0..self.strike_vertex_count, 0..1);
         }
     }
 
@@ -459,7 +486,7 @@ impl GlyphonRenderer {
     ) -> Result<(), RenderError> {
         self.prepare_grid(device, queue, grid, cursor)?;
         self.ensure_underline_pipeline(device);
-        self.prepare_underlines(device, grid);
+        self.prepare_decorations(device, grid);
         self.draw(render_pass)?;
         Ok(())
     }
@@ -500,6 +527,34 @@ impl Renderer for GlyphonRenderer {
             height: rows.max(1) as u32 * cell_h,
         };
     }
+}
+
+/// Upload vertex data to a GPU buffer (helper for decoration rendering).
+fn upload_vertices(
+    device: &wgpu::Device,
+    vertices: &[f32],
+    buffer_slot: &mut Option<wgpu::Buffer>,
+    count_slot: &mut u32,
+    label: &str,
+) {
+    *count_slot = (vertices.len() / 5) as u32;
+    if vertices.is_empty() {
+        *buffer_slot = None;
+        return;
+    }
+    let buffer_data: Vec<u8> = vertices.iter().flat_map(|f| f.to_ne_bytes()).collect();
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label),
+        size: (buffer_data.len().max(4)) as u64,
+        usage: wgpu::BufferUsages::VERTEX,
+        mapped_at_creation: true,
+    });
+    buffer
+        .slice(..)
+        .get_mapped_range_mut()
+        .copy_from_slice(&buffer_data);
+    buffer.unmap();
+    *buffer_slot = Some(buffer);
 }
 
 #[cfg(test)]

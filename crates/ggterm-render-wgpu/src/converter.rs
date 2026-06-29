@@ -16,6 +16,7 @@ pub struct TextRun {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub strikethrough: bool,
 }
 
 /// Convert a single grid row into a vector of text runs.
@@ -51,6 +52,20 @@ pub fn row_to_runs(
         let mut fg_rgb = crate::colors::map_fg(fg, theme);
         let mut bg_rgb = crate::colors::map_bg(bg, theme);
 
+        // P13-A: DIM — reduce foreground brightness to ~60%.
+        if cell.flags.contains(CellFlags::DIM) {
+            fg_rgb = (
+                (fg_rgb.0 as u16 * 6 / 10) as u8,
+                (fg_rgb.1 as u16 * 6 / 10) as u8,
+                (fg_rgb.2 as u16 * 6 / 10) as u8,
+            );
+        }
+
+        // P13-A: HIDDEN — set fg = bg so text is invisible.
+        if cell.flags.contains(CellFlags::HIDDEN) {
+            fg_rgb = bg_rgb;
+        }
+
         // Cursor: swap resulting RGB for visibility (handles Default color case)
         if let Some(c) = cursor
             && c.visible
@@ -63,6 +78,7 @@ pub fn row_to_runs(
         let bold = cell.flags.contains(CellFlags::BOLD);
         let italic = cell.flags.contains(CellFlags::ITALIC);
         let underline = cell.flags.contains(CellFlags::UNDERLINE);
+        let strikethrough = cell.flags.contains(CellFlags::STRIKETHROUGH);
 
         let ch = cell.ch;
 
@@ -72,6 +88,7 @@ pub fn row_to_runs(
                 && c.bold == bold
                 && c.italic == italic
                 && c.underline == underline
+                && c.strikethrough == strikethrough
         });
 
         if can_extend {
@@ -87,6 +104,7 @@ pub fn row_to_runs(
                 bold,
                 italic,
                 underline,
+                strikethrough,
             });
         }
     }

@@ -85,7 +85,10 @@ impl Color {
 /// Stores the character(s), foreground/background colors, and text attributes.
 /// Uses `SmallVec`-style inline storage (we use a simple `char` for now;
 /// wide chars use a second spacer cell).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// **Note**: `Cell` is `Clone` (not `Copy`) because it carries an optional
+/// hyperlink (`Option<String>`). Use `.clone()` when you need an owned copy.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
     /// The character to display (0 = blank).
     pub ch: char,
@@ -95,6 +98,8 @@ pub struct Cell {
     pub bg: Color,
     /// Text attributes.
     pub flags: CellFlags,
+    /// OSC 8 hyperlink URI (None = no hyperlink).
+    pub hyperlink: Option<String>,
 }
 
 impl Default for Cell {
@@ -104,6 +109,7 @@ impl Default for Cell {
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),
+            hyperlink: None,
         }
     }
 }

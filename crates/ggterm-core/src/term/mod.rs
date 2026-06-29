@@ -344,6 +344,8 @@ pub struct Terminal {
     /// Pending OSC 52 clipboard set request (base64-decoded bytes).
     /// The app layer reads this and writes to the system clipboard.
     pub(crate) pending_clipboard_set: Option<Vec<u8>>,
+    /// Current OSC 8 hyperlink URI (applied to new cells in put_printable_char).
+    pub(crate) current_hyperlink: Option<String>,
     /// Bell flag — set when BEL (0x07) is received (P11-E).
     pub(crate) bell: bool,
 }
@@ -376,6 +378,7 @@ impl Terminal {
             cursor_style: CursorStyle::default(),
             response_buffer: Vec::new(),
             pending_clipboard_set: None,
+            current_hyperlink: None,
             bell: false,
         }
     }
@@ -558,6 +561,7 @@ impl Terminal {
             fg: self.fg,
             bg: self.bg,
             flags: self.flags,
+            hyperlink: self.current_hyperlink.clone(),
         }
     }
 
@@ -639,6 +643,7 @@ impl Terminal {
             c.fg = self.fg;
             c.bg = self.bg;
             c.flags |= self.flags;
+            c.hyperlink = self.current_hyperlink.clone();
         }
         // For wide chars, set bg on the spacer cell to avoid visual gaps
         if consumed == 2
@@ -646,6 +651,7 @@ impl Terminal {
             && let Some(c) = self.grid.cell_mut(self.cursor.x + 1, self.cursor.y)
         {
             c.bg = self.bg;
+            c.hyperlink = self.current_hyperlink.clone();
         }
 
         // Advance cursor by the character's display width
@@ -1286,6 +1292,23 @@ impl Perform for Terminal {
         match cmd {
             Some(0) | Some(2) => {
                 self.title = parts.next().unwrap_or("").to_string();
+            }
+            Some(8) => {
+                // OSC 8 — Hyperlink.
+                // Format: OSC 8 ; params ; URI ST
+                // Empty URI clears the hyperlink, non-empty sets it.
+                let payload = parts.next().unwrap_or("");
+                // Split off optional params before the URI.
+                let uri = if let Some(idx) = payload.find(';') {
+                    &payload[idx + 1..]
+                } else {
+                    payload
+                };
+                if uri.is_empty() {
+                    self.current_hyperlink = None;
+                } else {
+                    self.current_hyperlink = Some(uri.to_string());
+                }
             }
             Some(52) => {
                 // OSC 52 — Clipboard manipulation.
