@@ -19,15 +19,24 @@ pub struct TextRun {
     pub strikethrough: bool,
 }
 
+/// Background color used for search-match highlights (warm amber).
+pub const HIGHLIGHT_BG: (u8, u8, u8) = (255, 200, 0);
+/// Foreground color used on highlighted cells (black for contrast).
+pub const HIGHLIGHT_FG: (u8, u8, u8) = (0, 0, 0);
+
 /// Convert a single grid row into a vector of text runs.
 ///
 /// Wide-spacer cells are skipped (the lead cell has the full char).
 /// Cursor cell (if visible) swaps fg/bg for block cursor highlighting.
+///
+/// `highlights` is a slice of `(col_start, col_end)` ranges (inclusive).
+/// Cells within a highlight range get `HIGHLIGHT_BG` / `HIGHLIGHT_FG`.
 pub fn row_to_runs(
     grid: &Grid,
     row: usize,
     theme: &RenderTheme,
     cursor: Option<&CursorState>,
+    highlights: &[(usize, usize)],
 ) -> Vec<TextRun> {
     let mut runs = Vec::new();
     let mut current: Option<TextRun> = None;
@@ -66,8 +75,17 @@ pub fn row_to_runs(
             fg_rgb = bg_rgb;
         }
 
-        // Cursor: swap resulting RGB for visibility (handles Default color case)
-        if let Some(c) = cursor
+        // P14-B: Search highlight — override to amber bg / black fg.
+        let highlighted = highlights.iter().any(|&(s, e)| col >= s && col <= e);
+        if highlighted {
+            bg_rgb = HIGHLIGHT_BG;
+            fg_rgb = HIGHLIGHT_FG;
+        }
+
+        // Cursor: swap resulting RGB for visibility (handles Default color case).
+        // Highlight takes priority over cursor color swap.
+        if !highlighted
+            && let Some(c) = cursor
             && c.visible
             && c.x == col
             && c.y == row
@@ -156,7 +174,7 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].text, "ABC");
     }
@@ -171,7 +189,7 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
         assert_eq!(runs.len(), 3);
         assert_eq!(runs[0].text, "A");
         assert_eq!(runs[1].text, "B");
@@ -188,7 +206,7 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
         assert_eq!(runs.len(), 3);
         assert!(!runs[0].bold);
         assert!(runs[1].bold);
@@ -205,7 +223,7 @@ mod tests {
         grid[(1, 0)] = b;
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
         assert_eq!(runs.len(), 2);
         // REVERSE: fg becomes bg color
         assert_eq!(runs[1].fg, (0, 0, 255)); // was bg
@@ -222,7 +240,7 @@ mod tests {
         let theme = RenderTheme::default();
         let cursor = CursorState::new(1, 0);
 
-        let runs = row_to_runs(&grid, 0, &theme, Some(&cursor));
+        let runs = row_to_runs(&grid, 0, &theme, Some(&cursor), &[]);
         // Cursor cell should have swapped colors → different run
         assert!(runs.len() >= 2);
     }
@@ -246,8 +264,99 @@ mod tests {
         grid.put_char(3, 0, 'B');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None);
+        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
         let total: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(total.trim_end(), "A中B");
+    }
+
+    // ── P14-B: Search highlight tests ──────────────────────────────
+
+    #[test]
+    fn test_highlight_empty_no_change() {
+        // No highlights → behavior identical to passing &[]
+        let mut grid = Grid::new(4, 1);
+        for (i, ch) in "ABCD".chars().enumerate() {
+            grid[(i, 0)] = Cell::with_char(ch);
+        }
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(&grid, 0, &theme, None, &[]);
+        let runs2 = row_to_runs(&grid, 0, &theme, None, &[(99, 99)]);
+        // Neither should have highlight colors
+        for r in &runs {
+            assert_ne!(r.bg, HIGHLIGHT_BG);
+        }
+        for r in &runs2 {
+            assert_ne!(r.bg, HIGHLIGHT_BG);
+        }
+    }
+
+    #[test]
+    fn test_highlight_single_range() {
+        // Highlight cols 1-2 → those cells get HIGHLIGHT_BG / HIGHLIGHT_FG
+        let mut grid = Grid::new(4, 1);
+        for (i, ch) in "ABCD".chars().enumerate() {
+            grid[(i, 0)] = Cell::with_char(ch);
+        }
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(&grid, 0, &theme, None, &[(1, 2)]);
+
+        // Find the run(s) containing 'B' and 'C' (cols 1,2)
+        let mut found_highlight = false;
+        let mut found_normal = false;
+        for r in &runs {
+            if r.bg == HIGHLIGHT_BG {
+                assert_eq!(r.fg, HIGHLIGHT_FG);
+                assert!(r.text.contains('B') || r.text.contains('C'));
+                found_highlight = true;
+            } else {
+                found_normal = true;
+            }
+        }
+        assert!(found_highlight, "expected at least one highlighted run");
+        assert!(found_normal, "expected at least one normal run");
+    }
+
+    #[test]
+    fn test_highlight_multiple_ranges() {
+        // Two separate highlight ranges: (0,0) and (3,3)
+        let mut grid = Grid::new(5, 1);
+        for (i, ch) in "ABCDE".chars().enumerate() {
+            grid[(i, 0)] = Cell::with_char(ch);
+        }
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 0), (3, 3)]);
+
+        let mut highlight_count = 0;
+        for r in &runs {
+            if r.bg == HIGHLIGHT_BG {
+                highlight_count += 1;
+            }
+        }
+        // 'A' and 'D' are in separate ranges, so at least 2 highlight runs
+        assert!(
+            highlight_count >= 2,
+            "expected >=2 highlighted runs, got {highlight_count}"
+        );
+    }
+
+    #[test]
+    fn test_highlight_outside_range_unaffected() {
+        // Highlight cols 0-1, verify cols 2-3 are NOT highlighted
+        let mut grid = Grid::new(4, 1);
+        for (i, ch) in "ABCD".chars().enumerate() {
+            grid[(i, 0)] = Cell::with_char(ch);
+        }
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 1)]);
+
+        // Find run containing 'C' and 'D' — they must NOT be highlighted
+        for r in &runs {
+            if r.text.contains('C') || r.text.contains('D') {
+                assert_ne!(
+                    r.bg, HIGHLIGHT_BG,
+                    "cell outside highlight range should not be highlighted"
+                );
+            }
+        }
     }
 }

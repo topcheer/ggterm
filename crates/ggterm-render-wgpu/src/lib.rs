@@ -67,6 +67,8 @@ pub struct GlyphonRenderer {
     strike_vertex_buffer: Option<wgpu::Buffer>,
     /// Number of strikethrough vertices (P13-A).
     strike_vertex_count: u32,
+    /// Search-match highlights: (row, col_start, col_end) inclusive (P14-B).
+    highlights: Vec<(usize, usize, usize)>,
 }
 
 impl GlyphonRenderer {
@@ -126,6 +128,7 @@ impl GlyphonRenderer {
             underline_vertex_count: 0,
             strike_vertex_buffer: None,
             strike_vertex_count: 0,
+            highlights: Vec::new(),
         }
     }
 
@@ -150,6 +153,14 @@ impl GlyphonRenderer {
     /// Get a reference to the current render theme.
     pub fn current_theme(&self) -> &RenderTheme {
         &self.theme
+    }
+
+    /// Set search-match highlights for the next render (P14-B).
+    ///
+    /// Each tuple is `(row, col_start, col_end)` — all inclusive.
+    /// Pass an empty vec to clear highlights.
+    pub fn set_highlights(&mut self, highlights: Vec<(usize, usize, usize)>) {
+        self.highlights = highlights;
     }
 
     /// Set the font size and recompute cell metrics (P11-A).
@@ -209,7 +220,15 @@ impl GlyphonRenderer {
         let mut buffers: Vec<Buffer> = Vec::with_capacity(row_end - row_start);
 
         for row_idx in row_start..row_end {
-            let runs = converter::row_to_runs(grid, row_idx, theme, Some(cursor));
+            // Collect highlight ranges for this row (P14-B)
+            let row_highlights: Vec<(usize, usize)> = self
+                .highlights
+                .iter()
+                .filter(|&&(r, _, _)| r == row_idx)
+                .map(|&(_, s, e)| (s, e))
+                .collect();
+
+            let runs = converter::row_to_runs(grid, row_idx, theme, Some(cursor), &row_highlights);
 
             let mut text = String::new();
             let default_color = theme.default_fg;
@@ -570,7 +589,7 @@ mod tests {
         grid[(1, 0)] = Cell::with_char('i');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[]);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "Hi");
     }
@@ -583,7 +602,7 @@ mod tests {
         grid.put_char(2, 0, '好');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[]);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "你好");
     }
@@ -593,7 +612,7 @@ mod tests {
     fn test_grid_to_text_empty_row() {
         let grid = Grid::new(5, 1);
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[]);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "");
     }

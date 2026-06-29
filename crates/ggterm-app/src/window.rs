@@ -39,116 +39,11 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::config::ConfigManager;
+use crate::desktop_config::{DesktopConfig, VISUAL_BELL_DURATION_FRAMES};
 use crate::event::AppEvent;
 use crate::gpu::{GpuContext, cursor_state, init_wgpu};
 use crate::input::InputEncoder;
 use crate::keymap::map_winit_key;
-
-// ══════════════════════════════════════════════════════════════════
-//  P9-H: Resize constants + computation helpers
-// ══════════════════════════════════════════════════════════════════
-
-/// Minimum terminal dimensions in cells.
-/// Prevents the window from shrinking to an unusable size.
-pub const MIN_COLS: u16 = 10;
-pub const MIN_ROWS: u16 = 3;
-
-/// Resize debounce interval (milliseconds).
-/// During a window drag-resize, winit fires many `Resized` events.
-/// We defer the actual Terminal/PTY resize until 100ms after the last event.
-pub const RESIZE_DEBOUNCE_MS: u64 = 100;
-
-/// Duration of the visual bell flash in frames (P11-E).
-/// At 60 FPS this is about 250ms (15 frames).
-pub const VISUAL_BELL_DURATION_FRAMES: u32 = 15;
-
-/// Compute terminal cell dimensions (cols, rows) from pixel dimensions.
-///
-/// `width`/`height` are the window inner size in physical pixels.
-/// `cell_width`/`cell_height` are the pixel dimensions of a single cell.
-/// The result is clamped to at least `MIN_COLS` x `MIN_ROWS`.
-pub fn compute_cell_dimensions(
-    width: u32,
-    height: u32,
-    cell_width: f32,
-    cell_height: f32,
-) -> (u16, u16) {
-    let cols = ((width as f32 / cell_width) as u16).max(MIN_COLS);
-    let rows = ((height as f32 / cell_height) as u16).max(MIN_ROWS);
-    (cols, rows)
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  DesktopConfig
-// ══════════════════════════════════════════════════════════════════
-
-/// Configuration for the desktop terminal window.
-#[derive(Debug, Clone)]
-pub struct DesktopConfig {
-    /// Window title.
-    pub title: String,
-    /// Initial column count.
-    pub cols: u16,
-    /// Initial row count.
-    pub rows: u16,
-    /// Cell width in pixels.
-    pub cell_width: f32,
-    /// Cell height in pixels.
-    pub cell_height: f32,
-    /// Shell program path. `None` = auto-detect.
-    pub shell: Option<String>,
-}
-
-impl Default for DesktopConfig {
-    fn default() -> Self {
-        Self {
-            title: "GGTerm".to_string(),
-            cols: 80,
-            rows: 24,
-            cell_width: 8.0,
-            cell_height: 16.0,
-            shell: None,
-        }
-    }
-}
-
-impl DesktopConfig {
-    /// Set the window title.
-    pub fn with_title(mut self, title: impl Into<String>) -> Self {
-        self.title = title.into();
-        self
-    }
-
-    /// Set the shell program path.
-    pub fn with_shell(mut self, shell: impl Into<String>) -> Self {
-        self.shell = Some(shell.into());
-        self
-    }
-
-    /// Set initial terminal dimensions.
-    pub fn with_size(mut self, cols: u16, rows: u16) -> Self {
-        self.cols = cols;
-        self.rows = rows;
-        self
-    }
-
-    /// Set cell dimensions in pixels.
-    pub fn with_cell_size(mut self, w: f32, h: f32) -> Self {
-        self.cell_width = w;
-        self.cell_height = h;
-        self
-    }
-
-    /// Window pixel width = cols * cell_width.
-    pub fn window_width(&self) -> u32 {
-        (self.cols as f32 * self.cell_width).round() as u32
-    }
-
-    /// Window pixel height = rows * cell_height.
-    pub fn window_height(&self) -> u32 {
-        (self.rows as f32 * self.cell_height).round() as u32
-    }
-}
 
 // ══════════════════════════════════════════════════════════════════
 //  DesktopApp — implements winit ApplicationHandler
@@ -254,6 +149,132 @@ pub struct DesktopApp {
     // ── Status bar (P13-D) ──
     /// Aggregated terminal status for window title display.
     status_bar: crate::status_bar::StatusBar,
+
+    // ── Config-driven keybindings (P14-D) ──
+    /// Resolved keybindings: action name → (ctrl, shift, alt, key).
+    /// Populated from ConfigManager at startup; falls back to defaults.
+    resolved_keybindings: std::collections::HashMap<String, (bool, bool, bool, String)>,
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  P14-D: Config-driven keybindings
+// ══════════════════════════════════════════════════════════════════
+
+/// Default keybindings matching the original hardcoded shortcuts.
+///
+/// Returns a map of action name → (ctrl, shift, alt, key).
+pub fn default_keybindings() -> std::collections::HashMap<String, (bool, bool, bool, String)> {
+    let mut m = std::collections::HashMap::new();
+    // Tab management
+    m.insert("new_tab".into(), (true, false, false, "T".into()));
+    m.insert("close_tab".into(), (true, false, false, "W".into()));
+    // Clipboard
+    m.insert("paste".into(), (true, true, false, "V".into()));
+    m.insert("copy".into(), (true, true, false, "C".into()));
+    // Search
+    m.insert("search".into(), (true, true, false, "F".into()));
+    // Font zoom
+    m.insert("zoom_in".into(), (true, false, false, "=".into()));
+    m.insert("zoom_out".into(), (true, false, false, "-".into()));
+    m.insert("zoom_reset".into(), (true, false, false, "0".into()));
+    // Fullscreen
+    m.insert("fullscreen".into(), (false, false, false, "F11".into()));
+    // Terminal actions
+    m.insert("clear".into(), (true, true, false, "K".into()));
+    m.insert("reset".into(), (true, true, false, "R".into()));
+    m.insert("cycle_theme".into(), (true, true, false, "T".into()));
+    m
+}
+
+/// Update a single keybinding entry if the config provides a value.
+fn apply_keybinding(
+    map: &mut std::collections::HashMap<String, (bool, bool, bool, String)>,
+    action: &str,
+    binding: Option<&str>,
+) {
+    if let Some(s) = binding
+        && let Some((c, sh, a, k)) = crate::config::parse_keybinding(s)
+    {
+        map.insert(action.into(), (c, sh, a, k.to_string()));
+    }
+}
+
+/// Convert a winit [`KeyCode`] to the string name used in keybindings.
+///
+/// This mirrors the key names produced by [`parse_keybinding`]:
+/// letters use uppercase ("T", "V"), digits use the digit ("0", "1"),
+/// function keys use "F1"–"F24", and special keys use their name.
+pub fn keycode_to_name(code: &KeyCode) -> &str {
+    match code {
+        // Letters A–Z
+        KeyCode::KeyA => "A",
+        KeyCode::KeyB => "B",
+        KeyCode::KeyC => "C",
+        KeyCode::KeyD => "D",
+        KeyCode::KeyE => "E",
+        KeyCode::KeyF => "F",
+        KeyCode::KeyG => "G",
+        KeyCode::KeyH => "H",
+        KeyCode::KeyI => "I",
+        KeyCode::KeyJ => "J",
+        KeyCode::KeyK => "K",
+        KeyCode::KeyL => "L",
+        KeyCode::KeyM => "M",
+        KeyCode::KeyN => "N",
+        KeyCode::KeyO => "O",
+        KeyCode::KeyP => "P",
+        KeyCode::KeyQ => "Q",
+        KeyCode::KeyR => "R",
+        KeyCode::KeyS => "S",
+        KeyCode::KeyT => "T",
+        KeyCode::KeyU => "U",
+        KeyCode::KeyV => "V",
+        KeyCode::KeyW => "W",
+        KeyCode::KeyX => "X",
+        KeyCode::KeyY => "Y",
+        KeyCode::KeyZ => "Z",
+        // Digits
+        KeyCode::Digit0 => "0",
+        KeyCode::Digit1 => "1",
+        KeyCode::Digit2 => "2",
+        KeyCode::Digit3 => "3",
+        KeyCode::Digit4 => "4",
+        KeyCode::Digit5 => "5",
+        KeyCode::Digit6 => "6",
+        KeyCode::Digit7 => "7",
+        KeyCode::Digit8 => "8",
+        KeyCode::Digit9 => "9",
+        // Punctuation
+        KeyCode::Equal => "=",
+        KeyCode::Minus => "-",
+        // Function keys
+        KeyCode::F1 => "F1",
+        KeyCode::F2 => "F2",
+        KeyCode::F3 => "F3",
+        KeyCode::F4 => "F4",
+        KeyCode::F5 => "F5",
+        KeyCode::F6 => "F6",
+        KeyCode::F7 => "F7",
+        KeyCode::F8 => "F8",
+        KeyCode::F9 => "F9",
+        KeyCode::F10 => "F10",
+        KeyCode::F11 => "F11",
+        KeyCode::F12 => "F12",
+        KeyCode::F13 => "F13",
+        KeyCode::F14 => "F14",
+        KeyCode::F15 => "F15",
+        KeyCode::F16 => "F16",
+        KeyCode::F17 => "F17",
+        KeyCode::F18 => "F18",
+        KeyCode::F19 => "F19",
+        KeyCode::F20 => "F20",
+        KeyCode::F21 => "F21",
+        KeyCode::F22 => "F22",
+        KeyCode::F23 => "F23",
+        KeyCode::F24 => "F24",
+        // Everything else returns an empty string (never matches a binding).
+        _ => "",
+    }
 }
 
 impl DesktopApp {
@@ -347,7 +368,26 @@ impl DesktopApp {
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
+            resolved_keybindings: crate::window::default_keybindings(),
         };
+
+        // ── Step 7b: Load config-driven keybindings (P14-D) ──
+        if let Some(ref mgr) = config_mgr {
+            let kb = &mgr.config().keybindings;
+            let rkb = &mut desktop.resolved_keybindings;
+            apply_keybinding(rkb, "new_tab", kb.new_tab.as_deref());
+            apply_keybinding(rkb, "close_tab", kb.close_tab.as_deref());
+            apply_keybinding(rkb, "paste", kb.paste.as_deref());
+            apply_keybinding(rkb, "copy", kb.copy.as_deref());
+            apply_keybinding(rkb, "search", kb.search.as_deref());
+            apply_keybinding(rkb, "zoom_in", kb.zoom_in.as_deref());
+            apply_keybinding(rkb, "zoom_out", kb.zoom_out.as_deref());
+            apply_keybinding(rkb, "zoom_reset", kb.zoom_reset.as_deref());
+            apply_keybinding(rkb, "fullscreen", kb.fullscreen.as_deref());
+            apply_keybinding(rkb, "clear", kb.clear.as_deref());
+            apply_keybinding(rkb, "reset", kb.reset.as_deref());
+            apply_keybinding(rkb, "cycle_theme", kb.cycle_theme.as_deref());
+        }
 
         // ── Step 8: Start config file watcher (if config-watch feature) ──
         #[cfg(feature = "config-watch")]
@@ -382,6 +422,26 @@ impl DesktopApp {
     /// Get the shell path for creating new tabs.
     fn shell(&self) -> &str {
         self.config.shell.as_deref().unwrap_or("/bin/sh")
+    }
+
+    // ── Config-driven keybinding lookup (P14-D) ──
+
+    /// Check whether the current key press matches the keybinding for `action`.
+    ///
+    /// Looks up the resolved keybinding (from config or defaults) and compares
+    /// the modifier flags and key name.  Returns `true` on a match.
+    pub fn check_keybinding(
+        &self,
+        action: &str,
+        ctrl: bool,
+        shift: bool,
+        alt: bool,
+        key: &str,
+    ) -> bool {
+        match self.resolved_keybindings.get(action) {
+            Some(&(kc, ksh, ka, ref kk)) => ctrl == kc && shift == ksh && alt == ka && key == kk,
+            None => false,
+        }
     }
 
     // ── Tab management (P10-A) ──
@@ -544,69 +604,165 @@ impl DesktopApp {
             return;
         }
 
-        // P10-A: Tab management shortcuts
-        // Ctrl+T → new tab, Ctrl+W → close tab
-        if self.mods.ctrl
-            && !self.mods.shift
-            && let PhysicalKey::Code(code) = &event.physical_key
-        {
-            match code {
-                KeyCode::KeyT => {
-                    self.open_tab();
-                    return;
-                }
-                KeyCode::KeyW => {
-                    self.close_tab();
-                    return;
-                }
-                _ => {}
-            }
-        }
-
-        // P11-A: Font zoom — Ctrl+= / Ctrl+- / Ctrl+0
-        if self.mods.ctrl
-            && !self.mods.shift
-            && let PhysicalKey::Code(code) = &event.physical_key
-        {
-            match code {
-                KeyCode::Equal => {
-                    if self.font_zoom.zoom_in() {
-                        self.apply_font_size();
-                    }
-                    return;
-                }
-                KeyCode::Minus => {
-                    if self.font_zoom.zoom_out() {
-                        self.apply_font_size();
-                    }
-                    return;
-                }
-                KeyCode::Digit0 => {
-                    if self.font_zoom.reset() {
-                        self.apply_font_size();
-                    }
-                    return;
-                }
-                _ => {}
-            }
-        }
-
-        // P11-C: F11 → toggle fullscreen, Ctrl+Shift+Return → toggle maximized
+        // ── P14-D: Config-driven keybinding dispatch ──
+        // All configurable actions are resolved through check_keybinding().
+        // The resolved_keybindings map is populated from ConfigManager at
+        // startup and falls back to default_keybindings() when no config exists.
         if let PhysicalKey::Code(code) = &event.physical_key {
-            match code {
-                KeyCode::F11 => {
-                    self.toggle_fullscreen();
-                    return;
+            let key_name = keycode_to_name(code);
+
+            // Ctrl+T → new tab
+            if self.check_keybinding(
+                "new_tab",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.open_tab();
+                return;
+            }
+            // Ctrl+W → close tab
+            if self.check_keybinding(
+                "close_tab",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.close_tab();
+                return;
+            }
+            // Ctrl+= → zoom in
+            if self.check_keybinding(
+                "zoom_in",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                if self.font_zoom.zoom_in() {
+                    self.apply_font_size();
                 }
-                KeyCode::Enter if self.mods.ctrl && self.mods.shift => {
-                    self.toggle_maximized();
-                    return;
+                return;
+            }
+            // Ctrl+- → zoom out
+            if self.check_keybinding(
+                "zoom_out",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                if self.font_zoom.zoom_out() {
+                    self.apply_font_size();
                 }
-                _ => {}
+                return;
+            }
+            // Ctrl+0 → reset zoom
+            if self.check_keybinding(
+                "zoom_reset",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                if self.font_zoom.reset() {
+                    self.apply_font_size();
+                }
+                return;
+            }
+            // F11 → fullscreen
+            if self.check_keybinding(
+                "fullscreen",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.toggle_fullscreen();
+                return;
+            }
+            // Ctrl+Shift+V → paste
+            if self.check_keybinding(
+                "paste",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.paste_from_clipboard();
+                return;
+            }
+            // Ctrl+Shift+C → copy
+            if self.check_keybinding(
+                "copy",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.copy_selection_to_clipboard();
+                return;
+            }
+            // Ctrl+Shift+K → clear
+            if self.check_keybinding(
+                "clear",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                crate::terminal_actions::clear_screen_and_scrollback(
+                    self.active_session_mut().app_mut().grid_mut(),
+                );
+                return;
+            }
+            // Ctrl+Shift+R → reset terminal
+            if self.check_keybinding(
+                "reset",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                crate::terminal_actions::soft_reset(self.active_session_mut().app_mut().grid_mut());
+                return;
+            }
+            // Ctrl+Shift+T → cycle theme
+            if self.check_keybinding(
+                "cycle_theme",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.cycle_theme();
+                return;
+            }
+            // Ctrl+Shift+F → toggle search
+            if self.check_keybinding(
+                "search",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                self.search.toggle();
+                return;
             }
         }
 
-        // Alt+1-9 → switch to tab N
+        // Ctrl+Shift+Return → toggle maximized (not configurable)
+        if self.mods.ctrl
+            && self.mods.shift
+            && let PhysicalKey::Code(KeyCode::Enter) = &event.physical_key
+        {
+            self.toggle_maximized();
+            return;
+        }
+
+        // Alt+1-9 → switch to tab N (not configurable)
         if self.mods.alt
             && !self.mods.ctrl
             && let PhysicalKey::Code(code) = &event.physical_key
@@ -629,7 +785,7 @@ impl DesktopApp {
             }
         }
 
-        // Ctrl+Tab → next tab, Ctrl+Shift+Tab → prev tab
+        // Ctrl+Tab → next tab, Ctrl+Shift+Tab → prev tab (not configurable)
         if self.mods.ctrl
             && let PhysicalKey::Code(KeyCode::Tab) = &event.physical_key
         {
@@ -641,7 +797,7 @@ impl DesktopApp {
             return;
         }
 
-        // Phase 8-D: Ctrl+Shift+Up/Down for command block navigation
+        // Phase 8-D: Ctrl+Shift+Up/Down for command block navigation (not configurable)
         if self.mods.ctrl
             && self.mods.shift
             && let PhysicalKey::Code(code) = &event.physical_key
@@ -659,33 +815,8 @@ impl DesktopApp {
                         .handle_event(AppEvent::NextCommandBlock);
                     return;
                 }
-                KeyCode::KeyV => {
-                    // Ctrl+Shift+V → paste from system clipboard
-                    self.paste_from_clipboard();
-                    return;
-                }
-                // P11-B: Terminal utility shortcuts
-                KeyCode::KeyC => {
-                    // Ctrl+Shift+C → copy selection to clipboard
-                    self.copy_selection_to_clipboard();
-                    return;
-                }
-                KeyCode::KeyK => {
-                    // Ctrl+Shift+K → clear screen + scrollback
-                    crate::terminal_actions::clear_screen_and_scrollback(
-                        self.active_session_mut().app_mut().grid_mut(),
-                    );
-                    return;
-                }
-                KeyCode::KeyR => {
-                    // Ctrl+Shift+R → soft reset terminal
-                    crate::terminal_actions::soft_reset(
-                        self.active_session_mut().app_mut().grid_mut(),
-                    );
-                    return;
-                }
+                // Ctrl+Shift+A → select all text (not configurable)
                 KeyCode::KeyA => {
-                    // Ctrl+Shift+A → select all text
                     let grid = self.active_session().app().grid();
                     let range = crate::terminal_actions::select_all_range(grid);
                     self.selection
@@ -695,14 +826,7 @@ impl DesktopApp {
                     self.selection.finish();
                     return;
                 }
-                // P11-D: Cycle through themes
-                KeyCode::KeyT => {
-                    // Note: Ctrl+Shift+T would conflict with "reopen closed tab"
-                    // in browsers, but in terminals it's available. We use it for theme cycling.
-                    self.cycle_theme();
-                    return;
-                }
-                // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N)
+                // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N, not configurable)
                 #[cfg(feature = "ai")]
                 KeyCode::KeyE => {
                     self.trigger_ai_request(ggterm_ai::Action::Explain);
@@ -725,15 +849,6 @@ impl DesktopApp {
                 }
                 _ => {}
             }
-        }
-
-        // P10-D: Ctrl+Shift+F - toggle search bar.
-        if self.mods.ctrl
-            && self.mods.shift
-            && let PhysicalKey::Code(KeyCode::KeyF) = &event.physical_key
-        {
-            self.search.toggle();
-            return;
         }
 
         // P10-D: When search bar is open, intercept all keyboard input.
@@ -1486,238 +1601,160 @@ impl ApplicationHandler for DesktopApp {
     }
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  Tests
-// ══════════════════════════════════════════════════════════════════
+// P14-A: Config/DesktopConfig tests and resize computation tests
+// have been moved to desktop_config.rs. Window-specific tests
+// (ModsState, shell override) are tested via integration.
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_default_config() {
-        let cfg = DesktopConfig::default();
-        assert_eq!(cfg.title, "GGTerm");
-        assert_eq!(cfg.cols, 80);
-        assert_eq!(cfg.rows, 24);
-        assert_eq!(cfg.cell_width, 8.0);
-        assert_eq!(cfg.cell_height, 16.0);
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let cfg = DesktopConfig::default()
-            .with_title("My Terminal")
-            .with_size(120, 40)
-            .with_cell_size(7.5, 15.5);
-
-        assert_eq!(cfg.title, "My Terminal");
-        assert_eq!(cfg.cols, 120);
-        assert_eq!(cfg.rows, 40);
-        assert_eq!(cfg.cell_width, 7.5);
-        assert_eq!(cfg.cell_height, 15.5);
-    }
-
-    #[test]
-    fn test_window_dimensions_default() {
-        let cfg = DesktopConfig::default();
-        assert_eq!(cfg.window_width(), 640); // 80 * 8
-        assert_eq!(cfg.window_height(), 384); // 24 * 16
-    }
-
-    #[test]
-    fn test_window_dimensions_custom() {
-        let cfg = DesktopConfig::default()
-            .with_size(100, 30)
-            .with_cell_size(7.5, 15.5);
-
-        assert_eq!(cfg.window_width(), 750); // 100 * 7.5
-        assert_eq!(cfg.window_height(), 465); // 30 * 15.5
-    }
-
-    #[test]
-    fn test_mods_state_default() {
-        let mods = ModsState::default();
-        assert!(!mods.shift);
-        assert!(!mods.ctrl);
-        assert!(!mods.alt);
-    }
-
-    #[test]
-    fn test_mods_state_to_key_modifiers() {
-        let mods = ModsState {
-            shift: true,
-            ctrl: false,
-            alt: true,
-        };
-        let km: crate::input::KeyModifiers = mods.into();
-        assert!(km.shift);
-        assert!(!km.ctrl);
-        assert!(km.alt);
-    }
-
-    #[test]
-    fn test_desktop_config_with_shell() {
-        let cfg = DesktopConfig::default().with_shell("/bin/bash");
-        assert_eq!(cfg.shell.as_deref(), Some("/bin/bash"));
-    }
-
-    #[test]
-    fn test_desktop_config_shell_default_none() {
-        let cfg = DesktopConfig::default();
-        assert!(cfg.shell.is_none(), "shell should default to None");
-    }
-
-    #[test]
-    fn test_config_manager_load_default_fails_gracefully() {
-        // ConfigManager::load_default() should return Err when no config file exists,
-        // not panic. This verifies the graceful degradation behavior.
-        // (On a dev machine it might find a real config, which is also fine.)
-        let _ = ConfigManager::load_default();
-    }
-
-    #[test]
-    fn test_cli_shell_overrides_config() {
-        // Simulate the merge logic: CLI shell wins over config shell
-        let cli_shell: Option<String> = Some("/bin/zsh".to_string());
-        let config_shell: Option<String> = Some("/bin/bash".to_string());
-
-        let effective = cli_shell
-            .clone()
-            .or(config_shell)
-            .unwrap_or_else(default_shell_string);
-
-        assert_eq!(effective, "/bin/zsh", "CLI shell should take precedence");
-    }
-
-    #[test]
-    fn test_config_shell_used_when_no_cli() {
-        // Simulate: CLI is None, config provides the shell
-        let cli_shell: Option<String> = None;
-        let config_shell: Option<String> = Some("/bin/fish".to_string());
-
-        let effective = cli_shell
-            .clone()
-            .or(config_shell)
-            .unwrap_or_else(default_shell_string);
-
-        assert_eq!(effective, "/bin/fish");
-    }
-
-    #[test]
-    fn test_default_shell_when_no_config_no_cli() {
-        let cli_shell: Option<String> = None;
-        let config_shell: Option<String> = None;
-
-        let effective = cli_shell
-            .clone()
-            .or(config_shell)
-            .unwrap_or_else(default_shell_string);
-
-        // Should not be empty — should resolve to some system shell
-        assert!(!effective.is_empty());
-    }
-
-    #[test]
-    fn test_cell_size_from_config_applied() {
-        // Simulate the config merge logic for cell dimensions
-        let mut desktop_config = DesktopConfig::default();
-        assert_eq!(desktop_config.cell_width, 8.0); // default
-
-        // Config says cell_width = 10
-        let config_cell_width: u32 = 10;
-        if desktop_config.cell_width == 8.0 {
-            desktop_config.cell_width = config_cell_width as f32;
-        }
-        assert_eq!(desktop_config.cell_width, 10.0);
-    }
-
-    #[test]
-    fn test_cell_size_cli_overrides_config() {
-        // If CLI set a non-default cell_width, config should NOT override it
-        let mut desktop_config = DesktopConfig::default().with_cell_size(9.5, 19.0);
-        let config_cell_width: u32 = 10;
-
-        if desktop_config.cell_width == 8.0 {
-            // This branch should NOT execute since CLI set 9.5
-            desktop_config.cell_width = config_cell_width as f32;
-        }
+    fn test_default_keybindings_populated() {
+        let kb = default_keybindings();
         assert_eq!(
-            desktop_config.cell_width, 9.5,
-            "CLI cell_width should be preserved"
+            kb.get("new_tab"),
+            Some(&(true, false, false, "T".to_string()))
+        );
+        assert_eq!(kb.get("paste"), Some(&(true, true, false, "V".to_string())));
+        assert_eq!(
+            kb.get("search"),
+            Some(&(true, true, false, "F".to_string()))
+        );
+        assert_eq!(
+            kb.get("fullscreen"),
+            Some(&(false, false, false, "F11".to_string()))
+        );
+        assert_eq!(
+            kb.get("zoom_in"),
+            Some(&(true, false, false, "=".to_string()))
         );
     }
 
-    // ── P9-H: Resize computation tests ────────────────────────────────
-
     #[test]
-    fn test_compute_cell_dimensions_basic() {
-        // 640px / 8px = 80 cols, 384px / 16px = 24 rows
-        let (cols, rows) = compute_cell_dimensions(640, 384, 8.0, 16.0);
-        assert_eq!(cols, 80);
-        assert_eq!(rows, 24);
+    fn test_check_keybinding_default_match() {
+        let kb = default_keybindings();
+        // Ctrl+Shift+V → paste
+        assert!(check_keybinding_map(&kb, "paste", true, true, false, "V"));
+        // Ctrl+T (no shift) → new_tab
+        assert!(check_keybinding_map(
+            &kb, "new_tab", true, false, false, "T"
+        ));
+        // F11 → fullscreen
+        assert!(check_keybinding_map(
+            &kb,
+            "fullscreen",
+            false,
+            false,
+            false,
+            "F11"
+        ));
     }
 
     #[test]
-    fn test_compute_cell_dimensions_minimum() {
-        // 0px → clamped to MIN_COLS x MIN_ROWS
-        let (cols, rows) = compute_cell_dimensions(0, 0, 8.0, 16.0);
-        assert_eq!(cols, MIN_COLS);
-        assert_eq!(rows, MIN_ROWS);
+    fn test_check_keybinding_custom_value() {
+        let mut kb = default_keybindings();
+        // Override: new_tab → Ctrl+N
+        kb.insert("new_tab".into(), (true, false, false, "N".into()));
+        // Ctrl+N should now match
+        assert!(check_keybinding_map(
+            &kb, "new_tab", true, false, false, "N"
+        ));
+        // Ctrl+T should no longer match
+        assert!(!check_keybinding_map(
+            &kb, "new_tab", true, false, false, "T"
+        ));
     }
 
     #[test]
-    fn test_compute_cell_dimensions_small_window() {
-        // 40px / 8 = 5 cols → clamped to 10
-        let (cols, rows) = compute_cell_dimensions(40, 32, 8.0, 16.0);
-        assert_eq!(cols, MIN_COLS); // 5 → 10
-        assert_eq!(rows, MIN_ROWS); // 2 → 3
+    fn test_check_keybinding_no_match() {
+        let kb = default_keybindings();
+        // Wrong key
+        assert!(!check_keybinding_map(&kb, "paste", true, true, false, "X"));
+        // Wrong modifiers
+        assert!(!check_keybinding_map(&kb, "paste", false, true, false, "V"));
+        assert!(!check_keybinding_map(&kb, "paste", true, false, false, "V"));
+        // Unknown action
+        assert!(!check_keybinding_map(
+            &kb,
+            "unknown_action",
+            true,
+            true,
+            false,
+            "V"
+        ));
     }
 
     #[test]
-    fn test_compute_cell_dimensions_just_at_minimum() {
-        // 80px / 8 = 10 cols (exactly MIN_COLS)
-        // 48px / 16 = 3 rows (exactly MIN_ROWS)
-        let (cols, rows) = compute_cell_dimensions(80, 48, 8.0, 16.0);
-        assert_eq!(cols, 10);
-        assert_eq!(rows, 3);
+    fn test_check_keybinding_modifiers_exact() {
+        let kb = default_keybindings();
+        // paste = Ctrl+Shift+V — Alt must NOT be set
+        assert!(!check_keybinding_map(&kb, "paste", true, true, true, "V"));
+        // new_tab = Ctrl+T — Shift must NOT be set
+        assert!(!check_keybinding_map(
+            &kb, "new_tab", true, true, false, "T"
+        ));
     }
 
     #[test]
-    fn test_compute_cell_dimensions_large_window() {
-        // 3840px / 8 = 480, 2160px / 16 = 135
-        let (cols, rows) = compute_cell_dimensions(3840, 2160, 8.0, 16.0);
-        assert_eq!(cols, 480);
-        assert_eq!(rows, 135);
+    fn test_keycode_to_name_letters() {
+        assert_eq!(keycode_to_name(&KeyCode::KeyA), "A");
+        assert_eq!(keycode_to_name(&KeyCode::KeyT), "T");
+        assert_eq!(keycode_to_name(&KeyCode::KeyV), "V");
     }
 
     #[test]
-    fn test_compute_cell_dimensions_custom_cell_size() {
-        // cell_width=12, cell_height=24
-        let (cols, rows) = compute_cell_dimensions(1200, 720, 12.0, 24.0);
-        assert_eq!(cols, 100);
-        assert_eq!(rows, 30);
+    fn test_keycode_to_name_digits_and_specials() {
+        assert_eq!(keycode_to_name(&KeyCode::Digit0), "0");
+        assert_eq!(keycode_to_name(&KeyCode::Digit9), "9");
+        assert_eq!(keycode_to_name(&KeyCode::Equal), "=");
+        assert_eq!(keycode_to_name(&KeyCode::Minus), "-");
+        assert_eq!(keycode_to_name(&KeyCode::F11), "F11");
+        assert_eq!(keycode_to_name(&KeyCode::Enter), ""); // not mapped
     }
 
     #[test]
-    fn test_compute_cell_dimensions_subpixel_floor() {
-        // 644px / 8.0 = 80.5 → floor → 80
-        let (cols, _) = compute_cell_dimensions(644, 384, 8.0, 16.0);
-        assert_eq!(cols, 80);
+    fn test_apply_keybinding_updates_map() {
+        let mut kb = default_keybindings();
+        assert_eq!(
+            kb.get("new_tab"),
+            Some(&(true, false, false, "T".to_string()))
+        );
+
+        // Apply a custom binding
+        apply_keybinding(&mut kb, "new_tab", Some("Ctrl+N"));
+        assert_eq!(
+            kb.get("new_tab"),
+            Some(&(true, false, false, "N".to_string()))
+        );
+
+        // None should not change the map
+        apply_keybinding(&mut kb, "new_tab", None);
+        assert_eq!(
+            kb.get("new_tab"),
+            Some(&(true, false, false, "N".to_string()))
+        );
+
+        // Invalid string should not change the map
+        apply_keybinding(&mut kb, "new_tab", Some(""));
+        assert_eq!(
+            kb.get("new_tab"),
+            Some(&(true, false, false, "N".to_string()))
+        );
     }
 
-    #[test]
-    fn test_min_cols_constant() {
-        assert_eq!(MIN_COLS, 10);
-    }
-
-    #[test]
-    fn test_min_rows_constant() {
-        assert_eq!(MIN_ROWS, 3);
-    }
-
-    #[test]
-    fn test_debounce_ms_constant() {
-        assert_eq!(RESIZE_DEBOUNCE_MS, 100);
+    /// Helper to test check_keybinding logic against a standalone map.
+    fn check_keybinding_map(
+        map: &std::collections::HashMap<String, (bool, bool, bool, String)>,
+        action: &str,
+        ctrl: bool,
+        shift: bool,
+        alt: bool,
+        key: &str,
+    ) -> bool {
+        match map.get(action) {
+            Some(&(kc, ksh, ka, ref kk)) => ctrl == kc && shift == ksh && alt == ka && key == kk,
+            None => false,
+        }
     }
 }

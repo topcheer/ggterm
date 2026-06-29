@@ -49,6 +49,8 @@ pub mod ai_bridge;
 pub mod ai_overlay;
 
 #[cfg(feature = "desktop")]
+pub mod desktop_config;
+#[cfg(feature = "desktop")]
 pub mod gpu;
 #[cfg(feature = "desktop")]
 pub mod keymap;
@@ -75,8 +77,10 @@ pub use search::SearchState;
 pub use shell_integration::{ShellIntegrationConfig, ShellKind};
 
 #[cfg(feature = "desktop")]
+pub use desktop_config::DesktopConfig;
+#[cfg(feature = "desktop")]
 pub use gpu::{GpuContext, GpuError};
 #[cfg(feature = "desktop")]
 pub use keymap::map_winit_key;
 #[cfg(feature = "desktop")]
-pub use window::{DesktopApp, DesktopConfig};
+pub use window::DesktopApp;
