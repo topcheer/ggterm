@@ -21,12 +21,20 @@ desktop = [
 ]
 # AI integration: enables ggterm-ai engine bridge
 ai = ["dep:ggterm-ai"]
+# Plugin system: enables ggterm-plugin manager and hook dispatch
+plugin = ["dep:ggterm-plugin"]
+# Lua plugin runtime (implies plugin)
+plugin-lua = ["plugin", "ggterm-plugin?/lua"]
+# WASM plugin runtime (implies plugin)
+plugin-wasm = ["plugin", "ggterm-plugin?/wasm"]
 
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
 ggterm-render = { path = "../ggterm-render" }
 ggterm-ai = { path = "../ggterm-ai", optional = true }
 log.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 # Desktop-only dependencies (optional — enabled by `desktop` feature)
 winit = { workspace = true, optional = true }
@@ -36,3 +44,7 @@ pollster = { workspace = true, optional = true }
 portable-pty = { workspace = true, optional = true }
 raw-window-handle = { workspace = true, optional = true }
 env_logger = { workspace = true, optional = true }
+ggterm-plugin = { path = "../ggterm-plugin", optional = true }
+
+[dev-dependencies]
+ggterm-plugin = { path = "../ggterm-plugin" }

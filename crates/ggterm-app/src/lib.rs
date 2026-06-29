@@ -29,6 +29,7 @@
 
 pub mod app;
 pub mod command_nav;
+pub mod config;
 pub mod event;
 pub mod input;
 pub mod tabs;
@@ -45,8 +46,13 @@ pub mod keymap;
 pub mod window;
 
 pub use app::App;
+pub use config::Config;
 pub use tabs::TabManager;
 pub use theme::AppTheme;
+
+/// Plugin integration (feature-gated behind `plugin`).
+#[cfg(feature = "plugin")]
+pub mod plugin_integration;
 
 #[cfg(feature = "ai")]
 pub use ai_bridge::{AIBridge, AIRequest, AIResponse};

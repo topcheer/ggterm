@@ -38,6 +38,10 @@ ggterm-core = { path = "crates/ggterm-core" }
 ggterm-render = { path = "crates/ggterm-render" }
 ggterm-render-wgpu = { path = "crates/ggterm-render-wgpu" }
 
+# Serialization
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
 # Profile: optimize for speed even in dev for terminal performance
 [profile.dev]
 opt-level = 1
