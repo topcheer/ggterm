@@ -1026,6 +1026,12 @@ impl DesktopApp {
             return;
         }
 
+        // P23-E: Tab drag release — stop dragging.
+        if state == ElementState::Released && self.dragging_tab.is_some() {
+            self.dragging_tab = None;
+            return;
+        }
+
         let term = self.active_session().app().terminal();
 
         // Check if mouse tracking is active.
@@ -1097,6 +1103,10 @@ impl DesktopApp {
                             if self.click_count == 2 {
                                 self.renaming_tab = Some(tab_idx);
                                 self.rename_text = self.sessions[tab_idx].title().to_string();
+                            }
+                            // P23-E: Single click → start tab drag for reordering.
+                            if self.click_count == 1 && self.sessions.len() > 1 {
+                                self.dragging_tab = Some(tab_idx);
                             }
                             return;
                         }
@@ -1181,6 +1191,25 @@ impl DesktopApp {
                 window.request_redraw();
             }
             return;
+        }
+
+        // P23-E: Tab drag — reorder tabs as cursor moves between tab positions.
+        if let Some(drag_idx) = self.dragging_tab
+            && self.tab_bar.visible
+        {
+            let bounds = self.content_area_bounds();
+            let px = self.cursor_pos.0 as f32;
+            let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+            if let Some(target_idx) = self.tab_bar.tab_at_x(&layout, px)
+                && target_idx != drag_idx
+            {
+                self.move_tab(drag_idx, target_idx);
+                self.dragging_tab = Some(target_idx);
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
         }
 
         // P27-C: Update context menu hover state.

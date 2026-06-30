@@ -137,8 +137,7 @@ impl DesktopApp {
 
     // ── P23-E: Tab reordering ──
 
-    /// Move the active tab to a new position.
-    #[allow(dead_code)]
+    /// Move a tab from one position to another (drag reordering).
     pub(super) fn move_tab(&mut self, from: usize, to: usize) {
         if from >= self.sessions.len() || to >= self.sessions.len() || from == to {
             return;

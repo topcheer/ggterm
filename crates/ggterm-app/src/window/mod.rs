@@ -305,6 +305,8 @@ pub struct DesktopApp {
     saved_window_pos: Option<(i32, i32)>,
     /// P31: Saved window size from previous session.
     saved_window_size: Option<(u32, u32)>,
+    /// P23-E: Tab drag state (Some(tab_idx) when dragging).
+    dragging_tab: Option<usize>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -575,6 +577,7 @@ impl DesktopApp {
             toast: None,
             saved_window_pos: None,
             saved_window_size: None,
+            dragging_tab: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
