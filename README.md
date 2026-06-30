@@ -506,6 +506,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 | Config Validation | Done | — |
 | Drag-to-Resize Splits | Done | — |
 | Dirty Rect Partial Repaint | Done | — |
+| Status Bar Error Indicator | Done | 7 |
 
 ## License
 
