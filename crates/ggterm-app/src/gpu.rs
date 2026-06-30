@@ -178,6 +178,130 @@ impl GpuContext {
 
         Ok(())
     }
+
+    /// Render multiple panes into a single frame (P20-A).
+    ///
+    /// Each pane's grid is rendered at its pixel offset within the surface.
+    /// After all panes, overlays are drawn at full-screen scope.
+    pub fn render_multi_pane_frame(
+        &mut self,
+        surface: &wgpu::Surface,
+        renderer: &mut GlyphonRenderer,
+        panes: &[PaneRenderSpec],
+        bg_color: [f64; 3],
+    ) -> Result<(), RenderFrameError> {
+        if panes.is_empty() {
+            return Ok(());
+        }
+
+        // Single-pane fast path: delegate to the simpler method.
+        if panes.len() == 1 {
+            renderer.set_viewport_offset(0.0, 0.0);
+            return self.render_frame(surface, renderer, panes[0].grid, panes[0].cursor, bg_color);
+        }
+
+        let frame = match surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t) => t,
+            wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Timeout => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Lost
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(RenderFrameError::Surface("surface lost or invalid".into()));
+            }
+        };
+
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ggterm multi-pane encoder"),
+            });
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("ggterm multi-pane render pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: bg_color[0],
+                            g: bg_color[1],
+                            b: bg_color[2],
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            // Render each pane's grid at its offset.
+            for spec in panes {
+                let x = spec.offset_x;
+                let y = spec.offset_y;
+                let w = spec.width.max(1);
+                let h = spec.height.max(1);
+
+                // Set scissor to clip this pane's rendering area.
+                pass.set_scissor_rect(x, y, w, h);
+                renderer.set_viewport_offset(x as f32, y as f32);
+                renderer
+                    .render_pane_to_pass(
+                        &self.device,
+                        &self.queue,
+                        spec.grid,
+                        spec.cursor,
+                        &mut pass,
+                    )
+                    .map_err(RenderFrameError::Render)?;
+            }
+
+            // Reset scissor to full screen for overlay rendering.
+            let full_w = renderer.resolution_width();
+            let full_h = renderer.resolution_height();
+            pass.set_scissor_rect(0, 0, full_w, full_h);
+
+            // Draw overlays (tab bar, borders, settings, about) once.
+            renderer
+                .render_overlays_to_pass(&self.device, &mut pass)
+                .map_err(RenderFrameError::Render)?;
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        frame.present();
+
+        Ok(())
+    }
+}
+
+/// Specification for rendering one pane (P20-A).
+///
+/// Each pane has its own grid + cursor and is rendered at a pixel offset
+/// within the surface, clipped to the given width/height.
+pub struct PaneRenderSpec<'a> {
+    /// The terminal grid to render.
+    pub grid: &'a ggterm_core::Grid,
+    /// The cursor state for this pane.
+    pub cursor: &'a ggterm_render::CursorState,
+    /// X pixel offset within the surface.
+    pub offset_x: u32,
+    /// Y pixel offset within the surface.
+    pub offset_y: u32,
+    /// Width in pixels for clipping.
+    pub width: u32,
+    /// Height in pixels for clipping.
+    pub height: u32,
 }
 
 /// Create a wgpu Instance + Adapter + Surface from a window.

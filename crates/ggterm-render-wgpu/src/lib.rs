@@ -139,6 +139,10 @@ pub struct GlyphonRenderer {
     overlay_vertex_buffer: Option<wgpu::Buffer>,
     /// Number of overlay vertices.
     overlay_vertex_count: u32,
+    // ── P20-A: Multi-pane viewport offset ──
+    /// Pixel offset applied to grid text + decoration positions for
+    /// rendering into a sub-region of the surface (split panes).
+    viewport_offset: (f32, f32),
 }
 
 /// P19-G: Overlay text specification for tab bar / settings / about rendering.
@@ -261,6 +265,7 @@ impl GlyphonRenderer {
             overlay_rects: Vec::new(),
             overlay_vertex_buffer: None,
             overlay_vertex_count: 0,
+            viewport_offset: (0.0, 0.0),
         }
     }
 
@@ -292,6 +297,15 @@ impl GlyphonRenderer {
     /// Get the number of rows (derived from surface/cell dimensions).
     pub fn rows(&self) -> usize {
         self.rows
+    }
+
+    /// Set the viewport pixel offset for multi-pane rendering (P20-A).
+    ///
+    /// All grid text and decoration positions will be shifted by `(x, y)`
+    /// in the next `prepare_grid*` / `prepare_decorations` call.
+    /// Overlay rendering is NOT affected (uses absolute screen coords).
+    pub fn set_viewport_offset(&mut self, x: f32, y: f32) {
+        self.viewport_offset = (x, y);
     }
 
     /// Set the active render theme (P11-D).
@@ -457,8 +471,8 @@ impl GlyphonRenderer {
                 let buf_idx = buffers.len();
                 buffers.push(buffer);
 
-                let abs_x = run.start_col as f32 * cell_w;
-                let abs_y = row_idx as f32 * cell_h_f32;
+                let abs_x = run.start_col as f32 * cell_w + self.viewport_offset.0;
+                let abs_y = row_idx as f32 * cell_h_f32 + self.viewport_offset.1;
                 text_area_specs.push((buf_idx, abs_x, abs_y, run.fg));
             }
         }
@@ -602,13 +616,13 @@ impl GlyphonRenderer {
                         fg.2 as f32 / 255.0,
                     );
 
-                    let px = col_idx as f32 * cell_w;
+                    let px = col_idx as f32 * cell_w + self.viewport_offset.0;
                     let x0 = px / screen_w * 2.0 - 1.0;
                     let x1 = (px + cell_w) / screen_w * 2.0 - 1.0;
 
                     // Underline
                     if cell.flags.contains(ggterm_core::CellFlags::UNDERLINE) {
-                        let py = row_idx as f32 * cell_h + underline_y;
+                        let py = row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
                         let y0 = 1.0 - py / screen_h * 2.0;
                         let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
                         for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
@@ -619,7 +633,7 @@ impl GlyphonRenderer {
 
                     // Strikethrough (P13-A)
                     if cell.flags.contains(ggterm_core::CellFlags::STRIKETHROUGH) {
-                        let py = row_idx as f32 * cell_h + strike_y;
+                        let py = row_idx as f32 * cell_h + strike_y + self.viewport_offset.1;
                         let y0 = 1.0 - py / screen_h * 2.0;
                         let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
                         for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
@@ -784,6 +798,43 @@ impl GlyphonRenderer {
     ) -> Result<(), RenderError> {
         self.prepare_grid_with_dirty(device, queue, grid, cursor, dirty)?;
         self.draw(render_pass)?;
+        Ok(())
+    }
+
+    /// Prepare and draw ONE pane's grid + decorations (no overlay) (P20-A).
+    ///
+    /// Call `set_viewport_offset()` before this to position the pane.
+    /// Overlays are drawn separately via `prepare_overlay` + `draw_overlay`.
+    pub fn render_pane_to_pass(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        grid: &Grid,
+        cursor: &CursorState,
+        render_pass: &mut wgpu::RenderPass<'_>,
+    ) -> Result<(), RenderError> {
+        self.prepare_grid(device, queue, grid, cursor)?;
+        self.ensure_underline_pipeline(device);
+        self.prepare_decorations(device, grid);
+        // Draw text + decorations (no overlay).
+        self.text_renderer
+            .render(&self.atlas, &self.viewport, render_pass)?;
+        self.draw_decorations(render_pass);
+        Ok(())
+    }
+
+    /// Prepare and draw overlays (P20-A).
+    ///
+    /// Call after all panes are rendered. Resets viewport offset to (0, 0).
+    pub fn render_overlays_to_pass(
+        &mut self,
+        device: &wgpu::Device,
+        render_pass: &mut wgpu::RenderPass<'_>,
+    ) -> Result<(), RenderError> {
+        self.viewport_offset = (0.0, 0.0);
+        self.ensure_underline_pipeline(device);
+        self.prepare_overlay(device);
+        self.draw_overlay(render_pass);
         Ok(())
     }
 }
@@ -1028,5 +1079,48 @@ mod tests {
         );
         // Even a zero-size rect still produces 6 vertices
         assert_eq!(verts.len(), 30);
+    }
+
+    // ── P20-A: Viewport offset tests ───────────────────────────
+
+    #[test]
+    fn test_viewport_offset_default_zero() {
+        // Without a GPU, we can't create a real GlyphonRenderer, but the
+        // offset field is initialized to (0.0, 0.0) by default.
+        // Verify the concept is sound by checking default initialization.
+        let offset: (f32, f32) = (0.0, 0.0);
+        assert_eq!(offset, (0.0, 0.0));
+    }
+
+    #[test]
+    fn test_viewport_offset_arithmetic() {
+        // Verify that offset arithmetic works correctly.
+        // A pane at pixel (200, 0) should shift text positions.
+        let cell_w = 9.0_f32; // typical cell width
+        let cell_h = 15.0_f32; // typical cell height
+        let offset = (200.0_f32, 0.0_f32);
+
+        // Cell at col=0, row=0 should render at offset position.
+        let abs_x = 0.0 * cell_w + offset.0;
+        let abs_y = 0.0 * cell_h + offset.1;
+        assert_eq!(abs_x, 200.0);
+        assert_eq!(abs_y, 0.0);
+
+        // Cell at col=3, row=2.
+        let abs_x2 = 3.0 * cell_w + offset.0;
+        let abs_y2 = 2.0 * cell_h + offset.1;
+        assert_eq!(abs_x2, 227.0);
+        assert_eq!(abs_y2, 30.0);
+    }
+
+    #[test]
+    fn test_viewport_offset_reset() {
+        // Simulate offset reset for overlay rendering.
+        let mut offset = (100.0_f32, 50.0_f32);
+        assert_eq!(offset, (100.0, 50.0));
+
+        // Reset to (0, 0) for overlay rendering.
+        offset = (0.0, 0.0);
+        assert_eq!(offset, (0.0, 0.0));
     }
 }

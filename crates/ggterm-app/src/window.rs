@@ -986,7 +986,41 @@ impl DesktopApp {
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
 
-        if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
+        // P20-A: Multi-pane viewport rendering.
+        // When the active session has multiple panes, render each pane's grid
+        // at its SplitTree area offset within a single render pass.
+        let pane_count = self.sessions[active].pane_count();
+        if pane_count > 1 {
+            let session = &self.sessions[active];
+            let tree = session.split_tree();
+            let bounds = crate::splits::Rect::new(0, 0, screen_w as u32, screen_h as u32);
+            let areas = tree.areas(bounds);
+
+            // Build cursor states per pane (owned values, no borrow issues).
+            let cursors: Vec<_> = areas
+                .iter()
+                .filter_map(|(id, _)| session.pane_app(*id).map(cursor_state))
+                .collect();
+
+            // Build PaneRenderSpec list (grid refs borrow session, cursors from local vec).
+            let mut specs: Vec<crate::gpu::PaneRenderSpec> = Vec::new();
+            for ((pane_id, rect), cursor) in areas.iter().zip(cursors.iter()) {
+                if let Some(app) = session.pane_app(*pane_id) {
+                    specs.push(crate::gpu::PaneRenderSpec {
+                        grid: app.grid(),
+                        cursor,
+                        offset_x: rect.x,
+                        offset_y: rect.y,
+                        width: rect.width,
+                        height: rect.height,
+                    });
+                }
+            }
+
+            if let Err(e) = gpu.render_multi_pane_frame(surface, renderer, &specs, bg_color) {
+                log::error!("Render error: {e}");
+            }
+        } else if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
             log::error!("Render error: {e}");
         }
 
