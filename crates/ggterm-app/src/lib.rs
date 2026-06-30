@@ -56,6 +56,7 @@ pub mod terminal_actions;
 pub mod theme;
 pub mod ui_theme;
 pub mod version_info;
+pub mod vibrancy;
 
 #[cfg(feature = "ai")]
 pub mod ai_bridge;

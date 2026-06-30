@@ -701,6 +701,20 @@ impl ApplicationHandler for DesktopApp {
             }
         };
 
+        // P27-E: Apply macOS vibrancy for backdrop blur effect.
+        #[cfg(target_os = "macos")]
+        {
+            use raw_window_handle::HasWindowHandle;
+            if let Ok(handle) = window.window_handle()
+                && let raw_window_handle::RawWindowHandle::AppKit(appkit) = handle.as_raw()
+            {
+                // Safety: NSView pointer from winit is valid at this point.
+                unsafe {
+                    crate::vibrancy::apply_vibrancy_to_view(appkit.ns_view.as_ptr());
+                }
+            }
+        }
+
         // P18-A: Get scale_factor and resize window to proper physical dimensions.
         let scale_factor = window.scale_factor();
         self.scale_factor = scale_factor;
