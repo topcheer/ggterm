@@ -309,6 +309,121 @@ impl TabBarState {
     }
 }
 
+// ── Tab Context Menu ──────────────────────────────────────────────────
+
+/// Actions available in the tab right-click context menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabMenuAction {
+    /// Open a new tab.
+    NewTab,
+    /// Close this tab.
+    CloseTab,
+    /// Duplicate this tab (same shell + working directory).
+    DuplicateTab,
+    /// Switch to the next tab.
+    NextTab,
+    /// Switch to the previous tab.
+    PrevTab,
+}
+
+impl TabMenuAction {
+    /// Display label for this action.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::NewTab => "New Tab",
+            Self::CloseTab => "Close Tab",
+            Self::DuplicateTab => "Duplicate Tab",
+            Self::NextTab => "Next Tab",
+            Self::PrevTab => "Previous Tab",
+        }
+    }
+
+    /// All actions in display order.
+    pub fn all() -> &'static [TabMenuAction] {
+        &[
+            Self::NewTab,
+            Self::CloseTab,
+            Self::DuplicateTab,
+            Self::NextTab,
+            Self::PrevTab,
+        ]
+    }
+
+    /// Shortcut hint text.
+    pub fn shortcut(self) -> &'static str {
+        match self {
+            Self::NewTab => "Ctrl+T",
+            Self::CloseTab => "Ctrl+W",
+            Self::DuplicateTab => "",
+            Self::NextTab => "Ctrl+Tab",
+            Self::PrevTab => "Ctrl+Shift+Tab",
+        }
+    }
+}
+
+/// State for the tab right-click context menu.
+#[derive(Debug, Default)]
+pub struct TabContextMenuState {
+    /// Whether the menu is visible.
+    pub visible: bool,
+    /// Tab index the menu was opened on.
+    pub tab_index: Option<usize>,
+    /// Pixel position (x, y) where the menu appears.
+    pub x: f32,
+    pub y: f32,
+    /// Hovered item index.
+    pub hovered: Option<usize>,
+}
+
+impl TabContextMenuState {
+    /// Open the menu at a position for a specific tab.
+    pub fn open(&mut self, tab_index: usize, x: f32, y: f32) {
+        self.visible = true;
+        self.tab_index = Some(tab_index);
+        self.x = x;
+        self.y = y;
+        self.hovered = None;
+    }
+
+    /// Close the menu.
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.tab_index = None;
+        self.hovered = None;
+    }
+
+    /// Item width for rendering.
+    pub const ITEM_WIDTH: f32 = 200.0;
+    /// Item height for rendering.
+    pub const ITEM_HEIGHT: f32 = 28.0;
+    /// Gap between items.
+    pub const ITEM_GAP: f32 = 2.0;
+
+    /// Total menu height.
+    pub fn menu_height(&self) -> f32 {
+        let count = TabMenuAction::all().len() as f32;
+        count * (Self::ITEM_HEIGHT + Self::ITEM_GAP) + 8.0
+    }
+
+    /// Hit test: which item is under the given pixel position?
+    pub fn hit_test(&self, px: f32, py: f32) -> Option<usize> {
+        if !self.visible {
+            return None;
+        }
+        for (i, _) in TabMenuAction::all().iter().enumerate() {
+            let item_y = self.y + 4.0 + i as f32 * (Self::ITEM_HEIGHT + Self::ITEM_GAP);
+            if px >= self.x
+                && px < self.x + Self::ITEM_WIDTH
+                && py >= item_y
+                && py < item_y + Self::ITEM_HEIGHT
+            {
+                return Some(i);
+            }
+        }
+        None
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]

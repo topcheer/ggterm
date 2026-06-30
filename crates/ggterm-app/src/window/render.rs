@@ -969,6 +969,79 @@ impl DesktopApp {
             }
         }
 
+        // ── P28: Tab right-click context menu ─────────────────────────
+        if self.tab_context_menu.visible {
+            let menu_w = crate::tab_bar::TabContextMenuState::ITEM_WIDTH;
+            let menu_h = self.tab_context_menu.menu_height();
+            let mx = self.tab_context_menu.x;
+            let my = self.tab_context_menu.y;
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: mx,
+                y: my,
+                w: menu_w,
+                h: menu_h,
+                color: (0.1, 0.1, 0.14, 0.95),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            // Border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: mx,
+                y: my,
+                w: menu_w,
+                h: menu_h,
+                color: (0.3, 0.35, 0.45, 0.6),
+                radius: 8.0,
+                stroke_width: 1.0,
+            });
+
+            for (i, action) in crate::tab_bar::TabMenuAction::all().iter().enumerate() {
+                let iy = my
+                    + 4.0
+                    + i as f32
+                        * (crate::tab_bar::TabContextMenuState::ITEM_HEIGHT
+                            + crate::tab_bar::TabContextMenuState::ITEM_GAP);
+
+                // Hover highlight.
+                let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                if px >= mx
+                    && px < mx + menu_w
+                    && py >= iy
+                    && py < iy + crate::tab_bar::TabContextMenuState::ITEM_HEIGHT
+                {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: mx + 4.0,
+                        y: iy,
+                        w: menu_w - 8.0,
+                        h: crate::tab_bar::TabContextMenuState::ITEM_HEIGHT,
+                        color: (0.15, 0.25, 0.45, 0.6),
+                        radius: 4.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: action.label().to_string(),
+                    left: mx + 12.0,
+                    top: iy + 5.0,
+                    color: (220, 220, 230),
+                });
+
+                // Shortcut hint (right-aligned).
+                let shortcut = action.shortcut();
+                if !shortcut.is_empty() {
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: shortcut.to_string(),
+                        left: mx + menu_w - shortcut.len() as f32 * 7.0 - 12.0,
+                        top: iy + 5.0,
+                        color: (120, 120, 140),
+                    });
+                }
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

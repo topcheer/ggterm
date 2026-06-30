@@ -285,6 +285,8 @@ pub struct DesktopApp {
     /// P28-H: Shell switcher dropdown.
     #[allow(dead_code)]
     shell_switcher: crate::shell_switcher::ShellSwitcherState,
+    /// P28: Tab right-click context menu.
+    tab_context_menu: crate::tab_bar::TabContextMenuState,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -545,6 +547,7 @@ impl DesktopApp {
             sound_player: crate::sound::SoundPlayer::new(),
             bell_limiter: crate::sound::BellRateLimiter::default(),
             shell_switcher: crate::shell_switcher::ShellSwitcherState::new(),
+            tab_context_menu: crate::tab_bar::TabContextMenuState::default(),
         };
 
         // ── Step 7b: P22-A Try restore saved session ──

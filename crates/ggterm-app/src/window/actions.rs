@@ -713,4 +713,31 @@ impl DesktopApp {
             }
         }
     }
+
+    /// Execute a tab context menu action.
+    pub(super) fn execute_tab_menu_action(&mut self, action: crate::tab_bar::TabMenuAction) {
+        match action {
+            crate::tab_bar::TabMenuAction::NewTab => {
+                self.open_tab();
+            }
+            crate::tab_bar::TabMenuAction::CloseTab => {
+                if let Some(idx) = self.tab_context_menu.tab_index
+                    && idx < self.sessions.len()
+                {
+                    self.switch_tab(idx);
+                    self.close_tab();
+                }
+            }
+            crate::tab_bar::TabMenuAction::DuplicateTab => {
+                // Open a new tab (same shell as current).
+                self.open_tab();
+            }
+            crate::tab_bar::TabMenuAction::NextTab => {
+                self.next_tab();
+            }
+            crate::tab_bar::TabMenuAction::PrevTab => {
+                self.prev_tab();
+            }
+        }
+    }
 }

@@ -834,6 +834,43 @@ impl DesktopApp {
             winit::event::MouseButton::Other(n) => crate::mouse::MouseButton::Other(n as u8),
         };
 
+        // P28: Tab bar right-click → open tab context menu.
+        if state == ElementState::Pressed
+            && button == winit::event::MouseButton::Right
+            && self.tab_bar.visible
+        {
+            let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+            let bounds = self.content_area_bounds();
+            let tab_bar_h = bounds.y as f32;
+            if py < tab_bar_h {
+                let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+                if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
+                    self.tab_context_menu.open(tab_idx, px, py);
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+            }
+        }
+
+        // P28: Tab context menu item click or dismiss.
+        if state == ElementState::Pressed && self.tab_context_menu.visible {
+            let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+            let hit_idx = self.tab_context_menu.hit_test(px, py);
+            if let Some(idx) = hit_idx {
+                let action = crate::tab_bar::TabMenuAction::all()[idx];
+                self.execute_tab_menu_action(action);
+            }
+            self.tab_context_menu.close();
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            if hit_idx.is_some() {
+                return;
+            }
+        }
+
         let (col, row) = self.pixel_to_cell_pos();
         let mods = crate::mouse::MouseModifiers {
             shift: self.mods.shift,
