@@ -702,7 +702,10 @@ impl ApplicationHandler for DesktopApp {
         };
 
         // P27-E: Apply macOS vibrancy for backdrop blur effect.
-        #[cfg(target_os = "macos")]
+        // NOTE: Temporarily disabled — raw FFI objc_msgSend with NSRect
+        // struct returns causes a crash on ARM64. Will revisit with proper
+        // objc2-app-kit NSVisualEffectView feature flags.
+        #[cfg(all(target_os = "macos", feature = "vibrancy"))]
         {
             use raw_window_handle::HasWindowHandle;
             if let Ok(handle) = window.window_handle()
