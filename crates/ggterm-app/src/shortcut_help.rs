@@ -382,6 +382,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::System,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+P".into(),
+            description: "Cycle config profile".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+E".into(),
+            description: "Export config to clipboard".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
         // Effects / History
         ShortcutEntry {
             keys: "Ctrl+Shift+Y".into(),
