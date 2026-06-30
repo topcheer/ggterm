@@ -571,6 +571,35 @@ impl DesktopApp {
             }
         }
 
+        // ── P27-G: Scroll-to-bottom indicator ──────────────────────────
+        // Show a "↓" indicator when scrolled up in scrollback.
+        {
+            let is_scrolled = self.sessions[active].app().terminal().grid().is_scrolled();
+            if is_scrolled {
+                let indicator_y =
+                    content_bounds.y as f32 + content_bounds.height as f32 - cell_h - 4.0;
+                let indicator_x =
+                    content_bounds.x as f32 + content_bounds.width as f32 - cell_w * 3.0;
+                // Pill background.
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: indicator_x,
+                    y: indicator_y,
+                    w: cell_w * 2.5,
+                    h: cell_h + 4.0,
+                    color: (0.2, 0.4, 0.8, 0.7),
+                    radius: 4.0,
+                    stroke_width: 0.0,
+                });
+                // Arrow text.
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: "\u{2193}".to_string(), // ↓
+                    left: indicator_x + cell_w * 0.5,
+                    top: indicator_y + 2.0,
+                    color: (255, 255, 255),
+                });
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

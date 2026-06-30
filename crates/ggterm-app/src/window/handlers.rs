@@ -441,6 +441,23 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+End → scroll to bottom (reset viewport)
+        if self.mods.ctrl
+            && self.mods.shift
+            && let PhysicalKey::Code(KeyCode::End) = &event.physical_key
+        {
+            self.active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut()
+                .reset_viewport();
+            self.smooth_scroll.reset();
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
         // Alt+1-9 → switch to tab N (not configurable)
         if self.mods.alt
             && !self.mods.ctrl
