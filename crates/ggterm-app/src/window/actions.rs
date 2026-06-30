@@ -650,4 +650,67 @@ impl DesktopApp {
             log::info!("Maximized: {}", self.maximized);
         }
     }
+
+    // ── P28: Command palette action dispatch ──────────────────────
+
+    /// Execute an action by its command palette ID.
+    pub(super) fn execute_command_palette_action(&mut self, id: &str) {
+        match id {
+            "perf.toggle" => {
+                self.perf_monitor.toggle();
+            }
+            "sound.toggle" => {
+                self.sound_player.toggle();
+            }
+            "shell.switch" => {
+                self.shell_switcher.toggle();
+            }
+            "workspace.next" => {
+                self.workspaces.cycle_next();
+                self.animations.tab_switch();
+            }
+            "workspace.prev" => {
+                self.workspaces.cycle_prev();
+            }
+            "workspace.add" => {
+                let name = format!("ws-{}", self.workspaces.len());
+                self.workspaces.add_workspace(&name);
+                self.workspaces.set_active(&name);
+            }
+            "cursor.trail" => {
+                self.cursor_particles
+                    .set_effect(crate::perf_monitor::CursorEffect::Trail);
+            }
+            "cursor.glow" => {
+                self.cursor_particles
+                    .set_effect(crate::perf_monitor::CursorEffect::Glow);
+            }
+            "cursor.none" => {
+                self.cursor_particles
+                    .set_effect(crate::perf_monitor::CursorEffect::None);
+            }
+            "tab.new" => {
+                self.open_tab();
+            }
+            "tab.close" => {
+                self.close_tab();
+            }
+            "tab.next" => {
+                self.next_tab();
+            }
+            "terminal.copy" => {
+                self.copy_selection_to_clipboard();
+            }
+            "terminal.clear" => {
+                // Clear visible screen by sending Ctrl+L equivalent.
+                self.write_to_pty(b"\x1b[H\x1b[2J");
+            }
+            "terminal.reset" => {
+                self.active_session_mut().app_mut().terminal_mut().ris();
+            }
+            _ => {
+                log::debug!("Unhandled command palette action: {}", id);
+            }
+        }
+    }
 }

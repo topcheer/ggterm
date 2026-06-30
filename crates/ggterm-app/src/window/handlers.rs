@@ -424,7 +424,10 @@ impl DesktopApp {
                     let registry = crate::command_palette::CommandRegistry::defaults();
                     let results = self.command_palette.results(&registry);
                     self.command_palette.confirm(&results);
-                    // TODO: execute pending action
+                    // Execute the pending action.
+                    if let Some(action_id) = self.command_palette.take_action() {
+                        self.execute_command_palette_action(&action_id);
+                    }
                     self.command_palette.toggle(); // close after confirm
                     return;
                 }
@@ -1044,6 +1047,15 @@ impl DesktopApp {
 
         // P28-B: Update color picker hover state.
         self.update_color_picker_hover(col, row);
+
+        // P28-F: Feed mouse position to cursor particle system.
+        let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+        self.cursor_particles.update_cursor(px, py);
+        if self.cursor_particles.needs_render()
+            && let Some(ref window) = self.window
+        {
+            window.request_redraw();
+        }
     }
 
     /// P17-C: Update `hovered_link` based on the cell under the cursor.

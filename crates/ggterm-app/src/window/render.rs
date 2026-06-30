@@ -953,6 +953,22 @@ impl DesktopApp {
             });
         }
 
+        // ── P28-F: Cursor particle effects ────────────────────────────
+        if self.cursor_particles.has_particles() {
+            for p in self.cursor_particles.particles() {
+                let alpha = p.alpha;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: p.x - p.size,
+                    y: p.y - p.size,
+                    w: p.size * 2.0,
+                    h: p.size * 2.0,
+                    color: (0.3, 0.6, 1.0, alpha),
+                    radius: p.size,
+                    stroke_width: 0.0,
+                });
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
