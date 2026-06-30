@@ -232,6 +232,15 @@ pub struct DesktopApp {
     last_fps_time: std::time::Instant,
     /// Current FPS value.
     current_fps: f32,
+
+    // ── P25: Power user features ──
+    /// P25-B: Command palette state (Ctrl+Shift+P).
+    command_palette: crate::command_palette::CommandPaletteState,
+    /// P25-D: Broadcast input state (Ctrl+Shift+Alt+B).
+    broadcast: crate::broadcast_input::BroadcastState,
+    /// P25-E: Session recorder (None when not recording).
+    #[allow(dead_code)]
+    recorder: Option<ggterm_core::recording::SessionRecorder>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -473,6 +482,9 @@ impl DesktopApp {
             clipboard_feedback: crate::cursor_blink::ClipboardFeedback::new(),
             drag_tab: None,
             tab_close_hovered: false,
+            command_palette: crate::command_palette::CommandPaletteState::default(),
+            broadcast: crate::broadcast_input::BroadcastState::default(),
+            recorder: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──

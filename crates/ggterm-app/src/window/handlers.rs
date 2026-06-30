@@ -312,9 +312,72 @@ impl DesktopApp {
         // Ctrl+Shift+B → toggle status bar visibility (not configurable)
         if self.mods.ctrl
             && self.mods.shift
+            && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::KeyB) = &event.physical_key
         {
             self.status_bar_visible = !self.status_bar_visible;
+            return;
+        }
+
+        // P25-B: Ctrl+Shift+P → toggle command palette
+        if self.mods.ctrl
+            && self.mods.shift
+            && let PhysicalKey::Code(KeyCode::KeyP) = &event.physical_key
+        {
+            self.command_palette.toggle();
+            return;
+        }
+
+        // P25-B: When command palette is open, intercept keyboard input.
+        if self.command_palette.visible {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.command_palette.toggle(); // close
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Enter) => {
+                    let registry = crate::command_palette::CommandRegistry::defaults();
+                    let results = self.command_palette.results(&registry);
+                    self.command_palette.confirm(&results);
+                    // TODO: execute pending action
+                    self.command_palette.toggle(); // close after confirm
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    let registry = crate::command_palette::CommandRegistry::defaults();
+                    let results = self.command_palette.results(&registry);
+                    self.command_palette.move_up(results.len());
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    let registry = crate::command_palette::CommandRegistry::defaults();
+                    let results = self.command_palette.results(&registry);
+                    self.command_palette.move_down(results.len());
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Backspace) => {
+                    self.command_palette.backspace();
+                    return;
+                }
+                _ => {}
+            }
+            // Type printable characters into the palette query.
+            if let Some(c) = event.text.as_ref().and_then(|t| t.chars().next())
+                && !c.is_control()
+            {
+                self.command_palette.type_char(c);
+                return;
+            }
+            return; // swallow all other keys when palette is open
+        }
+
+        // P25-D: Ctrl+Shift+Alt+B → cycle broadcast mode
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyB) = &event.physical_key
+        {
+            self.broadcast.cycle();
             return;
         }
 

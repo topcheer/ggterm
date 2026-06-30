@@ -277,6 +277,16 @@ pub struct CommandPaletteState {
 }
 
 impl CommandPaletteState {
+    /// Create a new palette state (hidden by default).
+    pub fn new() -> Self {
+        Self {
+            visible: false,
+            query: String::new(),
+            selected: 0,
+            pending_action: None,
+        }
+    }
+
     /// Toggle visibility.
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
