@@ -915,6 +915,44 @@ impl DesktopApp {
             });
         }
 
+        // ── P28-B: Color picker hover swatch ──────────────────────────
+        if let Some(ref hovered) = self.color_picker.hovered {
+            let (cx, cy) = self.cursor_pos;
+            let swatch_x = cx as f32 + 16.0;
+            let swatch_y = cy as f32 + 16.0;
+            let swatch_size = 24.0_f32;
+
+            // Color swatch (filled rounded rect).
+            let (r, g, b) = hovered.rgb;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: swatch_x,
+                y: swatch_y,
+                w: swatch_size,
+                h: swatch_size,
+                color: (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0),
+                radius: 4.0,
+                stroke_width: 0.0,
+            });
+            // Border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: swatch_x,
+                y: swatch_y,
+                w: swatch_size,
+                h: swatch_size,
+                color: (0.8, 0.8, 0.8, 0.6),
+                radius: 4.0,
+                stroke_width: 1.0,
+            });
+
+            // Hex label next to the swatch.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: hovered.text.clone(),
+                left: swatch_x + swatch_size + 6.0,
+                top: swatch_y + 4.0,
+                color: (r, g, b),
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

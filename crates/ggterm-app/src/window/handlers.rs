@@ -1041,6 +1041,9 @@ impl DesktopApp {
 
         // P17-C: Detect hovered URL (OSC 8 hyperlink or plain text).
         self.update_hovered_link(col, row);
+
+        // P28-B: Update color picker hover state.
+        self.update_color_picker_hover(col, row);
     }
 
     /// P17-C: Update `hovered_link` based on the cell under the cursor.
@@ -1073,6 +1076,30 @@ impl DesktopApp {
         }
 
         self.hovered_link = None;
+    }
+
+    /// P28-B: Update color picker hover state based on the cell under cursor.
+    /// Scans the current row for hex/rgb color codes and checks if the cursor
+    /// is hovering over one.
+    pub(super) fn update_color_picker_hover(&mut self, col: u16, row: u16) {
+        let col = col as usize;
+        let row = row as usize;
+        let grid = &self.sessions[self.active].app().grid();
+
+        if let Some(cell_row) = grid.display_row(row) {
+            let line: String = cell_row.cells.iter().map(|c| c.ch).collect();
+            let mut matches = crate::color_picker::scan_line_for_colors(&line);
+            for m in &mut matches {
+                m.row = row;
+            }
+            if let Some(found) = crate::color_picker::find_color_at(&matches, col, row) {
+                let hovered = found.clone();
+                self.color_picker.hovered = Some(hovered);
+                return;
+            }
+        }
+
+        self.color_picker.clear();
     }
 
     /// P27-B: Select the word at the given cell position.
