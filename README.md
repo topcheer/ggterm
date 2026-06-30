@@ -142,6 +142,9 @@ Platform Abstraction (ConPTY / POSIX)
 | 19 | Desktop UI: Splits, Overlay Rendering, Settings, Menu, About | Done |
 | 20 | Multi-Pane Rendering, Pane Borders, Mouse Pane Focus | Done |
 | 21 | Session Persistence, Config Validation, Drag-to-Resize, Dirty Rect | Done |
+| 22 | Session Lifecycle, Profiles, OSC 7 CWD, Window Extraction | Done |
+| 23 | Cursor Blink, Config Import/Export, Plugin Activation, Tab Reorder | Done |
+| 24 | Synchronized Output, Text Reflow, DECSCA/DECSED, Debug Overlay, Notifications | Done |
 
 ## Usage
 
