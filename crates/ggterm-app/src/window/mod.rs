@@ -301,6 +301,10 @@ pub struct DesktopApp {
     rename_text: String,
     /// P30-C: Toast notification (message + remaining frames).
     toast: Option<(String, u32)>,
+    /// P31: Saved window position from previous session.
+    saved_window_pos: Option<(i32, i32)>,
+    /// P31: Saved window size from previous session.
+    saved_window_size: Option<(u32, u32)>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -569,6 +573,8 @@ impl DesktopApp {
             renaming_tab: None,
             rename_text: String::new(),
             toast: None,
+            saved_window_pos: None,
+            saved_window_size: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -578,6 +584,13 @@ impl DesktopApp {
                     "Found saved session: {} tab(s), restoring...",
                     data.tabs.len()
                 );
+                // P31: Restore window geometry.
+                if let (Some(w), Some(h)) = (data.window_width, data.window_height) {
+                    desktop.saved_window_size = Some((w, h));
+                }
+                if let Some(x) = data.window_x {
+                    desktop.saved_window_pos = Some((x, data.window_y.unwrap_or(0)));
+                }
                 let plan = crate::session::SessionPlan::from_data(&data);
                 desktop.restore_from_plan(&plan);
                 desktop.restored_session = true;
@@ -750,13 +763,16 @@ impl ApplicationHandler for DesktopApp {
         log::info!("Initializing window + GPU");
 
         // 1. Create the window with logical (pre-scale) dimensions.
-        //    We'll resize to physical dimensions after getting scale_factor.
-        let attrs = Window::default_attributes()
+        //    Use saved session geometry if available.
+        let (win_w, win_h) = self
+            .saved_window_size
+            .unwrap_or((self.config.window_width(), self.config.window_height()));
+        let mut attrs = Window::default_attributes()
             .with_title(&self.config.title)
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                self.config.window_width() as f64,
-                self.config.window_height() as f64,
-            ));
+            .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64));
+        if let Some(x) = self.saved_window_pos {
+            attrs = attrs.with_position(winit::dpi::LogicalPosition::new(x.0 as f64, x.1 as f64));
+        }
 
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),

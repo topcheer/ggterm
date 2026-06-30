@@ -198,10 +198,32 @@ impl DesktopApp {
                 }
             })
             .collect();
+        // P31: Capture current window geometry for persistence.
+        let (win_x, win_y, win_w, win_h) = if let Some(ref window) = self.window {
+            let outer = window.outer_position();
+            let inner = window.inner_size();
+            let scale = window.scale_factor();
+            // Convert physical → logical for persistence.
+            let logical_w = (inner.width as f64 / scale) as u32;
+            let logical_h = (inner.height as f64 / scale) as u32;
+            (
+                outer.as_ref().ok().map(|p| p.x),
+                outer.as_ref().ok().map(|p| p.y),
+                Some(logical_w),
+                Some(logical_h),
+            )
+        } else {
+            (None, None, None, None)
+        };
+
         crate::session::SessionData {
             version: 1,
             tabs,
             active_tab: self.active,
+            window_x: win_x,
+            window_y: win_y,
+            window_width: win_w,
+            window_height: win_h,
         }
     }
 

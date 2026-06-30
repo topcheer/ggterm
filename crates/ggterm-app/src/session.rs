@@ -40,6 +40,18 @@ pub struct SessionData {
     pub tabs: Vec<TabData>,
     /// Index of the active tab.
     pub active_tab: usize,
+    /// Saved window position (x) in logical pixels.
+    #[serde(default)]
+    pub window_x: Option<i32>,
+    /// Saved window position (y) in logical pixels.
+    #[serde(default)]
+    pub window_y: Option<i32>,
+    /// Saved window width in logical pixels.
+    #[serde(default)]
+    pub window_width: Option<u32>,
+    /// Saved window height in logical pixels.
+    #[serde(default)]
+    pub window_height: Option<u32>,
 }
 
 /// One tab's saved state.
@@ -418,6 +430,10 @@ mod tests {
                 splits: SplitNodeData::Pane { id: 0 },
             }],
             active_tab: 0,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         let json = serde_json::to_string(&data).unwrap();
         let restored: SessionData = serde_json::from_str(&json).unwrap();
@@ -459,6 +475,10 @@ mod tests {
                 },
             ],
             active_tab: 1,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         let json = serde_json::to_string_pretty(&data).unwrap();
         let restored: SessionData = serde_json::from_str(&json).unwrap();
@@ -497,6 +517,10 @@ mod tests {
                 },
             }],
             active_tab: 0,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         let json = serde_json::to_string(&data).unwrap();
         let restored: SessionData = serde_json::from_str(&json).unwrap();
@@ -537,6 +561,10 @@ mod tests {
                 },
             }],
             active_tab: 0,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         let plan = SessionPlan::from_data(&data);
         assert_eq!(plan.tabs.len(), 1);
@@ -561,6 +589,10 @@ mod tests {
                 splits: SplitNodeData::Pane { id: 0 },
             }],
             active_tab: 99, // out of bounds
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         let plan = SessionPlan::from_data(&data);
         assert_eq!(plan.active_tab, 0); // clamped
@@ -572,6 +604,10 @@ mod tests {
             version: 1,
             tabs: vec![],
             active_tab: 0,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         let plan = SessionPlan::from_data(&data);
         assert!(plan.tabs.is_empty());
@@ -648,6 +684,10 @@ mod tests {
                 splits: SplitNodeData::Pane { id: 0 },
             }],
             active_tab: 0,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
 
         save_to_path(&data, &path).unwrap();
@@ -668,6 +708,10 @@ mod tests {
             version: 1,
             tabs: vec![],
             active_tab: 0,
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
         };
         save_to_path(&data, &path).unwrap();
         assert!(path.exists());
