@@ -943,6 +943,37 @@ impl DesktopApp {
             alt: self.mods.alt,
         };
 
+        // P30-A: Scrollbar click — start drag.
+        if state == ElementState::Pressed
+            && button == winit::event::MouseButton::Left
+            && let Some(ref renderer) = self.renderer
+        {
+            let screen_w = renderer.resolution_width() as f32;
+            let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+            let bounds = self.content_area_bounds();
+            if px >= screen_w - 12.0
+                && px <= screen_w
+                && py >= bounds.y as f32
+                && py < (bounds.y + bounds.height) as f32
+            {
+                let scrollback_len = self.active_session().app().grid().scrollback_len();
+                if scrollback_len > 0 {
+                    self.scrollbar_drag = Some(py);
+                    self.scroll_to_scrollbar_pos(py);
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+            }
+        }
+
+        // P30-A: Scrollbar release — stop drag.
+        if state == ElementState::Released && self.scrollbar_drag.is_some() {
+            self.scrollbar_drag = None;
+            return;
+        }
+
         let term = self.active_session().app().terminal();
 
         // Check if mouse tracking is active.
@@ -1066,6 +1097,16 @@ impl DesktopApp {
 
     /// Handle cursor motion — extend selection or report mouse motion.
     pub(super) fn handle_cursor_moved(&mut self) {
+        // P30-A: Scrollbar drag — scroll to cursor Y position.
+        if self.scrollbar_drag.is_some() {
+            let py = self.cursor_pos.1 as f32;
+            self.scroll_to_scrollbar_pos(py);
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
         // P27-C: Update context menu hover state.
         if self.context_menu.visible {
             let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);

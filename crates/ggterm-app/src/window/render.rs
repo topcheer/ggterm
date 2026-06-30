@@ -1279,6 +1279,52 @@ impl DesktopApp {
             });
         }
 
+        // ── P30-A: Scrollbar ──────────────────────────────────────────
+        // Show a thin scrollbar on the right edge when there's scrollback.
+        {
+            let scrollback_len = grid.scrollback_len();
+            if scrollback_len > 0 {
+                let total_rows = scrollback_len + grid.height();
+                let visible_ratio = grid.height() as f32 / total_rows as f32;
+                let visible_ratio = visible_ratio.clamp(0.05, 1.0);
+
+                // display_offset: 0 = at bottom (most recent), scrollback_len = at top.
+                // Scroll position from top: scrollback_len - display_offset.
+                let scroll_from_top =
+                    (scrollback_len - grid.display_offset()) as f32 / total_rows as f32;
+
+                let bar_x = screen_w - 8.0; // 8px from right edge
+                let bar_w = 4.0;
+                let bar_track_y = content_bounds.y as f32;
+                let bar_track_h = content_bounds.height as f32;
+                let thumb_h = (bar_track_h * visible_ratio).max(20.0);
+                let thumb_y = bar_track_y + scroll_from_top * (bar_track_h - thumb_h);
+
+                // Track (faint background).
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: bar_x,
+                    y: bar_track_y,
+                    w: bar_w,
+                    h: bar_track_h,
+                    color: (1.0, 1.0, 1.0, 0.04),
+                    radius: 2.0,
+                    stroke_width: 0.0,
+                });
+
+                // Thumb (actual position indicator).
+                let thumb_alpha = if grid.is_scrolled() { 0.5 } else { 0.25 };
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: bar_x,
+                    y: thumb_y,
+                    w: bar_w,
+                    h: thumb_h,
+                    color: (1.0, 1.0, 1.0, thumb_alpha),
+                    radius: 2.0,
+                    stroke_width: 0.0,
+                });
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

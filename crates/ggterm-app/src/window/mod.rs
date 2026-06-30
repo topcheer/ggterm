@@ -293,6 +293,8 @@ pub struct DesktopApp {
     quit_confirm: bool,
     /// P29-C: Flag to exit event loop on next about_to_wait.
     should_quit: bool,
+    /// P30-A: Scrollbar drag state (Some(start_y) when dragging).
+    scrollbar_drag: Option<f32>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -557,6 +559,7 @@ impl DesktopApp {
             shortcut_help: crate::shortcut_help::ShortcutHelpState::new(),
             quit_confirm: false,
             should_quit: false,
+            scrollbar_drag: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──

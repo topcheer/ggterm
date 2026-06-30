@@ -651,6 +651,52 @@ impl DesktopApp {
         }
     }
 
+    // ── P30-A: Scrollbar scroll-to-position ────────────────────────
+
+    /// Scroll the active session's grid so the scrollbar thumb aligns with
+    /// the given pixel Y position.
+    pub(super) fn scroll_to_scrollbar_pos(&mut self, py: f32) {
+        let bounds = self.content_area_bounds();
+        let track_y = bounds.y as f32;
+        let track_h = bounds.height as f32;
+
+        // Clamp py within track bounds.
+        let clamped = py.clamp(track_y, track_y + track_h);
+
+        // Normalized position: 0.0 = top (oldest), 1.0 = bottom (newest).
+        let norm = if track_h > 0.0 {
+            (clamped - track_y) / track_h
+        } else {
+            1.0
+        };
+
+        // Get scroll state.
+        let (scrollback_len, _height, current_offset) = {
+            let grid = self.active_session().app().grid();
+            (grid.scrollback_len(), grid.height(), grid.display_offset())
+        };
+        if scrollback_len == 0 {
+            return;
+        }
+
+        // Target display_offset: 0 = bottom (newest), scrollback_len = top (oldest).
+        let target_offset = ((1.0 - norm) * scrollback_len as f32).round() as usize;
+        let target_offset = target_offset.min(scrollback_len);
+
+        // Apply delta.
+        let delta = target_offset as i64 - current_offset as i64;
+        let grid = self
+            .active_session_mut()
+            .app_mut()
+            .terminal_mut()
+            .grid_mut();
+        if delta > 0 {
+            grid.scroll_up_viewport(delta as usize);
+        } else if delta < 0 {
+            grid.scroll_down_viewport((-delta) as usize);
+        }
+    }
+
     // ── P28: Command palette action dispatch ──────────────────────
 
     /// Execute an action by its command palette ID.
