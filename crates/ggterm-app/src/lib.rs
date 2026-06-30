@@ -27,6 +27,16 @@
 //! - **desktop**: Enables winit window + wgpu GPU rendering via
 //!   `GlyphonRenderer`. Adds winit, wgpu, pollster dependencies.
 
+// P28-A through P28-H: Phase 28 feature modules
+pub mod animations;
+pub mod color_picker;
+pub mod command_history;
+pub mod file_preview;
+pub mod perf_monitor;
+pub mod shell_switcher;
+pub mod sound;
+pub mod workspace;
+
 pub mod about_dialog;
 pub mod app;
 pub mod broadcast_input;

@@ -253,6 +253,38 @@ pub struct DesktopApp {
     /// P25-E: Session recorder (None when not recording).
     #[allow(dead_code)]
     recorder: Option<ggterm_core::recording::SessionRecorder>,
+
+    // ── P28: Phase 28 features ──
+    /// P28-A: Animation manager for transitions.
+    #[allow(dead_code)]
+    animations: crate::animations::AnimationManager,
+    /// P28-B: Color picker overlay state.
+    #[allow(dead_code)]
+    color_picker: crate::color_picker::ColorPickerState,
+    /// P28-C: Command history sidebar.
+    #[allow(dead_code)]
+    cmd_history: crate::command_history::CommandHistoryState,
+    /// P28-D: Workspace manager.
+    #[allow(dead_code)]
+    workspaces: crate::workspace::WorkspaceManager,
+    /// P28-E: File preview overlay.
+    #[allow(dead_code)]
+    file_preview: crate::file_preview::FilePreviewState,
+    /// P28-F: Performance monitor.
+    #[allow(dead_code)]
+    perf_monitor: crate::perf_monitor::PerfMonitor,
+    /// P28-F: Cursor particle system.
+    #[allow(dead_code)]
+    cursor_particles: crate::perf_monitor::CursorParticleSystem,
+    /// P28-G: Sound player.
+    #[allow(dead_code)]
+    sound_player: crate::sound::SoundPlayer,
+    /// P28-G: Bell rate limiter.
+    #[allow(dead_code)]
+    bell_limiter: crate::sound::BellRateLimiter,
+    /// P28-H: Shell switcher dropdown.
+    #[allow(dead_code)]
+    shell_switcher: crate::shell_switcher::ShellSwitcherState,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -503,6 +535,16 @@ impl DesktopApp {
             command_palette: crate::command_palette::CommandPaletteState::default(),
             broadcast: crate::broadcast_input::BroadcastState::default(),
             recorder: None,
+            animations: crate::animations::AnimationManager::default(),
+            color_picker: crate::color_picker::ColorPickerState::new(),
+            cmd_history: crate::command_history::CommandHistoryState::new(),
+            workspaces: crate::workspace::WorkspaceManager::new(),
+            file_preview: crate::file_preview::FilePreviewState::new(),
+            perf_monitor: crate::perf_monitor::PerfMonitor::new(),
+            cursor_particles: crate::perf_monitor::CursorParticleSystem::new(),
+            sound_player: crate::sound::SoundPlayer::new(),
+            bell_limiter: crate::sound::BellRateLimiter::default(),
+            shell_switcher: crate::shell_switcher::ShellSwitcherState::new(),
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
