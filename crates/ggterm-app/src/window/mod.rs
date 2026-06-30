@@ -772,7 +772,6 @@ impl ApplicationHandler for DesktopApp {
                 // Check exit — close pane/tab or quit app.
                 if !self.active_session().is_running() {
                     if self.handle_pane_exit() {
-                        // App should exit.
                         event_loop.exit();
                         return;
                     }
@@ -865,11 +864,11 @@ impl ApplicationHandler for DesktopApp {
                     }
                 }
 
-                // Check PTY exit.
-                if !self.active_session_mut().is_alive() {
-                    log::info!("PTY exited");
-                    event_loop.exit();
-                }
+                // NOTE: PTY exit is handled at the top of RedrawRequested
+                // (line ~772) via is_running(), and in about_to_wait.
+                // Do NOT add an is_alive() check here — it races with the
+                // event channel. is_alive() becomes false before pump()
+                // processes PtyExit, causing premature app exit.
             }
 
             WindowEvent::Resized(size) => {
@@ -1008,8 +1007,6 @@ impl ApplicationHandler for DesktopApp {
         // Check if active pane's shell has exited (e.g. Ctrl+D, `exit`).
         if !self.active_session().is_running() || !self.active_session_mut().is_alive() {
             if self.handle_pane_exit() {
-                // Last pane in last tab — exit the app.
-                log::info!("Last shell exited, quitting");
                 event_loop.exit();
             }
             return;
