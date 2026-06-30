@@ -361,6 +361,54 @@ pub struct Terminal {
     /// Dynamic background color set via OSC 11 (P17-A).
     /// When set, overrides the theme default background.
     pub(crate) dynamic_bg: Option<Color>,
+    /// Current working directory set via OSC 7 (P22-D).
+    /// Format: `OSC 7 ; file://hostname/path ST`
+    pub(crate) cwd: Option<std::path::PathBuf>,
+}
+
+/// Parse an OSC 7 working directory URI.
+///
+/// Format: `file://hostname/path`
+/// Returns the path component as a `PathBuf`.
+/// P22-D: used by OSC 7 handler.
+fn parse_osc7_cwd(payload: &str) -> Option<std::path::PathBuf> {
+    // Strip the `file://` scheme prefix.
+    let rest = payload.strip_prefix("file://")?;
+    // Skip the hostname (everything up to the first `/`).
+    let path = match rest.find('/') {
+        Some(idx) => &rest[idx..],
+        None => return None, // No path component.
+    };
+    // Percent-decode common sequences (%20 → space, etc).
+    let decoded = percent_decode(path);
+    Some(std::path::PathBuf::from(decoded))
+}
+
+/// Minimal percent-decoding for file URIs.
+fn percent_decode(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '%' {
+            let hi = chars.next();
+            let lo = chars.next();
+            if let (Some(hi), Some(lo)) = (hi, lo) {
+                if let Ok(byte) = u8::from_str_radix(&format!("{hi}{lo}"), 16) {
+                    result.push(byte as char);
+                    continue;
+                }
+                // Failed decode — keep the original.
+                result.push('%');
+                result.push(hi);
+                result.push(lo);
+            } else {
+                result.push('%');
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 /// Parse an X11 color specification string into a Color.
@@ -445,6 +493,7 @@ impl Terminal {
             alt_saved_cursor: Cursor::default(),
             dynamic_fg: None,
             dynamic_bg: None,
+            cwd: None,
         }
     }
 
@@ -553,6 +602,11 @@ impl Terminal {
     /// Return the dynamic background color if set via OSC 11 (P17-A).
     pub fn dynamic_bg(&self) -> Option<&Color> {
         self.dynamic_bg.as_ref()
+    }
+
+    /// Return the current working directory set via OSC 7 (P22-D).
+    pub fn cwd(&self) -> Option<&std::path::Path> {
+        self.cwd.as_deref()
     }
 
     /// Return the device response buffer (DA/DSR replies).
@@ -1512,6 +1566,15 @@ impl Perform for Terminal {
                         Some(12) => { /* cursor color tracked separately — future */ }
                         _ => {}
                     }
+                }
+            }
+            Some(7) => {
+                // OSC 7 — Current working directory.
+                // Format: `OSC 7 ; file://hostname/path ST`
+                // We extract the path component and store it.
+                let payload = parts.next().unwrap_or("");
+                if let Some(path) = parse_osc7_cwd(payload) {
+                    self.cwd = Some(path);
                 }
             }
             _ => {}
@@ -3430,5 +3493,75 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]10;#abcdef\x1b\\");
         assert_eq!(t.dynamic_fg(), Some(&Color::Rgb(171, 205, 239)));
+    }
+
+    // ── P22-D: OSC 7 working directory tests ──────────────────
+
+    #[test]
+    fn t_osc7_basic_file_uri() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]7;file://localhost/home/user\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/home/user")));
+    }
+
+    #[test]
+    fn t_osc7_with_hostname() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]7;file://myhost.example.com/var/log\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/var/log")));
+    }
+
+    #[test]
+    fn t_osc7_empty_path() {
+        let mut t = Terminal::new(80, 24);
+        // file://hostname with no trailing path → no cwd set
+        feed(&mut t, b"\x1b]7;file://hostname\x1b\\");
+        assert!(t.cwd().is_none());
+    }
+
+    #[test]
+    fn t_osc7_not_file_scheme() {
+        let mut t = Terminal::new(80, 24);
+        // Non-file:// schemes are ignored
+        feed(&mut t, b"\x1b]7;http://example.com/path\x1b\\");
+        assert!(t.cwd().is_none());
+    }
+
+    #[test]
+    fn t_osc7_percent_encoded() {
+        let mut t = Terminal::new(80, 24);
+        // %20 → space
+        feed(&mut t, b"\x1b]7;file://host/home/my%20dir\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/home/my dir")));
+    }
+
+    #[test]
+    fn t_osc7_overwrites_previous() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]7;file://host/home/a\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/home/a")));
+
+        feed(&mut t, b"\x1b]7;file://host/home/b\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/home/b")));
+    }
+
+    #[test]
+    fn t_osc7_default_none() {
+        let t = Terminal::new(80, 24);
+        assert!(t.cwd().is_none());
+    }
+
+    #[test]
+    fn t_parse_osc7_cwd_direct() {
+        assert_eq!(
+            parse_osc7_cwd("file://localhost/home/user"),
+            Some(std::path::PathBuf::from("/home/user"))
+        );
+        assert_eq!(
+            parse_osc7_cwd("file://host/path/to/dir"),
+            Some(std::path::PathBuf::from("/path/to/dir"))
+        );
+        assert_eq!(parse_osc7_cwd("file://host"), None);
+        assert_eq!(parse_osc7_cwd("not-a-uri"), None);
     }
 }

@@ -34,6 +34,10 @@ pub struct StatusBar {
     /// The renderer can use `has_config_error()` / `config_error_text()` to
     /// draw a red indicator.
     pub config_error: Option<String>,
+    /// Currently active profile name (P22-C).
+    ///
+    /// Empty string = no profile active (base config).
+    pub profile_name: String,
 }
 
 impl Default for StatusBar {
@@ -55,6 +59,7 @@ impl StatusBar {
             ai_active: false,
             exit_code: None,
             config_error: None,
+            profile_name: String::new(),
         }
     }
 
@@ -115,6 +120,22 @@ impl StatusBar {
         self.config_error.as_deref()
     }
 
+    /// Set the active profile name (P22-C).
+    ///
+    /// Pass an empty string to indicate the base config (no profile active).
+    pub fn set_profile(&mut self, name: impl Into<String>) {
+        self.profile_name = name.into();
+    }
+
+    /// Returns the active profile name, or `None` if no profile is active (P22-C).
+    pub fn active_profile(&self) -> Option<&str> {
+        if self.profile_name.is_empty() {
+            None
+        } else {
+            Some(&self.profile_name)
+        }
+    }
+
     /// Format the status bar as a single-line string.
     ///
     /// Example: `"!ERROR! | Row:5 Col:10 | Tab 1/3 | exit:0 | bell | search | ai"`
@@ -155,6 +176,11 @@ impl StatusBar {
         }
         if self.ai_active {
             parts.push("ai".to_string());
+        }
+
+        // Active profile name (P22-C).
+        if !self.profile_name.is_empty() {
+            parts.push(format!("@{}", self.profile_name));
         }
 
         parts.join(" | ")
@@ -329,5 +355,64 @@ mod tests {
         let err_pos = formatted.find("!ERROR!").unwrap();
         let cursor_pos = formatted.find("Row:3").unwrap();
         assert!(err_pos < cursor_pos);
+    }
+
+    // ── P22-C: Profile display tests ──────────────────────────────────
+
+    #[test]
+    fn t_profile_default_empty() {
+        let sb = StatusBar::new();
+        assert!(sb.active_profile().is_none());
+        assert!(sb.profile_name.is_empty());
+    }
+
+    #[test]
+    fn t_profile_set_and_read() {
+        let mut sb = StatusBar::new();
+        sb.set_profile("presentation");
+        assert_eq!(sb.active_profile(), Some("presentation"));
+    }
+
+    #[test]
+    fn t_profile_set_empty_clears() {
+        let mut sb = StatusBar::new();
+        sb.set_profile("compact");
+        sb.set_profile("");
+        assert!(sb.active_profile().is_none());
+    }
+
+    #[test]
+    fn t_profile_shown_in_format() {
+        let mut sb = StatusBar::new();
+        sb.update_cursor(5, 10);
+        sb.set_profile("presentation");
+        assert_eq!(sb.format(), "Row:5 Col:10 | @presentation");
+    }
+
+    #[test]
+    fn t_profile_with_other_flags() {
+        let mut sb = StatusBar::new();
+        sb.update_cursor(0, 0);
+        sb.set_bell(true);
+        sb.set_profile("compact");
+        assert_eq!(sb.format(), "Row:0 Col:0 | bell | @compact");
+    }
+
+    #[test]
+    fn t_profile_not_shown_when_empty() {
+        let mut sb = StatusBar::new();
+        sb.set_profile("");
+        assert_eq!(sb.format(), "Row:0 Col:0");
+    }
+
+    #[test]
+    fn t_profile_appears_after_ai() {
+        let mut sb = StatusBar::new();
+        sb.set_ai(true);
+        sb.set_profile("test");
+        let formatted = sb.format();
+        let ai_pos = formatted.find("ai").unwrap();
+        let profile_pos = formatted.find("@test").unwrap();
+        assert!(ai_pos < profile_pos);
     }
 }

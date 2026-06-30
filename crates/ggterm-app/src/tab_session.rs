@@ -141,6 +141,20 @@ impl TabSession {
         self.title = title.into();
     }
 
+    /// Return the active pane's current working directory (P22-D).
+    /// Set via OSC 7 by shell integration.
+    pub fn cwd(&self) -> Option<&std::path::Path> {
+        self.active_pane().app.terminal().cwd()
+    }
+
+    /// Return a specific pane's current working directory (P22-D).
+    pub fn pane_cwd(&self, id: PaneId) -> Option<std::path::PathBuf> {
+        self.panes
+            .get(id)
+            .and_then(|p| p.as_ref())
+            .and_then(|p| p.app.terminal().cwd().map(|p| p.to_path_buf()))
+    }
+
     /// Pump events for **all** panes from their PTY reader threads.
     pub fn pump(&mut self) {
         for pane in self.panes.iter_mut().flatten() {
@@ -707,5 +721,34 @@ mod tests {
             !session.pane_needs_prepare(0),
             "pump with no data should not set needs_prepare"
         );
+    }
+
+    // ── P22-D: OSC 7 cwd tests ────────────────────────────────
+
+    #[test]
+    fn test_cwd_default_none() {
+        let session = TabSession::new_test(80, 24);
+        assert!(session.cwd().is_none());
+    }
+
+    #[test]
+    fn test_cwd_after_osc7() {
+        let mut session = TabSession::new_test(80, 24);
+        // Feed OSC 7 via the terminal event channel
+        use crate::event::AppEvent;
+        let osc7 = b"\x1b]7;file://localhost/home/user/projects\x1b\\".to_vec();
+        session.app_mut().handle_event(AppEvent::PtyBytes(osc7));
+        session.pump();
+        assert_eq!(
+            session.cwd(),
+            Some(std::path::Path::new("/home/user/projects"))
+        );
+    }
+
+    #[test]
+    fn test_pane_cwd_independent() {
+        let session = TabSession::new_test(80, 24);
+        // Only one pane initially — cwd should be queryable per-pane
+        assert!(session.pane_cwd(0).is_none());
     }
 }

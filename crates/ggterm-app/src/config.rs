@@ -52,6 +52,34 @@ pub struct Config {
     pub ai: AiConfig,
     /// Keyboard shortcut overrides.
     pub keybindings: KeybindingsConfig,
+    /// Named configuration profiles (P22-C).
+    ///
+    /// Each profile can override `font_size`, `theme`, and `scrollback_lines`.
+    /// Users define them under `[profiles.<name>]` in config.toml.
+    pub profiles: std::collections::HashMap<String, Profile>,
+}
+
+/// A named configuration profile (P22-C).
+///
+/// Fields that are `None` fall back to the base config value.
+///
+/// ```toml
+/// [profiles.presentation]
+/// font_size = 22
+/// theme = "light"
+///
+/// [profiles.compact]
+/// font_size = 10
+/// scrollback_lines = 50000
+/// ```
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct Profile {
+    /// Override font size for this profile.
+    pub font_size: Option<u32>,
+    /// Override theme name for this profile.
+    pub theme: Option<String>,
+    /// Override scrollback lines for this profile.
+    pub scrollback_lines: Option<usize>,
 }
 
 /// Appearance / rendering configuration.
@@ -168,6 +196,7 @@ mod raw {
         pub terminal: Terminal,
         pub ai: Ai,
         pub keybindings: Keybindings,
+        pub profiles: std::collections::HashMap<String, super::Profile>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -291,6 +320,9 @@ impl Config {
         config.keybindings.reset = kb.reset;
         config.keybindings.cycle_theme = kb.cycle_theme;
 
+        // P22-C: Named profiles.
+        config.profiles = raw.profiles;
+
         config
     }
 
@@ -365,6 +397,73 @@ impl Config {
         }
 
         Ok(())
+    }
+
+    // ── Profile management (P22-C) ──────────────────────────────────────
+
+    /// Returns the sorted list of profile names defined in config.toml.
+    pub fn profile_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.profiles.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Returns `true` if at least one profile is defined.
+    pub fn has_profiles(&self) -> bool {
+        !self.profiles.is_empty()
+    }
+
+    /// Apply a named profile's overrides to this config in-place.
+    ///
+    /// Only fields that are `Some` in the profile are applied; `None` fields
+    /// retain their current value.  Returns `Err` if the profile name is not
+    /// found.
+    pub fn apply_profile(&mut self, name: &str) -> Result<(), ConfigError> {
+        let profile = self
+            .profiles
+            .get(name)
+            .ok_or_else(|| ConfigError::Validation(format!("profile '{}' not found", name)))?;
+
+        if let Some(fs) = profile.font_size {
+            self.appearance.font_size = fs;
+        }
+        if let Some(ref theme) = profile.theme {
+            self.appearance.theme = theme.clone();
+        }
+        if let Some(sb) = profile.scrollback_lines {
+            self.terminal.scrollback_lines = sb;
+        }
+
+        Ok(())
+    }
+
+    /// Cycle to the next profile (alphabetical order) and apply it.
+    ///
+    /// Returns the name of the newly-active profile, or `None` if no profiles
+    /// are defined.
+    ///
+    /// `current` is the currently active profile name (empty string = none/base).
+    pub fn cycle_profile(&mut self, current: &str) -> Option<String> {
+        let names = self.profile_names();
+        if names.is_empty() {
+            return None;
+        }
+
+        let next = if current.is_empty() {
+            // No active profile → first one.
+            names[0].clone()
+        } else {
+            // Find current index, advance to next (wraps around).
+            let idx = names.iter().position(|n| n == current);
+            match idx {
+                Some(i) => names[(i + 1) % names.len()].clone(),
+                None => names[0].clone(),
+            }
+        };
+
+        // apply_profile borrows &mut self, so we clone the name first.
+        let _ = self.apply_profile(&next);
+        Some(next)
     }
 }
 
@@ -1330,5 +1429,179 @@ mod watch_tests {
         let msg = format!("{}", err);
         assert!(msg.contains("font_size"));
         assert!(msg.contains("validation"));
+    }
+
+    // ── P22-C: Profile tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_profiles_parse_from_toml() {
+        let toml = r#"
+[profiles.presentation]
+font_size = 22
+theme = "light"
+
+[profiles.compact]
+font_size = 10
+scrollback_lines = 50000
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.profiles.len(), 2);
+
+        let pres = config.profiles.get("presentation").unwrap();
+        assert_eq!(pres.font_size, Some(22));
+        assert_eq!(pres.theme.as_deref(), Some("light"));
+        assert_eq!(pres.scrollback_lines, None);
+
+        let compact = config.profiles.get("compact").unwrap();
+        assert_eq!(compact.font_size, Some(10));
+        assert_eq!(compact.theme, None);
+        assert_eq!(compact.scrollback_lines, Some(50_000));
+    }
+
+    #[test]
+    fn test_profiles_empty_by_default() {
+        let config = Config::default();
+        assert!(config.profiles.is_empty());
+        assert!(!config.has_profiles());
+    }
+
+    #[test]
+    fn test_profile_names_sorted() {
+        let toml = r#"
+[profiles.zebra]
+font_size = 12
+
+[profiles.alpha]
+font_size = 10
+
+[profiles.mid]
+font_size = 14
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        let names = config.profile_names();
+        assert_eq!(names, vec!["alpha", "mid", "zebra"]);
+    }
+
+    #[test]
+    fn test_apply_profile_overrides() {
+        let toml = r#"
+[profiles.big]
+font_size = 24
+theme = "light"
+scrollback_lines = 50000
+"#;
+        let mut config = Config::from_toml_str(toml).unwrap();
+        // Defaults: font 14, dark, scrollback 10000.
+        assert_eq!(config.appearance.font_size, 14);
+        assert_eq!(config.appearance.theme, "dark");
+        assert_eq!(config.terminal.scrollback_lines, 10_000);
+
+        config.apply_profile("big").unwrap();
+        assert_eq!(config.appearance.font_size, 24);
+        assert_eq!(config.appearance.theme, "light");
+        assert_eq!(config.terminal.scrollback_lines, 50_000);
+    }
+
+    #[test]
+    fn test_apply_profile_partial_override() {
+        let toml = r#"
+[profiles.partial]
+font_size = 20
+"#;
+        let mut config = Config::from_toml_str(toml).unwrap();
+        // Theme and scrollback should NOT change.
+        let original_theme = config.appearance.theme.clone();
+        let original_sb = config.terminal.scrollback_lines;
+
+        config.apply_profile("partial").unwrap();
+        assert_eq!(config.appearance.font_size, 20);
+        assert_eq!(config.appearance.theme, original_theme);
+        assert_eq!(config.terminal.scrollback_lines, original_sb);
+    }
+
+    #[test]
+    fn test_apply_nonexistent_profile_errors() {
+        let mut config = Config::default();
+        let err = config.apply_profile("nonexistent").unwrap_err();
+        assert!(matches!(err, ConfigError::Validation(_)));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_cycle_profile_from_none() {
+        let toml = r#"
+[profiles.alpha]
+font_size = 10
+
+[profiles.beta]
+font_size = 20
+"#;
+        let mut config = Config::from_toml_str(toml).unwrap();
+        let next = config.cycle_profile("");
+        assert_eq!(next.as_deref(), Some("alpha"));
+        assert_eq!(config.appearance.font_size, 10);
+    }
+
+    #[test]
+    fn test_cycle_profile_wraps_around() {
+        let toml = r#"
+[profiles.alpha]
+font_size = 10
+
+[profiles.beta]
+font_size = 20
+"#;
+        let mut config = Config::from_toml_str(toml).unwrap();
+
+        let p1 = config.cycle_profile("").unwrap();
+        assert_eq!(p1, "alpha");
+
+        let p2 = config.cycle_profile(&p1).unwrap();
+        assert_eq!(p2, "beta");
+        assert_eq!(config.appearance.font_size, 20);
+
+        // Wraps back to alpha.
+        let p3 = config.cycle_profile(&p2).unwrap();
+        assert_eq!(p3, "alpha");
+        assert_eq!(config.appearance.font_size, 10);
+    }
+
+    #[test]
+    fn test_cycle_profile_no_profiles() {
+        let mut config = Config::default();
+        assert!(config.cycle_profile("").is_none());
+    }
+
+    #[test]
+    fn test_cycle_profile_unknown_current_starts_first() {
+        let toml = r#"
+[profiles.alpha]
+font_size = 10
+"#;
+        let mut config = Config::from_toml_str(toml).unwrap();
+        let next = config.cycle_profile("nonexistent");
+        assert_eq!(next.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn test_profiles_with_other_config_sections() {
+        let toml = r#"
+[appearance]
+font_size = 16
+theme = "dracula"
+
+[terminal]
+scrollback_lines = 8000
+
+[profiles.override_me]
+font_size = 12
+theme = "light"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.appearance.font_size, 16);
+        assert_eq!(config.appearance.theme, "dracula");
+        assert_eq!(config.terminal.scrollback_lines, 8_000);
+        assert!(config.has_profiles());
+        assert_eq!(config.profile_names(), vec!["override_me"]);
     }
 }
