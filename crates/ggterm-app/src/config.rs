@@ -717,6 +717,11 @@ impl ConfigManager {
         &self.config
     }
 
+    /// Get a mutable reference to the config (for profile application).
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+
     /// Attempt to reload the config from the same file path.
     ///
     /// Returns `Ok(true)` if the config changed, `Ok(false)` if unchanged,

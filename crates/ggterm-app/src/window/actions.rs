@@ -693,6 +693,55 @@ impl DesktopApp {
 
     // ── P30-A: Scrollbar scroll-to-position ────────────────────────
 
+    // ── P31: Profile cycling ───────────────────────────────────────
+
+    /// Cycle to the next config profile (if profiles are defined).
+    pub(super) fn cycle_profile(&mut self) {
+        let Some(mgr) = self.config_mgr.as_mut() else {
+            self.show_toast("No config loaded");
+            return;
+        };
+        let current = self.status_bar.active_profile().unwrap_or("").to_string();
+        let next = mgr.config_mut().cycle_profile(&current);
+        match next {
+            Some(next) => {
+                log::info!("Switching profile: {} → {}", current, next);
+                if let Err(e) = mgr.config_mut().apply_profile(&next) {
+                    log::error!("Failed to apply profile '{next}': {e}");
+                    return;
+                }
+                self.status_bar.set_profile(&next);
+                self.show_toast(format!("Profile: {}", next));
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            None => {
+                self.show_toast("No profiles configured");
+            }
+        }
+    }
+
+    /// Export current config to clipboard as TOML.
+    pub(super) fn export_config(&mut self) {
+        let Some(mgr) = self.config_mgr.as_ref() else {
+            self.show_toast("No config loaded");
+            return;
+        };
+        match mgr.config().export_to_toml() {
+            Ok(toml) => {
+                crate::clipboard::set_clipboard_bytes(toml.as_bytes());
+                self.show_toast(format!("Config exported ({} bytes)", toml.len()));
+            }
+            Err(e) => {
+                log::error!("Config export failed: {e}");
+                self.show_toast("Export failed");
+            }
+        }
+    }
+
+    // ── P30-A: Scrollbar scroll-to-position ────────────────────────
+
     /// Scroll the active session's grid so the scrollbar thumb aligns with
     /// the given pixel Y position.
     pub(super) fn scroll_to_scrollbar_pos(&mut self, py: f32) {

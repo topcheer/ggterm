@@ -436,6 +436,26 @@ impl DesktopApp {
             return;
         }
 
+        // P31: Ctrl+Shift+Alt+P → cycle config profile
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyP) = &event.physical_key
+        {
+            self.cycle_profile();
+            return;
+        }
+
+        // P31: Ctrl+Shift+Alt+E → export config to clipboard
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyE) = &event.physical_key
+        {
+            self.export_config();
+            return;
+        }
+
         // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
         // Also handle quit confirm Esc/Enter.
         if self.quit_confirm {
