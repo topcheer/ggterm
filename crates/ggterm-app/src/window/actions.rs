@@ -148,31 +148,6 @@ impl DesktopApp {
         log::info!("P23-E: moved tab {} → {}", from + 1, to + 1);
     }
 
-    /// Start dragging a tab (called on mouse press in tab bar area).
-    #[allow(dead_code)]
-    pub(super) fn start_tab_drag(&mut self, tab_index: usize) {
-        self.drag_tab = Some(tab_index);
-        log::debug!("P23-E: started dragging tab {}", tab_index + 1);
-    }
-
-    /// Get the tab index at a given x pixel position (for click/drag in tab bar).
-    #[allow(dead_code)]
-    pub(super) fn tab_index_at_x(&self, x: f64, screen_width: f32) -> Option<usize> {
-        if self.sessions.is_empty() {
-            return None;
-        }
-        let tab_w = screen_width as f64 / self.sessions.len() as f64;
-        if tab_w <= 0.0 {
-            return None;
-        }
-        let idx = (x / tab_w) as usize;
-        if idx < self.sessions.len() {
-            Some(idx)
-        } else {
-            None
-        }
-    }
-
     // ── P22-A: Session save/restore ──
 
     /// Capture the current session layout into serializable form.

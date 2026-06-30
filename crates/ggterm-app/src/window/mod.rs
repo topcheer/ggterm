@@ -223,14 +223,6 @@ pub struct DesktopApp {
     #[allow(dead_code)]
     clipboard_feedback: crate::cursor_blink::ClipboardFeedback,
 
-    // ── P23-E: Tab reordering ──
-    /// Dragged tab index (None = not dragging a tab).
-    #[allow(dead_code)]
-    drag_tab: Option<usize>,
-    /// Whether the tab close button was hovered.
-    #[allow(dead_code)]
-    tab_close_hovered: bool,
-
     // ── P23-C: Conditional redraw ──
     /// Last time a redraw was requested (for cursor blink timing).
     last_redraw: std::time::Instant,
@@ -552,8 +544,6 @@ impl DesktopApp {
             restored_session: false,
             cursor_blink: crate::cursor_blink::CursorBlink::new(),
             clipboard_feedback: crate::cursor_blink::ClipboardFeedback::new(),
-            drag_tab: None,
-            tab_close_hovered: false,
             command_palette: crate::command_palette::CommandPaletteState::default(),
             broadcast: crate::broadcast_input::BroadcastState::default(),
             recorder: None,
