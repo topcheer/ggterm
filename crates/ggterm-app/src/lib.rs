@@ -52,6 +52,7 @@ pub mod tab_session;
 pub mod tabs;
 pub mod terminal_actions;
 pub mod theme;
+pub mod ui_theme;
 pub mod version_info;
 
 #[cfg(feature = "ai")]

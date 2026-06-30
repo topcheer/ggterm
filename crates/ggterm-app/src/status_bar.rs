@@ -201,6 +201,90 @@ impl StatusBar {
 
         parts.join(" | ")
     }
+
+    /// Format the status bar as colored segments for modern overlay rendering.
+    ///
+    /// Returns a list of `(text, color)` pairs where color is `(r, g, b)` in `[0, 255]`.
+    /// Each segment is separated by a dim separator `|`.
+    ///
+    /// The renderer can use this to draw each segment at the correct position
+    /// with appropriate coloring (e.g. red for errors, green for exit 0).
+    pub fn format_segments(&self) -> Vec<(String, (u8, u8, u8))> {
+        let text_color: (u8, u8, u8) = (180, 180, 190);
+        let dim_color: (u8, u8, u8) = (90, 90, 100);
+        let accent_color: (u8, u8, u8) = (120, 180, 255);
+        let warn_color: (u8, u8, u8) = (230, 180, 80);
+        let err_color: (u8, u8, u8) = (230, 80, 80);
+        let ok_color: (u8, u8, u8) = (100, 200, 120);
+
+        let mut segs: Vec<(String, (u8, u8, u8))> = Vec::new();
+
+        macro_rules! seg {
+            ($text:expr, $color:expr) => {{
+                if !segs.is_empty() {
+                    segs.push((" | ".to_string(), dim_color));
+                }
+                segs.push(($text, $color));
+            }};
+        }
+
+        // Config error indicator (red).
+        if self.config_error.is_some() {
+            seg!("!ERROR!".to_string(), err_color);
+        }
+
+        // Cursor position.
+        seg!(
+            format!("{}:{}", self.cursor_row, self.cursor_col),
+            accent_color
+        );
+
+        // Tab info.
+        if self.tab_count > 1 {
+            seg!(
+                format!("Tab {}/{}", self.active_tab + 1, self.tab_count),
+                text_color
+            );
+        }
+
+        // Exit code.
+        if let Some(code) = self.exit_code {
+            let color = if code == 0 { ok_color } else { err_color };
+            seg!(format!("exit:{}", code), color);
+        }
+
+        // Mode indicators.
+        if self.bell_active {
+            seg!("BELL".to_string(), warn_color);
+        }
+        if self.search_active {
+            seg!("SEARCH".to_string(), accent_color);
+        }
+        if self.ai_active {
+            seg!("AI".to_string(), accent_color);
+        }
+
+        // Profile.
+        if !self.profile_name.is_empty() {
+            seg!(format!("@{}", self.profile_name), text_color);
+        }
+
+        // Broadcast mode.
+        if !self.broadcast_mode.is_empty() {
+            seg!(format!("BCAST:{}", self.broadcast_mode), warn_color);
+        }
+
+        // Recording.
+        if self.recording {
+            seg!("REC".to_string(), warn_color);
+        }
+
+        // Suppress warning: the final `first = false` inside the macro is
+        // never read — touch it once more after all segments are pushed.
+        let _ = first;
+
+        segs
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -430,5 +514,96 @@ mod tests {
         let ai_pos = formatted.find("ai").unwrap();
         let profile_pos = formatted.find("@test").unwrap();
         assert!(ai_pos < profile_pos);
+    }
+
+    // ── format_segments tests ────────────────────────────────
+
+    #[test]
+    fn t_segments_default() {
+        let sb = StatusBar::new();
+        let segs = sb.format_segments();
+        // Default: just cursor position "0:0" with accent color.
+        assert!(!segs.is_empty());
+        assert_eq!(segs[0].0, "0:0");
+    }
+
+    #[test]
+    fn t_segments_cursor_position() {
+        let mut sb = StatusBar::new();
+        sb.update_cursor(5, 10);
+        let segs = sb.format_segments();
+        assert_eq!(segs[0].0, "5:10");
+    }
+
+    #[test]
+    fn t_segments_error_segment() {
+        let mut sb = StatusBar::new();
+        sb.set_config_error(Some("bad config".to_string()));
+        let segs = sb.format_segments();
+        // First segment should be "!ERROR!".
+        assert_eq!(segs[0].0, "!ERROR!");
+    }
+
+    #[test]
+    fn t_segments_exit_code_colors() {
+        let mut sb = StatusBar::new();
+        sb.set_exit_code(Some(0));
+        let segs = sb.format_segments();
+        let exit_seg = segs.iter().find(|(t, _)| t.starts_with("exit:"));
+        assert!(exit_seg.is_some());
+        // Exit 0 should be green-ish (high green channel).
+        let (_, color) = exit_seg.unwrap();
+        assert!(color.1 > color.0 && color.1 > color.2); // g > r && g > b
+
+        sb.set_exit_code(Some(1));
+        let segs = sb.format_segments();
+        let exit_seg = segs.iter().find(|(t, _)| t.starts_with("exit:"));
+        let (_, color) = exit_seg.unwrap();
+        assert!(color.0 > color.1); // r > g for error
+    }
+
+    #[test]
+    fn t_segments_mode_indicators() {
+        let mut sb = StatusBar::new();
+        sb.set_bell(true);
+        sb.set_search(true);
+        sb.set_ai(true);
+        let segs = sb.format_segments();
+        let texts: Vec<&str> = segs.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(texts.contains(&"BELL"));
+        assert!(texts.contains(&"SEARCH"));
+        assert!(texts.contains(&"AI"));
+    }
+
+    #[test]
+    fn t_segments_profile() {
+        let mut sb = StatusBar::new();
+        sb.set_profile("dark");
+        let segs = sb.format_segments();
+        let texts: Vec<&str> = segs.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(texts.contains(&"@dark"));
+    }
+
+    #[test]
+    fn t_segments_recording() {
+        let mut sb = StatusBar::new();
+        sb.recording = true;
+        let segs = sb.format_segments();
+        let texts: Vec<&str> = segs.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(texts.contains(&"REC"));
+    }
+
+    #[test]
+    fn t_segments_separators_dim_color() {
+        let mut sb = StatusBar::new();
+        sb.update_cursor(1, 1);
+        sb.set_search(true);
+        let segs = sb.format_segments();
+        // Should contain " | " separators with dim color.
+        let seps: Vec<_> = segs.iter().filter(|(t, _)| t == " | ").collect();
+        assert!(!seps.is_empty());
+        // Separator color should be dim (all channels low).
+        let (_, color) = seps[0];
+        assert!(color.0 < 120 && color.1 < 120 && color.2 < 120);
     }
 }

@@ -18,6 +18,23 @@ pub const RESIZE_DEBOUNCE_MS: u64 = 100;
 /// At 60 FPS this is about 250ms (15 frames).
 pub const VISUAL_BELL_DURATION_FRAMES: u32 = 15;
 
+// ── P26-G: Window layout spacing constants ───────────────────────
+
+/// Tab bar vertical padding (above and below tab items).
+pub const TAB_BAR_PADDING_Y: f32 = 6.0;
+
+/// Tab bar horizontal padding (left and right of tab items).
+pub const TAB_BAR_PADDING_X: f32 = 8.0;
+
+/// Padding around the terminal content area (all four sides).
+pub const CONTENT_PADDING: f32 = 8.0;
+
+/// Height of the bottom status bar in physical pixels.
+pub const STATUS_BAR_HEIGHT: f32 = 24.0;
+
+/// Gap between split panes in physical pixels.
+pub const PANE_GAP: f32 = 6.0;
+
 /// Compute terminal cell dimensions (cols, rows) from pixel dimensions.
 ///
 /// `width`/`height` are the window inner size in physical pixels.
@@ -244,5 +261,32 @@ mod tests {
     #[test]
     fn test_debounce_ms_constant() {
         assert_eq!(RESIZE_DEBOUNCE_MS, 100);
+    }
+
+    // ── P26-G: Layout spacing constant tests ────────────────────────
+
+    #[test]
+    fn test_tab_bar_padding_y() {
+        assert_eq!(TAB_BAR_PADDING_Y, 6.0);
+    }
+
+    #[test]
+    fn test_tab_bar_padding_x() {
+        assert_eq!(TAB_BAR_PADDING_X, 8.0);
+    }
+
+    #[test]
+    fn test_content_padding() {
+        assert_eq!(CONTENT_PADDING, 8.0);
+    }
+
+    #[test]
+    fn test_status_bar_height() {
+        assert_eq!(STATUS_BAR_HEIGHT, 24.0);
+    }
+
+    #[test]
+    fn test_pane_gap() {
+        assert_eq!(PANE_GAP, 6.0);
     }
 }

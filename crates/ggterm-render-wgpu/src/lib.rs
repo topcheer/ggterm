@@ -143,6 +143,41 @@ pub struct GlyphonRenderer {
     /// Pixel offset applied to grid text + decoration positions for
     /// rendering into a sub-region of the surface (split panes).
     viewport_offset: (f32, f32),
+    // ── P26-A: Modern UI rendering (SDF rounded rects) ──
+    /// UI rect specs for the SDF pipeline.
+    ui_rects: Vec<UiRect>,
+    /// UI vertex buffer.
+    ui_vertex_buffer: Option<wgpu::Buffer>,
+    /// Number of UI vertices.
+    ui_vertex_count: u32,
+    /// UI SDF pipeline (rounded rectangles with alpha + stroke).
+    ui_pipeline: Option<wgpu::RenderPipeline>,
+}
+
+// ── P26-A: Modern UI Rendering ──────────────────────────────────
+
+/// Specification for a modern UI rectangle with rounded corners, alpha,
+/// and optional stroke (border-only rendering).
+///
+/// Used for tab bar backgrounds, pane borders, dialog panels, status bar.
+/// Rendered by the `ui.wgsl` SDF shader via a separate pipeline.
+#[derive(Debug, Clone)]
+pub struct UiRect {
+    /// X position in physical pixels (top-left corner).
+    pub x: f32,
+    /// Y position in physical pixels (top-left corner).
+    pub y: f32,
+    /// Width in physical pixels.
+    pub w: f32,
+    /// Height in physical pixels.
+    pub h: f32,
+    /// Fill color (r, g, b, a) in [0, 1].
+    pub color: (f32, f32, f32, f32),
+    /// Corner radius in physical pixels (0 = sharp corners).
+    pub radius: f32,
+    /// Stroke (border) width in physical pixels.
+    /// When > 0.5, renders as an outline ring instead of a filled shape.
+    pub stroke_width: f32,
 }
 
 /// P19-G: Overlay text specification for tab bar / settings / about rendering.
@@ -266,6 +301,10 @@ impl GlyphonRenderer {
             overlay_vertex_buffer: None,
             overlay_vertex_count: 0,
             viewport_offset: (0.0, 0.0),
+            ui_rects: Vec::new(),
+            ui_vertex_buffer: None,
+            ui_vertex_count: 0,
+            ui_pipeline: None,
         }
     }
 
@@ -660,6 +699,7 @@ impl GlyphonRenderer {
             &mut self.underline_vertex_buffer,
             &mut self.underline_vertex_count,
             "underline",
+            5, // 5 floats per vertex: x, y, r, g, b
         );
 
         // Upload strikethrough vertices
@@ -669,6 +709,7 @@ impl GlyphonRenderer {
             &mut self.strike_vertex_buffer,
             &mut self.strike_vertex_count,
             "strikethrough",
+            5, // 5 floats per vertex: x, y, r, g, b
         );
     }
 
@@ -734,6 +775,7 @@ impl GlyphonRenderer {
             &mut self.overlay_vertex_buffer,
             &mut self.overlay_vertex_count,
             "overlay",
+            5, // 5 floats per vertex: x, y, r, g, b
         );
     }
 
@@ -746,6 +788,117 @@ impl GlyphonRenderer {
             render_pass.set_pipeline(pipeline);
             render_pass.set_vertex_buffer(0, buffer.slice(..));
             render_pass.draw(0..self.overlay_vertex_count, 0..1);
+        }
+    }
+
+    // ── P26-A: Modern UI Rendering (SDF rounded rectangles) ──────────
+
+    /// Set UI rectangle specs for this frame. Call before `render_overlays_to_pass()`.
+    pub fn set_ui_rects(&mut self, rects: Vec<UiRect>) {
+        self.ui_rects = rects;
+    }
+
+    /// Build the UI SDF pipeline lazily.
+    fn ensure_ui_pipeline(&mut self, device: &wgpu::Device) {
+        if self.ui_pipeline.is_some() {
+            return;
+        }
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("ui shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/ui.wgsl").into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ui pipeline layout"),
+            bind_group_layouts: &[],
+            ..Default::default()
+        });
+        // Vertex layout: 12 floats per vertex = 48 bytes stride.
+        //   0: position.xy     (Float32x2, 8 bytes)
+        //   1: color.rgba      (Float32x4, 16 bytes)
+        //   2: local_pos.xy    (Float32x2, 8 bytes)
+        //   3: half_size.xy    (Float32x2, 8 bytes)
+        //   4: params.xy       (Float32x2, 8 bytes) — x=radius, y=stroke_width
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("ui pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: 48, // 12 floats × 4 bytes
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![
+                        0 => Float32x2, // position
+                        1 => Float32x4, // color
+                        2 => Float32x2, // local_pos
+                        3 => Float32x2, // half_size
+                        4 => Float32x2, // params (radius, stroke_width)
+                    ],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.ui_pipeline = Some(pipeline);
+    }
+
+    /// Generate vertices for all `ui_rects` and upload to GPU.
+    fn prepare_ui(&mut self, device: &wgpu::Device) {
+        let screen_w = self.resolution.width as f32;
+        let screen_h = self.resolution.height as f32;
+        let mut verts: Vec<f32> = Vec::new();
+
+        for r in &self.ui_rects {
+            push_ui_rect(
+                &mut verts,
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                r.color,
+                r.radius,
+                r.stroke_width,
+                screen_w,
+                screen_h,
+            );
+        }
+
+        upload_vertices(
+            device,
+            &verts,
+            &mut self.ui_vertex_buffer,
+            &mut self.ui_vertex_count,
+            "ui overlay",
+            12, // 12 floats per vertex
+        );
+    }
+
+    /// Draw UI rectangles using the SDF pipeline.
+    fn draw_ui(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        if let Some(ref pipeline) = self.ui_pipeline
+            && let Some(ref buffer) = self.ui_vertex_buffer
+            && self.ui_vertex_count > 0
+        {
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_vertex_buffer(0, buffer.slice(..));
+            render_pass.draw(0..self.ui_vertex_count, 0..1);
         }
     }
 
@@ -848,8 +1001,11 @@ impl GlyphonRenderer {
     ) -> Result<(), RenderError> {
         self.viewport_offset = (0.0, 0.0);
         self.ensure_underline_pipeline(device);
+        self.ensure_ui_pipeline(device);
         self.prepare_overlay(device);
         self.draw_overlay(render_pass);
+        self.prepare_ui(device);
+        self.draw_ui(render_pass);
         Ok(())
     }
 }
@@ -904,14 +1060,77 @@ fn push_rect(
     ]);
 }
 
+/// Generate 6 vertices (2 triangles) for a rounded-rect UI element.
+///
+/// Each vertex carries: `[pos.xy, color.rgba, local_pos.xy, half_size.xy, params.xy]`
+/// = 12 floats. The fragment shader uses local_pos + half_size + radius
+/// to evaluate the SDF for anti-aliased rounded corners.
+///
+/// For stroke rendering (stroke_width > 0), the shader draws only pixels
+/// near the rect boundary. For fill rendering (stroke_width == 0), it
+/// fills the entire interior.
+#[allow(clippy::too_many_arguments)]
+fn push_ui_rect(
+    verts: &mut Vec<f32>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: (f32, f32, f32, f32),
+    radius: f32,
+    stroke_width: f32,
+    screen_w: f32,
+    screen_h: f32,
+) {
+    let (r, g, b, a) = color;
+
+    // Local pixel coords relative to rect center (used by SDF in fragment shader).
+    let half_w = w * 0.5;
+    let half_h = h * 0.5;
+
+    // For stroke rendering, expand the rect slightly to accommodate the stroke.
+    // The stroke is drawn centered on the boundary, so we need the vertex quad
+    // to be slightly larger than the visual rect.
+    let expand = if stroke_width > 0.5 {
+        stroke_width * 0.5 + 1.5 // half stroke + AA feather
+    } else {
+        1.5 // AA feather only
+    };
+    let ex0 = ((x - expand) / screen_w) * 2.0 - 1.0;
+    let ex1 = ((x + w + expand) / screen_w) * 2.0 - 1.0;
+    let ey0 = 1.0 - ((y - expand) / screen_h) * 2.0;
+    let ey1 = 1.0 - ((y + h + expand) / screen_h) * 2.0;
+
+    let elx0 = -half_w - expand;
+    let elx1 = half_w + expand;
+    let ely0 = -half_h - expand;
+    let ely1 = half_h + expand;
+
+    // Two triangles: TL, TR, BR + TL, BR, BL
+    // Use expanded coords for rendering so AA + stroke have room.
+    // Use un-expanded half_size so SDF matches the visual rect.
+    let p = (radius, stroke_width);
+    verts.extend_from_slice(&[
+        // Triangle 1: TL, TR, BR
+        ex0, ey0, r, g, b, a, elx0, ely0, half_w, half_h, p.0, p.1, // TL
+        ex1, ey0, r, g, b, a, elx1, ely0, half_w, half_h, p.0, p.1, // TR
+        ex1, ey1, r, g, b, a, elx1, ely1, half_w, half_h, p.0, p.1, // BR
+        // Triangle 2: TL, BR, BL
+        ex0, ey0, r, g, b, a, elx0, ely0, half_w, half_h, p.0, p.1, // TL
+        ex1, ey1, r, g, b, a, elx1, ely1, half_w, half_h, p.0, p.1, // BR
+        ex0, ey1, r, g, b, a, elx0, ely1, half_w, half_h, p.0, p.1, // BL
+    ]);
+}
+
 fn upload_vertices(
     device: &wgpu::Device,
     vertices: &[f32],
     buffer_slot: &mut Option<wgpu::Buffer>,
     count_slot: &mut u32,
     label: &str,
+    stride: usize,
 ) {
-    *count_slot = (vertices.len() / 5) as u32;
+    *count_slot = (vertices.len() / stride) as u32;
     if vertices.is_empty() {
         *buffer_slot = None;
         return;
@@ -1137,5 +1356,213 @@ mod tests {
         // Reset to (0, 0) for overlay rendering.
         offset = (0.0, 0.0);
         assert_eq!(offset, (0.0, 0.0));
+    }
+
+    // ── P26-A: UiRect + push_ui_rect tests ────────────────────────
+
+    #[test]
+    fn test_uirect_construction() {
+        let r = UiRect {
+            x: 10.0,
+            y: 20.0,
+            w: 100.0,
+            h: 40.0,
+            color: (0.5, 0.5, 0.5, 0.9),
+            radius: 8.0,
+            stroke_width: 0.0,
+        };
+        assert_eq!(r.x, 10.0);
+        assert_eq!(r.w, 100.0);
+        assert_eq!(r.radius, 8.0);
+        assert_eq!(r.color.3, 0.9); // alpha
+    }
+
+    #[test]
+    fn test_push_ui_rect_vertex_count() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_ui_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            100.0,
+            50.0,
+            (1.0, 0.0, 0.0, 1.0),
+            6.0,
+            0.0,
+            800.0,
+            600.0,
+        );
+        // 6 vertices * 12 floats = 72 floats
+        assert_eq!(verts.len(), 72);
+    }
+
+    #[test]
+    fn test_push_ui_rect_ndc_coords() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_ui_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            800.0, // full width
+            600.0, // full height
+            (1.0, 1.0, 1.0, 1.0),
+            0.0,
+            0.0,
+            800.0,
+            600.0,
+        );
+        // First vertex: top-left with expand = 1.5px (AA feather)
+        // ex0 = ((0 - 1.5) / 800) * 2 - 1 = -1.00375
+        // ey0 = 1 - ((0 - 1.5) / 600) * 2 = 1.005
+        assert!(verts[0] < -1.0); // expanded beyond left edge
+        assert!(verts[1] > 1.0); // expanded beyond top edge
+    }
+
+    #[test]
+    fn test_push_ui_rect_local_coords() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_ui_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            100.0,
+            50.0,
+            (0.0, 0.0, 0.0, 1.0),
+            4.0,
+            0.0,
+            800.0,
+            600.0,
+        );
+        // local_pos is at indices 6,7 in each vertex (after pos.xy + color.rgba)
+        // With expand=1.5, first vertex local_pos = (-half_w - 1.5, -half_h - 1.5)
+        let lx0 = verts[6];
+        let ly0 = verts[7];
+        assert!((lx0 - (-51.5)).abs() < 0.001); // -50 - 1.5 expand
+        assert!((ly0 - (-26.5)).abs() < 0.001); // -25 - 1.5 expand
+
+        // half_size at indices 8,9 (un-expanded)
+        let hw = verts[8];
+        let hh = verts[9];
+        assert!((hw - 50.0).abs() < 0.001);
+        assert!((hh - 25.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_push_ui_rect_params() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_ui_rect(
+            &mut verts,
+            10.0,
+            10.0,
+            80.0,
+            40.0,
+            (0.2, 0.4, 0.6, 0.8),
+            12.0,
+            2.0,
+            800.0,
+            600.0,
+        );
+        // params at indices 10,11: radius, stroke_width
+        let radius = verts[10];
+        let stroke = verts[11];
+        assert!((radius - 12.0).abs() < 0.001);
+        assert!((stroke - 2.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_push_ui_rect_alpha() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_ui_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            10.0,
+            10.0,
+            (1.0, 0.5, 0.25, 0.75),
+            0.0,
+            0.0,
+            100.0,
+            100.0,
+        );
+        // Alpha is at index 5 in each vertex
+        assert!((verts[5] - 0.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_push_ui_rect_multiple() {
+        let mut verts: Vec<f32> = Vec::new();
+        let sw = 800.0_f32;
+        let sh = 600.0_f32;
+        push_ui_rect(
+            &mut verts,
+            0.0,
+            0.0,
+            400.0,
+            20.0,
+            (1.0, 0.0, 0.0, 1.0),
+            4.0,
+            0.0,
+            sw,
+            sh,
+        );
+        push_ui_rect(
+            &mut verts,
+            400.0,
+            0.0,
+            400.0,
+            20.0,
+            (0.0, 1.0, 0.0, 1.0),
+            4.0,
+            0.0,
+            sw,
+            sh,
+        );
+        // Two rects = 12 vertices * 12 floats = 144 floats
+        assert_eq!(verts.len(), 144);
+    }
+
+    #[test]
+    fn test_push_ui_rect_stroke_mode() {
+        let mut verts: Vec<f32> = Vec::new();
+        push_ui_rect(
+            &mut verts,
+            10.0,
+            10.0,
+            80.0,
+            40.0,
+            (0.0, 0.5, 1.0, 1.0),
+            6.0,
+            2.0, // stroke mode
+            800.0,
+            600.0,
+        );
+        // Should still produce 6 vertices
+        assert_eq!(verts.len() / 12, 6);
+        // stroke_width at index 11 should be 2.0
+        assert!((verts[11] - 2.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_uirect_fill_vs_stroke() {
+        let fill = UiRect {
+            x: 0.0,
+            y: 0.0,
+            w: 100.0,
+            h: 50.0,
+            color: (1.0, 1.0, 1.0, 0.5),
+            radius: 8.0,
+            stroke_width: 0.0,
+        };
+        let stroke = UiRect {
+            x: 0.0,
+            y: 0.0,
+            w: 100.0,
+            h: 50.0,
+            color: (1.0, 1.0, 1.0, 1.0),
+            radius: 8.0,
+            stroke_width: 2.0,
+        };
+        assert!(fill.stroke_width <= 0.5);
+        assert!(stroke.stroke_width > 0.5);
     }
 }

@@ -17,6 +17,13 @@
 //! assert_eq!(areas.len(), 3);                // three panes
 //! ```
 
+#[cfg(feature = "desktop")]
+use crate::desktop_config::PANE_GAP;
+
+/// Fallback constant when desktop feature is disabled.
+#[cfg(not(feature = "desktop"))]
+const PANE_GAP: f32 = 6.0;
+
 /// Identifier for a terminal pane within a split tree.
 pub type PaneId = usize;
 
@@ -44,12 +51,17 @@ impl Rect {
         }
     }
 
-    /// Split this rect horizontally at the given ratio (0.0–1.0).
+    /// Split this rect horizontally at the given ratio (0.0-1.0).
     ///
     /// Returns `(left, right)` where `left` gets `ratio * width`.
-    /// A 1px gutter is reserved between the two halves.
+    /// A gutter of [`PANE_GAP`](crate::desktop_config::PANE_GAP) pixels is reserved
+    /// between the two halves (was 1px before P26-G).
     pub fn split_h(self, ratio: f32) -> (Rect, Rect) {
-        let gutter = if self.width > 2 { 1 } else { 0 };
+        let gutter = if self.width > PANE_GAP as u32 {
+            PANE_GAP as u32
+        } else {
+            0
+        };
         let left_w = ((self.width as f32 * ratio) as u32).min(self.width.saturating_sub(gutter));
         let right_w = self.width.saturating_sub(left_w + gutter);
         let left = Rect::new(self.x, self.y, left_w, self.height);
@@ -62,12 +74,17 @@ impl Rect {
         px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
     }
 
-    /// Split this rect vertically at the given ratio (0.0–1.0).
+    /// Split this rect vertically at the given ratio (0.0-1.0).
     ///
     /// Returns `(top, bottom)` where `top` gets `ratio * height`.
-    /// A 1px gutter is reserved between the two halves.
+    /// A gutter of [`PANE_GAP`](crate::desktop_config::PANE_GAP) pixels is reserved
+    /// between the two halves (was 1px before P26-G).
     pub fn split_v(self, ratio: f32) -> (Rect, Rect) {
-        let gutter = if self.height > 2 { 1 } else { 0 };
+        let gutter = if self.height > PANE_GAP as u32 {
+            PANE_GAP as u32
+        } else {
+            0
+        };
         let top_h = ((self.height as f32 * ratio) as u32).min(self.height.saturating_sub(gutter));
         let bottom_h = self.height.saturating_sub(top_h + gutter);
         let top = Rect::new(self.x, self.y, self.width, top_h);
@@ -665,11 +682,13 @@ mod tests {
         let r = Rect::new(0, 0, 100, 50);
         let (left, right) = r.split_h(0.5);
         assert_eq!(left.x, 0);
-        assert!(left.width >= 49 && left.width <= 50);
+        assert!(left.width >= 44 && left.width <= 50);
         assert_eq!(left.height, 50);
-        // Right starts after left + 1px gutter
-        assert_eq!(right.x, left.x + left.width + 1);
-        assert!(right.width >= 49 && right.width <= 50);
+        // Right starts after left + PANE_GAP(6px) gutter
+        assert_eq!(right.x, left.x + left.width + PANE_GAP as u32);
+        assert!(right.width >= 44 && right.width <= 50);
+        // Total width should be preserved
+        assert_eq!(left.width + right.width + PANE_GAP as u32, 100);
     }
 
     #[test]
@@ -677,7 +696,8 @@ mod tests {
         let r = Rect::new(0, 0, 100, 50);
         let (left, right) = r.split_h(0.3);
         assert_eq!(left.width, 30);
-        assert!(right.width >= 69);
+        // Right gets remaining width minus PANE_GAP gutter
+        assert!(right.width >= 64); // 100 - 30 - 6 = 64
     }
 
     #[test]
@@ -686,16 +706,19 @@ mod tests {
         let (top, bottom) = r.split_v(0.5);
         assert_eq!(top.x, 10);
         assert_eq!(top.y, 20);
-        assert!(top.height >= 29 && top.height <= 30);
-        assert!(bottom.height >= 29 && bottom.height <= 30);
-        assert_eq!(bottom.y, top.y + top.height + 1);
+        assert!(top.height >= 24 && top.height <= 30);
+        assert!(bottom.height >= 24 && bottom.height <= 30);
+        // Bottom starts after top + PANE_GAP(6px) gutter
+        assert_eq!(bottom.y, top.y + top.height + PANE_GAP as u32);
+        // Total height should be preserved
+        assert_eq!(top.height + bottom.height + PANE_GAP as u32, 60);
     }
 
     #[test]
     fn t_rect_split_h_small() {
         let r = Rect::new(0, 0, 2, 10);
         let (left, right) = r.split_h(0.5);
-        // Width=2, gutter=0 (width not > 2) → left=1, right=1
+        // Width=2, gutter=0 (width not > PANE_GAP) → left=1, right=1
         assert_eq!(left.width, 1);
         assert_eq!(right.width, 1);
     }
@@ -711,8 +734,8 @@ mod tests {
     fn t_rect_split_h_full_ratio() {
         let r = Rect::new(0, 0, 100, 50);
         let (left, _right) = r.split_h(1.0);
-        // Full width minus gutter
-        assert!(left.width >= 99);
+        // Full width minus PANE_GAP gutter
+        assert!(left.width >= 94); // 100 - 6 = 94
     }
 
     // ── SplitNode basic tests ───────────────────────────────────
@@ -794,7 +817,8 @@ mod tests {
         let (_, r0) = areas[0];
         let (_, r1) = areas[1];
         assert_eq!(r0.width, 30);
-        assert!(r1.width >= 69);
+        // Right gets remaining width minus PANE_GAP gutter
+        assert!(r1.width >= 64); // 100 - 30 - 6 = 64
     }
 
     // ── SplitTree vertical split ────────────────────────────────
@@ -1238,5 +1262,34 @@ mod tests {
         let r0 = areas.iter().find(|(id, _)| id == &0).unwrap().1;
         // Left side grew by +0.2 (from 0.5 to 0.7).
         assert!(r0.width > 60);
+    }
+
+    // ── P26-G: PANE_GAP gutter tests ─────────────────────────────
+
+    #[test]
+    fn t_pane_gap_h_split_preserves_total() {
+        let r = Rect::new(0, 0, 200, 100);
+        let (left, right) = r.split_h(0.4);
+        // left + gap + right == total width
+        assert_eq!(left.width + PANE_GAP as u32 + right.width, 200);
+        assert_eq!(right.x, left.x + left.width + PANE_GAP as u32);
+    }
+
+    #[test]
+    fn t_pane_gap_v_split_preserves_total() {
+        let r = Rect::new(0, 0, 200, 100);
+        let (top, bottom) = r.split_v(0.6);
+        // top + gap + bottom == total height
+        assert_eq!(top.height + PANE_GAP as u32 + bottom.height, 100);
+        assert_eq!(bottom.y, top.y + top.height + PANE_GAP as u32);
+    }
+
+    #[test]
+    fn t_pane_gap_no_gutter_when_too_small() {
+        // Width < PANE_GAP → gutter = 0
+        let r = Rect::new(0, 0, 3, 10);
+        let (left, right) = r.split_h(0.5);
+        // 3px total, no gutter → left=1, right=2 (floor(1.5)=1, rest=2)
+        assert_eq!(left.width + right.width, 3);
     }
 }
