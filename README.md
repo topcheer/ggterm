@@ -445,6 +445,9 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Ctrl+Shift+Alt+W` | Cycle workspaces |
 | `Shift+Wheel` | Synchronized scroll across all panes |
 | `Right-click Tab` | Tab context menu (close/duplicate/next/prev) |
+| `Double-click Tab` | Rename tab |
+| `Click Tab` | Switch to tab |
+| `Drag Scrollbar` | Jump to scroll position |
 
 ## Building
 
