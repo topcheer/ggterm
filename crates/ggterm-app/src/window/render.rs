@@ -95,9 +95,9 @@ impl DesktopApp {
 
         // P19-G: Build overlay data (tab bar + settings + about).
         let cell_h = renderer.cell_height() as f32;
+        let cell_w = renderer.cell_width() as f32;
         let screen_w = renderer.resolution_width() as f32;
         let screen_h = renderer.resolution_height() as f32;
-        #[allow(unused_variables)]
         let overlay_rects: Vec<ggterm_render_wgpu::OverlayRect> = Vec::new();
         let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::new();
         let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::new();
@@ -223,6 +223,84 @@ impl DesktopApp {
                 top: 4.0 + 5.0,
                 color: (120, 128, 154),
             });
+        }
+
+        // ── P27-A: Text selection highlight ────────────────────────────
+        // Draw semi-transparent blue rectangles over selected cells.
+        if self.selection.is_active()
+            && let Some(((sx, sy), (ex, ey))) = self.selection.normalized()
+        {
+            let (sx, sy, ex, ey) = (sx as u32, sy as u32, ex as u32, ey as u32);
+
+            // Selection coordinates are relative to the visible grid
+            // (col, display_row). Convert to pixel positions in content area.
+            let pane_offset_x = content_bounds.x as f32;
+            let pane_offset_y = content_bounds.y as f32;
+
+            // Selection color: blue with 30% opacity.
+            let sel_color = (0.3, 0.55, 0.95, 0.30);
+
+            if sy == ey {
+                // Single-row selection.
+                let x = pane_offset_x + sx as f32 * cell_w;
+                let y = pane_offset_y + sy as f32 * cell_h;
+                let w = (ex - sx + 1) as f32 * cell_w;
+                let h = cell_h;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x,
+                    y,
+                    w,
+                    h,
+                    color: sel_color,
+                    radius: 2.0,
+                    stroke_width: 0.0,
+                });
+            } else {
+                // Multi-row selection: first row (start to end of line).
+                let x0 = pane_offset_x + sx as f32 * cell_w;
+                let y0 = pane_offset_y + sy as f32 * cell_h;
+                let w0 = content_bounds.width as f32 - sx as f32 * cell_w;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: x0,
+                    y: y0,
+                    w: w0,
+                    h: cell_h,
+                    color: sel_color,
+                    radius: 2.0,
+                    stroke_width: 0.0,
+                });
+
+                // Full rows in between.
+                if ey > sy + 1 {
+                    let full_x = pane_offset_x;
+                    let full_y = pane_offset_y + (sy + 1) as f32 * cell_h;
+                    let full_w = content_bounds.width as f32;
+                    let full_h = (ey - sy - 1) as f32 * cell_h;
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: full_x,
+                        y: full_y,
+                        w: full_w,
+                        h: full_h,
+                        color: sel_color,
+                        radius: 0.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                // Last row (start of line to end).
+                let x1 = pane_offset_x;
+                let y1 = pane_offset_y + ey as f32 * cell_h;
+                let w1 = (ex + 1) as f32 * cell_w;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: x1,
+                    y: y1,
+                    w: w1,
+                    h: cell_h,
+                    color: sel_color,
+                    radius: 2.0,
+                    stroke_width: 0.0,
+                });
+            }
         }
 
         // ── P26-D: Padded pane borders with rounded corners ───────────
@@ -445,6 +523,51 @@ impl DesktopApp {
                     color: *color,
                 });
                 x += text.chars().count() as f32 * cell_w;
+            }
+        }
+
+        // ── P27-C: Context menu ───────────────────────────────────────
+        if self.context_menu.visible {
+            let cm = &self.context_menu;
+            let (mx, my) = cm.pos;
+            let mh = cm.menu_height();
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: mx,
+                y: my,
+                w: crate::context_menu::ContextMenuState::WIDTH,
+                h: mh,
+                color: (0.12, 0.12, 0.16, 0.97),
+                radius: crate::context_menu::ContextMenuState::RADIUS,
+                stroke_width: 1.0,
+            });
+
+            // Menu items.
+            for (i, action) in crate::context_menu::ContextMenuAction::all()
+                .iter()
+                .enumerate()
+            {
+                let (ix, iy, iw, ih) = cm.item_rect(i);
+                // Hovered item gets a highlight rect.
+                if cm.hovered == Some(i) {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: ix,
+                        y: iy,
+                        w: iw,
+                        h: ih,
+                        color: (0.2, 0.45, 0.85, 0.5),
+                        radius: 4.0,
+                        stroke_width: 0.0,
+                    });
+                }
+                // Item text.
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: action.label().to_string(),
+                    left: ix + 8.0,
+                    top: iy + 5.0,
+                    color: (220, 220, 230),
+                });
             }
         }
 

@@ -125,6 +125,18 @@ pub struct DesktopApp {
     button_held: Option<crate::mouse::MouseButton>,
     /// P21-A: Active split separator drag (None = not dragging).
     drag_resize: Option<bool>,
+    /// P27-B: Click count for double/triple-click detection.
+    click_count: u8,
+    /// P27-B: Timestamp of last left-click.
+    last_click_time: Option<std::time::Instant>,
+    /// P27-B: Position of last left-click (col, row).
+    last_click_pos: (u16, u16),
+    /// P27-C: Right-click context menu state.
+    context_menu: crate::context_menu::ContextMenuState,
+    /// P27-D: Smooth inertial scroll state.
+    smooth_scroll: crate::smooth_scroll::SmoothScroller,
+    /// P27-F: Whether the window is currently focused (for cursor style).
+    window_focused: bool,
     /// DPI scale factor (2.0 on Retina, 1.0 on standard). P18-A.
     scale_factor: f64,
 
@@ -444,6 +456,12 @@ impl DesktopApp {
             cursor_pos: (0.0, 0.0),
             button_held: None,
             drag_resize: None,
+            click_count: 0,
+            last_click_time: None,
+            last_click_pos: (0, 0),
+            context_menu: Default::default(),
+            smooth_scroll: Default::default(),
+            window_focused: true,
             scale_factor: 1.0,
             pending_resize: None,
             last_resize_time: None,
@@ -903,6 +921,9 @@ impl ApplicationHandler for DesktopApp {
             }
 
             WindowEvent::Focused(focused) => {
+                // P27-F: Track window focus for cursor style.
+                self.window_focused = focused;
+
                 // P12-D: Send focus event report if DECSET 1004 is active.
                 let report = if focused {
                     self.active_session().app().terminal().focus_in_report()
@@ -912,7 +933,7 @@ impl ApplicationHandler for DesktopApp {
                 if !report.is_empty() {
                     self.write_to_pty(&report);
                 }
-                if focused && let Some(ref window) = self.window {
+                if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
             }
@@ -1015,6 +1036,27 @@ impl ApplicationHandler for DesktopApp {
         // P23-C: Conditional redraw — only request redraw when needed.
         // Conditions: PTY data, cursor blink interval, pending resize,
         // bell, search/AI overlay, or any user interaction flag.
+        // P27-D: Process smooth scroll animation.
+        if self.smooth_scroll.is_animating() {
+            if let Some(delta_lines) = self.smooth_scroll.tick() {
+                let grid = self
+                    .active_session_mut()
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut();
+                if delta_lines > 0 {
+                    grid.scroll_up_viewport(delta_lines as usize);
+                } else {
+                    grid.scroll_down_viewport((-delta_lines) as usize);
+                }
+            }
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+        }
+
+        // P23-C: Conditional redraw — only request redraw when there's
+        // content to show (dirty grid, pending resize, bell, or cursor blink).
         let need_redraw = self
             .active_session()
             .app()

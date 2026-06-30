@@ -80,6 +80,17 @@ impl DesktopApp {
             return;
         }
 
+        // P27-C: Close context menu on Escape.
+        if self.context_menu.visible
+            && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
+        {
+            self.context_menu.hide();
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
         // ── P14-D: Config-driven keybinding dispatch ──
         // All configurable actions are resolved through check_keybinding().
         // The resolved_keybindings map is populated from ConfigManager at
@@ -778,8 +789,50 @@ impl DesktopApp {
         // Mouse tracking is OFF — handle selection and paste locally.
         match (mouse_button, state) {
             (crate::mouse::MouseButton::Left, ElementState::Pressed) => {
+                // P27-C: If context menu is open, handle item selection or close.
+                if self.context_menu.visible {
+                    let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                    if let Some(idx) = self.context_menu.hit_test(px, py) {
+                        self.execute_context_menu_action(idx);
+                    }
+                    self.context_menu.hide();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+
                 self.button_held = Some(mouse_button);
-                self.selection.start(col, row);
+
+                // P27-B: Double-click / triple-click detection.
+                let now = std::time::Instant::now();
+                let is_multi_click = self
+                    .last_click_time
+                    .is_some_and(|t| now.duration_since(t).as_millis() < 400)
+                    && self.last_click_pos == (col, row);
+
+                if is_multi_click {
+                    self.click_count = (self.click_count % 3) + 1; // cycle 1→2→3→1
+                } else {
+                    self.click_count = 1;
+                }
+                self.last_click_time = Some(now);
+                self.last_click_pos = (col, row);
+
+                match self.click_count {
+                    2 => {
+                        // Double-click: select word at position.
+                        self.select_word_at(col, row);
+                    }
+                    3 => {
+                        // Triple-click: select entire line.
+                        self.select_line_at(row);
+                    }
+                    _ => {
+                        // Single click: start normal selection.
+                        self.selection.start(col, row);
+                    }
+                }
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
@@ -807,12 +860,28 @@ impl DesktopApp {
                 // Middle-click paste from system clipboard.
                 self.paste_from_clipboard();
             }
+            (crate::mouse::MouseButton::Right, ElementState::Pressed) => {
+                // P27-C: Show context menu at mouse position.
+                let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                self.context_menu.show(px, py);
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
             _ => {}
         }
     }
 
     /// Handle cursor motion — extend selection or report mouse motion.
     pub(super) fn handle_cursor_moved(&mut self) {
+        // P27-C: Update context menu hover state.
+        if self.context_menu.visible {
+            let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+            self.context_menu.hovered = self.context_menu.hit_test(px, py);
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+        }
         // P21-A: If dragging a separator, adjust the ratio.
         if self.drag_resize.is_some() {
             let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
@@ -919,6 +988,106 @@ impl DesktopApp {
         self.hovered_link = None;
     }
 
+    /// P27-B: Select the word at the given cell position.
+    ///
+    /// A "word" is a run of non-whitespace characters. Finds the word
+    /// boundaries by scanning left and right from the clicked cell.
+    pub(super) fn select_word_at(&mut self, col: u16, row: u16) {
+        let grid = &self.sessions[self.active].app().grid();
+        let col_u = col as usize;
+
+        // Get the display row to scan characters.
+        let Some(display_row) = grid.display_row(row as usize) else {
+            return;
+        };
+
+        // If the clicked cell is whitespace, select just that cell.
+        let cells: Vec<char> = display_row.cells.iter().map(|c| c.ch).collect();
+        if col_u >= cells.len() || cells[col_u].is_whitespace() {
+            self.selection.start(col, row);
+            self.selection.extend(col, row);
+            self.selection.finish();
+            return;
+        }
+
+        // Scan left for word start.
+        let mut start = col_u;
+        while start > 0 && !cells[start - 1].is_whitespace() {
+            start -= 1;
+        }
+
+        // Scan right for word end.
+        let mut end = col_u;
+        while end + 1 < cells.len() && !cells[end + 1].is_whitespace() {
+            end += 1;
+        }
+
+        self.selection.start(start as u16, row);
+        self.selection.extend(end as u16, row);
+        self.selection.finish();
+    }
+
+    /// P27-B: Select the entire line at the given row.
+    pub(super) fn select_line_at(&mut self, row: u16) {
+        let grid = &self.sessions[self.active].app().grid();
+        let width = grid.width() as u16;
+        if width == 0 {
+            return;
+        }
+        self.selection.start(0, row);
+        self.selection.extend(width - 1, row);
+        self.selection.finish();
+    }
+
+    /// P27-C: Execute a context menu action by index.
+    fn execute_context_menu_action(&mut self, index: usize) {
+        let actions = crate::context_menu::ContextMenuAction::all();
+        if index >= actions.len() {
+            return;
+        }
+        match actions[index] {
+            crate::context_menu::ContextMenuAction::Copy => {
+                self.copy_selection_to_clipboard();
+            }
+            crate::context_menu::ContextMenuAction::Paste => {
+                self.paste_from_clipboard();
+            }
+            crate::context_menu::ContextMenuAction::SelectAll => {
+                let grid = &self.sessions[self.active].app().grid();
+                let width = grid.width() as u16;
+                let height = grid.height() as u16;
+                if width > 0 && height > 0 {
+                    self.selection.start(0, 0);
+                    self.selection.extend(width - 1, height - 1);
+                    self.selection.finish();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            crate::context_menu::ContextMenuAction::Search => {
+                self.search.toggle();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            crate::context_menu::ContextMenuAction::Clear => {
+                crate::terminal_actions::clear_screen_and_scrollback(
+                    self.active_session_mut().app_mut().grid_mut(),
+                );
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            crate::context_menu::ContextMenuAction::Reset => {
+                crate::terminal_actions::soft_reset(self.active_session_mut().app_mut().grid_mut());
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+        }
+    }
+
     /// Handle mouse wheel events — scroll scrollback or report to PTY.
     pub(super) fn handle_mouse_wheel(&mut self, delta: winit::event::MouseScrollDelta) {
         // P20-D: Route wheel events to the pane under the cursor.
@@ -989,24 +1158,37 @@ impl DesktopApp {
             return;
         }
 
-        // Mouse tracking OFF — scroll the scrollback buffer.
-        let (lines, direction) = match delta {
-            winit::event::MouseScrollDelta::LineDelta(_x, y) => (y.abs() as usize, y > 0.0),
-            winit::event::MouseScrollDelta::PixelDelta(pos) => {
-                let lines = (pos.y.abs() as f32 / 16.0).round() as usize;
-                (lines.max(1), pos.y < 0.0) // Natural scroll: pixel up = scroll up
-            }
+        // Mouse tracking OFF — feed smooth scroller.
+        let cell_h = if let Some(ref renderer) = self.renderer {
+            renderer.cell_height() as f32
+        } else {
+            self.config.cell_height
         };
 
-        let grid = self
-            .active_session_mut()
-            .app_mut()
-            .terminal_mut()
-            .grid_mut();
-        if direction {
-            grid.scroll_up_viewport(lines);
-        } else {
-            grid.scroll_down_viewport(lines);
+        match delta {
+            winit::event::MouseScrollDelta::LineDelta(_x, y) => {
+                // Line-based scroll (mouse wheel): add integer lines.
+                let lines = -(y as i32); // up = positive
+                self.smooth_scroll.add_lines(lines);
+            }
+            winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                // Pixel-based scroll (trackpad): precise with momentum.
+                self.smooth_scroll.add_pixels(-(pos.y as f32), cell_h);
+            }
+        }
+
+        // Process smooth scroll immediately on this frame.
+        if let Some(delta_lines) = self.smooth_scroll.tick() {
+            let grid = self
+                .active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut();
+            if delta_lines > 0 {
+                grid.scroll_up_viewport(delta_lines as usize);
+            } else {
+                grid.scroll_down_viewport((-delta_lines) as usize);
+            }
         }
 
         if let Some(ref window) = self.window {
