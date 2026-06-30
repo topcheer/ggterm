@@ -482,7 +482,7 @@ impl DesktopApp {
         }
     }
 
-    /// Poll for bell events from the terminal and trigger visual bell (P11-E).
+    /// Poll for bell events from the terminal and trigger visual + audio bell (P11-E, P28-G).
     pub(super) fn poll_bell(&mut self) {
         if self
             .active_session_mut()
@@ -491,6 +491,10 @@ impl DesktopApp {
             .take_bell()
         {
             self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
+            // P28-G: Play bell sound if enabled and rate limiter allows.
+            if self.bell_limiter.check() {
+                self.sound_player.play(crate::sound::SoundType::Bell);
+            }
             log::debug!("Bell triggered");
         }
     }

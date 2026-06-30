@@ -334,6 +334,66 @@ impl DesktopApp {
             return;
         }
 
+        // P28-G: Ctrl+Shift+M → toggle sound on/off
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyM) = &event.physical_key
+        {
+            self.sound_player.toggle();
+            return;
+        }
+
+        // P28-A: Ctrl+Shift+G → toggle perf monitor
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyG) = &event.physical_key
+        {
+            self.perf_monitor.toggle();
+            return;
+        }
+
+        // P28-H: Ctrl+Shift+L → toggle shell switcher
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyL) = &event.physical_key
+        {
+            self.shell_switcher.toggle();
+            return;
+        }
+
+        // P28-H: Shell switcher navigation when open
+        if self.shell_switcher.open {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.shell_switcher.close();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    self.shell_switcher.select_up();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    self.shell_switcher.select_down();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // P28-A: Ctrl+Shift+W → cycle workspace forward
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyW) = &event.physical_key
+        {
+            self.workspaces.cycle_next();
+            self.animations.tab_switch();
+            return;
+        }
+
         // P25-B: Ctrl+Shift+P → toggle command palette
         if self.mods.ctrl
             && self.mods.shift
