@@ -404,6 +404,45 @@ impl DesktopApp {
             return;
         }
 
+        // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
+        if self.mods.ctrl
+            && self.mods.shift
+            && let PhysicalKey::Code(KeyCode::Slash) = &event.physical_key
+        {
+            self.shortcut_help.toggle();
+            return;
+        }
+
+        // P29-A: When shortcut help is open, intercept keyboard input.
+        if self.shortcut_help.visible {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.shortcut_help.close();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::PageUp) => {
+                    self.shortcut_help.scroll_up();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::PageDown) => {
+                    self.shortcut_help.scroll_down();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Backspace) => {
+                    self.shortcut_help.backspace();
+                    return;
+                }
+                _ => {}
+            }
+            if let Some(c) = event.text.as_ref().and_then(|t| t.chars().next())
+                && !c.is_control()
+            {
+                self.shortcut_help.type_char(c);
+                return;
+            }
+            return; // swallow all other keys when help is open
+        }
+
         // P25-B: Ctrl+Shift+P → toggle command palette
         if self.mods.ctrl
             && self.mods.shift

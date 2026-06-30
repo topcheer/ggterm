@@ -1042,6 +1042,163 @@ impl DesktopApp {
             }
         }
 
+        // ── P29-A: Shortcut help overlay ──────────────────────────────
+        if self.shortcut_help.visible {
+            let panel_w = 520.0;
+            let panel_h = 480.0;
+            let win_w = content_bounds.width as f32;
+            let win_h = content_bounds.height as f32 + content_bounds.y as f32;
+            let px = (win_w - panel_w) / 2.0;
+            let py = (win_h - panel_h) / 2.0;
+
+            // Dark mask over entire window.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: 0.0,
+                y: 0.0,
+                w: win_w,
+                h: win_h,
+                color: (0.0, 0.0, 0.0, 0.5),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // Panel background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: panel_w,
+                h: panel_h,
+                color: (0.08, 0.09, 0.12, 0.97),
+                radius: 12.0,
+                stroke_width: 0.0,
+            });
+            // Panel border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: panel_w,
+                h: panel_h,
+                color: (0.3, 0.35, 0.5, 0.5),
+                radius: 12.0,
+                stroke_width: 1.0,
+            });
+
+            // Title.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Keyboard Shortcuts".to_string(),
+                left: px + 20.0,
+                top: py + 16.0,
+                color: (240, 240, 250),
+            });
+
+            // Search field background.
+            let search_y = py + 44.0;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px + 16.0,
+                y: search_y,
+                w: panel_w - 32.0,
+                h: 28.0,
+                color: (0.15, 0.17, 0.22, 0.8),
+                radius: 6.0,
+                stroke_width: 0.0,
+            });
+
+            // Search placeholder / query text.
+            let search_display = if self.shortcut_help.query.is_empty() {
+                "Type to search...".to_string()
+            } else {
+                self.shortcut_help.query.clone()
+            };
+            let search_color = if self.shortcut_help.query.is_empty() {
+                (100, 100, 120)
+            } else {
+                (200, 220, 255)
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: format!("> {}", search_display),
+                left: px + 24.0,
+                top: search_y + 5.0,
+                color: search_color,
+            });
+
+            // Shortcut entries.
+            let entries = self.shortcut_help.filtered();
+            let line_h = 22.0_f32;
+            let max_rows = 14_usize;
+            let scroll = self.shortcut_help.scroll.min(entries.len());
+            let visible_entries = entries.iter().skip(scroll).take(max_rows);
+
+            for (i, entry) in visible_entries.enumerate() {
+                let ey = search_y + 40.0 + i as f32 * line_h;
+
+                // Alternating row background for readability.
+                if i % 2 == 0 {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: px + 12.0,
+                        y: ey,
+                        w: panel_w - 24.0,
+                        h: line_h,
+                        color: (0.12, 0.13, 0.17, 0.4),
+                        radius: 0.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                // Category badge.
+                let (r, g, b) = entry.category.color();
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: px + 20.0,
+                    y: ey + 4.0,
+                    w: 6.0,
+                    h: line_h - 8.0,
+                    color: (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 0.8),
+                    radius: 2.0,
+                    stroke_width: 0.0,
+                });
+
+                // Keys (monospace, highlighted).
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: entry.keys.clone(),
+                    left: px + 36.0,
+                    top: ey + 3.0,
+                    color: (140, 200, 255),
+                });
+
+                // Description.
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: entry.description.clone(),
+                    left: px + 200.0,
+                    top: ey + 3.0,
+                    color: (200, 200, 210),
+                });
+
+                // Category label (right side).
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: entry.category.label().to_string(),
+                    left: px + panel_w - 80.0,
+                    top: ey + 3.0,
+                    color: (r, g, b),
+                });
+            }
+
+            // Result count footer.
+            let footer = format!(
+                "{} shortcuts{} — Esc to close",
+                entries.len(),
+                if self.shortcut_help.query.is_empty() {
+                    String::new()
+                } else {
+                    format!(" match \"{}\"", self.shortcut_help.query)
+                }
+            );
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: footer,
+                left: px + 20.0,
+                top: py + panel_h - 24.0,
+                color: (120, 120, 140),
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

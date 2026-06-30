@@ -287,6 +287,8 @@ pub struct DesktopApp {
     shell_switcher: crate::shell_switcher::ShellSwitcherState,
     /// P28: Tab right-click context menu.
     tab_context_menu: crate::tab_bar::TabContextMenuState,
+    /// P29-A: Shortcut help overlay (Ctrl+Shift+/).
+    shortcut_help: crate::shortcut_help::ShortcutHelpState,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -548,6 +550,7 @@ impl DesktopApp {
             bell_limiter: crate::sound::BellRateLimiter::default(),
             shell_switcher: crate::shell_switcher::ShellSwitcherState::new(),
             tab_context_menu: crate::tab_bar::TabContextMenuState::default(),
+            shortcut_help: crate::shortcut_help::ShortcutHelpState::new(),
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
