@@ -37,6 +37,7 @@ pub mod font;
 pub mod input;
 pub mod mouse;
 pub mod search;
+pub mod session;
 pub mod settings_ui;
 pub mod shell_integration;
 pub mod splits;

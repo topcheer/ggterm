@@ -307,6 +307,65 @@ impl Config {
     pub fn parse_keybinding(s: &str) -> Option<(bool, bool, bool, &str)> {
         parse_keybinding(s)
     }
+
+    /// Validate all config fields and return the first error encountered, if any.
+    ///
+    /// Checked ranges:
+    /// - `font_size`: 6–32 (inclusive)
+    /// - `cell_width` / `cell_height`: 4–32 (inclusive)
+    /// - `scrollback_lines`: 100–100_000 (inclusive)
+    /// - `theme`: must be a known built-in theme name
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let ap = &self.appearance;
+
+        if !(6..=32).contains(&ap.font_size) {
+            return Err(ConfigError::Validation(format!(
+                "font_size {} is out of range (allowed 6–32)",
+                ap.font_size
+            )));
+        }
+
+        if !(4..=32).contains(&ap.cell_width) {
+            return Err(ConfigError::Validation(format!(
+                "cell_width {} is out of range (allowed 4–32)",
+                ap.cell_width
+            )));
+        }
+
+        if !(4..=32).contains(&ap.cell_height) {
+            return Err(ConfigError::Validation(format!(
+                "cell_height {} is out of range (allowed 4–32)",
+                ap.cell_height
+            )));
+        }
+
+        let valid_themes = [
+            "dark",
+            "light",
+            "dracula",
+            "solarized-dark",
+            "solarized_light",
+            "solarized-light",
+            "solarized_dark",
+            "gruvbox",
+        ];
+        if !valid_themes.contains(&ap.theme.as_str()) {
+            return Err(ConfigError::Validation(format!(
+                "theme '{}' is not a known built-in theme (allowed: dark, light, dracula, solarized-dark, solarized-light, gruvbox)",
+                ap.theme
+            )));
+        }
+
+        let sb = self.terminal.scrollback_lines;
+        if !(100..=100_000).contains(&sb) {
+            return Err(ConfigError::Validation(format!(
+                "scrollback_lines {} is out of range (allowed 100–100000)",
+                sb
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 // ─── Config manager (hot-reload) ─────────────────────────────────────────
@@ -392,6 +451,7 @@ impl ConfigManager {
             None => return Ok(false),
         };
         let new_config = Config::load(&path)?;
+        new_config.validate()?;
         let changed = new_config.appearance.theme != self.config.appearance.theme
             || new_config.appearance.font_size != self.config.appearance.font_size
             || new_config.appearance.cell_width != self.config.appearance.cell_width
@@ -624,6 +684,9 @@ pub enum ConfigError {
     #[cfg(feature = "config-watch")]
     #[error("config watch error: {0}")]
     Watch(String),
+    /// Configuration validation error (field, message).
+    #[error("config validation error: {0}")]
+    Validation(String),
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -1150,5 +1213,122 @@ mod watch_tests {
 
         let result = mgr.watch();
         assert!(result.is_err());
+    }
+
+    // ── P21-C: Validation tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_validate_default_ok() {
+        let config = Config::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_font_size_too_small() {
+        let mut config = Config::default();
+        config.appearance.font_size = 3;
+        let err = config.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::Validation(_)));
+        assert!(err.to_string().contains("font_size"));
+    }
+
+    #[test]
+    fn test_validate_font_size_too_large() {
+        let mut config = Config::default();
+        config.appearance.font_size = 64;
+        let err = config.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::Validation(_)));
+        assert!(err.to_string().contains("font_size"));
+    }
+
+    #[test]
+    fn test_validate_font_size_boundaries() {
+        let mut config = Config::default();
+        config.appearance.font_size = 6;
+        assert!(config.validate().is_ok());
+        config.appearance.font_size = 32;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_cell_width_out_of_range() {
+        let mut config = Config::default();
+        config.appearance.cell_width = 2;
+        assert!(config.validate().is_err());
+
+        config.appearance.cell_width = 48;
+        assert!(config.validate().is_err());
+
+        config.appearance.cell_width = 4;
+        assert!(config.validate().is_ok());
+        config.appearance.cell_width = 32;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_cell_height_out_of_range() {
+        let mut config = Config::default();
+        config.appearance.cell_height = 1;
+        assert!(config.validate().is_err());
+
+        config.appearance.cell_height = 100;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_scrollback_out_of_range() {
+        let mut config = Config::default();
+        config.terminal.scrollback_lines = 10;
+        assert!(config.validate().is_err());
+
+        config.terminal.scrollback_lines = 200_000;
+        assert!(config.validate().is_err());
+
+        config.terminal.scrollback_lines = 100;
+        assert!(config.validate().is_ok());
+        config.terminal.scrollback_lines = 100_000;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_unknown_theme() {
+        let mut config = Config::default();
+        config.appearance.theme = "nonexistent".to_string();
+        let err = config.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::Validation(_)));
+        assert!(err.to_string().contains("theme"));
+    }
+
+    #[test]
+    fn test_validate_known_themes() {
+        let mut config = Config::default();
+        for theme in &[
+            "dark",
+            "light",
+            "dracula",
+            "solarized-dark",
+            "solarized-light",
+            "gruvbox",
+        ] {
+            config.appearance.theme = theme.to_string();
+            assert!(config.validate().is_ok(), "theme {} should be valid", theme);
+        }
+    }
+
+    #[test]
+    fn test_validate_solarized_underscore_variant() {
+        let mut config = Config::default();
+        config.appearance.theme = "solarized_dark".to_string();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validation_error_is_display() {
+        let mut config = Config::default();
+        config.appearance.font_size = 0;
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("font_size"));
+        assert!(msg.contains("validation"));
     }
 }

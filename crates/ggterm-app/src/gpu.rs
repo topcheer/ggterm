@@ -262,6 +262,7 @@ impl GpuContext {
                         &self.queue,
                         spec.grid,
                         spec.cursor,
+                        spec.needs_prepare,
                         &mut pass,
                     )
                     .map_err(RenderFrameError::Render)?;
@@ -302,6 +303,8 @@ pub struct PaneRenderSpec<'a> {
     pub width: u32,
     /// Height in pixels for clipping.
     pub height: u32,
+    /// P21-D: Whether to re-prepare glyphon buffers (true when grid changed).
+    pub needs_prepare: bool,
 }
 
 /// Create a wgpu Instance + Adapter + Surface from a window.

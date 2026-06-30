@@ -97,6 +97,8 @@ pub struct SettingsState {
     pub ai_model: String,
     /// Whether there are unsaved changes requiring a restart.
     pub dirty: bool,
+    /// Error message to display in the settings overlay (e.g. config validation error).
+    pub error_message: Option<String>,
 }
 
 impl Default for SettingsState {
@@ -112,6 +114,7 @@ impl Default for SettingsState {
             ai_endpoint: "https://api.openai.com/v1".to_string(),
             ai_model: "gpt-4o-mini".to_string(),
             dirty: false,
+            error_message: None,
         }
     }
 }
@@ -127,6 +130,7 @@ impl SettingsState {
         self.visible = true;
         self.selected = SettingsField::Theme;
         self.dirty = false;
+        self.error_message = None;
     }
 
     /// Hide the settings overlay without applying pending changes.
@@ -212,6 +216,21 @@ impl SettingsState {
         self.ai_endpoint = cfg.ai_endpoint.clone();
         self.ai_model = cfg.ai_model.clone();
         self.dirty = false;
+    }
+
+    /// Set an error message to display in the overlay.
+    pub fn set_error(&mut self, msg: impl Into<String>) {
+        self.error_message = Some(msg.into());
+    }
+
+    /// Clear any displayed error message.
+    pub fn clear_error(&mut self) {
+        self.error_message = None;
+    }
+
+    /// Returns the error message if one is present, for overlay rendering.
+    pub fn error_text(&self) -> Option<&str> {
+        self.error_message.as_deref()
     }
 
     /// Format the settings overlay as a display string (for logging / title bar).
@@ -486,5 +505,41 @@ mod tests {
         };
         s.load_from_config(&cfg);
         assert!(!s.dirty);
+    }
+
+    // ── P21-C: Error message tests ─────────────────────────────
+
+    #[test]
+    fn t_error_message_default_none() {
+        let s = SettingsState::new();
+        assert!(s.error_message.is_none());
+        assert!(s.error_text().is_none());
+    }
+
+    #[test]
+    fn t_set_and_clear_error() {
+        let mut s = SettingsState::new();
+        s.set_error("font_size out of range");
+        assert_eq!(s.error_text(), Some("font_size out of range"));
+
+        s.clear_error();
+        assert!(s.error_message.is_none());
+        assert!(s.error_text().is_none());
+    }
+
+    #[test]
+    fn t_open_clears_error() {
+        let mut s = SettingsState::new();
+        s.set_error("bad config");
+        s.open();
+        assert!(s.error_message.is_none());
+    }
+
+    #[test]
+    fn t_set_error_overwrites() {
+        let mut s = SettingsState::new();
+        s.set_error("first error");
+        s.set_error("second error");
+        assert_eq!(s.error_text(), Some("second error"));
     }
 }

@@ -115,6 +115,8 @@ pub struct DesktopApp {
     cursor_pos: (f64, f64),
     /// Mouse button currently held (for drag tracking).
     button_held: Option<crate::mouse::MouseButton>,
+    /// P21-A: Active split separator drag (None = not dragging).
+    drag_resize: Option<bool>,
     /// DPI scale factor (2.0 on Retina, 1.0 on standard). P18-A.
     scale_factor: f64,
 
@@ -390,6 +392,7 @@ impl DesktopApp {
             selection: crate::mouse::MouseSelection::default(),
             cursor_pos: (0.0, 0.0),
             button_held: None,
+            drag_resize: None,
             scale_factor: 1.0,
             pending_resize: None,
             last_resize_time: None,
@@ -1013,6 +1016,7 @@ impl DesktopApp {
                         offset_y: rect.y,
                         width: rect.width,
                         height: rect.height,
+                        needs_prepare: session.pane_needs_prepare(*pane_id),
                     });
                 }
             }
@@ -1020,6 +1024,9 @@ impl DesktopApp {
             if let Err(e) = gpu.render_multi_pane_frame(surface, renderer, &specs, bg_color) {
                 log::error!("Render error: {e}");
             }
+
+            // P21-D: Clear prepare flags after render (mutable borrow, disjoint from gpu).
+            self.sessions[active].clear_prepare_flags();
         } else if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
             log::error!("Render error: {e}");
         }
@@ -1572,8 +1579,50 @@ impl DesktopApp {
         false
     }
 
+    /// P21-A: Try to start dragging a split separator.
+    ///
+    /// Checks if cursor is near a separator line. If so, records the
+    /// orientation and returns true (caller should skip normal mouse handling).
+    fn try_start_separator_drag(&mut self) -> bool {
+        let session = self.active_session();
+        if session.pane_count() <= 1 {
+            return false;
+        }
+
+        let Some(screen_w) = self.renderer.as_ref().map(|r| r.resolution_width()) else {
+            return false;
+        };
+        let Some(screen_h) = self.renderer.as_ref().map(|r| r.resolution_height()) else {
+            return false;
+        };
+
+        let bounds = crate::splits::Rect::new(0, 0, screen_w, screen_h);
+        let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
+
+        if let Some(orient) = session.split_tree().separator_at_point(px, py, bounds) {
+            self.drag_resize = Some(orient);
+            log::debug!("P21-A: separator drag started ({orient:?})");
+            return true;
+        }
+        false
+    }
+
     /// Handle winit MouseInput events (button press/release).
     fn handle_mouse_input(&mut self, state: ElementState, button: winit::event::MouseButton) {
+        // P21-A: Handle split separator drag.
+        if button == winit::event::MouseButton::Left {
+            if state == ElementState::Pressed {
+                // Check if we're clicking on a separator.
+                if self.try_start_separator_drag() {
+                    return; // Don't process as pane click or selection
+                }
+            } else if state == ElementState::Released && self.drag_resize.is_some() {
+                self.drag_resize = None;
+                log::debug!("P21-A: separator drag ended");
+                return;
+            }
+        }
+
         // P20-D: On left-click, switch pane focus to the pane under the cursor.
         if state == ElementState::Pressed
             && button == winit::event::MouseButton::Left
@@ -1672,6 +1721,29 @@ impl DesktopApp {
 
     /// Handle cursor motion — extend selection or report mouse motion.
     fn handle_cursor_moved(&mut self) {
+        // P21-A: If dragging a separator, adjust the ratio.
+        if self.drag_resize.is_some() {
+            let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
+            let screen_w = self
+                .renderer
+                .as_ref()
+                .map(|r| r.resolution_width())
+                .unwrap_or(0);
+            let screen_h = self
+                .renderer
+                .as_ref()
+                .map(|r| r.resolution_height())
+                .unwrap_or(0);
+            let bounds = crate::splits::Rect::new(0, 0, screen_w, screen_h);
+            let active = self.active;
+            let tree = self.sessions[active].split_tree_mut();
+            tree.set_ratio_at_point(px, py, bounds);
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return; // Skip normal cursor handling while dragging separator
+        }
+
         let (col, row) = self.pixel_to_cell_pos();
 
         let (any_event, button_event) = {

@@ -57,6 +57,11 @@ impl Rect {
         (left, right)
     }
 
+    /// Check whether a point is inside this rect.
+    pub fn contains_point(&self, px: u32, py: u32) -> bool {
+        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
+    }
+
     /// Split this rect vertically at the given ratio (0.0–1.0).
     ///
     /// Returns `(top, bottom)` where `top` gets `ratio * height`.
@@ -290,6 +295,97 @@ impl SplitNode {
         }
     }
 
+    /// P21-A: Check if a point is near a separator line.
+    ///
+    /// Returns `Some(true)` for horizontal separator (left|right),
+    /// `Some(false)` for vertical separator (top/bottom),
+    /// `None` if not near any separator.
+    pub fn separator_at_point(&self, px: u32, py: u32, bounds: Rect) -> Option<bool> {
+        const HIT: u32 = 4;
+
+        match self {
+            SplitNode::Pane(_) => None,
+            SplitNode::Horizontal { left, right, ratio } => {
+                let (lb, rb) = bounds.split_h(*ratio);
+                let sep_x = lb.x + lb.width;
+
+                if px >= sep_x.saturating_sub(HIT) && px <= sep_x + HIT {
+                    return Some(true);
+                }
+                if lb.contains_point(px, py) {
+                    return left.separator_at_point(px, py, lb);
+                }
+                if rb.contains_point(px, py) {
+                    return right.separator_at_point(px, py, rb);
+                }
+                None
+            }
+            SplitNode::Vertical { top, bottom, ratio } => {
+                let (tb, bb) = bounds.split_v(*ratio);
+                let sep_y = tb.y + tb.height;
+
+                if py >= sep_y.saturating_sub(HIT) && py <= sep_y + HIT {
+                    return Some(false);
+                }
+                if tb.contains_point(px, py) {
+                    return top.separator_at_point(px, py, tb);
+                }
+                if bb.contains_point(px, py) {
+                    return bottom.separator_at_point(px, py, bb);
+                }
+                None
+            }
+        }
+    }
+
+    /// P21-A: Set the ratio of the separator nearest to the given point.
+    ///
+    /// Computes the new ratio from the absolute pixel position.
+    /// Returns `true` if a separator was found and adjusted.
+    pub fn set_ratio_at_point(&mut self, px: u32, py: u32, bounds: Rect) -> bool {
+        const HIT: u32 = 4;
+
+        match self {
+            SplitNode::Pane(_) => false,
+            SplitNode::Horizontal { left, right, ratio } => {
+                let (lb, rb) = bounds.split_h(*ratio);
+                let sep_x = lb.x + lb.width;
+
+                if px >= sep_x.saturating_sub(HIT) && px <= sep_x + HIT {
+                    if bounds.width > 0 {
+                        *ratio = ((px - bounds.x) as f32 / bounds.width as f32).clamp(0.1, 0.9);
+                    }
+                    return true;
+                }
+                if lb.contains_point(px, py) {
+                    return left.set_ratio_at_point(px, py, lb);
+                }
+                if rb.contains_point(px, py) {
+                    return right.set_ratio_at_point(px, py, rb);
+                }
+                false
+            }
+            SplitNode::Vertical { top, bottom, ratio } => {
+                let (tb, bb) = bounds.split_v(*ratio);
+                let sep_y = tb.y + tb.height;
+
+                if py >= sep_y.saturating_sub(HIT) && py <= sep_y + HIT {
+                    if bounds.height > 0 {
+                        *ratio = ((py - bounds.y) as f32 / bounds.height as f32).clamp(0.1, 0.9);
+                    }
+                    return true;
+                }
+                if tb.contains_point(px, py) {
+                    return top.set_ratio_at_point(px, py, tb);
+                }
+                if bb.contains_point(px, py) {
+                    return bottom.set_ratio_at_point(px, py, bb);
+                }
+                false
+            }
+        }
+    }
+
     /// Adjust the split ratio of the nearest ancestor split containing `target_id`.
     ///
     /// `delta` is added to the ratio, clamped to [0.1, 0.9].
@@ -355,6 +451,19 @@ impl SplitTree {
             root: SplitNode::Pane(initial_id),
             active: initial_id,
             next_id: initial_id + 1,
+        }
+    }
+
+    /// Reconstruct a split tree from saved state (session restore).
+    ///
+    /// Takes a root node, the active pane ID, and computes `next_id`
+    /// from the maximum pane ID in the tree.
+    pub fn from_parts(root: SplitNode, active: PaneId) -> Self {
+        let max_id = root.pane_ids().into_iter().max().unwrap_or(0);
+        Self {
+            root,
+            active,
+            next_id: max_id + 1,
         }
     }
 
@@ -526,6 +635,22 @@ impl SplitTree {
     /// Check whether the tree has only a single pane (no splits).
     pub fn is_single(&self) -> bool {
         self.pane_count() == 1
+    }
+
+    /// P21-A: Check if a point is near a separator line for cursor styling.
+    ///
+    /// Returns `Some(true)` for horizontal separator (left|right),
+    /// `Some(false)` for vertical separator (top/bottom),
+    /// `None` if not near any separator.
+    pub fn separator_at_point(&self, px: u32, py: u32, bounds: Rect) -> Option<bool> {
+        self.root.separator_at_point(px, py, bounds)
+    }
+
+    /// P21-A: Set the ratio of the separator nearest to the given point.
+    ///
+    /// Returns `true` if a separator was found and adjusted.
+    pub fn set_ratio_at_point(&mut self, px: u32, py: u32, bounds: Rect) -> bool {
+        self.root.set_ratio_at_point(px, py, bounds)
     }
 }
 

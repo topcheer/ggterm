@@ -368,10 +368,16 @@ impl App {
     /// Process all pending events without blocking.
     ///
     /// Useful for tests: feed events and check state without blocking.
-    pub fn pump(&mut self) {
+    /// Useful for tests: feed events and check state without blocking.
+    ///
+    /// Returns `true` if any events were processed (P21-D: dirty rect).
+    pub fn pump(&mut self) -> bool {
+        let mut had_data = false;
         while let Ok(event) = self.event_rx.try_recv() {
             self.handle_event(event);
+            had_data = true;
         }
+        had_data
     }
 
     /// Get a reference to the terminal.

@@ -805,18 +805,25 @@ impl GlyphonRenderer {
     ///
     /// Call `set_viewport_offset()` before this to position the pane.
     /// Overlays are drawn separately via `prepare_overlay` + `draw_overlay`.
+    ///
+    /// `needs_prepare` (P21-D): when `false`, skips `prepare_grid()` and
+    /// `prepare_decorations()`, reusing existing glyphon buffers. The draw
+    /// is always performed (wgpu requires a full render pass).
     pub fn render_pane_to_pass(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         grid: &Grid,
         cursor: &CursorState,
+        needs_prepare: bool,
         render_pass: &mut wgpu::RenderPass<'_>,
     ) -> Result<(), RenderError> {
-        self.prepare_grid(device, queue, grid, cursor)?;
-        self.ensure_underline_pipeline(device);
-        self.prepare_decorations(device, grid);
-        // Draw text + decorations (no overlay).
+        if needs_prepare {
+            self.prepare_grid(device, queue, grid, cursor)?;
+            self.ensure_underline_pipeline(device);
+            self.prepare_decorations(device, grid);
+        }
+        // Always draw text + decorations (no overlay).
         self.text_renderer
             .render(&self.atlas, &self.viewport, render_pass)?;
         self.draw_decorations(render_pass);
