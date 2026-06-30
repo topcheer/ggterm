@@ -279,10 +279,6 @@ impl StatusBar {
             seg!("REC".to_string(), warn_color);
         }
 
-        // Suppress warning: the final `first = false` inside the macro is
-        // never read — touch it once more after all segments are pushed.
-        let _ = first;
-
         segs
     }
 }

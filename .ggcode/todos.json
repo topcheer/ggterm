@@ -1,22 +1,42 @@
 [
   {
-    "id": "1",
-    "content": "P6-A: Plugin trait + Hook system + Manager (98 tests)",
+    "id": "p26a",
+    "content": "P26-A: New ui.wgsl SDF shader + UiRect system",
     "status": "done"
   },
   {
-    "id": "2",
-    "content": "P6-B: Lua plugin runtime (mlua) — pending gg_dev",
-    "status": "pending"
+    "id": "p26b",
+    "content": "P26-B: Modern dark color system (UiTheme) — gg_dev",
+    "status": "done"
   },
   {
-    "id": "3",
-    "content": "P6-C: WASM plugin runtime (wasmtime) — pending ggcxf_dev, trait is ready",
-    "status": "pending"
+    "id": "p26c",
+    "content": "P26-C: Pill-shaped tab bar rendering in render.rs",
+    "status": "done"
   },
   {
-    "id": "4",
-    "content": "P6-D: Plugin integration into ggterm-app",
-    "status": "pending"
+    "id": "p26d",
+    "content": "P26-D: Padded pane borders with rounded corners",
+    "status": "done"
+  },
+  {
+    "id": "p26e",
+    "content": "P26-E: Visible status bar overlay — ggcxf_dev",
+    "status": "done"
+  },
+  {
+    "id": "p26f",
+    "content": "P26-F: Modern settings/about dialogs",
+    "status": "done"
+  },
+  {
+    "id": "p26g",
+    "content": "P26-G: Window content padding + layout — dd_dev",
+    "status": "done"
+  },
+  {
+    "id": "p26h",
+    "content": "P26-H: Integration verification + cleanup",
+    "status": "in_progress"
   }
 ]

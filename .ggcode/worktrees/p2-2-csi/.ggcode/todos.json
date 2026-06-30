@@ -1,0 +1,52 @@
+[
+  {
+    "id": "1",
+    "content": "Fix lib.rs duplicate gpu module declaration",
+    "status": "done"
+  },
+  {
+    "id": "2",
+    "content": "Fix window.rs spawn_pty_reader import path",
+    "status": "done"
+  },
+  {
+    "id": "3",
+    "content": "Fix gpu.rs for wgpu 29 API",
+    "status": "done"
+  },
+  {
+    "id": "4",
+    "content": "Fix PtyError → io::Error conversion",
+    "status": "done"
+  },
+  {
+    "id": "5",
+    "content": "Add cursor_visible() to Terminal + cursor_state() to App",
+    "status": "done"
+  },
+  {
+    "id": "6",
+    "content": "Create gpu.rs: GpuContext + init_wgpu + render_frame",
+    "status": "done"
+  },
+  {
+    "id": "7",
+    "content": "Verify desktop feature compiles clean + all tests pass",
+    "status": "done"
+  },
+  {
+    "id": "8",
+    "content": "Rewrite window.rs: winit ApplicationHandler + GPU render loop",
+    "status": "pending"
+  },
+  {
+    "id": "9",
+    "content": "End-to-end GPU rendering test",
+    "status": "pending"
+  },
+  {
+    "id": "10",
+    "content": "Commit all P1-F4 changes",
+    "status": "pending"
+  }
+]
