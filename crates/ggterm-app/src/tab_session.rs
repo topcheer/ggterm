@@ -136,6 +136,18 @@ impl TabSession {
         &self.title
     }
 
+    /// P29-B: Scroll all panes' viewports simultaneously (sync scroll).
+    pub fn scroll_all_panes_viewport(&mut self, lines: i32) {
+        for pane in self.panes.iter_mut().flatten() {
+            let grid = pane.app.terminal_mut().grid_mut();
+            if lines > 0 {
+                grid.scroll_up_viewport(lines as usize);
+            } else {
+                grid.scroll_down_viewport((-lines) as usize);
+            }
+        }
+    }
+
     /// Set the tab title (e.g., from OSC 0/2).
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.title = title.into();

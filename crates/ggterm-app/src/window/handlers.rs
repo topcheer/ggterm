@@ -1381,6 +1381,16 @@ impl DesktopApp {
 
         // Process smooth scroll immediately on this frame.
         if let Some(delta_lines) = self.smooth_scroll.tick() {
+            // P29-B: Shift+wheel → scroll all panes in the active tab.
+            if self.mods.shift && self.active_session().split_tree().pane_count() > 1 {
+                self.active_session_mut()
+                    .scroll_all_panes_viewport(delta_lines);
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+
             let grid = self
                 .active_session_mut()
                 .app_mut()
