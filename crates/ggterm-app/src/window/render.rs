@@ -8,6 +8,10 @@ impl DesktopApp {
         // P12-A/P12-C: Get theme background color for clear color,
         // and blend with visual bell flash if active.
         let active = self.active;
+
+        // Compute content area bounds BEFORE any borrows of self.
+        // This is shared with mouse handlers for coordinate consistency.
+        let content_bounds = self.content_area_bounds();
         let (br, bg, bb) = {
             let session = &self.sessions[active];
             let theme = session.app().theme();
@@ -460,11 +464,26 @@ impl DesktopApp {
         // P20-A: Multi-pane viewport rendering.
         // When the active session has multiple panes, render each pane's grid
         // at its SplitTree area offset within a single render pass.
+
+        let cell_h_px = renderer.cell_height();
+        let cell_w_px = renderer.cell_width();
+        let bounds = content_bounds;
+        let content_x = bounds.x;
+        let content_y = bounds.y;
+
         let pane_count = self.sessions[active].pane_count();
         if pane_count > 1 {
+            // Resize panes to match their areas BEFORE rendering.
+            // This must happen before borrowing session for grid refs.
+            {
+                let session = &mut self.sessions[active];
+                let tree = session.split_tree().clone();
+                let areas = tree.areas(bounds);
+                session.resize_panes_to_areas(&areas, cell_w_px, cell_h_px);
+            }
+
             let session = &self.sessions[active];
             let tree = session.split_tree();
-            let bounds = crate::splits::Rect::new(0, 0, screen_w as u32, screen_h as u32);
             let areas = tree.areas(bounds);
 
             // Build cursor states per pane (owned values, no borrow issues).
@@ -495,8 +514,12 @@ impl DesktopApp {
 
             // P21-D: Clear prepare flags after render (mutable borrow, disjoint from gpu).
             self.sessions[active].clear_prepare_flags();
-        } else if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
-            log::error!("Render error: {e}");
+        } else {
+            // Single pane: apply content area offset.
+            renderer.set_viewport_offset(content_x as f32, content_y as f32);
+            if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
+                log::error!("Render error: {e}");
+            }
         }
 
         // P19-C: Update tab bar display data.

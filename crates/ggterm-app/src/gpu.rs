@@ -34,7 +34,7 @@ impl GpuContext {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("ggterm device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits: wgpu::Limits::default(),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
@@ -44,9 +44,10 @@ impl GpuContext {
 
         let caps = surface.get_capabilities(adapter);
 
-        // Clamp surface dimensions to the GPU's maximum texture size.
-        // wgpu will panic if we exceed this (e.g. on a Retina display with scaling).
-        let max_dim = adapter.limits().max_texture_dimension_2d;
+        // Clamp surface dimensions to the device's maximum texture size.
+        // Must use device limits (not adapter) since the device was created
+        // with specific required_limits. wgpu panics if we exceed device limits.
+        let max_dim = device.limits().max_texture_dimension_2d;
         let width = width.min(max_dim).max(1);
         let height = height.min(max_dim).max(1);
 
@@ -217,43 +218,62 @@ impl GpuContext {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ggterm multi-pane encoder"),
-            });
+        // Surface extent — scissor rects must not exceed this.
+        let surf_w = self.config.width;
+        let surf_h = self.config.height;
 
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ggterm multi-pane render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: bg_color[0],
-                            g: bg_color[1],
-                            b: bg_color[2],
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
+        // CRITICAL: Each pane must be rendered in a separate command encoder +
+        // queue.submit(). All panes share the same glyphon TextRenderer vertex
+        // buffers. If we prepare pane B's text (which calls queue.write_buffer)
+        // in the same submit as pane A's draw, the GPU coalesces all
+        // write_buffer calls before any draw commands — so pane B's text data
+        // overwrites pane A's before A is even drawn.
+        //
+        // Per-pane submit() creates synchronization points: the GPU finishes
+        // pane A's draw before pane B's write_buffer executes.
+        for (i, spec) in panes.iter().enumerate() {
+            // Clamp to surface extent.
+            let x = spec.offset_x.min(surf_w);
+            let y = spec.offset_y.min(surf_h);
+            let w = spec.width.max(1).min(surf_w.saturating_sub(x));
+            let h = spec.height.max(1).min(surf_h.saturating_sub(y));
 
-            // Render each pane's grid at its offset.
-            for spec in panes {
-                let x = spec.offset_x;
-                let y = spec.offset_y;
-                let w = spec.width.max(1);
-                let h = spec.height.max(1);
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some(&format!("ggterm pane {i}")),
+                });
 
-                // Set scissor to clip this pane's rendering area.
+            // First pane clears the surface; subsequent panes load existing content.
+            let load = if i == 0 {
+                wgpu::LoadOp::Clear(wgpu::Color {
+                    r: bg_color[0],
+                    g: bg_color[1],
+                    b: bg_color[2],
+                    a: 1.0,
+                })
+            } else {
+                wgpu::LoadOp::Load
+            };
+
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&format!("ggterm pane {i} pass")),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+
                 pass.set_scissor_rect(x, y, w, h);
                 renderer.set_viewport_offset(x as f32, y as f32);
                 renderer
@@ -262,26 +282,54 @@ impl GpuContext {
                         &self.queue,
                         spec.grid,
                         spec.cursor,
-                        spec.needs_prepare,
+                        // Always re-prepare: panes share text buffers.
+                        true,
                         &mut pass,
                     )
                     .map_err(RenderFrameError::Render)?;
             }
 
-            // Reset scissor to full screen for overlay rendering.
-            let full_w = renderer.resolution_width();
-            let full_h = renderer.resolution_height();
-            pass.set_scissor_rect(0, 0, full_w, full_h);
-
-            // Draw overlays (tab bar, borders, settings, about) once.
-            renderer
-                .render_overlays_to_pass(&self.device, &mut pass)
-                .map_err(RenderFrameError::Render)?;
+            // Submit per pane — synchronization point ensures GPU ordering.
+            self.queue.submit(std::iter::once(encoder.finish()));
         }
 
-        self.queue.submit(std::iter::once(encoder.finish()));
-        frame.present();
+        // Overlays: final submit with LoadOp::Load to preserve pane content.
+        {
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("ggterm overlays"),
+                });
 
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("ggterm overlay pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+
+                // Full-screen scissor for overlays.
+                pass.set_scissor_rect(0, 0, surf_w, surf_h);
+                renderer
+                    .render_overlays_to_pass(&self.device, &mut pass)
+                    .map_err(RenderFrameError::Render)?;
+            }
+
+            self.queue.submit(std::iter::once(encoder.finish()));
+        }
+
+        frame.present();
         Ok(())
     }
 }

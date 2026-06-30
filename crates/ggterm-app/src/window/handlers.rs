@@ -38,9 +38,13 @@ impl DesktopApp {
             gpu.resize(surface, width.max(1), height.max(1));
         }
 
-        // Recreate renderer with surface dimensions — it computes cols/rows internally.
+        // Recreate renderer with the ACTUAL (clamped) surface dimensions.
+        // gpu.resize() clamps to max_texture_dimension_2d, so we must use
+        // gpu.config dimensions — not the raw width/height — to avoid
+        // renderer resolution > surface extent (causes scissor rect panic).
         if let Some(gpu) = &self.gpu {
-            self.renderer = Some(gpu.create_renderer(width, height, self.scale_factor));
+            self.renderer =
+                Some(gpu.create_renderer(gpu.config.width, gpu.config.height, self.scale_factor));
         }
 
         // Get actual cols/rows from renderer.
@@ -584,6 +588,46 @@ impl DesktopApp {
     /// Trigger an AI request from the current terminal context.
     ///
     /// Convert pixel position to terminal cell coordinates.
+    /// Compute the terminal content area in physical pixels.
+    ///
+    /// Accounts for tab bar height, status bar height, and content padding.
+    /// Both the renderer and mouse handlers use this to ensure coordinates match.
+    pub(super) fn content_area_bounds(&self) -> crate::splits::Rect {
+        let cell_h = if let Some(ref renderer) = self.renderer {
+            renderer.cell_height() as f32
+        } else {
+            self.config.cell_height
+        };
+
+        let (screen_w, screen_h) = if let Some(ref renderer) = self.renderer {
+            (renderer.resolution_width(), renderer.resolution_height())
+        } else {
+            (self.config.cols as u32, self.config.rows as u32)
+        };
+
+        let tab_bar_h = if self.tab_bar.visible {
+            ((cell_h + 8.0).max(28.0) + 6.0) as u32
+        } else {
+            0
+        };
+        let status_bar_h = if self.status_bar_visible {
+            crate::desktop_config::STATUS_BAR_HEIGHT as u32
+        } else {
+            0
+        };
+        let pad = crate::desktop_config::CONTENT_PADDING as u32;
+
+        let content_x = pad;
+        let content_y = tab_bar_h + pad;
+        let content_w = screen_w.saturating_sub(pad * 2);
+        let content_h = screen_h
+            .saturating_sub(tab_bar_h)
+            .saturating_sub(status_bar_h)
+            .saturating_sub(pad * 2);
+
+        crate::splits::Rect::new(content_x, content_y, content_w, content_h)
+    }
+
     pub(super) fn pixel_to_cell_pos(&self) -> (u16, u16) {
         // P18: Use actual renderer cell dimensions (DPI-aware, font-measured).
         let (cw, ch) = if let Some(ref renderer) = self.renderer {
@@ -594,7 +638,13 @@ impl DesktopApp {
                 self.config.cell_height as f64,
             )
         };
-        crate::mouse::pixel_to_cell(self.cursor_pos.0, self.cursor_pos.1, cw, ch)
+
+        // Subtract content area offset so cell coordinates are relative
+        // to the pane's top-left, not the window's top-left.
+        let bounds = self.content_area_bounds();
+        let px = self.cursor_pos.0 - bounds.x as f64;
+        let py = self.cursor_pos.1 - bounds.y as f64;
+        crate::mouse::pixel_to_cell(px, py, cw, ch)
     }
 
     /// P20-D: Check if the cursor is over a different pane and switch focus.
@@ -607,15 +657,8 @@ impl DesktopApp {
             return false;
         }
 
-        // Need renderer to get screen dimensions for split area calculation.
-        let Some(screen_w) = self.renderer.as_ref().map(|r| r.resolution_width()) else {
-            return false;
-        };
-        let Some(screen_h) = self.renderer.as_ref().map(|r| r.resolution_height()) else {
-            return false;
-        };
-
-        let bounds = crate::splits::Rect::new(0, 0, screen_w, screen_h);
+        // Use the same content area bounds as the renderer.
+        let bounds = self.content_area_bounds();
         let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
 
         if let Some(hit_id) = session.split_tree().pane_at_point(px, py, bounds) {
@@ -641,14 +684,7 @@ impl DesktopApp {
             return false;
         }
 
-        let Some(screen_w) = self.renderer.as_ref().map(|r| r.resolution_width()) else {
-            return false;
-        };
-        let Some(screen_h) = self.renderer.as_ref().map(|r| r.resolution_height()) else {
-            return false;
-        };
-
-        let bounds = crate::splits::Rect::new(0, 0, screen_w, screen_h);
+        let bounds = self.content_area_bounds();
         let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
 
         if let Some(orient) = session.split_tree().separator_at_point(px, py, bounds) {

@@ -227,6 +227,48 @@ impl TabSession {
         }
     }
 
+    /// Resize each pane to match its pixel area in the split tree.
+    ///
+    /// Converts each pane's pixel `Rect` to cell dimensions using the given
+    /// `cell_w`/`cell_h`, and resizes the pane's terminal grid + PTY if the
+    /// dimensions changed. This ensures text wraps at the pane boundary, not
+    /// at the full window width.
+    pub fn resize_panes_to_areas(
+        &mut self,
+        areas: &[(PaneId, crate::splits::Rect)],
+        cell_w: u32,
+        cell_h: u32,
+    ) {
+        for (id, rect) in areas {
+            let cols =
+                ((rect.width as f32 / cell_w as f32) as u16).max(crate::desktop_config::MIN_COLS);
+            let rows =
+                ((rect.height as f32 / cell_h as f32) as u16).max(crate::desktop_config::MIN_ROWS);
+            if let Some(pane) = self.panes.get_mut(*id).and_then(|p| p.as_mut()) {
+                let cur_cols = pane.app.grid().width() as u16;
+                let cur_rows = pane.app.grid().height() as u16;
+                if cur_cols != cols || cur_rows != rows {
+                    log::debug!(
+                        "Pane {}: resize {}x{} → {}x{}",
+                        id,
+                        cur_cols,
+                        cur_rows,
+                        cols,
+                        rows
+                    );
+                    pane.app
+                        .handle_event(crate::event::AppEvent::Resize { cols, rows });
+                    if let Some(ref mut pty) = pane.pty
+                        && let Err(e) = pty.resize(cols, rows)
+                    {
+                        log::warn!("PTY resize failed: {e}");
+                    }
+                    pane.needs_reprepare = true;
+                }
+            }
+        }
+    }
+
     // ── Split-pane management (P19-B) ──
 
     /// Get the split-pane layout tree.
