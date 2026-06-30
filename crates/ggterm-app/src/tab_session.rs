@@ -27,14 +27,19 @@ struct PaneSession {
 }
 
 impl PaneSession {
-    /// Create a new pane session: spawn a PTY, wire up the reader thread,
-    /// and create a new App.
-    fn new(cols: u16, rows: u16, shell: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Create a new pane session with an optional working directory.
+    fn new_with_cwd(
+        cols: u16,
+        rows: u16,
+        shell: &str,
+        cwd: Option<&std::path::Path>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let shell_integration = ShellIntegrationConfig::prepare(shell);
         let (program, spawn_args) = shell_integration.spawn_args();
         let env_vars = shell_integration.env_vars();
 
-        let pty = PtySession::open_advanced(cols, rows, Some(&program), &spawn_args, &env_vars)?;
+        let pty =
+            PtySession::open_with_cwd(cols, rows, Some(&program), &spawn_args, &env_vars, cwd)?;
 
         let (mut app, event_tx) = App::new(cols as usize, rows as usize);
         app.start();
@@ -84,7 +89,18 @@ impl TabSession {
     /// Create a new tab session with a single pane: spawn a PTY, wire up
     /// the reader thread, and create a new App.
     pub fn new(cols: u16, rows: u16, shell: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let pane = PaneSession::new(cols, rows, shell)?;
+        Self::new_with_cwd(cols, rows, shell, None)
+    }
+
+    /// Create a new tab session with an optional working directory.
+    /// When `cwd` is provided (e.g., from OSC 7), the shell starts in that directory.
+    pub fn new_with_cwd(
+        cols: u16,
+        rows: u16,
+        shell: &str,
+        cwd: Option<&std::path::Path>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let pane = PaneSession::new_with_cwd(cols, rows, shell, cwd)?;
         let title = shell.rsplit('/').next().unwrap_or(shell).to_string();
         Ok(Self {
             panes: vec![Some(pane)],
@@ -325,7 +341,18 @@ impl TabSession {
         rows: u16,
         shell: &str,
     ) -> Result<PaneId, Box<dyn std::error::Error>> {
-        let pane = PaneSession::new(cols, rows, shell)?;
+        self.split_horizontal_with_cwd(cols, rows, shell, None)
+    }
+
+    /// Split horizontal with optional cwd inheritance.
+    pub fn split_horizontal_with_cwd(
+        &mut self,
+        cols: u16,
+        rows: u16,
+        shell: &str,
+        cwd: Option<&std::path::Path>,
+    ) -> Result<PaneId, Box<dyn std::error::Error>> {
+        let pane = PaneSession::new_with_cwd(cols, rows, shell, cwd)?;
         self.split_tree.split_horizontal(0.5);
         let new_id = self.split_tree.active();
         // PaneId matches Vec index — extend if needed.
@@ -345,7 +372,18 @@ impl TabSession {
         rows: u16,
         shell: &str,
     ) -> Result<PaneId, Box<dyn std::error::Error>> {
-        let pane = PaneSession::new(cols, rows, shell)?;
+        self.split_vertical_with_cwd(cols, rows, shell, None)
+    }
+
+    /// Split vertical with optional cwd inheritance.
+    pub fn split_vertical_with_cwd(
+        &mut self,
+        cols: u16,
+        rows: u16,
+        shell: &str,
+        cwd: Option<&std::path::Path>,
+    ) -> Result<PaneId, Box<dyn std::error::Error>> {
+        let pane = PaneSession::new_with_cwd(cols, rows, shell, cwd)?;
         self.split_tree.split_vertical(0.5);
         let new_id = self.split_tree.active();
         while self.panes.len() <= new_id {

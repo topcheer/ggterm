@@ -99,6 +99,20 @@ impl PtySession {
         args: &[String],
         env_vars: &[(String, String)],
     ) -> Result<Self, PtyError> {
+        Self::open_with_cwd(cols, rows, shell, args, env_vars, None)
+    }
+
+    /// Open a PTY session with an optional working directory.
+    ///
+    /// If `cwd` is `None`, falls back to the process's current directory.
+    pub fn open_with_cwd(
+        cols: u16,
+        rows: u16,
+        shell: Option<&str>,
+        args: &[String],
+        env_vars: &[(String, String)],
+        cwd: Option<&std::path::Path>,
+    ) -> Result<Self, PtyError> {
         let size = PtySize {
             rows,
             cols,
@@ -122,8 +136,11 @@ impl PtySession {
             cmd.arg(arg);
         }
 
-        // Set reasonable defaults
-        cmd.cwd(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")));
+        // Set working directory (use provided cwd or fall back to process cwd).
+        let cwd = cwd.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"))
+        });
+        cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
 
         // Apply extra env vars

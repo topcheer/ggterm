@@ -88,7 +88,9 @@ impl DesktopApp {
     pub(super) fn open_tab(&mut self) {
         let cols = self.config.cols;
         let rows = self.config.rows;
-        match TabSession::new(cols, rows, self.shell()) {
+        // P31: Inherit cwd from active tab (OSC 7 tracking).
+        let cwd = self.active_session().cwd().map(|p| p.to_path_buf());
+        match TabSession::new_with_cwd(cols, rows, self.shell(), cwd.as_deref()) {
             Ok(session) => {
                 self.sessions.push(session);
                 self.active = self.sessions.len() - 1;
@@ -333,10 +335,14 @@ impl DesktopApp {
         let cols = self.config.cols;
         let rows = self.config.rows;
         let shell = self.shell().to_string();
-        match self
-            .active_session_mut()
-            .split_horizontal(cols, rows, &shell)
-        {
+        // P31: Inherit cwd from active pane.
+        let cwd = self.active_session().cwd().map(|p| p.to_path_buf());
+        match self.active_session_mut().split_horizontal_with_cwd(
+            cols,
+            rows,
+            &shell,
+            cwd.as_deref(),
+        ) {
             Ok(id) => log::info!("Horizontal split → new pane {id}"),
             Err(e) => log::error!("Failed to split horizontal: {e}"),
         }
@@ -349,7 +355,12 @@ impl DesktopApp {
         let cols = self.config.cols;
         let rows = self.config.rows;
         let shell = self.shell().to_string();
-        match self.active_session_mut().split_vertical(cols, rows, &shell) {
+        // P31: Inherit cwd from active pane.
+        let cwd = self.active_session().cwd().map(|p| p.to_path_buf());
+        match self
+            .active_session_mut()
+            .split_vertical_with_cwd(cols, rows, &shell, cwd.as_deref())
+        {
             Ok(id) => log::info!("Vertical split → new pane {id}"),
             Err(e) => log::error!("Failed to split vertical: {e}"),
         }
