@@ -188,6 +188,17 @@ impl TabSession {
         }
     }
 
+    /// P25-D: Write bytes to **all** panes' PTYs (broadcast input mode).
+    pub fn write_to_all_panes(&mut self, bytes: &[u8]) {
+        for pane in self.panes.iter_mut().flatten() {
+            if let Some(ref mut pty) = pane.pty
+                && let Err(e) = pty.write(bytes)
+            {
+                log::warn!("PTY broadcast write error: {e}");
+            }
+        }
+    }
+
     /// Check if the active pane's shell process is still alive.
     pub fn is_alive(&mut self) -> bool {
         self.active_pane_mut()

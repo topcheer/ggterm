@@ -38,6 +38,10 @@ pub struct StatusBar {
     ///
     /// Empty string = no profile active (base config).
     pub profile_name: String,
+    /// P25-D: Broadcast input mode label (empty = none).
+    pub broadcast_mode: String,
+    /// P25-E: Whether session recording is active.
+    pub recording: bool,
 }
 
 impl Default for StatusBar {
@@ -60,6 +64,8 @@ impl StatusBar {
             exit_code: None,
             config_error: None,
             profile_name: String::new(),
+            broadcast_mode: String::new(),
+            recording: false,
         }
     }
 
@@ -181,6 +187,16 @@ impl StatusBar {
         // Active profile name (P22-C).
         if !self.profile_name.is_empty() {
             parts.push(format!("@{}", self.profile_name));
+        }
+
+        // P25-D: Broadcast mode indicator.
+        if !self.broadcast_mode.is_empty() {
+            parts.push(format!("BCAST:{}", self.broadcast_mode));
+        }
+
+        // P25-E: Recording indicator.
+        if self.recording {
+            parts.push("REC".to_string());
         }
 
         parts.join(" | ")

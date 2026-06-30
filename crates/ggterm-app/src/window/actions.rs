@@ -248,8 +248,32 @@ impl DesktopApp {
     }
 
     /// Write encoded keyboard bytes to the active PTY.
+    ///
+    /// When broadcast mode is active (P25-D), bytes are also written to all
+    /// panes in the current tab (AllPanes) or all tabs (AllTabs).
     pub(super) fn write_to_pty(&mut self, bytes: &[u8]) {
-        self.active_session_mut().write_to_pty(bytes);
+        use crate::broadcast_input::BroadcastMode;
+
+        match self.broadcast.mode {
+            BroadcastMode::None => {
+                self.active_session_mut().write_to_pty(bytes);
+            }
+            BroadcastMode::AllPanes => {
+                // P25-D: Write to all panes in the active tab.
+                self.active_session_mut().write_to_all_panes(bytes);
+            }
+            BroadcastMode::AllTabs => {
+                // P25-D: Write to all tabs' active panes.
+                for session in self.sessions.iter_mut() {
+                    session.write_to_pty(bytes);
+                }
+            }
+        }
+
+        // P25-E: Feed bytes to recorder if active.
+        if let Some(ref mut recorder) = self.recorder {
+            let _ = recorder.feed(bytes);
+        }
     }
 
     // ── P19-B: Split pane management ──
