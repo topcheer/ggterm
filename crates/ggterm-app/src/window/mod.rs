@@ -872,6 +872,11 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar
                     .set_exit_code(self.active_session().app().terminal().last_exit_code());
 
+                // P28: Update Phase 28 status bar indicators.
+                self.status_bar.workspace_name = self.workspaces.active_name().to_string();
+                self.status_bar.sound_enabled = self.sound_player.is_enabled();
+                self.status_bar.shell_name = self.shell_switcher.status_bar_label();
+
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).
                 let title = self.active_session().app().terminal().title().to_string();

@@ -600,6 +600,101 @@ impl DesktopApp {
             }
         }
 
+        // ── P28-F: Performance monitor overlay ─────────────────────────
+        self.perf_monitor.record_frame();
+        if self.perf_monitor.visible {
+            let text = self.perf_monitor.format_display();
+            let text_width = text.len() as f32 * (renderer.cell_width() as f32) + 16.0;
+            let pm_y = 4.0_f32;
+            let pm_x = screen_w - text_width - 12.0;
+
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: pm_x,
+                y: pm_y,
+                w: text_width,
+                h: cell_h + 8.0,
+                color: (0.05, 0.05, 0.08, 0.8),
+                radius: 6.0,
+                stroke_width: 0.0,
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text,
+                left: pm_x + 8.0,
+                top: pm_y + 4.0,
+                color: (100, 200, 255),
+            });
+        }
+
+        // ── P28-H: Shell switcher dropdown ────────────────────────────
+        if self.shell_switcher.open {
+            let shells = self.shell_switcher.shells();
+            let dd_h = (shells.len() as f32 + 0.5) * (cell_h + 4.0);
+            let dd_w = 220.0_f32;
+            let dd_x = 12.0_f32;
+            let dd_y = screen_h - dd_h - cell_h - 20.0;
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: dd_x,
+                y: dd_y,
+                w: dd_w,
+                h: dd_h,
+                color: (0.1, 0.1, 0.14, 0.92),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            // Border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: dd_x,
+                y: dd_y,
+                w: dd_w,
+                h: dd_h,
+                color: (0.3, 0.35, 0.45, 0.6),
+                radius: 8.0,
+                stroke_width: 1.0,
+            });
+
+            for (i, shell) in shells.iter().enumerate() {
+                let sy = dd_y + 4.0 + i as f32 * (cell_h + 4.0);
+                let is_selected = i == self.shell_switcher.selected;
+                let label = if shell.is_default {
+                    format!(
+                        ">> {} {}",
+                        shell.name,
+                        shell.version.as_deref().unwrap_or("")
+                    )
+                } else {
+                    format!(
+                        "   {} {}",
+                        shell.name,
+                        shell.version.as_deref().unwrap_or("")
+                    )
+                };
+                if is_selected {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: dd_x + 4.0,
+                        y: sy,
+                        w: dd_w - 8.0,
+                        h: cell_h + 2.0,
+                        color: (0.15, 0.25, 0.45, 0.7),
+                        radius: 4.0,
+                        stroke_width: 0.0,
+                    });
+                }
+                let color = if is_selected {
+                    (120, 200, 255)
+                } else {
+                    (200, 200, 200)
+                };
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: label,
+                    left: dd_x + 12.0,
+                    top: sy + 2.0,
+                    color,
+                });
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

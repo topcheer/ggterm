@@ -42,6 +42,12 @@ pub struct StatusBar {
     pub broadcast_mode: String,
     /// P25-E: Whether session recording is active.
     pub recording: bool,
+    /// P28-D: Active workspace name (empty = default).
+    pub workspace_name: String,
+    /// P28-G: Whether sound is enabled.
+    pub sound_enabled: bool,
+    /// P28-H: Active shell name (e.g., "zsh", "bash").
+    pub shell_name: String,
 }
 
 impl Default for StatusBar {
@@ -66,6 +72,9 @@ impl StatusBar {
             profile_name: String::new(),
             broadcast_mode: String::new(),
             recording: false,
+            workspace_name: String::new(),
+            sound_enabled: false,
+            shell_name: String::new(),
         }
     }
 
@@ -277,6 +286,21 @@ impl StatusBar {
         // Recording.
         if self.recording {
             seg!("REC".to_string(), warn_color);
+        }
+
+        // P28-D: Workspace.
+        if !self.workspace_name.is_empty() && self.workspace_name != "default" {
+            seg!(format!("WS:{}", self.workspace_name), accent_color);
+        }
+
+        // P28-G: Sound indicator.
+        if self.sound_enabled {
+            seg!("SND".to_string(), ok_color);
+        }
+
+        // P28-H: Shell name.
+        if !self.shell_name.is_empty() {
+            seg!(self.shell_name.clone(), text_color);
         }
 
         segs
