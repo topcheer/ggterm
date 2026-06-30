@@ -456,7 +456,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 
 ## Status
 
-**1572+ tests passing** (2 ignored PTY integration tests).
+**1615+ tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
