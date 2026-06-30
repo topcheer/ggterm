@@ -364,6 +364,7 @@ pub fn cursor_state(app: &crate::App) -> ggterm_render::CursorState {
         y,
         visible: app.cursor_visible(),
         shape,
+        blink_alpha: 1.0, // P23-A: set by DesktopApp before render
     }
 }
 

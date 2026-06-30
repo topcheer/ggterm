@@ -57,6 +57,8 @@ pub struct Config {
     /// Each profile can override `font_size`, `theme`, and `scrollback_lines`.
     /// Users define them under `[profiles.<name>]` in config.toml.
     pub profiles: std::collections::HashMap<String, Profile>,
+    /// Plugin system configuration (P23-D).
+    pub plugins: PluginConfig,
 }
 
 /// A named configuration profile (P22-C).
@@ -80,6 +82,40 @@ pub struct Profile {
     pub theme: Option<String>,
     /// Override scrollback lines for this profile.
     pub scrollback_lines: Option<usize>,
+}
+
+/// Plugin system configuration (P23-D).
+///
+/// ```toml
+/// [plugins]
+/// enabled = true
+/// directory = "~/.ggterm/plugins"
+/// ```
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PluginConfig {
+    /// Whether the plugin system is enabled.
+    #[serde(default = "default_plugins_enabled")]
+    pub enabled: bool,
+    /// Directory path for Lua plugins. Defaults to `~/.ggterm/plugins`.
+    #[serde(default = "default_plugins_dir")]
+    pub directory: String,
+}
+
+fn default_plugins_enabled() -> bool {
+    false
+}
+
+fn default_plugins_dir() -> String {
+    "~/.ggterm/plugins".to_string()
+}
+
+impl Default for PluginConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_plugins_enabled(),
+            directory: default_plugins_dir(),
+        }
+    }
 }
 
 /// Appearance / rendering configuration.
@@ -197,6 +233,7 @@ mod raw {
         pub ai: Ai,
         pub keybindings: Keybindings,
         pub profiles: std::collections::HashMap<String, super::Profile>,
+        pub plugins: super::PluginConfig,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -323,7 +360,147 @@ impl Config {
         // P22-C: Named profiles.
         config.profiles = raw.profiles;
 
+        // P23-D: Plugin config.
+        config.plugins = raw.plugins;
+
         config
+    }
+
+    // ── Export / Import / Reset ──────────────────────────────────────
+
+    /// Export the current configuration as a TOML string.
+    ///
+    /// Produces a TOML document that round-trips through [`import_from_toml`].
+    ///
+    /// [`import_from_toml`]: Config::import_from_toml
+    pub fn export_to_toml(&self) -> Result<String, ConfigError> {
+        let mut root = toml::Table::new();
+
+        // [appearance]
+        let mut appearance = toml::Table::new();
+        appearance.insert("theme".into(), self.appearance.theme.clone().into());
+        appearance.insert(
+            "font_family".into(),
+            self.appearance.font_family.clone().into(),
+        );
+        appearance.insert(
+            "font_size".into(),
+            (self.appearance.font_size as i64).into(),
+        );
+        appearance.insert(
+            "cell_width".into(),
+            (self.appearance.cell_width as i64).into(),
+        );
+        appearance.insert(
+            "cell_height".into(),
+            (self.appearance.cell_height as i64).into(),
+        );
+        root.insert("appearance".into(), appearance.into());
+
+        // [terminal]
+        let mut terminal = toml::Table::new();
+        terminal.insert(
+            "scrollback_lines".into(),
+            (self.terminal.scrollback_lines as i64).into(),
+        );
+        terminal.insert("shell".into(), self.terminal.shell.clone().into());
+        root.insert("terminal".into(), terminal.into());
+
+        // [ai]
+        let mut ai = toml::Table::new();
+        ai.insert("enabled".into(), self.ai.enabled.into());
+        ai.insert("api_endpoint".into(), self.ai.api_endpoint.clone().into());
+        ai.insert("model".into(), self.ai.model.clone().into());
+        root.insert("ai".into(), ai.into());
+
+        // [keybindings] — only non-None entries
+        let mut kb = toml::Table::new();
+        let km = &self.keybindings;
+        if let Some(ref v) = km.new_tab {
+            kb.insert("new_tab".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.close_tab {
+            kb.insert("close_tab".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.switch_tab_1 {
+            kb.insert("switch_tab_1".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.paste {
+            kb.insert("paste".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.copy {
+            kb.insert("copy".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.search {
+            kb.insert("search".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.zoom_in {
+            kb.insert("zoom_in".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.zoom_out {
+            kb.insert("zoom_out".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.zoom_reset {
+            kb.insert("zoom_reset".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.fullscreen {
+            kb.insert("fullscreen".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.clear {
+            kb.insert("clear".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.reset {
+            kb.insert("reset".into(), v.clone().into());
+        }
+        if let Some(ref v) = km.cycle_theme {
+            kb.insert("cycle_theme".into(), v.clone().into());
+        }
+        if !kb.is_empty() {
+            root.insert("keybindings".into(), kb.into());
+        }
+
+        // [plugins]
+        let mut plugins = toml::Table::new();
+        plugins.insert("enabled".into(), self.plugins.enabled.into());
+        plugins.insert("directory".into(), self.plugins.directory.clone().into());
+        root.insert("plugins".into(), plugins.into());
+
+        // [profiles.<name>]
+        if !self.profiles.is_empty() {
+            let mut profiles_map = toml::Table::new();
+            for (name, profile) in &self.profiles {
+                let mut pt = toml::Table::new();
+                if let Some(v) = profile.font_size {
+                    pt.insert("font_size".into(), (v as i64).into());
+                }
+                if let Some(ref v) = profile.theme {
+                    pt.insert("theme".into(), v.clone().into());
+                }
+                if let Some(v) = profile.scrollback_lines {
+                    pt.insert("scrollback_lines".into(), (v as i64).into());
+                }
+                profiles_map.insert(name.clone(), pt.into());
+            }
+            root.insert("profiles".into(), profiles_map.into());
+        }
+
+        let val = toml::Value::Table(root);
+        toml::to_string_pretty(&val).map_err(ConfigError::Export)
+    }
+
+    /// Import configuration from a TOML string.
+    ///
+    /// This is the inverse of [`export_to_toml`]. Any fields missing from the
+    /// TOML string are filled with defaults.
+    ///
+    /// [`export_to_toml`]: Config::export_to_toml
+    pub fn import_from_toml(s: &str) -> Result<Self, ConfigError> {
+        Self::from_toml_str(s)
+    }
+
+    /// Reset to default configuration.
+    pub fn reset_to_defaults() -> Self {
+        Self::default()
     }
 
     // ── Keybinding parsing ─────────────────────────────────────────────
@@ -786,6 +963,9 @@ pub enum ConfigError {
     /// Configuration validation error (field, message).
     #[error("config validation error: {0}")]
     Validation(String),
+    /// TOML serialization error during export.
+    #[error("config export error: {0}")]
+    Export(toml::ser::Error),
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -1603,5 +1783,161 @@ theme = "light"
         assert_eq!(config.terminal.scrollback_lines, 8_000);
         assert!(config.has_profiles());
         assert_eq!(config.profile_names(), vec!["override_me"]);
+    }
+
+    // ── P23-D: Plugin config tests ──────────────────────────────────────
+
+    #[test]
+    fn test_plugin_config_default() {
+        let config = Config::default();
+        assert!(!config.plugins.enabled);
+        assert_eq!(config.plugins.directory, "~/.ggterm/plugins");
+    }
+
+    #[test]
+    fn test_plugin_config_parse_enabled() {
+        let toml = r#"
+[plugins]
+enabled = true
+directory = "/custom/plugins"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.plugins.enabled);
+        assert_eq!(config.plugins.directory, "/custom/plugins");
+    }
+
+    #[test]
+    fn test_plugin_config_parse_disabled() {
+        let toml = r#"
+[plugins]
+enabled = false
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(!config.plugins.enabled);
+        // Default directory since not specified.
+        assert_eq!(config.plugins.directory, "~/.ggterm/plugins");
+    }
+
+    #[test]
+    fn test_plugin_config_absent_uses_defaults() {
+        let toml = "[appearance]\ntheme = \"dark\"\n";
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(!config.plugins.enabled);
+        assert_eq!(config.plugins.directory, "~/.ggterm/plugins");
+    }
+
+    #[test]
+    fn test_plugin_config_partial_fields() {
+        let toml = r#"
+[plugins]
+directory = "/opt/ggterm/lua"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        // enabled not specified → default (false).
+        assert!(!config.plugins.enabled);
+        assert_eq!(config.plugins.directory, "/opt/ggterm/lua");
+    }
+
+    // ── P23-B: Export / Import / Reset tests ──────────────────────────
+
+    #[test]
+    fn test_export_to_toml_default() {
+        let config = Config::default();
+        let toml_str = config.export_to_toml().unwrap();
+        // Should contain all sections.
+        assert!(toml_str.contains("[appearance]"));
+        assert!(toml_str.contains("[terminal]"));
+        assert!(toml_str.contains("[ai]"));
+        assert!(toml_str.contains("[plugins]"));
+        // Default config has no keybindings overrides — section omitted.
+        assert!(!toml_str.contains("[keybindings]"));
+    }
+
+    #[test]
+    fn test_export_import_roundtrip() {
+        let mut config = Config::default();
+        config.appearance.theme = "gruvbox".to_string();
+        config.appearance.font_size = 18;
+        config.terminal.scrollback_lines = 50000;
+        config.terminal.shell = "/bin/fish".to_string();
+        config.ai.enabled = true;
+        config.ai.model = "gpt-4o".to_string();
+        config.plugins.enabled = true;
+        config.plugins.directory = "/custom/plugins".to_string();
+
+        let exported = config.export_to_toml().unwrap();
+        let imported = Config::import_from_toml(&exported).unwrap();
+
+        assert_eq!(imported.appearance.theme, "gruvbox");
+        assert_eq!(imported.appearance.font_size, 18);
+        assert_eq!(imported.terminal.scrollback_lines, 50000);
+        assert_eq!(imported.terminal.shell, "/bin/fish");
+        assert!(imported.ai.enabled);
+        assert_eq!(imported.ai.model, "gpt-4o");
+        assert!(imported.plugins.enabled);
+        assert_eq!(imported.plugins.directory, "/custom/plugins");
+    }
+
+    #[test]
+    fn test_export_import_with_keybindings() {
+        let mut config = Config::default();
+        config.keybindings.new_tab = Some("Ctrl+T".to_string());
+        config.keybindings.search = Some("Ctrl+Shift+F".to_string());
+
+        let exported = config.export_to_toml().unwrap();
+        assert!(exported.contains("new_tab = \"Ctrl+T\""));
+        assert!(exported.contains("search = \"Ctrl+Shift+F\""));
+
+        let imported = Config::import_from_toml(&exported).unwrap();
+        assert_eq!(imported.keybindings.new_tab, Some("Ctrl+T".to_string()));
+        assert_eq!(
+            imported.keybindings.search,
+            Some("Ctrl+Shift+F".to_string())
+        );
+    }
+
+    #[test]
+    fn test_export_import_with_profiles() {
+        let mut config = Config::default();
+        config.profiles.insert(
+            "presentation".to_string(),
+            Profile {
+                font_size: Some(24),
+                theme: Some("light".to_string()),
+                scrollback_lines: None,
+            },
+        );
+
+        let exported = config.export_to_toml().unwrap();
+        assert!(exported.contains("[profiles.presentation]"));
+
+        let imported = Config::import_from_toml(&exported).unwrap();
+        let profile = imported.profiles.get("presentation").unwrap();
+        assert_eq!(profile.font_size, Some(24));
+        assert_eq!(profile.theme, Some("light".to_string()));
+    }
+
+    #[test]
+    fn test_reset_to_defaults() {
+        let mut config = Config::default();
+        config.appearance.font_size = 99;
+        config.terminal.shell = "/bin/custom".to_string();
+        assert_ne!(
+            config.appearance.font_size,
+            Config::default().appearance.font_size
+        );
+
+        let reset = Config::reset_to_defaults();
+        assert_eq!(
+            reset.appearance.font_size,
+            Config::default().appearance.font_size
+        );
+        assert_eq!(reset.terminal.shell, Config::default().terminal.shell);
+    }
+
+    #[test]
+    fn test_import_invalid_toml() {
+        let result = Config::import_from_toml("not valid toml {{{");
+        assert!(result.is_err());
     }
 }

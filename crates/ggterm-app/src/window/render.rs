@@ -33,7 +33,20 @@ impl DesktopApp {
         // Now borrow session for grid + cursor data.
         let session = &self.sessions[active];
         let grid = session.app().grid();
-        let cursor = cursor_state(session.app());
+        let mut cursor = cursor_state(session.app());
+
+        // P23-A: Apply cursor blink alpha.
+        let is_blink = matches!(
+            session.app().terminal().cursor_style(),
+            ggterm_core::CursorStyle::BlinkBlock
+                | ggterm_core::CursorStyle::BlinkUnderline
+                | ggterm_core::CursorStyle::BlinkBar
+        );
+        self.cursor_blink.set_enabled(is_blink);
+        if cursor.visible {
+            cursor.blink_alpha = self.cursor_blink.alpha();
+            cursor.visible = self.cursor_blink.is_visible();
+        }
 
         // P16-A: Wire search match highlights to renderer.
         // Convert SearchMatch(abs_row, col, len) → (visible_row, col_start, col_end).

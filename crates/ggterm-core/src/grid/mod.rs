@@ -53,6 +53,9 @@ pub struct Grid {
     display_offset: usize,
     /// Damage tracker for efficient partial rendering.
     damage: DamageTracker,
+    /// P23-C: Coarse dirty flag — set true on any content change.
+    /// Used for conditional redraw (skip frames with no PTY data or interaction).
+    content_dirty: bool,
 }
 
 impl Grid {
@@ -74,6 +77,7 @@ impl Grid {
             scroll_bottom: height,
             display_offset: 0,
             damage: DamageTracker::new(width),
+            content_dirty: true,
         }
     }
 
@@ -104,6 +108,7 @@ impl Grid {
         self.display_offset = 0;
         self.damage = DamageTracker::new(width);
         self.damage.mark_all(height);
+        self.content_dirty = true;
     }
 
     // ------------------------------------------------------------------
@@ -198,6 +203,7 @@ impl Grid {
         // Reset viewport when new content causes scrolling.
         self.display_offset = 0;
         self.damage.mark_rows(self.scroll_top, region_height);
+        self.content_dirty = true;
     }
 
     /// Scroll the content within the scroll region down by `n` lines.
@@ -225,6 +231,7 @@ impl Grid {
             }
         }
         self.damage.mark_rows(self.scroll_top, region_height);
+        self.content_dirty = true;
     }
 
     /// Scroll up within the scroll region. Alias for [`scroll_up`](Self::scroll_up).
@@ -314,6 +321,7 @@ impl Grid {
             return 0;
         };
         self.damage.mark_rect(col, row, w.max(1), 1);
+        self.content_dirty = true;
         w
     }
 
@@ -327,6 +335,7 @@ impl Grid {
             row.clear();
         }
         self.damage.mark_all(self.height);
+        self.content_dirty = true;
     }
 
     /// Clear the scrollback history (ED mode 3).
@@ -340,6 +349,7 @@ impl Grid {
             r.clear_from(col);
             let w = self.width.saturating_sub(col);
             self.damage.mark_rect(col, row, w, 1);
+            self.content_dirty = true;
         }
     }
 
@@ -348,6 +358,7 @@ impl Grid {
         if let Some(r) = self.rows.get_mut(row) {
             r.clear_to(col + 1);
             self.damage.mark_rect(0, row, col + 1, 1);
+            self.content_dirty = true;
         }
     }
 
@@ -356,6 +367,7 @@ impl Grid {
         if let Some(r) = self.rows.get_mut(row) {
             r.clear();
             self.damage.mark_row(row);
+            self.content_dirty = true;
         }
     }
 
@@ -498,6 +510,17 @@ impl Grid {
     /// Clear all dirty marks without processing them.
     pub fn clear_damage(&mut self) {
         self.damage.clear();
+    }
+
+    /// P23-C: Returns true if any content changed since last `clear_dirty()`.
+    pub fn content_dirty(&self) -> bool {
+        self.content_dirty
+    }
+
+    /// P23-C: Clear the coarse content-dirty flag.
+    /// Called by the render loop after a frame is produced.
+    pub fn clear_dirty(&mut self) {
+        self.content_dirty = false;
     }
 }
 
@@ -1144,5 +1167,87 @@ mod tests {
         g[(0, 0)] = Cell::with_char('X');
         // No offset — display_cell == regular cell.
         assert_eq!(g.display_cell(0, 0).unwrap().ch, 'X');
+    }
+
+    // ── P23-C: content_dirty tests ────────────────────────────
+
+    #[test]
+    fn test_content_dirty_default_true() {
+        let g = Grid::new(10, 5);
+        assert!(g.content_dirty(), "new grid should be dirty");
+    }
+
+    #[test]
+    fn test_clear_dirty() {
+        let mut g = Grid::new(10, 5);
+        assert!(g.content_dirty());
+
+        g.clear_dirty();
+        assert!(!g.content_dirty(), "should be clean after clear_dirty");
+    }
+
+    #[test]
+    fn test_put_char_sets_dirty() {
+        let mut g = Grid::new(10, 5);
+        g.clear_dirty();
+
+        g.put_char(0, 0, 'X');
+        assert!(g.content_dirty(), "put_char should mark dirty");
+    }
+
+    #[test]
+    fn test_scroll_up_sets_dirty() {
+        let mut g = Grid::with_scrollback(10, 5, 100);
+        g.clear_dirty();
+
+        g.scroll_up(1);
+        assert!(g.content_dirty(), "scroll_up should mark dirty");
+    }
+
+    #[test]
+    fn test_scroll_down_sets_dirty() {
+        let mut g = Grid::with_scrollback(10, 5, 100);
+        g.clear_dirty();
+
+        g.scroll_down(1);
+        assert!(g.content_dirty(), "scroll_down should mark dirty");
+    }
+
+    #[test]
+    fn test_clear_sets_dirty() {
+        let mut g = Grid::new(10, 5);
+        g.clear_dirty();
+
+        g.clear();
+        assert!(g.content_dirty(), "clear should mark dirty");
+    }
+
+    #[test]
+    fn test_clear_line_sets_dirty() {
+        let mut g = Grid::new(10, 5);
+        g.clear_dirty();
+
+        g.clear_line(0);
+        assert!(g.content_dirty(), "clear_line should mark dirty");
+    }
+
+    #[test]
+    fn test_resize_sets_dirty() {
+        let mut g = Grid::new(10, 5);
+        g.clear_dirty();
+
+        g.resize(20, 10);
+        assert!(g.content_dirty(), "resize should mark dirty");
+    }
+
+    #[test]
+    fn test_no_change_stays_clean() {
+        let mut g = Grid::new(10, 5);
+        g.clear_dirty();
+        g.clear_dirty();
+
+        // Reading doesn't set dirty.
+        let _ = g.row(0);
+        assert!(!g.content_dirty(), "read-only ops should not mark dirty");
     }
 }

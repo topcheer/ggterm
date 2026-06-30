@@ -32,6 +32,7 @@ pub mod app;
 pub mod clipboard;
 pub mod command_nav;
 pub mod config;
+pub mod cursor_blink;
 pub mod event;
 pub mod font;
 pub mod input;

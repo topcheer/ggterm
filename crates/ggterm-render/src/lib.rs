@@ -41,6 +41,9 @@ pub struct CursorState {
     pub visible: bool,
     /// Cursor shape.
     pub shape: CursorShape,
+    /// P23-A: Blink alpha (0.0 = invisible, 1.0 = fully visible).
+    /// When >0, modulates cursor cell opacity for smooth blink animation.
+    pub blink_alpha: f32,
 }
 
 impl CursorState {
@@ -51,6 +54,7 @@ impl CursorState {
             y,
             visible: true,
             shape: CursorShape::Block,
+            blink_alpha: 1.0,
         }
     }
 
@@ -61,6 +65,7 @@ impl CursorState {
             y: 0,
             visible: false,
             shape: CursorShape::Block,
+            blink_alpha: 0.0,
         }
     }
 }

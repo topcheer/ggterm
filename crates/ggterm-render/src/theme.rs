@@ -53,6 +53,66 @@ const SOLARIZED_PALETTE: [Color; 16] = [
     Color::Rgb(0xfd, 0xf6, 0xe3), // 15 bright white (base3)
 ];
 
+/// Nord 16-color palette — Arctic, north-bluish colors.
+const NORD_PALETTE: [Color; 16] = [
+    Color::Rgb(0x3b, 0x42, 0x52), // 0  black (nord0)
+    Color::Rgb(0xbf, 0x61, 0x6a), // 1  red (nord11)
+    Color::Rgb(0xa3, 0xbe, 0x8c), // 2  green (nord14)
+    Color::Rgb(0xeb, 0xcb, 0x8b), // 3  yellow (nord13)
+    Color::Rgb(0x81, 0xa1, 0xc1), // 4  blue (nord9)
+    Color::Rgb(0xb4, 0x8e, 0xad), // 5  magenta (nord15)
+    Color::Rgb(0x88, 0xc0, 0xd0), // 6  cyan (nord8)
+    Color::Rgb(0xe5, 0xe9, 0xf0), // 7  white (nord6)
+    Color::Rgb(0x4c, 0x56, 0x6a), // 8  bright black (nord3)
+    Color::Rgb(0xbf, 0x61, 0x6a), // 9  bright red (nord11)
+    Color::Rgb(0xa3, 0xbe, 0x8c), // 10 bright green (nord14)
+    Color::Rgb(0xeb, 0xcb, 0x8b), // 11 bright yellow (nord13)
+    Color::Rgb(0x81, 0xa1, 0xc1), // 12 bright blue (nord9)
+    Color::Rgb(0xb4, 0x8e, 0xad), // 13 bright magenta (nord15)
+    Color::Rgb(0x8f, 0xbc, 0xbb), // 14 bright cyan (nord7)
+    Color::Rgb(0xe5, 0xe9, 0xf0), // 15 bright white (nord6)
+];
+
+/// Tokyo Night 16-color palette.
+const TOKYO_NIGHT_PALETTE: [Color; 16] = [
+    Color::Rgb(0x15, 0x16, 0x1e), // 0  black
+    Color::Rgb(0xf7, 0x76, 0x8e), // 1  red
+    Color::Rgb(0x9e, 0xce, 0x6a), // 2  green
+    Color::Rgb(0xe0, 0xaf, 0x68), // 3  yellow
+    Color::Rgb(0x7a, 0xa2, 0xf7), // 4  blue
+    Color::Rgb(0xbb, 0x9a, 0xf7), // 5  magenta
+    Color::Rgb(0x7d, 0xc1, 0xd7), // 6  cyan
+    Color::Rgb(0xa9, 0xb1, 0xd6), // 7  white
+    Color::Rgb(0x41, 0x47, 0x57), // 8  bright black
+    Color::Rgb(0xf7, 0x76, 0x8e), // 9  bright red
+    Color::Rgb(0x9e, 0xce, 0x6a), // 10 bright green
+    Color::Rgb(0xe0, 0xaf, 0x68), // 11 bright yellow
+    Color::Rgb(0x7a, 0xa2, 0xf7), // 12 bright blue
+    Color::Rgb(0xbb, 0x9a, 0xf7), // 13 bright magenta
+    Color::Rgb(0x7d, 0xc1, 0xd7), // 14 bright cyan
+    Color::Rgb(0xc0, 0xca, 0xf5), // 15 bright white
+];
+
+/// Catppuccin Mocha 16-color palette.
+const CATPPUCCIN_MOCHA_PALETTE: [Color; 16] = [
+    Color::Rgb(0x45, 0x47, 0x59), // 0  black (surface1)
+    Color::Rgb(0xf3, 0x8b, 0xa8), // 1  red
+    Color::Rgb(0xa6, 0xe3, 0xa1), // 2  green
+    Color::Rgb(0xf9, 0xe2, 0xaf), // 3  yellow
+    Color::Rgb(0x89, 0xb4, 0xfa), // 4  blue
+    Color::Rgb(0xfa, 0xe3, 0xb0), // 5  magenta (replaced with peach — catppuccin has no standard magenta index)
+    Color::Rgb(0x94, 0xe2, 0xd5), // 6  cyan (teal)
+    Color::Rgb(0xba, 0xc2, 0xde), // 7  white (subtext1)
+    Color::Rgb(0x58, 0x5b, 0x70), // 8  bright black (surface2)
+    Color::Rgb(0xf3, 0x8b, 0xa8), // 9  bright red
+    Color::Rgb(0xa6, 0xe3, 0xa1), // 10 bright green
+    Color::Rgb(0xf9, 0xe2, 0xaf), // 11 bright yellow
+    Color::Rgb(0x89, 0xb4, 0xfa), // 12 bright blue
+    Color::Rgb(0xf5, 0xc2, 0xe7), // 13 bright magenta (pink)
+    Color::Rgb(0x94, 0xe2, 0xd5), // 14 bright cyan (teal)
+    Color::Rgb(0xc6, 0xd0, 0xf5), // 15 bright white (subtext0)
+];
+
 impl Default for RenderTheme {
     fn default() -> Self {
         Self::dark_default()
@@ -314,7 +374,7 @@ impl RenderTheme {
     ///
     /// Returns `Some(theme)` for known names, `None` otherwise.
     /// Supported names: "dark", "light", "dracula", "solarized-dark",
-    /// "solarized-light", "gruvbox".
+    /// "solarized-light", "gruvbox", "nord", "tokyo-night", "catppuccin-mocha".
     pub fn by_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "dark" | "dark-default" | "default" => Some(Self::dark_default()),
@@ -323,6 +383,9 @@ impl RenderTheme {
             "solarized-dark" | "solarized_dark" => Some(Self::solarized_dark()),
             "solarized-light" | "solarized_light" => Some(Self::solarized_light()),
             "gruvbox" => Some(Self::gruvbox()),
+            "nord" => Some(Self::nord()),
+            "tokyo-night" | "tokyo_night" => Some(Self::tokyo_night()),
+            "catppuccin-mocha" | "catppuccin_mocha" => Some(Self::catppuccin_mocha()),
             _ => None,
         }
     }
@@ -336,7 +399,49 @@ impl RenderTheme {
             "solarized-dark",
             "solarized-light",
             "gruvbox",
+            "nord",
+            "tokyo-night",
+            "catppuccin-mocha",
         ]
+    }
+
+    /// Nord theme — Arctic, north-bluish color palette.
+    pub fn nord() -> Self {
+        Self {
+            default_fg: Color::Rgb(0xd8, 0xde, 0xe9),
+            default_bg: Color::Rgb(0x2e, 0x34, 0x40),
+            cursor_fg: Color::Rgb(0x2e, 0x34, 0x40),
+            cursor_bg: Color::Rgb(0xd8, 0xde, 0xe9),
+            cursor_style: CursorStyle::Block,
+            palette: NORD_PALETTE,
+            selection_bg: Color::Rgb(0x3b, 0x42, 0x52),
+        }
+    }
+
+    /// Tokyo Night theme — A clean, dark color scheme inspired by Tokyo.
+    pub fn tokyo_night() -> Self {
+        Self {
+            default_fg: Color::Rgb(0xa9, 0xb1, 0xd6),
+            default_bg: Color::Rgb(0x1a, 0x1b, 0x26),
+            cursor_fg: Color::Rgb(0x1a, 0x1b, 0x26),
+            cursor_bg: Color::Rgb(0xc0, 0xca, 0xf5),
+            cursor_style: CursorStyle::Block,
+            palette: TOKYO_NIGHT_PALETTE,
+            selection_bg: Color::Rgb(0x2a, 0x2b, 0x3c),
+        }
+    }
+
+    /// Catppuccin Mocha — Soothing pastel theme for dark environments.
+    pub fn catppuccin_mocha() -> Self {
+        Self {
+            default_fg: Color::Rgb(0xcd, 0xd6, 0xf4),
+            default_bg: Color::Rgb(0x1e, 0x1e, 0x2e),
+            cursor_fg: Color::Rgb(0x1e, 0x1e, 0x2e),
+            cursor_bg: Color::Rgb(0xf5, 0xe0, 0xdc),
+            cursor_style: CursorStyle::Block,
+            palette: CATPPUCCIN_MOCHA_PALETTE,
+            selection_bg: Color::Rgb(0x31, 0x31, 0x4e),
+        }
     }
 }
 
@@ -508,7 +613,10 @@ mod tests {
         assert!(names.contains(&"solarized-dark"));
         assert!(names.contains(&"solarized-light"));
         assert!(names.contains(&"gruvbox"));
-        assert_eq!(names.len(), 6);
+        assert!(names.contains(&"nord"));
+        assert!(names.contains(&"tokyo-night"));
+        assert!(names.contains(&"catppuccin-mocha"));
+        assert_eq!(names.len(), 9);
     }
 
     #[test]
@@ -681,7 +789,40 @@ mod tests {
         assert!(names.contains(&"solarized-dark"));
         assert!(names.contains(&"solarized-light"));
         assert!(names.contains(&"gruvbox"));
-        assert_eq!(names.len(), 6);
+        assert!(names.contains(&"nord"));
+        assert!(names.contains(&"tokyo-night"));
+        assert!(names.contains(&"catppuccin-mocha"));
+        assert_eq!(names.len(), 9);
+    }
+
+    #[test]
+    fn t_nord_theme_colors() {
+        let theme = RenderTheme::nord();
+        assert_eq!(theme.default_fg, Color::Rgb(0xd8, 0xde, 0xe9));
+        assert_eq!(theme.default_bg, Color::Rgb(0x2e, 0x34, 0x40));
+    }
+
+    #[test]
+    fn t_tokyo_night_colors() {
+        let theme = RenderTheme::tokyo_night();
+        assert_eq!(theme.default_fg, Color::Rgb(0xa9, 0xb1, 0xd6));
+        assert_eq!(theme.default_bg, Color::Rgb(0x1a, 0x1b, 0x26));
+    }
+
+    #[test]
+    fn t_catppuccin_mocha_colors() {
+        let theme = RenderTheme::catppuccin_mocha();
+        assert_eq!(theme.default_fg, Color::Rgb(0xcd, 0xd6, 0xf4));
+        assert_eq!(theme.default_bg, Color::Rgb(0x1e, 0x1e, 0x2e));
+    }
+
+    #[test]
+    fn t_by_name_new_p23b_themes() {
+        assert!(RenderTheme::by_name("nord").is_some());
+        assert!(RenderTheme::by_name("tokyo-night").is_some());
+        assert!(RenderTheme::by_name("tokyo_night").is_some());
+        assert!(RenderTheme::by_name("catppuccin-mocha").is_some());
+        assert!(RenderTheme::by_name("catppuccin_mocha").is_some());
     }
 
     #[test]

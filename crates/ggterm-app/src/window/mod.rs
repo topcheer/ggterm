@@ -202,6 +202,26 @@ pub struct DesktopApp {
     // ── P22-A: Session restore flag ──
     /// Whether we restored a saved session at startup.
     restored_session: bool,
+
+    // ── P23-A: Cursor blink animation ──
+    /// Cursor blink phase tracker for smooth blink animation.
+    #[allow(dead_code)]
+    cursor_blink: crate::cursor_blink::CursorBlink,
+    /// P23-A: Copy/paste visual feedback flash.
+    #[allow(dead_code)]
+    clipboard_feedback: crate::cursor_blink::ClipboardFeedback,
+
+    // ── P23-E: Tab reordering ──
+    /// Dragged tab index (None = not dragging a tab).
+    #[allow(dead_code)]
+    drag_tab: Option<usize>,
+    /// Whether the tab close button was hovered.
+    #[allow(dead_code)]
+    tab_close_hovered: bool,
+
+    // ── P23-C: Conditional redraw ──
+    /// Last time a redraw was requested (for cursor blink timing).
+    last_redraw: std::time::Instant,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -408,6 +428,7 @@ impl DesktopApp {
             scale_factor: 1.0,
             pending_resize: None,
             last_resize_time: None,
+            last_redraw: std::time::Instant::now(),
             #[cfg(feature = "ai")]
             ai_overlay: crate::ai_overlay::AIOverlayState::new(),
             #[cfg(feature = "ai")]
@@ -434,6 +455,10 @@ impl DesktopApp {
             about: crate::about_dialog::AboutDialog::new(),
             menu_installed: false,
             restored_session: false,
+            cursor_blink: crate::cursor_blink::CursorBlink::new(),
+            clipboard_feedback: crate::cursor_blink::ClipboardFeedback::new(),
+            drag_tab: None,
+            tab_close_hovered: false,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -939,11 +964,32 @@ impl ApplicationHandler for DesktopApp {
             event_loop.exit();
         }
 
-        // Always request redraw to keep the render loop alive.
-        // The GPU only draws when there's new content (PTY output is event-driven).
-        // But for a terminal we want continuous rendering to show the blinking cursor.
-        if let Some(ref window) = self.window {
-            window.request_redraw();
+        // P23-C: Conditional redraw — only request redraw when needed.
+        // Conditions: PTY data, cursor blink interval, pending resize,
+        // bell, search/AI overlay, or any user interaction flag.
+        let need_redraw = self
+            .active_session()
+            .app()
+            .terminal()
+            .grid()
+            .content_dirty()
+            || self.pending_resize.is_some()
+            || self
+                .active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .take_bell();
+
+        // Cursor blink: redraw every 500ms for blink animation.
+        let now = std::time::Instant::now();
+        let blink_interval = std::time::Duration::from_millis(500);
+        let blink_due = now.duration_since(self.last_redraw) >= blink_interval;
+
+        if need_redraw || blink_due {
+            self.last_redraw = now;
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
         }
 
         // If we have a pending (debounced) resize, keep polling so we apply
