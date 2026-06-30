@@ -119,7 +119,7 @@ pub extern "C" fn ggterm_new(cols: usize, rows: usize) -> *mut TerminalHandle {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_free(handle: *mut TerminalHandle) {
     if !handle.is_null() {
-        drop(Box::from_raw(handle));
+        unsafe { drop(Box::from_raw(handle)) };
     }
 }
 
@@ -136,9 +136,11 @@ pub unsafe extern "C" fn ggterm_process_bytes(
     if handle.is_null() || data.is_null() {
         return;
     }
-    let h = &mut *handle;
-    let slice = std::slice::from_raw_parts(data, len);
-    h.process_bytes(slice);
+    unsafe {
+        let h = &mut *handle;
+        let slice = std::slice::from_raw_parts(data, len);
+        h.process_bytes(slice);
+    }
 }
 
 /// Send input bytes (keystrokes) to the terminal's input buffer.
@@ -154,9 +156,11 @@ pub unsafe extern "C" fn ggterm_send_input(
     if handle.is_null() || data.is_null() {
         return;
     }
-    let h = &mut *handle;
-    let slice = std::slice::from_raw_parts(data, len);
-    h.send_input(slice);
+    unsafe {
+        let h = &mut *handle;
+        let slice = std::slice::from_raw_parts(data, len);
+        h.send_input(slice);
+    }
 }
 
 /// Read pending input bytes. Returns the number of bytes written to `buf`.
@@ -172,13 +176,15 @@ pub unsafe extern "C" fn ggterm_take_input(
     if handle.is_null() || buf.is_null() || max_len == 0 {
         return 0;
     }
-    let h = &mut *handle;
-    let input = h.take_input();
-    let n = input.len().min(max_len);
-    if n > 0 {
-        ptr::copy_nonoverlapping(input.as_ptr(), buf, n);
+    unsafe {
+        let h = &mut *handle;
+        let input = h.take_input();
+        let n = input.len().min(max_len);
+        if n > 0 {
+            ptr::copy_nonoverlapping(input.as_ptr(), buf, n);
+        }
+        n
     }
-    n
 }
 
 /// Read terminal cells into a flat array for rendering.
@@ -194,11 +200,13 @@ pub unsafe extern "C" fn ggterm_read_cells(
     if handle.is_null() || buf.is_null() || max_cells == 0 {
         return 0;
     }
-    let h = &*handle;
-    let cells = grid_to_ffi(h.terminal.grid());
-    let n = cells.len().min(max_cells);
-    ptr::copy_nonoverlapping(cells.as_ptr(), buf, n);
-    n
+    unsafe {
+        let h = &*handle;
+        let cells = grid_to_ffi(h.terminal.grid());
+        let n = cells.len().min(max_cells);
+        ptr::copy_nonoverlapping(cells.as_ptr(), buf, n);
+        n
+    }
 }
 
 /// Get terminal grid dimensions.
@@ -214,10 +222,12 @@ pub unsafe extern "C" fn ggterm_dimensions(
     if handle.is_null() || cols.is_null() || rows.is_null() {
         return;
     }
-    let h = &*handle;
-    let grid = h.terminal.grid();
-    *cols = grid.width();
-    *rows = grid.height();
+    unsafe {
+        let h = &*handle;
+        let grid = h.terminal.grid();
+        *cols = grid.width();
+        *rows = grid.height();
+    }
 }
 
 /// Get the cursor position.
@@ -233,10 +243,12 @@ pub unsafe extern "C" fn ggterm_cursor(
     if handle.is_null() || col.is_null() || row.is_null() {
         return;
     }
-    let h = &*handle;
-    let (c, r) = h.terminal.cursor();
-    *col = c;
-    *row = r;
+    unsafe {
+        let h = &*handle;
+        let (c, r) = h.terminal.cursor();
+        *col = c;
+        *row = r;
+    }
 }
 
 /// Resize the terminal grid.
@@ -248,8 +260,10 @@ pub unsafe extern "C" fn ggterm_resize(handle: *mut TerminalHandle, cols: usize,
     if handle.is_null() {
         return;
     }
-    let h = &mut *handle;
-    h.terminal.grid_mut().resize(cols, rows);
+    unsafe {
+        let h = &mut *handle;
+        h.terminal.grid_mut().resize(cols, rows);
+    }
 }
 
 /// Check and consume the bell flag. Returns 1 if bell, 0 otherwise.
@@ -261,8 +275,10 @@ pub unsafe extern "C" fn ggterm_take_bell(handle: *mut TerminalHandle) -> c_int 
     if handle.is_null() {
         return 0;
     }
-    let h = &mut *handle;
-    if h.terminal.take_bell() { 1 } else { 0 }
+    unsafe {
+        let h = &mut *handle;
+        if h.terminal.take_bell() { 1 } else { 0 }
+    }
 }
 
 #[cfg(test)]
