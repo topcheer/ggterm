@@ -392,7 +392,7 @@ impl DesktopApp {
     /// Copy the current text selection to the clipboard.
     ///
     /// Extracts text from the grid between selection start and end.
-    pub(super) fn copy_selection_to_clipboard(&self) {
+    pub(super) fn copy_selection_to_clipboard(&mut self) {
         let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
             return;
         };
@@ -444,7 +444,14 @@ impl DesktopApp {
         if !text.is_empty() {
             log::debug!("Clipboard copy: {} chars", text.len());
             crate::clipboard::set_clipboard_bytes(text.as_bytes());
+            // P30-C: Show toast feedback.
+            self.show_toast(format!("Copied {} chars", text.len()));
         }
+    }
+
+    /// P30-C: Show a toast notification that fades after ~2 seconds.
+    pub(super) fn show_toast(&mut self, msg: impl Into<String>) {
+        self.toast = Some((msg.into(), 120)); // ~2s at 60fps
     }
 
     /// Paste text from the system clipboard into the PTY.

@@ -295,6 +295,12 @@ pub struct DesktopApp {
     should_quit: bool,
     /// P30-A: Scrollbar drag state (Some(start_y) when dragging).
     scrollbar_drag: Option<f32>,
+    /// P30-B: Tab rename state (Some(tab_index) when renaming).
+    renaming_tab: Option<usize>,
+    /// P30-B: Tab rename text buffer.
+    rename_text: String,
+    /// P30-C: Toast notification (message + remaining frames).
+    toast: Option<(String, u32)>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -560,6 +566,9 @@ impl DesktopApp {
             quit_confirm: false,
             should_quit: false,
             scrollbar_drag: None,
+            renaming_tab: None,
+            rename_text: String::new(),
+            toast: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -1081,6 +1090,14 @@ impl ApplicationHandler for DesktopApp {
         // P28-F: Tick cursor particle system.
         self.cursor_particles.tick();
 
+        // P30-C: Tick toast notification timer.
+        if let Some((_, frames)) = &mut self.toast {
+            *frames = frames.saturating_sub(1);
+            if *frames == 0 {
+                self.toast = None;
+            }
+        }
+
         // P19-A: Poll for menu bar actions.
         if let Some(action) = crate::menu_bar::poll_pending_action() {
             self.handle_menu_action(action);
@@ -1179,7 +1196,8 @@ impl ApplicationHandler for DesktopApp {
                 .active_session_mut()
                 .app_mut()
                 .terminal_mut()
-                .take_bell();
+                .take_bell()
+            || self.toast.is_some();
 
         // Cursor blink: redraw every 500ms for blink animation.
         let now = std::time::Instant::now();

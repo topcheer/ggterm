@@ -1279,6 +1279,85 @@ impl DesktopApp {
             });
         }
 
+        // ── P30-C: Toast notification ─────────────────────────────────
+        if let Some((msg, frames)) = &self.toast {
+            let alpha = (*frames as f32 / 120.0).min(1.0);
+            let toast_w = (msg.len() as f32 * 7.0 + 24.0).max(80.0);
+            let toast_h = 32.0;
+            let tx = (screen_w - toast_w) / 2.0;
+            let ty = screen_h - 50.0; // bottom of screen
+
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: tx,
+                y: ty,
+                w: toast_w,
+                h: toast_h,
+                color: (0.12, 0.14, 0.20, 0.95 * alpha),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: tx,
+                y: ty,
+                w: toast_w,
+                h: toast_h,
+                color: (0.3, 0.5, 0.9, 0.5 * alpha),
+                radius: 8.0,
+                stroke_width: 1.0,
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: msg.clone(),
+                left: tx + 12.0,
+                top: ty + 7.0,
+                color: (200, 220, 255),
+            });
+        }
+
+        // ── P30-B: Tab rename input field ─────────────────────────────
+        if let Some(rename_idx) = self.renaming_tab
+            && self.tab_bar.visible
+        {
+            let layout = self
+                .tab_bar
+                .compute_layout(content_bounds.width as f32, 14.0);
+            if let Some(tab_layout) = layout.tabs.get(rename_idx) {
+                let rx = tab_layout.rect.x;
+                let ry = tab_layout.rect.y;
+                let rw = tab_layout.rect.w;
+                let rh = tab_layout.rect.h;
+
+                // Input field background.
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: rx,
+                    y: ry,
+                    w: rw,
+                    h: rh,
+                    color: (0.08, 0.10, 0.15, 0.98),
+                    radius: 6.0,
+                    stroke_width: 0.0,
+                });
+                // Input field border.
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: rx,
+                    y: ry,
+                    w: rw,
+                    h: rh,
+                    color: (0.3, 0.55, 0.95, 0.7),
+                    radius: 6.0,
+                    stroke_width: 1.0,
+                });
+
+                // Text with cursor.
+                let display = format!("{}_ ", self.rename_text);
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: display,
+                    left: rx + 8.0,
+                    top: ry + 5.0,
+                    color: (240, 240, 250),
+                });
+            }
+        }
+
         // ── P30-A: Scrollbar ──────────────────────────────────────────
         // Show a thin scrollbar on the right edge when there's scrollback.
         {

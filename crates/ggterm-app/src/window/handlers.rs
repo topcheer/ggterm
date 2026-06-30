@@ -80,6 +80,38 @@ impl DesktopApp {
             return;
         }
 
+        // P30-B: Tab rename mode — intercept all keyboard input.
+        if self.renaming_tab.is_some() {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.renaming_tab = None;
+                    self.rename_text.clear();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Enter) => {
+                    if let Some(idx) = self.renaming_tab.take() {
+                        let title = std::mem::take(&mut self.rename_text);
+                        if !title.is_empty() && idx < self.sessions.len() {
+                            self.sessions[idx].set_title(title);
+                        }
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Backspace) => {
+                    self.rename_text.pop();
+                    return;
+                }
+                _ => {}
+            }
+            if let Some(c) = event.text.as_ref().and_then(|t| t.chars().next())
+                && !c.is_control()
+            {
+                self.rename_text.push(c);
+                return;
+            }
+            return;
+        }
+
         // P27-C: Close context menu on Escape.
         if self.context_menu.visible
             && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
@@ -1026,6 +1058,30 @@ impl DesktopApp {
                 }
 
                 self.button_held = Some(mouse_button);
+
+                // P30-B: Tab bar left-click → switch tab.
+                if self.tab_bar.visible {
+                    let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                    let bounds = self.content_area_bounds();
+                    if py < bounds.y as f32 {
+                        let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+                        // New tab button (+).
+                        if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
+                            self.open_tab();
+                            return;
+                        }
+                        // Click on a specific tab.
+                        if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
+                            self.switch_tab(tab_idx);
+                            // P30-B: Double-click → start rename.
+                            if self.click_count == 2 {
+                                self.renaming_tab = Some(tab_idx);
+                                self.rename_text = self.sessions[tab_idx].title().to_string();
+                            }
+                            return;
+                        }
+                    }
+                }
 
                 // P27-B: Double-click / triple-click detection.
                 let now = std::time::Instant::now();
