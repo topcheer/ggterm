@@ -1199,6 +1199,86 @@ impl DesktopApp {
             });
         }
 
+        // ── P29-C: Quit confirmation dialog ───────────────────────────
+        if self.quit_confirm {
+            let win_w = content_bounds.width as f32;
+            let win_h = content_bounds.height as f32 + content_bounds.y as f32;
+
+            // Dark mask.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: 0.0,
+                y: 0.0,
+                w: win_w,
+                h: win_h,
+                color: (0.0, 0.0, 0.0, 0.6),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            let dlg_w = 400.0;
+            let dlg_h = 160.0;
+            let dx = (win_w - dlg_w) / 2.0;
+            let dy = (win_h - dlg_h) / 2.0;
+
+            // Dialog background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: dx,
+                y: dy,
+                w: dlg_w,
+                h: dlg_h,
+                color: (0.1, 0.11, 0.15, 0.98),
+                radius: 12.0,
+                stroke_width: 0.0,
+            });
+            // Dialog border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: dx,
+                y: dy,
+                w: dlg_w,
+                h: dlg_h,
+                color: (0.4, 0.3, 0.3, 0.5),
+                radius: 12.0,
+                stroke_width: 1.0,
+            });
+
+            // Title.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Close Terminal?".to_string(),
+                left: dx + 24.0,
+                top: dy + 20.0,
+                color: (255, 180, 100),
+            });
+
+            // Message.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "All running processes in your sessions will be".to_string(),
+                left: dx + 24.0,
+                top: dy + 52.0,
+                color: (200, 200, 210),
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "terminated. Session state will be saved.".to_string(),
+                left: dx + 24.0,
+                top: dy + 70.0,
+                color: (200, 200, 210),
+            });
+
+            // Options.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "[Y] Yes, close   [N] Cancel".to_string(),
+                left: dx + 24.0,
+                top: dy + 110.0,
+                color: (140, 180, 255),
+            });
+
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Press Esc to cancel".to_string(),
+                left: dx + 24.0,
+                top: dy + 132.0,
+                color: (120, 120, 140),
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

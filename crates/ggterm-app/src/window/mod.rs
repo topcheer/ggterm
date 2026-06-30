@@ -289,6 +289,10 @@ pub struct DesktopApp {
     tab_context_menu: crate::tab_bar::TabContextMenuState,
     /// P29-A: Shortcut help overlay (Ctrl+Shift+/).
     shortcut_help: crate::shortcut_help::ShortcutHelpState,
+    /// P29-C: Quit confirmation dialog.
+    quit_confirm: bool,
+    /// P29-C: Flag to exit event loop on next about_to_wait.
+    should_quit: bool,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -551,6 +555,8 @@ impl DesktopApp {
             shell_switcher: crate::shell_switcher::ShellSwitcherState::new(),
             tab_context_menu: crate::tab_bar::TabContextMenuState::default(),
             shortcut_help: crate::shortcut_help::ShortcutHelpState::new(),
+            quit_confirm: false,
+            should_quit: false,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -837,9 +843,17 @@ impl ApplicationHandler for DesktopApp {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                log::info!("CloseRequested, saving session and exiting");
-                self.save_session_on_exit();
-                event_loop.exit();
+                // P29-C: Show quit confirmation dialog.
+                if self.quit_confirm {
+                    log::info!("Quit confirmed — saving session and exiting");
+                    self.save_session_on_exit();
+                    event_loop.exit();
+                } else {
+                    self.quit_confirm = true;
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
             }
 
             // P22-E: Drag & drop file support.
@@ -1035,6 +1049,13 @@ impl ApplicationHandler for DesktopApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // P29-C: Check if we should quit after confirmation.
+        if self.should_quit {
+            self.save_session_on_exit();
+            event_loop.exit();
+            return;
+        }
+
         // Pump PTY events.
         self.active_session_mut().pump();
 

@@ -405,6 +405,32 @@ impl DesktopApp {
         }
 
         // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
+        // Also handle quit confirm Esc/Enter.
+        if self.quit_confirm {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.quit_confirm = false;
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Enter) => {
+                    // Enter = confirm quit.
+                    self.should_quit = true;
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::KeyY) | PhysicalKey::Code(KeyCode::KeyS) => {
+                    // Y or S = Yes/Sure
+                    self.should_quit = true;
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::KeyN) => {
+                    self.quit_confirm = false;
+                    return;
+                }
+                _ => return, // swallow all other keys
+            }
+        }
+
+        // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
         if self.mods.ctrl
             && self.mods.shift
             && let PhysicalKey::Code(KeyCode::Slash) = &event.physical_key
