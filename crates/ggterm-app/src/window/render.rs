@@ -12,6 +12,8 @@ impl DesktopApp {
         // Compute content area bounds BEFORE any borrows of self.
         // This is shared with mouse handlers for coordinate consistency.
         let content_bounds = self.content_area_bounds();
+        // P32: Pre-compute scrolled state for indicator.
+        let is_scrolled = self.sessions[active].app().terminal().grid().is_scrolled();
         let (br, bg, bb) = {
             let session = &self.sessions[active];
             let theme = session.app().theme();
@@ -1354,6 +1356,32 @@ impl DesktopApp {
                     left: rx + 8.0,
                     top: ry + 5.0,
                     color: (240, 240, 250),
+                });
+            }
+        }
+
+        // ── P32: Scroll-to-bottom indicator ──────────────────────────
+        {
+            if is_scrolled {
+                let indicator_w = 60.0;
+                let indicator_h = 24.0;
+                let ix = screen_w - indicator_w - 20.0;
+                let iy = screen_h - indicator_h - 40.0;
+
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: ix,
+                    y: iy,
+                    w: indicator_w,
+                    h: indicator_h,
+                    color: (0.15, 0.25, 0.50, 0.9),
+                    radius: 12.0,
+                    stroke_width: 0.0,
+                });
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: "↓ Bottom".to_string(),
+                    left: ix + 12.0,
+                    top: iy + 4.0,
+                    color: (200, 220, 255),
                 });
             }
         }

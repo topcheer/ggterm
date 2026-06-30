@@ -466,12 +466,17 @@ impl DesktopApp {
             }
         }
 
-        // Trim trailing whitespace per line.
-        let text = text
-            .lines()
-            .map(|l| l.trim_end())
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Trim trailing whitespace per line and remove trailing empty lines.
+        let mut lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
+        // Remove trailing empty lines.
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        // Remove leading empty lines.
+        while lines.first().is_some_and(|l| l.is_empty()) {
+            lines.remove(0);
+        }
+        let text = lines.join("\n");
 
         if !text.is_empty() {
             log::debug!("Clipboard copy: {} chars", text.len());

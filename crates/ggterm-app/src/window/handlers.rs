@@ -1089,6 +1089,30 @@ impl DesktopApp {
                 if self.tab_bar.visible {
                     let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
                     let bounds = self.content_area_bounds();
+
+                    // P32: Click scroll-to-bottom indicator → reset viewport.
+                    if state == ElementState::Pressed
+                        && button == winit::event::MouseButton::Left
+                        && let Some(ref renderer) = self.renderer
+                    {
+                        let sw = renderer.resolution_width() as f32;
+                        let sh = renderer.resolution_height() as f32;
+                        let ix = sw - 80.0;
+                        let iy = sh - 64.0;
+                        if px >= ix && px <= ix + 60.0 && py >= iy && py <= iy + 24.0 {
+                            self.active_session_mut()
+                                .app_mut()
+                                .terminal_mut()
+                                .grid_mut()
+                                .reset_viewport();
+                            self.smooth_scroll.reset();
+                            if let Some(ref window) = self.window {
+                                window.request_redraw();
+                            }
+                            return;
+                        }
+                    }
+
                     if py < bounds.y as f32 {
                         let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
                         // New tab button (+).
