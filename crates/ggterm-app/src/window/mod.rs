@@ -771,15 +771,13 @@ impl ApplicationHandler for DesktopApp {
 
                 // Check exit — close pane/tab or quit app.
                 if !self.active_session().is_running() {
-                    let pane_count = self.sessions[self.active].pane_count();
-                    if pane_count > 1 {
-                        self.sessions[self.active].remove_active_pane();
-                    } else if self.sessions.len() > 1 {
-                        self.close_tab();
-                    } else {
+                    if self.handle_pane_exit() {
+                        // App should exit.
                         event_loop.exit();
                         return;
                     }
+                    // Pane/tab was closed — skip rendering this frame.
+                    return;
                 }
 
                 self.render_frame();
@@ -1009,20 +1007,8 @@ impl ApplicationHandler for DesktopApp {
 
         // Check if active pane's shell has exited (e.g. Ctrl+D, `exit`).
         if !self.active_session().is_running() || !self.active_session_mut().is_alive() {
-            let pane_count = self.sessions[self.active].pane_count();
-            if pane_count > 1 {
-                // Multi-pane: remove the dead pane, keep the tab alive.
-                log::info!(
-                    "Pane shell exited, closing pane (tab had {} panes)",
-                    pane_count
-                );
-                self.sessions[self.active].remove_active_pane();
-            } else if self.sessions.len() > 1 {
-                // Single-pane tab but multiple tabs: close this tab.
-                log::info!("Tab shell exited, closing tab");
-                self.close_tab();
-            } else {
-                // Last pane in last tab: exit the app.
+            if self.handle_pane_exit() {
+                // Last pane in last tab — exit the app.
                 log::info!("Last shell exited, quitting");
                 event_loop.exit();
             }

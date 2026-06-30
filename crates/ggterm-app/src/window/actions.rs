@@ -3,6 +3,54 @@
 use super::*;
 
 impl DesktopApp {
+    /// Handle the active pane's shell exit.
+    ///
+    /// Returns `true` if the app should exit (last pane in last tab).
+    /// Returns `false` if a pane or tab was closed and the app should continue.
+    ///
+    /// After removing a pane, the remaining pane is resized to fill the full
+    /// content area, and a redraw is requested.
+    pub(super) fn handle_pane_exit(&mut self) -> bool {
+        let pane_count = self.sessions[self.active].pane_count();
+        if pane_count > 1 {
+            // Multi-pane: remove the dead pane, keep the tab alive.
+            log::info!(
+                "Pane shell exited, closing pane (tab had {} panes)",
+                pane_count
+            );
+            self.sessions[self.active].remove_active_pane();
+
+            // Resize remaining pane(s) to fill the full content area.
+            // The grid was sized for the split; now it needs full-window dimensions.
+            if let Some(ref renderer) = self.renderer {
+                let bounds = self.content_area_bounds();
+                let cell_w = renderer.cell_width();
+                let cell_h = renderer.cell_height();
+                let session = &mut self.sessions[self.active];
+                let tree = session.split_tree().clone();
+                let areas = tree.areas(bounds);
+                session.resize_panes_to_areas(&areas, cell_w, cell_h);
+            }
+
+            // Request a redraw to show the updated layout.
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            false
+        } else if self.sessions.len() > 1 {
+            // Single-pane tab but multiple tabs: close this tab.
+            log::info!("Tab shell exited, closing tab");
+            self.close_tab();
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            false
+        } else {
+            // Last pane in last tab: app should exit.
+            true
+        }
+    }
+
     pub(super) fn handle_settings_left(&mut self) {
         match self.settings.selected {
             crate::settings_ui::SettingsField::Theme => {
