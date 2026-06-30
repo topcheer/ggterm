@@ -108,6 +108,15 @@ Platform Abstraction (ConPTY / POSIX)
 - **Native Menu Data**: action_to_tag/tag_to_action mapping, accelerator parsing (macOS)
 - **Platform Packaging**: Cargo.bundle.toml, Makefile (dist/install/run/package), Info.plist
 
+### Phase 20-21: Multi-Pane Rendering & Session Persistence
+- **Multi-Pane Viewport Rendering**: Each split pane renders to its own GPU viewport with scissor clipping and pixel-offset text positioning
+- **Pane Borders**: Active pane highlighted with bright border, inactive panes dimmed
+- **Mouse Pane Focus**: Click or scroll in any pane to switch focus automatically
+- **Drag-to-Resize**: Click and drag split separator lines to adjust pane ratios interactively
+- **Session Persistence**: Tab + pane layout auto-saved to `~/.ggterm/session.json` on exit, restored on startup
+- **Config Validation**: font_size, cell_width, cell_height, scrollback, and theme validated at startup with clear error messages
+- **Dirty Rect Optimization**: Panes with unchanged content skip glyphon text shaping for better performance
+
 ## Status
 
 | Phase | Description | Status |
@@ -131,6 +140,8 @@ Platform Abstraction (ConPTY / POSIX)
 | 17 | Dynamic Colors, Combining Chars, URL Click, Status Bar Toggle | Done |
 | 18 | DPI-Aware Rendering, Per-Run Grid Alignment, Multi-Platform | Done |
 | 19 | Desktop UI: Splits, Overlay Rendering, Settings, Menu, About | Done |
+| 20 | Multi-Pane Rendering, Pane Borders, Mouse Pane Focus | Done |
+| 21 | Session Persistence, Config Validation, Drag-to-Resize, Dirty Rect | Done |
 
 ## Usage
 
@@ -285,6 +296,23 @@ GGTerm looks for the config file at:
 
 Changes are hot-reloaded automatically (no restart needed).
 
+### Session Persistence
+
+GGTerm automatically saves your tab and pane layout to
+`~/.ggterm/session.json` when the terminal closes, and restores it
+on the next launch. This includes:
+
+- Number of tabs and their titles
+- Split pane structure (orientation + ratio for each split)
+- Per-pane shell program and working directory
+- Active tab and active pane focus
+
+To start fresh, simply delete the file:
+
+```bash
+rm ~/.ggterm/session.json
+```
+
 ## Command Navigation
 
 Jump between command blocks with keyboard shortcuts. GGTerm auto-injects
@@ -394,6 +422,9 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Ctrl+Shift+]` | Focus next pane |
 | `Ctrl+Shift+[` | Focus previous pane |
 | `Ctrl+Shift+Alt+Arrow Keys` | Adjust split ratio |
+| `Drag Separator` | Drag split line to resize panes |
+| `Click in Pane` | Focus pane under cursor |
+| `Scroll in Pane` | Scroll pane under cursor |
 | `Ctrl+Shift+B` | Toggle status bar |
 | `Ctrl+,` | Toggle settings overlay |
 | `Esc` | Close settings / about dialog |
@@ -425,7 +456,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 
 ## Status
 
-**1490+ tests passing** (2 ignored PTY integration tests).
+**1532+ tests passing** (2 ignored PTY integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
@@ -468,6 +499,13 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 | About Dialog | Done | 17 |
 | Overlay Rendering | Done | 6 |
 | Native Menu Data Layer | Done | 13 |
+| Multi-Pane Rendering | Done | 3 |
+| Pane Border Overlays | Done | — |
+| Mouse Pane Focus | Done | — |
+| Session Persistence | Done | 27 |
+| Config Validation | Done | — |
+| Drag-to-Resize Splits | Done | — |
+| Dirty Rect Partial Repaint | Done | — |
 
 ## License
 

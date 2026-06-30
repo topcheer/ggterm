@@ -28,6 +28,12 @@ pub struct StatusBar {
     pub ai_active: bool,
     /// Last command exit code (None = no command completed yet).
     pub exit_code: Option<i32>,
+    /// Configuration validation error message (P21-G).
+    ///
+    /// When set, a `!ERROR!` indicator is prepended to the status bar format.
+    /// The renderer can use `has_config_error()` / `config_error_text()` to
+    /// draw a red indicator.
+    pub config_error: Option<String>,
 }
 
 impl Default for StatusBar {
@@ -48,6 +54,7 @@ impl StatusBar {
             search_active: false,
             ai_active: false,
             exit_code: None,
+            config_error: None,
         }
     }
 
@@ -83,11 +90,44 @@ impl StatusBar {
         self.exit_code = code;
     }
 
+    /// Set a configuration validation error message (P21-G).
+    ///
+    /// Pass `None` or an empty string to clear.
+    pub fn set_config_error(&mut self, msg: Option<String>) {
+        match msg {
+            Some(m) if !m.is_empty() => self.config_error = Some(m),
+            _ => self.config_error = None,
+        }
+    }
+
+    /// Clear the configuration error indicator (P21-G).
+    pub fn clear_config_error(&mut self) {
+        self.config_error = None;
+    }
+
+    /// Returns `true` if a config error is currently displayed (P21-G).
+    pub fn has_config_error(&self) -> bool {
+        self.config_error.is_some()
+    }
+
+    /// Returns the config error message for renderer use (P21-G).
+    pub fn config_error_text(&self) -> Option<&str> {
+        self.config_error.as_deref()
+    }
+
     /// Format the status bar as a single-line string.
     ///
-    /// Example: `"Row:5 Col:10 | Tab 1/3 | exit:0 | bell | search | ai"`
+    /// Example: `"!ERROR! | Row:5 Col:10 | Tab 1/3 | exit:0 | bell | search | ai"`
+    ///
+    /// When a config error is set, `!ERROR!` is prepended so the renderer
+    /// can highlight it in red.
     pub fn format(&self) -> String {
-        let mut parts: Vec<String> = Vec::with_capacity(7);
+        let mut parts: Vec<String> = Vec::with_capacity(8);
+
+        // Config error indicator — shown first for visibility (P21-G).
+        if self.config_error.is_some() {
+            parts.push("!ERROR!".to_string());
+        }
 
         // Cursor position (always shown).
         parts.push(format!("Row:{} Col:{}", self.cursor_row, self.cursor_col));
@@ -222,5 +262,72 @@ mod tests {
         let mut sb = StatusBar::new();
         sb.set_exit_code(None);
         assert_eq!(sb.format(), "Row:0 Col:0");
+    }
+
+    // ── P21-G: Config error indicator tests ──────────────────────────
+
+    #[test]
+    fn t_config_error_default_none() {
+        let sb = StatusBar::new();
+        assert!(!sb.has_config_error());
+        assert!(sb.config_error_text().is_none());
+    }
+
+    #[test]
+    fn t_config_error_shown_in_format() {
+        let mut sb = StatusBar::new();
+        sb.set_config_error(Some("font_size out of range".to_string()));
+        assert!(sb.has_config_error());
+        assert_eq!(sb.config_error_text(), Some("font_size out of range"));
+        assert_eq!(sb.format(), "!ERROR! | Row:0 Col:0");
+    }
+
+    #[test]
+    fn t_config_error_with_other_flags() {
+        let mut sb = StatusBar::new();
+        sb.update_cursor(5, 10);
+        sb.update_tabs(2, 0);
+        sb.set_bell(true);
+        sb.set_config_error(Some("bad theme".to_string()));
+        assert_eq!(sb.format(), "!ERROR! | Row:5 Col:10 | Tab 1/2 | bell");
+    }
+
+    #[test]
+    fn t_config_error_cleared() {
+        let mut sb = StatusBar::new();
+        sb.set_config_error(Some("oops".to_string()));
+        assert!(sb.has_config_error());
+
+        sb.clear_config_error();
+        assert!(!sb.has_config_error());
+        assert_eq!(sb.format(), "Row:0 Col:0");
+    }
+
+    #[test]
+    fn t_config_error_set_none_clears() {
+        let mut sb = StatusBar::new();
+        sb.set_config_error(Some("oops".to_string()));
+        sb.set_config_error(None);
+        assert!(!sb.has_config_error());
+    }
+
+    #[test]
+    fn t_config_error_empty_string_clears() {
+        let mut sb = StatusBar::new();
+        sb.set_config_error(Some("oops".to_string()));
+        sb.set_config_error(Some(String::new()));
+        assert!(!sb.has_config_error());
+    }
+
+    #[test]
+    fn t_config_error_precedes_cursor() {
+        let mut sb = StatusBar::new();
+        sb.update_cursor(3, 7);
+        sb.set_config_error(Some("e".to_string()));
+        let formatted = sb.format();
+        // ERROR must appear before cursor position.
+        let err_pos = formatted.find("!ERROR!").unwrap();
+        let cursor_pos = formatted.find("Row:3").unwrap();
+        assert!(err_pos < cursor_pos);
     }
 }
