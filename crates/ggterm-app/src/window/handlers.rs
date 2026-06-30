@@ -364,6 +364,16 @@ impl DesktopApp {
             return;
         }
 
+        // P28-C: Ctrl+Shift+Y → toggle command history sidebar
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyY) = &event.physical_key
+        {
+            self.cmd_history.toggle();
+            return;
+        }
+
         // P28-H: Shell switcher navigation when open
         if self.shell_switcher.open {
             match &event.physical_key {

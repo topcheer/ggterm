@@ -213,6 +213,61 @@ impl CommandRegistry {
             category: "Session".into(),
             shortcut: None,
         });
+        // P28: Phase 28 features
+        r.register(Command {
+            id: "perf.toggle".into(),
+            label: "Toggle Performance Monitor".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+G".into()),
+        });
+        r.register(Command {
+            id: "sound.toggle".into(),
+            label: "Toggle Sound".into(),
+            category: "Settings".into(),
+            shortcut: Some("Ctrl+Shift+M".into()),
+        });
+        r.register(Command {
+            id: "shell.switch".into(),
+            label: "Quick Shell Switcher".into(),
+            category: "Shell".into(),
+            shortcut: Some("Ctrl+Shift+L".into()),
+        });
+        r.register(Command {
+            id: "workspace.next".into(),
+            label: "Next Workspace".into(),
+            category: "Workspace".into(),
+            shortcut: Some("Ctrl+Shift+Alt+W".into()),
+        });
+        r.register(Command {
+            id: "workspace.prev".into(),
+            label: "Previous Workspace".into(),
+            category: "Workspace".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "workspace.add".into(),
+            label: "New Workspace".into(),
+            category: "Workspace".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "cursor.trail".into(),
+            label: "Cursor Effect: Trail".into(),
+            category: "Effects".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "cursor.glow".into(),
+            label: "Cursor Effect: Glow".into(),
+            category: "Effects".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "cursor.none".into(),
+            label: "Cursor Effect: Off".into(),
+            category: "Effects".into(),
+            shortcut: None,
+        });
         r
     }
 }
