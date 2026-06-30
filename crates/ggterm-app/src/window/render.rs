@@ -229,18 +229,9 @@ impl DesktopApp {
         let active = self.active;
         let tree = &self.sessions[active].split_tree();
         if !tree.is_single() {
-            let tab_bar_h = if self.tab_bar.visible {
-                (cell_h + 8.0).max(28.0) + 6.0
-            } else {
-                0.0
-            };
-            let bounds = crate::splits::Rect::new(
-                4, // content padding
-                tab_bar_h as u32 + 4,
-                screen_w as u32 - 8, // minus padding both sides
-                screen_h as u32 - tab_bar_h as u32 - 8,
-            );
-            let areas = tree.areas(bounds);
+            // Use the SAME content bounds as the pane grid rendering for
+            // perfect alignment between borders and text content.
+            let areas = tree.areas(content_bounds);
             let active_id = tree.active();
             let pane_radius = 4.0_f32;
             let pane_stroke_w = 2.0_f32;
