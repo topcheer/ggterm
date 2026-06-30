@@ -1,0 +1,31 @@
+# flutter_rust_bridge configuration for ggterm-ffi
+#
+# Generates Dart bindings from Rust code for the Flutter mobile app.
+# Run: flutter_rust_bridge_codegen generate
+
+# Rust input crate (the api.rs file with public functions/structs).
+rust_input: crates/ggterm-ffi/src/api.rs
+
+# Dart output directory (Flutter side).
+dart_output: ../ggterm_mobile/lib/src/rust
+
+# Rust output directory (generated bridge code).
+rust_output: crates/ggterm-ffi/src/generated
+
+# Class name for the generated Dart API.
+full_dep: false
+
+# Code generation mode.
+mode: native
+
+# Type mapping preferences.
+type_arena: false
+
+# Skip generating WebSocket/stream code (we use simple sync calls for now).
+web: false
+
+# Output format for Dart files.
+dart_format_line_length: 100
+
+# Whether to generate the default freezed classes.
+freezed: false

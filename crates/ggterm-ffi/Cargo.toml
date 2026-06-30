@@ -1,0 +1,28 @@
+[package]
+name = "ggterm-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "C-ABI FFI bindings for Flutter mobile integration"
+
+[lib]
+name = "ggterm_ffi"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+ggterm-core = { path = "../ggterm-core" }
+
+[features]
+default = []
+ssh = ["dep:ggterm-ssh"]
+ai = ["dep:ggterm-ai"]
+
+[dependencies.ggterm-ssh]
+path = "../ggterm-ssh"
+optional = true
+
+[dependencies.ggterm-ai]
+path = "../ggterm-ai"
+optional = true

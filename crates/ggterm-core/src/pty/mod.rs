@@ -272,6 +272,37 @@ impl Drop for PtySession {
     }
 }
 
+impl crate::transport::TerminalTransport for PtySession {
+    fn read(&mut self) -> Vec<u8> {
+        let mut buf = vec![0u8; 8192];
+        match self.try_read(&mut buf) {
+            Ok(n) if n > 0 => buf.truncate(n),
+            _ => buf.clear(),
+        }
+        buf
+    }
+
+    fn write(&mut self, data: &[u8]) {
+        let _ = PtySession::write(self, data);
+    }
+
+    fn resize(&mut self, cols: usize, rows: usize) {
+        let _ = PtySession::resize(self, cols as u16, rows as u16);
+    }
+
+    fn is_alive(&mut self) -> bool {
+        // Check if child process is still running.
+        if let Some(child) = &mut self.child {
+            match child.try_wait() {
+                Ok(None) => true,              // Still running
+                Ok(Some(_)) | Err(_) => false, // Exited or error
+            }
+        } else {
+            false
+        }
+    }
+}
+
 /// Detect the default shell for the current platform.
 ///
 /// - **Unix**: Reads `$SHELL`, falls back to `/bin/sh`
