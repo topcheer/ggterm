@@ -25,6 +25,8 @@ bitflags! {
         const WIDE_CHAR  = 0x100;
         /// Continuation cell of a wide character.
         const WIDE_SPACER = 0x200;
+        /// Protected (DECSCA) — immune to DECSED selective erase.
+        const PROTECTED = 0x400;
     }
 }
 

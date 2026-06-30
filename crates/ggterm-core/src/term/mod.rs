@@ -5,7 +5,7 @@
 //! the [`Grid`] model. It manages cursor position, text attributes,
 //! terminal modes, scroll regions, and tab stops.
 
-use crate::grid::{CellFlags, Color, Grid};
+use crate::grid::{Cell, CellFlags, Color, Grid};
 use crate::vte::Perform;
 use unicode_width::UnicodeWidthChar;
 
@@ -278,6 +278,13 @@ pub struct Modes {
     pub mouse_urxvt: bool,
     /// Focus event reporting (DECSET 1004) — P12-D.
     pub focus_event: bool,
+    /// Synchronized output mode (DECSET 2026) — P24-A.
+    /// When enabled, the terminal should defer rendering until disabled.
+    pub synchronized_output: bool,
+    /// Text reflow on resize (DECSET 2027) — P24-B.
+    /// When enabled, content reflows when the terminal is resized.
+    /// Default: true.
+    pub reflow: bool,
 }
 
 impl Modes {
@@ -298,6 +305,8 @@ impl Modes {
             mouse_utf8: false,
             mouse_urxvt: false,
             focus_event: false,
+            synchronized_output: false,
+            reflow: true,
         }
     }
 }
@@ -364,6 +373,12 @@ pub struct Terminal {
     /// Current working directory set via OSC 7 (P22-D).
     /// Format: `OSC 7 ; file://hostname/path ST`
     pub(crate) cwd: Option<std::path::PathBuf>,
+    /// DECSCA protected attribute (P24-D).
+    /// When true, newly printed characters get the PROTECTED flag.
+    pub(crate) protected_attr: bool,
+    /// Pending desktop notification from OSC 9/777 (P24-E).
+    /// (title, body) pair. Consumed by the event loop.
+    pub(crate) pending_notification: Option<(String, String)>,
 }
 
 /// Parse an OSC 7 working directory URI.
@@ -494,6 +509,8 @@ impl Terminal {
             dynamic_fg: None,
             dynamic_bg: None,
             cwd: None,
+            protected_attr: false,
+            pending_notification: None,
         }
     }
 
@@ -582,6 +599,23 @@ impl Terminal {
     /// Return true if the alternate screen buffer is active (P16-D).
     pub fn is_alt_screen(&self) -> bool {
         self.modes.alt_screen
+    }
+
+    /// Return true if synchronized output mode is active (DECSET 2026, P24-A).
+    /// When active, the renderer should defer updates until mode is disabled.
+    pub fn is_synchronized(&self) -> bool {
+        self.modes.synchronized_output
+    }
+
+    /// Return true if text reflow on resize is enabled (DECSET 2027, P24-B).
+    pub fn reflow_enabled(&self) -> bool {
+        self.modes.reflow
+    }
+
+    /// Take and clear a pending desktop notification (P24-E).
+    /// Returns (title, body) if OSC 9 or OSC 777 was received.
+    pub fn take_pending_notification(&mut self) -> Option<(String, String)> {
+        self.pending_notification.take()
     }
 
     /// Perform a full terminal reset (RIS — ESC c).
@@ -797,6 +831,9 @@ impl Terminal {
             c.fg = self.fg;
             c.bg = self.bg;
             c.flags |= self.flags;
+            if self.protected_attr {
+                c.flags |= CellFlags::PROTECTED;
+            }
             c.hyperlink = self.current_hyperlink.clone();
         }
         // For wide chars, set bg on the spacer cell to avoid visual gaps
@@ -900,6 +937,8 @@ impl Terminal {
             1006 => self.modes.mouse_sgr = enable,   // SGR encoding
             1015 => self.modes.mouse_urxvt = enable, // URXVT encoding
             1004 => self.modes.focus_event = enable, // Focus event reporting
+            2026 => self.modes.synchronized_output = enable, // Synchronized output
+            2027 => self.modes.reflow = enable,      // Text reflow on resize
             _ => {}
         }
     }
@@ -995,6 +1034,70 @@ impl Terminal {
     /// The app layer calls this in `about_to_wait` to trigger visual bell.
     pub fn take_bell(&mut self) -> bool {
         std::mem::replace(&mut self.bell, false)
+    }
+
+    // ---------- P24-D: Selective erase helpers ----------
+
+    /// Erase non-protected cells from cursor position to end of screen.
+    fn selective_erase_from(&mut self, col: usize, row: usize) {
+        let width = self.grid.width();
+        let height = self.grid.height();
+        // Erase from cursor to end of current row
+        for c in col..width {
+            if let Some(cell) = self.grid.cell_mut(c, row)
+                && !cell.flags.contains(CellFlags::PROTECTED)
+            {
+                *cell = Cell::blank();
+            }
+        }
+        // Erase all subsequent rows
+        for r in (row + 1)..height {
+            for c in 0..width {
+                if let Some(cell) = self.grid.cell_mut(c, r)
+                    && !cell.flags.contains(CellFlags::PROTECTED)
+                {
+                    *cell = Cell::blank();
+                }
+            }
+        }
+    }
+
+    /// Erase non-protected cells from start of screen to cursor position.
+    fn selective_erase_to(&mut self, col: usize, row: usize) {
+        let width = self.grid.width();
+        // Erase all rows before cursor row
+        for r in 0..row {
+            for c in 0..width {
+                if let Some(cell) = self.grid.cell_mut(c, r)
+                    && !cell.flags.contains(CellFlags::PROTECTED)
+                {
+                    *cell = Cell::blank();
+                }
+            }
+        }
+        // Erase from start of current row to cursor (inclusive)
+        for c in 0..=col.min(width.saturating_sub(1)) {
+            if let Some(cell) = self.grid.cell_mut(c, row)
+                && !cell.flags.contains(CellFlags::PROTECTED)
+            {
+                *cell = Cell::blank();
+            }
+        }
+    }
+
+    /// Erase all non-protected cells on the screen.
+    fn selective_erase_all(&mut self) {
+        let width = self.grid.width();
+        let height = self.grid.height();
+        for r in 0..height {
+            for c in 0..width {
+                if let Some(cell) = self.grid.cell_mut(c, r)
+                    && !cell.flags.contains(CellFlags::PROTECTED)
+                {
+                    *cell = Cell::blank();
+                }
+            }
+        }
     }
 
     /// Simple base64 decoder for OSC 52 payloads.
@@ -1165,6 +1268,17 @@ impl Perform for Terminal {
             b'd' => {
                 let row = Self::param(params, 0, 1) as usize;
                 self.set_cursor(self.cursor.x, row.saturating_sub(1));
+            }
+            // DECSED — selective erase in display (CSI ? Ps J) (P24-D)
+            // Must come BEFORE regular ED to take priority when `?` prefix is present.
+            b'J' if is_private => {
+                let mode = params.first().copied().unwrap_or(0);
+                match mode {
+                    0 => self.selective_erase_from(self.cursor.x, self.cursor.y),
+                    1 => self.selective_erase_to(self.cursor.x, self.cursor.y),
+                    2 => self.selective_erase_all(),
+                    _ => {}
+                }
             }
             b'J' => {
                 let mode = params.first().copied().unwrap_or(0);
@@ -1398,6 +1512,12 @@ impl Perform for Terminal {
                 let h = self.grid.height();
                 *self = Terminal::new(w, h);
             }
+            // DECSCA — select character protection attribute (CSI " Ps q)
+            // 0 = unprotected (default), 1 = protected, 2 = unprotected (same as 0)
+            b'q' if intermediates.contains(&b'"') => {
+                let mode = params.first().copied().unwrap_or(0);
+                self.protected_attr = mode == 1;
+            }
             _ => {}
         }
     }
@@ -1575,6 +1695,32 @@ impl Perform for Terminal {
                 let payload = parts.next().unwrap_or("");
                 if let Some(path) = parse_osc7_cwd(payload) {
                     self.cwd = Some(path);
+                }
+            }
+            // OSC 9 — iTerm2-style desktop notification (P24-E)
+            // Format: `OSC 9 ; message ST`
+            Some(9) => {
+                let msg = parts.next().unwrap_or("").to_string();
+                if !msg.is_empty() {
+                    self.pending_notification = Some(("Terminal".to_string(), msg));
+                }
+            }
+            // OSC 777 — urxvt desktop notification (P24-E)
+            // Format: `OSC 777 ; notify ; title ; body ST`
+            Some(777) => {
+                let payload = parts.next().unwrap_or("");
+                let mut fields = payload.splitn(3, ';');
+                let _kind = fields.next().unwrap_or(""); // should be "notify"
+                let title_raw = fields.next().unwrap_or("");
+                let title = if title_raw.is_empty() {
+                    "Terminal"
+                } else {
+                    title_raw
+                }
+                .to_string();
+                let body = fields.next().unwrap_or("").to_string();
+                if !body.is_empty() {
+                    self.pending_notification = Some((title, body));
                 }
             }
             _ => {}
@@ -3563,5 +3709,170 @@ mod tests {
         );
         assert_eq!(parse_osc7_cwd("file://host"), None);
         assert_eq!(parse_osc7_cwd("not-a-uri"), None);
+    }
+
+    // ===== P24-A: Synchronized output tests =====
+
+    #[test]
+    fn t_sync_output_enable_disable() {
+        let mut t = Terminal::new(80, 24);
+        assert!(!t.is_synchronized());
+        feed(&mut t, b"\x1b[?2026h");
+        assert!(t.is_synchronized());
+        feed(&mut t, b"\x1b[?2026l");
+        assert!(!t.is_synchronized());
+    }
+
+    // ===== P24-B: Text reflow mode tests =====
+
+    #[test]
+    fn t_reflow_mode_default() {
+        let t = Terminal::new(80, 24);
+        assert!(t.reflow_enabled(), "reflow should be enabled by default");
+    }
+
+    #[test]
+    fn t_reflow_mode_toggle() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?2027l");
+        assert!(!t.reflow_enabled());
+        feed(&mut t, b"\x1b[?2027h");
+        assert!(t.reflow_enabled());
+    }
+
+    // ===== P24-D: DECSCA / DECSED selective erase tests =====
+
+    #[test]
+    fn t_decsca_sets_protected_attr() {
+        let mut t = Terminal::new(80, 24);
+        // Set protected attribute: CSI 1 " q
+        feed(&mut t, b"\x1b[1\"q");
+        feed(&mut t, b"A");
+        // Set unprotected: CSI 0 " q
+        feed(&mut t, b"\x1b[0\"q");
+        feed(&mut t, b"B");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::PROTECTED)
+        );
+        assert!(
+            !t.grid()
+                .cell(1, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::PROTECTED)
+        );
+    }
+
+    #[test]
+    fn t_decsed_preserves_protected() {
+        let mut t = Terminal::new(80, 24);
+        // Write protected 'A': CSI 1 " q
+        feed(&mut t, b"\x1b[1\"qA");
+        // Write unprotected 'B': CSI 0 " q
+        feed(&mut t, b"\x1b[0\"qB");
+        // Selective erase all
+        feed(&mut t, b"\x1b[?2J");
+        // Protected cell should survive
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::PROTECTED)
+        );
+        // Unprotected cell should be erased
+        assert!(t.grid().cell(1, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_decsed_from_cursor() {
+        let mut t = Terminal::new(80, 24);
+        // Protected A at (0,0), unprotected B at (1,0)
+        feed(&mut t, b"\x1b[1\"qA\x1b[0\"qB");
+        // Move cursor to (1,0)
+        feed(&mut t, b"\x1b[1;1H");
+        // Selective erase from cursor to end
+        feed(&mut t, b"\x1b[?0J");
+        // A survives (protected), B erased (unprotected)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert!(t.grid().cell(1, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_decsed_to_cursor() {
+        let mut t = Terminal::new(80, 24);
+        // Protected A at (0,0), unprotected B at (1,0)
+        feed(&mut t, b"\x1b[1\"qA\x1b[0\"qB");
+        // Move cursor to (1,0)
+        feed(&mut t, b"\x1b[2;1H");
+        // Selective erase from start to cursor (inclusive)
+        feed(&mut t, b"\x1b[?1J");
+        // A survives (protected), B erased (unprotected)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert!(t.grid().cell(1, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_decsca_2_is_unprotected() {
+        let mut t = Terminal::new(80, 24);
+        // DECSCA 2 = unprotected (same as 0): CSI 2 " q
+        feed(&mut t, b"\x1b[2\"qA");
+        assert!(
+            !t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::PROTECTED)
+        );
+    }
+
+    // ===== P24-E: OSC 9 / OSC 777 notification tests =====
+
+    #[test]
+    fn t_osc9_notification() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;Build complete\x1b\\");
+        let note = t.take_pending_notification();
+        assert_eq!(
+            note,
+            Some(("Terminal".to_string(), "Build complete".to_string()))
+        );
+        // Second call returns None
+        assert!(t.take_pending_notification().is_none());
+    }
+
+    #[test]
+    fn t_osc9_empty_ignored() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;\x1b\\");
+        assert!(t.take_pending_notification().is_none());
+    }
+
+    #[test]
+    fn t_osc777_notification() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]777;notify;Test Title;Body text\x1b\\");
+        let note = t.take_pending_notification();
+        assert_eq!(
+            note,
+            Some(("Test Title".to_string(), "Body text".to_string()))
+        );
+    }
+
+    #[test]
+    fn t_osc777_default_title() {
+        let mut t = Terminal::new(80, 24);
+        // Missing title — should default to "Terminal"
+        feed(&mut t, b"\x1b]777;notify;;Body only\x1b\\");
+        let note = t.take_pending_notification();
+        assert_eq!(
+            note,
+            Some(("Terminal".to_string(), "Body only".to_string()))
+        );
     }
 }

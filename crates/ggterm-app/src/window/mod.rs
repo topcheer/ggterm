@@ -222,6 +222,16 @@ pub struct DesktopApp {
     // ── P23-C: Conditional redraw ──
     /// Last time a redraw was requested (for cursor blink timing).
     last_redraw: std::time::Instant,
+
+    // ── P24-C: Debug overlay ──
+    /// Whether the debug overlay (FPS, cell counts) is visible.
+    debug_visible: bool,
+    /// Frame counter for FPS calculation.
+    frame_count: u64,
+    /// Last FPS update time.
+    last_fps_time: std::time::Instant,
+    /// Current FPS value.
+    current_fps: f32,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -429,6 +439,10 @@ impl DesktopApp {
             pending_resize: None,
             last_resize_time: None,
             last_redraw: std::time::Instant::now(),
+            debug_visible: false,
+            frame_count: 0,
+            last_fps_time: std::time::Instant::now(),
+            current_fps: 0.0,
             #[cfg(feature = "ai")]
             ai_overlay: crate::ai_overlay::AIOverlayState::new(),
             #[cfg(feature = "ai")]
@@ -813,6 +827,25 @@ impl ApplicationHandler for DesktopApp {
                         };
                         window.set_title(&display);
                     }
+
+                    // P24-C: Debug overlay — append stats to title when enabled.
+                    if self.debug_visible {
+                        let term = self.active_session().app().terminal();
+                        let grid = term.grid();
+                        let debug_title = format!(
+                            "GGTerm — FPS: {:.0} | {}x{} ({} cells) | sync={} reflow={} | {} tabs",
+                            self.current_fps,
+                            grid.width(),
+                            grid.height(),
+                            grid.width() * grid.height(),
+                            term.is_synchronized(),
+                            term.reflow_enabled(),
+                            self.sessions.len(),
+                        );
+                        if let Some(ref window) = self.window {
+                            window.set_title(&debug_title);
+                        }
+                    }
                 }
 
                 // Check PTY exit.
@@ -896,6 +929,9 @@ impl ApplicationHandler for DesktopApp {
 
         // P11-E: Poll for bell events.
         self.poll_bell();
+
+        // P24-E: Poll for desktop notifications.
+        self.poll_notification();
 
         // P19-A: Poll for menu bar actions.
         if let Some(action) = crate::menu_bar::poll_pending_action() {
@@ -985,8 +1021,18 @@ impl ApplicationHandler for DesktopApp {
         let blink_interval = std::time::Duration::from_millis(500);
         let blink_due = now.duration_since(self.last_redraw) >= blink_interval;
 
-        if need_redraw || blink_due {
+        if need_redraw || blink_due || self.debug_visible {
             self.last_redraw = now;
+
+            // P24-C: Update FPS counter.
+            self.frame_count += 1;
+            let fps_elapsed = now.duration_since(self.last_fps_time);
+            if fps_elapsed >= std::time::Duration::from_millis(500) {
+                self.current_fps = self.frame_count as f32 / fps_elapsed.as_secs_f32();
+                self.frame_count = 0;
+                self.last_fps_time = now;
+            }
+
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }

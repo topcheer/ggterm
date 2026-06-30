@@ -423,6 +423,35 @@ impl DesktopApp {
         }
     }
 
+    /// Poll for desktop notifications from OSC 9/777 (P24-E).
+    ///
+    /// On macOS, uses `osascript` to display a notification.
+    /// On other platforms, logs the notification.
+    pub(super) fn poll_notification(&mut self) {
+        if let Some((title, body)) = self
+            .active_session_mut()
+            .app_mut()
+            .terminal_mut()
+            .take_pending_notification()
+        {
+            log::info!("Desktop notification: {} — {}", title, body);
+            // macOS: use osascript for notifications
+            #[cfg(target_os = "macos")]
+            {
+                let escaped_title = title.replace('"', "\\\"");
+                let escaped_body = body.replace('"', "\\\"");
+                let script = format!(
+                    "display notification \"{}\" with title \"{}\"",
+                    escaped_body, escaped_title
+                );
+                std::process::Command::new("osascript")
+                    .args(["-e", &script])
+                    .spawn()
+                    .ok();
+            }
+        }
+    }
+
     // ── Font zoom (P11-A) ─────────────────────────────────────────
 
     /// Apply the current font zoom level to the renderer (P11-A).

@@ -160,6 +160,11 @@ impl DesktopApp {
                 self.toggle_fullscreen();
                 return;
             }
+            // F1 → toggle debug overlay (P24-C)
+            if key_name == "f1" && !self.mods.ctrl && !self.mods.shift && !self.mods.alt {
+                self.debug_visible = !self.debug_visible;
+                return;
+            }
             // Ctrl+Shift+V → paste
             if self.check_keybinding(
                 "paste",
