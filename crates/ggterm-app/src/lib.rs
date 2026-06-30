@@ -29,9 +29,12 @@
 
 pub mod about_dialog;
 pub mod app;
+pub mod broadcast_input;
 pub mod clipboard;
 pub mod command_nav;
+pub mod command_palette;
 pub mod config;
+pub mod connection_manager;
 pub mod cursor_blink;
 pub mod event;
 pub mod font;
@@ -41,6 +44,7 @@ pub mod search;
 pub mod session;
 pub mod settings_ui;
 pub mod shell_integration;
+pub mod snippets;
 pub mod splits;
 pub mod status_bar;
 pub mod tab_bar;

@@ -9,6 +9,8 @@ version.workspace = true
 
 [dependencies]
 bitflags.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 parking_lot.workspace = true
 log.workspace = true
 unicode-width.workspace = true
