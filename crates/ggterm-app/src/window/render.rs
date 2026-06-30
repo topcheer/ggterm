@@ -1432,6 +1432,63 @@ impl DesktopApp {
             }
         }
 
+        // ── P32: Floating search bar overlay ─────────────────────────
+        if self.search.visible {
+            let bar_w = 320.0;
+            let bar_h = 30.0;
+            let bar_x = screen_w - bar_w - 16.0;
+            let bar_y = 8.0;
+
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: bar_x,
+                y: bar_y,
+                w: bar_w,
+                h: bar_h,
+                color: (0.1, 0.12, 0.18, 0.95),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+
+            // Mode indicator: "Aa" = case-insensitive, "AA" = case-sensitive.
+            let mode_label = if self.search.case_insensitive {
+                "Aa"
+            } else {
+                "AA"
+            };
+            let mode_color = if self.search.case_insensitive {
+                (120u8, 160, 200)
+            } else {
+                (200u8, 180, 100)
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: mode_label.to_string(),
+                left: bar_x + 8.0,
+                top: bar_y + 7.0,
+                color: mode_color,
+            });
+
+            // Search query text with cursor.
+            let query_display = format!("{}_", self.search.query);
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: query_display,
+                left: bar_x + 36.0,
+                top: bar_y + 7.0,
+                color: (230, 230, 240),
+            });
+
+            // Match count.
+            let match_info = self.search.match_count();
+            if match_info > 0 {
+                let current = self.search.current_index().map(|i| i + 1).unwrap_or(0);
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: format!("{}/{}", current, match_info),
+                    left: bar_x + bar_w - 60.0,
+                    top: bar_y + 7.0,
+                    color: (100, 140, 180),
+                });
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

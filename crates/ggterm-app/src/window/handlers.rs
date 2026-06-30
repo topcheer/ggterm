@@ -790,6 +790,11 @@ impl DesktopApp {
             PhysicalKey::Code(KeyCode::Backspace) => {
                 search.backspace(grid);
             }
+            PhysicalKey::Code(KeyCode::Tab) => {
+                // Toggle case sensitivity.
+                let grid2 = self.sessions[self.active].app().grid();
+                self.search.toggle_case(grid2);
+            }
             _ => {
                 if let Key::Character(s) = &event.logical_key
                     && let Some(c) = s.chars().next()

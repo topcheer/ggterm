@@ -83,6 +83,14 @@ impl SearchState {
         self.execute_search(grid);
     }
 
+    /// Toggle case sensitivity and re-execute the search.
+    pub fn toggle_case(&mut self, grid: &Grid) {
+        self.case_insensitive = !self.case_insensitive;
+        if !self.query.is_empty() {
+            self.execute_search(grid);
+        }
+    }
+
     /// Remove the last character from the query and re-search.
     pub fn backspace(&mut self, grid: &Grid) {
         self.query.pop();
@@ -198,6 +206,11 @@ impl SearchState {
     /// Number of matches found.
     pub fn match_count(&self) -> usize {
         self.matches.len()
+    }
+
+    /// Index of the current match (0-based), or None.
+    pub fn current_index(&self) -> Option<usize> {
+        self.current_match
     }
 
     /// All matches (for highlight rendering).
@@ -374,7 +387,32 @@ mod tests {
         let mut s = SearchState::new();
         s.case_insensitive = false;
         s.set_query("HELLO", &g);
-        assert_eq!(s.match_count(), 0);
+        assert_eq!(s.match_count(), 0); // no uppercase HELLO in "hello world\nhello world"
+    }
+
+    #[test]
+    fn t_toggle_case_sensitivity() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.set_query("HELLO", &g);
+        assert_eq!(s.match_count(), 2); // case insensitive
+        s.toggle_case(&g); // → case sensitive
+        assert!(!s.case_insensitive);
+        assert_eq!(s.match_count(), 0); // no uppercase match
+        s.toggle_case(&g); // → back to insensitive
+        assert!(s.case_insensitive);
+        assert_eq!(s.match_count(), 2);
+    }
+
+    #[test]
+    fn t_current_index_tracking() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.set_query("hello", &g);
+        assert_eq!(s.match_count(), 2);
+        assert_eq!(s.current_index(), Some(0));
+        s.next_match();
+        assert_eq!(s.current_index(), Some(1));
     }
 
     #[test]
