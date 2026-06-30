@@ -432,6 +432,20 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Ctrl+,` | Toggle settings overlay |
 | `Esc` | Close settings / about dialog |
 
+### System & Effects
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+P` | Command palette |
+| `Ctrl+Shift+/` | Keyboard shortcut help overlay |
+| `Ctrl+Shift+G` | Toggle perf monitor |
+| `Ctrl+Shift+M` | Toggle sound |
+| `Ctrl+Shift+L` | Quick shell switcher |
+| `Ctrl+Shift+Y` | Toggle command history sidebar |
+| `Ctrl+Shift+Alt+B` | Cycle broadcast mode (off/panes/tabs) |
+| `Ctrl+Shift+Alt+W` | Cycle workspaces |
+| `Shift+Wheel` | Synchronized scroll across all panes |
+| `Right-click Tab` | Tab context menu (close/duplicate/next/prev) |
+
 ## Building
 
 ```bash
@@ -459,7 +473,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 
 ## Status
 
-**1615+ tests passing** (2 ignored PTY integration tests).
+**1735+ tests passing** (7 ignored integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
