@@ -705,18 +705,17 @@ impl ApplicationHandler for DesktopApp {
         // NOTE: Temporarily disabled — raw FFI objc_msgSend with NSRect
         // struct returns causes a crash on ARM64. Will revisit with proper
         // objc2-app-kit NSVisualEffectView feature flags.
-        #[cfg(all(target_os = "macos", feature = "vibrancy"))]
-        {
-            use raw_window_handle::HasWindowHandle;
-            if let Ok(handle) = window.window_handle()
-                && let raw_window_handle::RawWindowHandle::AppKit(appkit) = handle.as_raw()
-            {
-                // Safety: NSView pointer from winit is valid at this point.
-                unsafe {
-                    crate::vibrancy::apply_vibrancy_to_view(appkit.ns_view.as_ptr());
-                }
-            }
-        }
+        // #[cfg(target_os = "macos")]
+        // {
+        //     use raw_window_handle::HasWindowHandle;
+        //     if let Ok(handle) = window.window_handle()
+        //         && let raw_window_handle::RawWindowHandle::AppKit(appkit) = handle.as_raw()
+        //     {
+        //         unsafe {
+        //             crate::vibrancy::apply_vibrancy_to_view(appkit.ns_view.as_ptr());
+        //         }
+        //     }
+        // }
 
         // P18-A: Get scale_factor and resize window to proper physical dimensions.
         let scale_factor = window.scale_factor();
