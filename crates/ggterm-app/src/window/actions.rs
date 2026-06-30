@@ -528,6 +528,63 @@ impl DesktopApp {
         }
     }
 
+    // ── P28-C: Command history sync ──────────────────────────────
+
+    /// Sync OSC 133 command blocks into the command history sidebar.
+    /// Called from about_to_wait to keep the sidebar up to date.
+    pub(super) fn poll_command_history(&mut self) {
+        // Only sync if the sidebar is visible to avoid overhead.
+        if !self.cmd_history.visible {
+            return;
+        }
+
+        // Extract all data from immutable self first, then mutate cmd_history.
+        let blocks = self.active_session().app().terminal().command_blocks();
+
+        // Quick check: if the block count hasn't changed, skip.
+        let current_len = self.cmd_history.len();
+        if blocks.len() == current_len {
+            return;
+        }
+
+        // Build entries from blocks (borrowing grid immutably).
+        let grid = self.active_session().app().grid();
+        let scrollback = grid.scrollback_len();
+        let grid_h = grid.height();
+        let entries: Vec<(String, usize, Option<i32>)> = blocks
+            .iter()
+            .map(|block| {
+                let cmd_row = block.command_row.unwrap_or(block.prompt_row);
+                let cmd_text = if cmd_row < scrollback + grid_h {
+                    let display_row = cmd_row.saturating_sub(scrollback);
+                    grid.display_row(display_row)
+                        .map(|row| {
+                            let s: String = row.cells.iter().map(|c| c.ch).collect::<String>();
+                            s.trim().to_string()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                let text = if cmd_text.is_empty() {
+                    "(unknown)".to_string()
+                } else {
+                    cmd_text
+                };
+                (text, block.prompt_row, block.exit_code)
+            })
+            .collect();
+
+        // Now mutate cmd_history (no immutable borrows outstanding).
+        self.cmd_history.clear();
+        for (text, row, exit_code) in entries {
+            self.cmd_history.add(text, row);
+            if let Some(code) = exit_code {
+                self.cmd_history.complete_last(code);
+            }
+        }
+    }
+
     // ── Font zoom (P11-A) ─────────────────────────────────────────
 
     /// Apply the current font zoom level to the renderer (P11-A).

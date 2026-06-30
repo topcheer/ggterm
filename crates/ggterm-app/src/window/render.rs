@@ -695,6 +695,132 @@ impl DesktopApp {
             }
         }
 
+        // ── P28-C: Command history sidebar ────────────────────────────
+        if self.cmd_history.visible {
+            let sb_w = 280.0_f32;
+            let sb_x = screen_w - sb_w - 4.0;
+            let sb_y = 4.0_f32;
+            let sb_h = screen_h - cell_h - 20.0; // leave room for status bar
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: sb_x,
+                y: sb_y,
+                w: sb_w,
+                h: sb_h,
+                color: (0.08, 0.08, 0.12, 0.92),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            // Border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: sb_x,
+                y: sb_y,
+                w: sb_w,
+                h: sb_h,
+                color: (0.3, 0.35, 0.45, 0.5),
+                radius: 8.0,
+                stroke_width: 1.0,
+            });
+
+            // Header.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Command History".to_string(),
+                left: sb_x + 12.0,
+                top: sb_y + 8.0,
+                color: (120, 200, 255),
+            });
+
+            let total = self.cmd_history.len();
+            let failed = self.cmd_history.failed_count();
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: format!("{} cmds | {} failed", total, failed),
+                left: sb_x + 12.0,
+                top: sb_y + cell_h + 12.0,
+                color: (120, 120, 140),
+            });
+
+            // Separator.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: sb_x + 8.0,
+                y: sb_y + cell_h * 2.0 + 16.0,
+                w: sb_w - 16.0,
+                h: 1.0,
+                color: (0.25, 0.27, 0.32, 0.6),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // List recent commands (up to 20).
+            let list_top = sb_y + cell_h * 2.0 + 24.0;
+            let line_h = cell_h + 6.0;
+            let max_items = ((sb_h - (list_top - sb_y) - 8.0) / line_h) as usize;
+            let recent = self.cmd_history.recent(max_items);
+
+            for (i, entry) in recent.iter().enumerate() {
+                let ey = list_top + i as f32 * line_h;
+                let is_selected = Some(entry.timestamp_ms)
+                    == self
+                        .cmd_history
+                        .selected
+                        .and_then(|idx| self.cmd_history.get(idx))
+                        .map(|e| e.timestamp_ms);
+
+                // Highlight selected row.
+                if is_selected {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: sb_x + 4.0,
+                        y: ey,
+                        w: sb_w - 8.0,
+                        h: line_h,
+                        color: (0.15, 0.25, 0.45, 0.6),
+                        radius: 4.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                // Status indicator.
+                let status_color = if entry.running {
+                    (200, 200, 100)
+                } else if entry.exit_code == Some(0) {
+                    (100, 200, 120)
+                } else {
+                    (230, 80, 80)
+                };
+                let status_text = if entry.running {
+                    "...".to_string()
+                } else if entry.exit_code == Some(0) {
+                    "OK".to_string()
+                } else {
+                    format!("E{}", entry.exit_code.unwrap_or(1))
+                };
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: status_text,
+                    left: sb_x + 10.0,
+                    top: ey + 2.0,
+                    color: status_color,
+                });
+
+                // Command text (truncated).
+                let max_cmd_chars = ((sb_w - 70.0) / (renderer.cell_width() as f32)) as usize;
+                let cmd_display = if entry.command.len() > max_cmd_chars {
+                    format!("{}...", &entry.command[..max_cmd_chars])
+                } else {
+                    entry.command.clone()
+                };
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: cmd_display,
+                    left: sb_x + 50.0,
+                    top: ey + 2.0,
+                    color: if is_selected {
+                        (255, 255, 255)
+                    } else {
+                        (200, 200, 210)
+                    },
+                });
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

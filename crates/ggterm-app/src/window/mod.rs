@@ -1033,6 +1033,9 @@ impl ApplicationHandler for DesktopApp {
         // P24-E: Poll for desktop notifications.
         self.poll_notification();
 
+        // P28-C: Sync command history sidebar from OSC 133 marks.
+        self.poll_command_history();
+
         // P19-A: Poll for menu bar actions.
         if let Some(action) = crate::menu_bar::poll_pending_action() {
             self.handle_menu_action(action);
