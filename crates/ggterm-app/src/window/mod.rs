@@ -838,7 +838,19 @@ impl ApplicationHandler for DesktopApp {
 
             // P22-E: Drag & drop file support.
             WindowEvent::DroppedFile(path) => {
+                self.file_preview.hide();
                 self.handle_dropped_file(path);
+            }
+
+            // P28-E: Show file preview card during drag-hover.
+            WindowEvent::HoveredFile(path) => {
+                self.file_preview
+                    .show(&path.to_string_lossy(), 200.0, 150.0);
+            }
+
+            // P28-E: Hide file preview when drag leaves window.
+            WindowEvent::HoveredFileCancelled => {
+                self.file_preview.hide();
             }
 
             WindowEvent::RedrawRequested => {

@@ -821,6 +821,100 @@ impl DesktopApp {
             }
         }
 
+        // ── P28-E: File drag-hover preview card ───────────────────────
+        if self.file_preview.is_active()
+            && let Some(ref preview) = self.file_preview.current
+        {
+            let card_w = 300.0_f32;
+            let card_h = 80.0_f32;
+            let card_x = self.file_preview.x;
+            let card_y = self.file_preview.y;
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: card_x,
+                y: card_y,
+                w: card_w,
+                h: card_h,
+                color: (0.1, 0.12, 0.18, 0.95),
+                radius: 10.0,
+                stroke_width: 0.0,
+            });
+            // Accent border.
+            let (cr, cg, cb) = preview.category.color();
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: card_x,
+                y: card_y,
+                w: card_w,
+                h: card_h,
+                color: (
+                    cr as f32 / 255.0 * 0.6,
+                    cg as f32 / 255.0 * 0.6,
+                    cb as f32 / 255.0 * 0.6,
+                    0.8,
+                ),
+                radius: 10.0,
+                stroke_width: 2.0,
+            });
+
+            // Category badge.
+            let badge_w = 50.0_f32;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: card_x + 8.0,
+                y: card_y + 8.0,
+                w: badge_w,
+                h: 24.0,
+                color: (
+                    cr as f32 / 255.0 * 0.3,
+                    cg as f32 / 255.0 * 0.3,
+                    cb as f32 / 255.0 * 0.3,
+                    0.9,
+                ),
+                radius: 4.0,
+                stroke_width: 0.0,
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: preview.category.icon_char().to_string(),
+                left: card_x + 12.0,
+                top: card_y + 12.0,
+                color: (cr, cg, cb),
+            });
+
+            // File name.
+            let name_display = if preview.name.len() > 30 {
+                format!("{}...", &preview.name[..27])
+            } else {
+                preview.name.clone()
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: name_display,
+                left: card_x + 68.0,
+                top: card_y + 12.0,
+                color: (240, 240, 250),
+            });
+
+            // File info: size + category.
+            let size_str = preview
+                .size
+                .map(crate::file_preview::format_size)
+                .unwrap_or_else(|| "—".to_string());
+            let info = format!("{} | {}", size_str, preview.extension);
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: info,
+                left: card_x + 68.0,
+                top: card_y + 12.0 + cell_h + 4.0,
+                color: (150, 150, 165),
+            });
+
+            // Drop hint.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Drop to insert path".to_string(),
+                left: card_x + 12.0,
+                top: card_y + card_h - cell_h - 8.0,
+                color: (100, 180, 255),
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
