@@ -398,6 +398,58 @@ impl DesktopApp {
             }
         }
 
+        // ── Selection character count badge ──────────────────────────
+        // When text is selected (not just a single cell), show a small
+        // badge with the character count near the selection end.
+        if let (Some((sx, sy)), Some((ex, ey))) = (self.selection.start, self.selection.end) {
+            let (sx, sy, ex, ey) = if (sy, sx) <= (ey, ex) {
+                (sx, sy, ex, ey)
+            } else {
+                (ex, ey, sx, sy)
+            };
+            // Skip if single-cell selection (no visible chars selected).
+            if (sx, sy) != (ex, ey) {
+                // Estimate selected character count from grid dimensions.
+                let grid = self.sessions[self.active].app().grid();
+                let cols = grid.width();
+                let total_chars = if sy == ey {
+                    (ex - sx + 1) as usize
+                } else {
+                    // First row: sx to end
+                    let first = cols - sx as usize;
+                    let last = ex as usize + 1;
+                    let middle_rows = (ey - sy - 1) as usize * cols;
+                    first + middle_rows + last
+                };
+
+                let badge_text = format!("{} chars", total_chars);
+                let badge_w = badge_text.len() as f32 * cell_w + 16.0;
+                let badge_h = cell_h + 6.0;
+                let badge_x = content_bounds.x as f32 + (ex as f32 + 1.0) * cell_w + 4.0;
+                let badge_y = content_bounds.y as f32 + (ey + 1) as f32 * cell_h + 2.0;
+
+                // Clamp badge within content area.
+                let max_x = content_bounds.x as f32 + content_bounds.width as f32 - badge_w;
+                let badge_x = badge_x.min(max_x).max(content_bounds.x as f32);
+
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: badge_x,
+                    y: badge_y,
+                    w: badge_w,
+                    h: badge_h,
+                    color: (0.2, 0.3, 0.5, 0.85),
+                    radius: 4.0,
+                    stroke_width: 0.0,
+                });
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: badge_text,
+                    left: badge_x + 8.0,
+                    top: badge_y + 3.0,
+                    color: (220, 220, 240),
+                });
+            }
+        }
+
         // ── P26-D: Padded pane borders with rounded corners ───────────
         let active = self.active;
         let tree = &self.sessions[active].split_tree();

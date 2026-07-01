@@ -782,7 +782,8 @@ impl DesktopApp {
         }
 
         // Ctrl+Tab → next tab, Ctrl+Shift+Tab → prev tab (not configurable)
-        if self.mods.ctrl
+        // On macOS, Cmd+Tab/Cmd+Shift+Tab also cycles tabs.
+        if (self.mods.ctrl || (cfg!(target_os = "macos") && self.mods.super_key))
             && let PhysicalKey::Code(KeyCode::Tab) = &event.physical_key
         {
             if self.mods.shift {
