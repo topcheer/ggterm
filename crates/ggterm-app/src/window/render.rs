@@ -336,7 +336,7 @@ impl DesktopApp {
                 let border_color = if *pane_id == active_id {
                     (0.48, 0.64, 0.97, 0.8) // accent blue glow
                 } else {
-                    (0.20, 0.22, 0.28, 0.5) // dim border
+                    (theme_bg.0 * 2.5, theme_bg.1 * 2.5, theme_bg.2 * 2.5, 0.4) // dim theme-aware border
                 };
 
                 ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -349,7 +349,7 @@ impl DesktopApp {
                     stroke_width: pane_stroke_w,
                 });
 
-                // Pane background fill (slightly different shade for depth).
+                // Pane background fill (slightly darker for depth).
                 let bg_alpha = if *pane_id == active_id { 0.0 } else { 0.15 };
                 if bg_alpha > 0.0 {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -357,7 +357,12 @@ impl DesktopApp {
                         y,
                         w,
                         h,
-                        color: (0.04, 0.04, 0.06, bg_alpha),
+                        color: (
+                            theme_bg.0 * 0.5,
+                            theme_bg.1 * 0.5,
+                            theme_bg.2 * 0.5,
+                            bg_alpha,
+                        ),
                         radius: pane_radius,
                         stroke_width: 0.0,
                     });
