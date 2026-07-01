@@ -322,7 +322,7 @@ impl GpuContext {
                 // Full-screen scissor for overlays.
                 pass.set_scissor_rect(0, 0, surf_w, surf_h);
                 renderer
-                    .render_overlays_to_pass(&self.device, &mut pass)
+                    .render_overlays_to_pass(&self.device, &self.queue, &mut pass)
                     .map_err(RenderFrameError::Render)?;
             }
 

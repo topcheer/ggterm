@@ -997,11 +997,73 @@ impl GlyphonRenderer {
     pub fn render_overlays_to_pass(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         render_pass: &mut wgpu::RenderPass<'_>,
     ) -> Result<(), RenderError> {
         self.viewport_offset = (0.0, 0.0);
         self.ensure_underline_pipeline(device);
         self.ensure_ui_pipeline(device);
+
+        // P33: Prepare and render overlay TEXT (tab bar, status bar, etc).
+        // In multi-pane mode, overlay text was being clipped by pane scissor rects.
+        // Now we render it here with full-screen visibility.
+        let overlay_texts = std::mem::take(&mut self.overlay_text);
+        if !overlay_texts.is_empty() {
+            let metrics = Metrics::new(self.font_size, self.font_size);
+            let mut buffers: Vec<Buffer> = Vec::new();
+            #[allow(clippy::type_complexity)]
+            let mut text_area_specs: Vec<(usize, f32, f32, (u8, u8, u8))> = Vec::new();
+
+            for ot in &overlay_texts {
+                let attrs = Attrs::new()
+                    .family(Family::Name(TERMINAL_FONT))
+                    .color(GlyphonColor::rgb(ot.color.0, ot.color.1, ot.color.2));
+                let attrs_list = AttrsList::new(&attrs);
+                let mut buffer = Buffer::new(&mut self.font_system, metrics);
+                buffer.lines = vec![BufferLine::new(
+                    ot.text.clone(),
+                    LineEnding::None,
+                    attrs_list,
+                    Shaping::Advanced,
+                )];
+                buffer.shape_until_scroll(&mut self.font_system, false);
+                let buf_idx = buffers.len();
+                buffers.push(buffer);
+                text_area_specs.push((buf_idx, ot.left, ot.top, ot.color));
+            }
+
+            let text_areas: Vec<TextArea> = text_area_specs
+                .iter()
+                .map(|&(buf_idx, x, y, fg)| TextArea {
+                    buffer: &buffers[buf_idx],
+                    left: x,
+                    top: y,
+                    scale: 1.0,
+                    bounds: TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: self.resolution.width as i32,
+                        bottom: self.resolution.height as i32,
+                    },
+                    default_color: GlyphonColor::rgb(fg.0, fg.1, fg.2),
+                    custom_glyphs: &[],
+                })
+                .collect();
+
+            self.text_renderer.prepare(
+                device,
+                queue,
+                &mut self.font_system,
+                &mut self.atlas,
+                &self.viewport,
+                text_areas,
+                &mut self.swash_cache,
+            )?;
+            self.text_renderer
+                .render(&self.atlas, &self.viewport, render_pass)?;
+        }
+        self.overlay_text = overlay_texts;
+
         self.prepare_overlay(device);
         self.draw_overlay(render_pass);
         self.prepare_ui(device);
