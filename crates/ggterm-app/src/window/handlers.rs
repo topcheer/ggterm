@@ -238,7 +238,7 @@ impl DesktopApp {
                 self.debug_visible = !self.debug_visible;
                 return;
             }
-            // Ctrl+Shift+V → paste (also Cmd+V on macOS)
+            // Ctrl+Shift+V → paste (also Cmd+V on macOS, Shift+Insert on Linux/Windows)
             if (self.check_keybinding(
                 "paste",
                 self.mods.ctrl,
@@ -246,11 +246,15 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             )) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "v")
+                || (!cfg!(target_os = "macos")
+                    && self.mods.shift
+                    && !self.mods.ctrl
+                    && key_name == "insert")
             {
                 self.paste_from_clipboard();
                 return;
             }
-            // Ctrl+Shift+C → copy (also Cmd+C on macOS)
+            // Ctrl+Shift+C → copy (also Cmd+C on macOS, Ctrl+Insert on Linux/Windows)
             if (self.check_keybinding(
                 "copy",
                 self.mods.ctrl,
@@ -258,6 +262,10 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             )) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "c")
+                || (!cfg!(target_os = "macos")
+                    && self.mods.ctrl
+                    && !self.mods.shift
+                    && key_name == "insert")
             {
                 self.copy_selection_to_clipboard();
                 return;
