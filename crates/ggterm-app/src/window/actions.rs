@@ -97,6 +97,7 @@ impl DesktopApp {
             Ok(session) => {
                 self.sessions.push(session);
                 self.active = self.sessions.len() - 1;
+                self.selection.clear();
                 log::info!("Opened tab {}", self.active + 1);
             }
             Err(e) => {
@@ -160,7 +161,9 @@ impl DesktopApp {
 
     /// Switch to a specific tab by index (0-based).
     pub(super) fn switch_tab(&mut self, index: usize) {
-        if index < self.sessions.len() {
+        if index < self.sessions.len() && index != self.active {
+            self.selection.clear();
+            self.selection_auto_scroll = 0;
             self.active = index;
             self.sessions[self.active].clear_unread();
         }
@@ -168,12 +171,16 @@ impl DesktopApp {
 
     /// Switch to the next tab (wraps).
     pub(super) fn next_tab(&mut self) {
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         self.active = (self.active + 1) % self.sessions.len();
         self.sessions[self.active].clear_unread();
     }
 
     /// Switch to the previous tab (wraps).
     pub(super) fn prev_tab(&mut self) {
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         self.active = if self.active == 0 {
             self.sessions.len() - 1
         } else {
