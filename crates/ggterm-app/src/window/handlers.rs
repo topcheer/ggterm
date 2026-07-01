@@ -1551,24 +1551,37 @@ impl DesktopApp {
             return;
         };
 
+        // Character classification: group alphanumerics together,
+        // punctuation runs together, whitespace is a separator.
+        let char_class = |c: char| -> u8 {
+            if c.is_alphanumeric() || c == '_' {
+                0 // word chars
+            } else if c.is_whitespace() {
+                2 // whitespace separator
+            } else {
+                1 // punctuation/symbols (grouped, but separate from words)
+            }
+        };
+
         // If the clicked cell is whitespace, select just that cell.
         let cells: Vec<char> = display_row.cells.iter().map(|c| c.ch).collect();
-        if col_u >= cells.len() || cells[col_u].is_whitespace() {
+        if col_u >= cells.len() || char_class(cells[col_u]) == 2 {
             self.selection.start(col, row);
             self.selection.extend(col, row);
             self.selection.finish();
             return;
         }
 
-        // Scan left for word start.
+        // Scan left for word start — stop at different char class.
+        let target_class = char_class(cells[col_u]);
         let mut start = col_u;
-        while start > 0 && !cells[start - 1].is_whitespace() {
+        while start > 0 && char_class(cells[start - 1]) == target_class {
             start -= 1;
         }
 
         // Scan right for word end.
         let mut end = col_u;
-        while end + 1 < cells.len() && !cells[end + 1].is_whitespace() {
+        while end + 1 < cells.len() && char_class(cells[end + 1]) == target_class {
             end += 1;
         }
 
