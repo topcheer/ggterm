@@ -46,7 +46,10 @@ pub fn row_to_runs(
     let mut current: Option<TextRun> = None;
 
     for col in 0..grid.width() {
-        let cell = &grid[(col, row)];
+        let cell = match grid.display_cell(col, row) {
+            Some(c) => c,
+            None => continue,
+        };
 
         // Skip wide spacers
         if cell.flags.contains(CellFlags::WIDE_SPACER) {

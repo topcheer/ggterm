@@ -1680,8 +1680,10 @@ impl DesktopApp {
                 let scroll_from_top =
                     (scrollback_len - grid.display_offset()) as f32 / total_rows as f32;
 
-                let bar_x = screen_w - 8.0; // 8px from right edge
-                let bar_w = 4.0;
+                // Detect hover over scrollbar area.
+                let cursor_near_right = self.cursor_pos.0 as f32 > screen_w - 24.0;
+                let bar_w = if cursor_near_right { 6.0 } else { 4.0 };
+                let bar_x = screen_w - bar_w - 2.0;
                 let bar_track_y = content_bounds.y as f32;
                 let bar_track_h = content_bounds.height as f32;
                 let thumb_h = (bar_track_h * visible_ratio).max(20.0);
@@ -1694,19 +1696,25 @@ impl DesktopApp {
                     w: bar_w,
                     h: bar_track_h,
                     color: (1.0, 1.0, 1.0, 0.04),
-                    radius: 2.0,
+                    radius: 3.0,
                     stroke_width: 0.0,
                 });
 
-                // Thumb (actual position indicator).
-                let thumb_alpha = if grid.is_scrolled() { 0.5 } else { 0.25 };
+                // Thumb — brighter when scrolled or hovered.
+                let thumb_alpha = if grid.is_scrolled() {
+                    if cursor_near_right { 0.7 } else { 0.5 }
+                } else if cursor_near_right {
+                    0.4
+                } else {
+                    0.2
+                };
                 ui_rects.push(ggterm_render_wgpu::UiRect {
                     x: bar_x,
                     y: thumb_y,
                     w: bar_w,
                     h: thumb_h,
                     color: (1.0, 1.0, 1.0, thumb_alpha),
-                    radius: 2.0,
+                    radius: 3.0,
                     stroke_width: 0.0,
                 });
             }
