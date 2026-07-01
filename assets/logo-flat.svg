@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="c" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="s" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#F472B6"/>
+    </linearGradient>
+    <filter id="g" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#g)" transform="translate(180, 256)">
+    <path d="M -38 -56 L 20 0 L -38 56"
+          fill="none" stroke="url(#p)" stroke-width="36"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <rect x="228" y="216" width="36" height="80" rx="5" ry="5" fill="url(#c)"/>
+  <g transform="translate(370, 140)">
+    <path d="M 0 -38 Q 7 -7 38 0 Q 7 7 0 38 Q -7 7 -38 0 Q -7 -7 0 -38 Z"
+          fill="url(#s)" opacity="0.88"/>
+  </g>
+</svg>

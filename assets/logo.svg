@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A0E1A"/>
+      <stop offset="100%" stop-color="#151A2E"/>
+    </linearGradient>
+    <linearGradient id="prompt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="cursor" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#F472B6"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- App icon background -->
+  <rect x="112" y="112" width="800" height="800" rx="180" ry="180" fill="url(#bg)"/>
+  <rect x="113" y="113" width="798" height="798" rx="179" ry="179"
+        fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.06"/>
+
+  <!-- Prompt ">" — centered, generous proportions -->
+  <g filter="url(#glow)" transform="translate(440, 512)">
+    <path d="M -55 -80 L 30 0 L -55 80"
+          fill="none" stroke="url(#prompt)" stroke-width="52"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Cursor block — solid, right after prompt -->
+  <rect x="510" y="452" width="50" height="120" rx="6" ry="6"
+        fill="url(#cursor)"/>
+
+  <!-- AI sparkle — 4-point star, top-right, prominent -->
+  <g transform="translate(710, 330)" filter="url(#glow)">
+    <path d="M 0 -55 Q 10 -10 55 0 Q 10 10 0 55 Q -10 10 -55 0 Q -10 -10 0 -55 Z"
+          fill="url(#spark)" opacity="0.92"/>
+  </g>
+</svg>
