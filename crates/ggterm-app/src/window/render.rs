@@ -224,7 +224,7 @@ impl DesktopApp {
                 y: 4.0,
                 w: tab_h,
                 h: tab_h,
-                color: (0.10, 0.10, 0.14, 0.6),
+                color: (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.6),
                 radius: tab_radius,
                 stroke_width: 0.0,
             });
@@ -232,7 +232,11 @@ impl DesktopApp {
                 text: "+".to_string(),
                 left: x + tab_h * 0.5 - cell_w * 0.5,
                 top: 4.0 + 5.0,
-                color: (120, 128, 154),
+                color: (
+                    (theme_bg.0 * 255.0 * 1.5) as u8,
+                    (theme_bg.1 * 255.0 * 1.5) as u8,
+                    (theme_bg.2 * 255.0 * 1.5) as u8,
+                ),
             });
         }
 
