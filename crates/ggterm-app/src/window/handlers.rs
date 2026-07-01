@@ -691,6 +691,66 @@ impl DesktopApp {
             return;
         }
 
+        // Shift+PageUp → scroll up one viewport height.
+        // Shift+PageDown → scroll down one viewport height.
+        // Shift+Home → scroll to top (oldest).
+        // Shift+End → scroll to bottom (newest).
+        if self.mods.shift && !self.mods.ctrl && !self.mods.alt {
+            let grid_h = self.active_session().app().grid().height();
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::PageUp) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(grid_h);
+                    self.smooth_scroll.reset();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::PageDown) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .scroll_down_viewport(grid_h);
+                    self.smooth_scroll.reset();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Home) => {
+                    let scrollback_len = self.active_session().app().grid().scrollback_len();
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(scrollback_len);
+                    self.smooth_scroll.reset();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::End) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .reset_viewport();
+                    self.smooth_scroll.reset();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Alt+1-9 → switch to tab N (not configurable)
         if self.mods.alt
             && !self.mods.ctrl

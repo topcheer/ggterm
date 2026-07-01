@@ -445,8 +445,9 @@ impl DesktopApp {
         };
 
         // Helper: get cell text including combining characters.
+        // Uses display_cell to correctly handle scrollback scroll position.
         let cell_text = |x: u16, y: u16, grid: &ggterm_core::Grid| -> String {
-            if let Some(cell) = grid.cell(x as usize, y as usize) {
+            if let Some(cell) = grid.display_cell(x as usize, y as usize) {
                 let mut s = String::new();
                 s.push(cell.ch);
                 for &c in &cell.combining {
