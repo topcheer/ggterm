@@ -476,7 +476,7 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 
 ## Status
 
-**1735+ tests passing** (7 ignored integration tests).
+**1740+ tests passing** (7 ignored integration tests).
 
 | Feature | Status | Tests |
 |---------|--------|-------|
@@ -527,6 +527,10 @@ cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
 | Drag-to-Resize Splits | Done | — |
 | Dirty Rect Partial Repaint | Done | — |
 | Status Bar Error Indicator | Done | 7 |
+| Tab Close Button + Middle-click | Done | — |
+| CWD in Status Bar | Done | — |
+| CPU Idle Optimization | Done | — |
+| Configurable Session Restore | Done | — |
 
 ## License
 
