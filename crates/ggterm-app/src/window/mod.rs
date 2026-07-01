@@ -1191,12 +1191,13 @@ impl ApplicationHandler for DesktopApp {
 
         // P23-C: Conditional redraw — only request redraw when there's
         // content to show (dirty grid, pending resize, bell, or cursor blink).
-        let need_redraw = self
+        let content_dirty = self
             .active_session()
             .app()
             .terminal()
             .grid()
-            .content_dirty()
+            .content_dirty();
+        let need_redraw = content_dirty
             || self.pending_resize.is_some()
             || self
                 .active_session_mut()
@@ -1225,6 +1226,12 @@ impl ApplicationHandler for DesktopApp {
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }
+        } else if !content_dirty {
+            // Idle: sleep to avoid busy-looping at 100% CPU.
+            // Use a longer sleep when no blink is needed to minimize CPU.
+            // Blink needs a check every ~500ms, so 50ms sleep is fine
+            // (up to 50ms latency on blink start, imperceptible).
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
         // If we have a pending (debounced) resize, keep polling so we apply
