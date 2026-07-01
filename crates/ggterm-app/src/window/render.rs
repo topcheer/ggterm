@@ -457,7 +457,7 @@ impl DesktopApp {
                 y: py,
                 w: pw,
                 h: ph,
-                color: (0.12, 0.13, 0.19, 0.98),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.98),
                 radius: 12.0,
                 stroke_width: 0.0,
             });
@@ -467,7 +467,7 @@ impl DesktopApp {
                 y: py,
                 w: pw,
                 h: ph,
-                color: (0.22, 0.24, 0.32, 0.8),
+                color: (0.45, 0.52, 0.68, 0.8),
                 radius: 12.0,
                 stroke_width: 1.0,
             });
@@ -533,7 +533,7 @@ impl DesktopApp {
                 y: py,
                 w: pw,
                 h: ph,
-                color: (0.12, 0.13, 0.19, 0.98),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.98),
                 radius: 12.0,
                 stroke_width: 0.0,
             });
@@ -542,7 +542,7 @@ impl DesktopApp {
                 y: py,
                 w: pw,
                 h: ph,
-                color: (0.22, 0.24, 0.32, 0.8),
+                color: (0.45, 0.52, 0.68, 0.8),
                 radius: 12.0,
                 stroke_width: 1.0,
             });
@@ -1275,7 +1275,7 @@ impl DesktopApp {
                 y: py,
                 w: panel_w,
                 h: panel_h,
-                color: (0.08, 0.09, 0.12, 0.97),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
                 radius: 12.0,
                 stroke_width: 0.0,
             });
@@ -1285,7 +1285,7 @@ impl DesktopApp {
                 y: py,
                 w: panel_w,
                 h: panel_h,
-                color: (0.3, 0.35, 0.5, 0.5),
+                color: (0.45, 0.52, 0.68, 0.7),
                 radius: 12.0,
                 stroke_width: 1.0,
             });
