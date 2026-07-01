@@ -601,15 +601,26 @@ impl DesktopApp {
         if self.context_menu.visible {
             let cm = &self.context_menu;
             let (mx, my) = cm.pos;
+            let menu_w = crate::context_menu::ContextMenuState::WIDTH;
             let mh = cm.menu_height();
 
-            // Background.
+            // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
-                w: crate::context_menu::ContextMenuState::WIDTH,
+                w: menu_w,
                 h: mh,
-                color: (0.12, 0.12, 0.16, 0.97),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
+                radius: crate::context_menu::ContextMenuState::RADIUS,
+                stroke_width: 0.0,
+            });
+            // Border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: mx,
+                y: my,
+                w: menu_w,
+                h: mh,
+                color: (theme_bg.0 * 2.2, theme_bg.1 * 2.2, theme_bg.2 * 2.2, 0.8),
                 radius: crate::context_menu::ContextMenuState::RADIUS,
                 stroke_width: 1.0,
             });
@@ -619,25 +630,47 @@ impl DesktopApp {
                 .iter()
                 .enumerate()
             {
-                let (ix, iy, iw, ih) = cm.item_rect(i);
-                // Hovered item gets a highlight rect.
-                if cm.hovered == Some(i) {
+                let (_, iy, _, _) = cm.item_rect(i);
+
+                // Separators before Split group and before Clear/Reset group.
+                if action == &crate::context_menu::ContextMenuAction::SplitHorizontal
+                    || action == &crate::context_menu::ContextMenuAction::Clear
+                {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
-                        x: ix,
+                        x: mx + 8.0,
+                        y: iy - 4.0,
+                        w: menu_w - 16.0,
+                        h: 1.0,
+                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.4),
+                        radius: 0.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                // Hover highlight.
+                let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                if cur_x >= mx
+                    && cur_x < mx + menu_w
+                    && cur_y >= iy
+                    && cur_y < iy + crate::context_menu::ContextMenuState::ITEM_HEIGHT
+                {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: mx + 4.0,
                         y: iy,
-                        w: iw,
-                        h: ih,
-                        color: (0.2, 0.45, 0.85, 0.5),
+                        w: menu_w - 8.0,
+                        h: crate::context_menu::ContextMenuState::ITEM_HEIGHT,
+                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
                 }
+
                 // Item text.
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: action.label().to_string(),
-                    left: ix + 8.0,
-                    top: iy + 5.0,
-                    color: (220, 220, 230),
+                    left: mx + 16.0,
+                    top: iy + 7.0,
+                    color: (210, 215, 230),
                 });
             }
         }

@@ -1589,16 +1589,32 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            crate::context_menu::ContextMenuAction::SplitHorizontal => {
+                self.split_pane_horizontal();
+            }
+            crate::context_menu::ContextMenuAction::SplitVertical => {
+                self.split_pane_vertical();
+            }
             crate::context_menu::ContextMenuAction::Clear => {
+                // Clear screen + scrollback, then send Ctrl+L equivalent
+                // (clear command) so the shell redraws a fresh prompt.
                 crate::terminal_actions::clear_screen_and_scrollback(
                     self.active_session_mut().app_mut().grid_mut(),
                 );
+                // Send a newline + clear sequence to get a fresh prompt.
+                self.write_to_pty(b"\x1b[H\x1b[2J\x0c");
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
             }
             crate::context_menu::ContextMenuAction::Reset => {
-                crate::terminal_actions::soft_reset(self.active_session_mut().app_mut().grid_mut());
+                // Full reinit: clear everything, then re-exec the shell.
+                crate::terminal_actions::clear_screen_and_scrollback(
+                    self.active_session_mut().app_mut().grid_mut(),
+                );
+                // Send Ctrl+D (EOF) to exit current shell, then it will be
+                // respawned. Alternatively send reset escape sequence.
+                self.write_to_pty(b"\x1bc"); // RIS — Reset to Initial State
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }

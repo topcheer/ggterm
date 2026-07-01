@@ -12,11 +12,15 @@ pub enum ContextMenuAction {
     Paste,
     /// Select all text in the visible viewport.
     SelectAll,
-    /// Open the search bar.
+    /// Search in scrollback.
     Search,
+    /// Split current pane horizontally (left | right).
+    SplitHorizontal,
+    /// Split current pane vertically (top / bottom).
+    SplitVertical,
     /// Clear scrollback + screen.
     Clear,
-    /// Reset terminal (RIS).
+    /// Reset terminal — reinitialize the shell session.
     Reset,
 }
 
@@ -28,6 +32,8 @@ impl ContextMenuAction {
             Self::Paste => "Paste",
             Self::SelectAll => "Select All",
             Self::Search => "Search",
+            Self::SplitHorizontal => "Split Horizontal",
+            Self::SplitVertical => "Split Vertical",
             Self::Clear => "Clear",
             Self::Reset => "Reset",
         }
@@ -40,6 +46,8 @@ impl ContextMenuAction {
             Self::Paste,
             Self::SelectAll,
             Self::Search,
+            Self::SplitHorizontal,
+            Self::SplitVertical,
             Self::Clear,
             Self::Reset,
         ]
@@ -72,11 +80,11 @@ impl ContextMenuState {
     }
 
     /// Menu item height in physical pixels.
-    pub const ITEM_HEIGHT: f32 = 28.0;
+    pub const ITEM_HEIGHT: f32 = 32.0;
     /// Menu padding in physical pixels.
-    pub const PADDING: f32 = 6.0;
+    pub const PADDING: f32 = 10.0;
     /// Menu width in physical pixels.
-    pub const WIDTH: f32 = 160.0;
+    pub const WIDTH: f32 = 220.0;
     /// Corner radius.
     pub const RADIUS: f32 = 8.0;
 
@@ -144,13 +152,13 @@ mod tests {
     fn t_hit_test_inside() {
         let mut m = ContextMenuState::default();
         m.show(100.0, 200.0);
-        // First item area.
-        assert_eq!(m.hit_test(150.0, 210.0), Some(0));
-        // Second item area.
-        assert_eq!(m.hit_test(150.0, 240.0), Some(1));
-        // Last item.
-        let last_y = 200.0 + ContextMenuState::PADDING + 5.0 * ContextMenuState::ITEM_HEIGHT;
-        assert_eq!(m.hit_test(150.0, last_y), Some(5));
+        // First item.
+        assert_eq!(m.hit_test(180.0, 220.0), Some(0));
+        // Second item.
+        assert_eq!(m.hit_test(180.0, 255.0), Some(1));
+        // Last item (8 actions, index 7).
+        let last_y = 200.0 + ContextMenuState::PADDING + 7.0 * ContextMenuState::ITEM_HEIGHT;
+        assert_eq!(m.hit_test(180.0, last_y), Some(7));
     }
 
     #[test]
@@ -158,7 +166,7 @@ mod tests {
         let mut m = ContextMenuState::default();
         m.show(100.0, 200.0);
         assert_eq!(m.hit_test(50.0, 50.0), None);
-        assert_eq!(m.hit_test(300.0, 210.0), None);
+        assert_eq!(m.hit_test(400.0, 210.0), None);
         // When not visible, always None.
         m.hide();
         assert_eq!(m.hit_test(150.0, 210.0), None);
@@ -168,8 +176,8 @@ mod tests {
     fn t_menu_height() {
         let m = ContextMenuState::default();
         let h = m.menu_height();
-        // 6 items * 28 + 2 * 6 padding = 168 + 12 = 180
-        assert_eq!(h, 180.0);
+        // 8 items * 32 + 2 * 10 padding = 256 + 20 = 276
+        assert_eq!(h, 276.0);
     }
 
     #[test]
@@ -177,10 +185,10 @@ mod tests {
         let mut m = ContextMenuState::default();
         m.show(100.0, 200.0);
         let (x, y, w, h) = m.item_rect(0);
-        assert!((x - 106.0).abs() < 0.01); // 100 + padding(6)
-        assert!((y - 206.0).abs() < 0.01); // 200 + padding(6)
-        assert!((w - 148.0).abs() < 0.01); // 160 - 2*6
-        assert!((h - 28.0).abs() < 0.01); // ITEM_HEIGHT
+        assert!((x - 110.0).abs() < 0.01); // 100 + padding(10)
+        assert!((y - 210.0).abs() < 0.01); // 200 + padding(10)
+        assert!((w - 200.0).abs() < 0.01); // 220 - 2*10
+        assert!((h - 32.0).abs() < 0.01); // ITEM_HEIGHT
     }
 
     #[test]
