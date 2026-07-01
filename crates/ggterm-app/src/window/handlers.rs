@@ -1309,6 +1309,12 @@ impl DesktopApp {
                         self.close_tab();
                         return;
                     }
+                    // Middle-click on empty tab bar area (not on a tab)
+                    // opens a new tab (browser-style).
+                    if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
+                        self.open_tab();
+                        return;
+                    }
                 }
                 self.paste_from_clipboard();
             }
