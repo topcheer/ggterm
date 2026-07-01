@@ -1115,23 +1115,23 @@ impl DesktopApp {
             let mx = self.new_tab_menu.pos.0;
             let my = self.new_tab_menu.pos.1;
 
-            // Background.
+            // Background — theme-aware, slightly brighter than terminal bg.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
                 w: menu_w,
                 h: menu_h,
-                color: (0.1, 0.1, 0.14, 0.95),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
                 radius: NewTabMenuState::RADIUS,
                 stroke_width: 0.0,
             });
-            // Border.
+            // Border — visible accent line so it feels like a dropdown.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
                 w: menu_w,
                 h: menu_h,
-                color: (0.3, 0.35, 0.45, 0.6),
+                color: (theme_bg.0 * 2.2, theme_bg.1 * 2.2, theme_bg.2 * 2.2, 0.8),
                 radius: NewTabMenuState::RADIUS,
                 stroke_width: 1.0,
             });
@@ -1147,11 +1147,11 @@ impl DesktopApp {
                     && py < iy + NewTabMenuState::ITEM_HEIGHT
                 {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
-                        x: mx + NewTabMenuState::PADDING * 0.5,
+                        x: mx + 3.0,
                         y: iy,
-                        w: menu_w - NewTabMenuState::PADDING,
+                        w: menu_w - 6.0,
                         h: NewTabMenuState::ITEM_HEIGHT,
-                        color: (0.15, 0.25, 0.45, 0.6),
+                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
@@ -1161,7 +1161,7 @@ impl DesktopApp {
                     text: action.label().to_string(),
                     left: mx + 12.0,
                     top: iy + 5.0,
-                    color: (220, 220, 230),
+                    color: (210, 215, 230),
                 });
             }
         }

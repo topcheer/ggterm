@@ -71,7 +71,7 @@ impl NewTabMenuState {
     /// Menu padding in physical pixels.
     pub const PADDING: f32 = 6.0;
     /// Menu width in physical pixels.
-    pub const WIDTH: f32 = 180.0;
+    pub const WIDTH: f32 = 240.0;
     /// Corner radius.
     pub const RADIUS: f32 = 8.0;
 
@@ -172,7 +172,7 @@ mod tests {
         let mut m = NewTabMenuState::default();
         m.show(100.0, 200.0);
         assert_eq!(m.hit_test(50.0, 50.0), None);
-        assert_eq!(m.hit_test(300.0, 210.0), None);
+        assert_eq!(m.hit_test(400.0, 210.0), None);
         // When not visible, always None.
         m.hide();
         assert_eq!(m.hit_test(150.0, 210.0), None);
@@ -192,7 +192,7 @@ mod tests {
         let (x, y, w, h) = m.item_rect(0);
         assert!((x - 106.0).abs() < 0.01);
         assert!((y - 206.0).abs() < 0.01);
-        assert!((w - 168.0).abs() < 0.01);
+        assert!((w - 228.0).abs() < 0.01);
         assert!((h - 28.0).abs() < 0.01);
     }
 
