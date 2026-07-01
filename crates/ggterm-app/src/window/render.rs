@@ -196,9 +196,15 @@ impl DesktopApp {
                     });
                 }
 
-                // Tab title text — truncate to fit tab width.
+                // Tab title text — only truncate if genuinely too long.
                 let title = tab.format();
-                let max_chars = ((w - 36.0) / cell_w).floor() as usize;
+                // Reserve space for close button only when 2+ tabs exist.
+                let reserved = if self.tab_bar.tabs.len() > 1 {
+                    24.0 // close "x" + margin
+                } else {
+                    8.0 // just right padding
+                };
+                let max_chars = ((w - 16.0 - reserved) / cell_w).floor() as usize;
                 let display_title: String = if title.chars().count() > max_chars {
                     format!(
                         "{}…",
