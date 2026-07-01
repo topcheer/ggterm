@@ -41,6 +41,8 @@ pub struct NewTabMenuState {
     pub pos: (f32, f32),
     /// Index of the highlighted item (for hover).
     pub hovered: Option<usize>,
+    /// Actual rendered width (set by renderer, used by hit_test).
+    pub effective_width: f32,
 }
 
 impl NewTabMenuState {
@@ -100,7 +102,12 @@ impl NewTabMenuState {
             return None;
         }
         let (x, y) = self.pos;
-        if px < x || px > x + Self::WIDTH || py < y || py > y + self.menu_height() {
+        let w = if self.effective_width > 0.0 {
+            self.effective_width
+        } else {
+            Self::WIDTH
+        };
+        if px < x || px > x + w || py < y || py > y + self.menu_height() {
             return None;
         }
         let rel_y = py - y - Self::PADDING;

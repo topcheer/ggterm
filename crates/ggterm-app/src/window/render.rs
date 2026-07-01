@@ -685,32 +685,39 @@ impl DesktopApp {
                     });
                 }
 
-                // Hover highlight.
+                // Hover detection.
                 let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                if cur_x >= mx
+                let is_hovered = cur_x >= mx
                     && cur_x < mx + menu_w
                     && cur_y >= iy
-                    && cur_y < iy + crate::context_menu::ContextMenuState::ITEM_HEIGHT
-                {
+                    && cur_y < iy + crate::context_menu::ContextMenuState::ITEM_HEIGHT;
+
+                // Hover highlight — inverted: bright bg + dark text.
+                if is_hovered {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: mx + 4.0,
                         y: iy,
                         w: menu_w - 8.0,
                         h: crate::context_menu::ContextMenuState::ITEM_HEIGHT,
-                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
+                        color: (0.35, 0.42, 0.60, 0.95),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
                 }
 
-                // Item text.
+                // Item text — dark on hover, light otherwise.
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: action.label().to_string(),
                     left: mx + 16.0,
                     top: iy + 7.0,
-                    color: (210, 215, 230),
+                    color: if is_hovered {
+                        (20, 20, 30)
+                    } else {
+                        (210, 215, 230)
+                    },
                 });
             }
+            self.context_menu.effective_width = menu_w;
         }
 
         // ── P27-G: Scroll-to-bottom indicator ──────────────────────────
@@ -822,18 +829,31 @@ impl DesktopApp {
                         shell.version.as_deref().unwrap_or("")
                     )
                 };
-                if is_selected {
+                // Hover detection (in addition to keyboard-selected).
+                let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                let is_hovered = cur_x >= dd_x
+                    && cur_x < dd_x + dd_w
+                    && cur_y >= sy
+                    && cur_y < sy + cell_h + 2.0;
+
+                if is_selected || is_hovered {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: dd_x + 4.0,
                         y: sy,
                         w: dd_w - 8.0,
                         h: cell_h + 2.0,
-                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7),
+                        color: if is_hovered && !is_selected {
+                            (0.35, 0.42, 0.60, 0.95)
+                        } else {
+                            (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
+                        },
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
                 }
-                let color = if is_selected {
+                let color = if is_hovered && !is_selected {
+                    (20, 20, 30)
+                } else if is_selected {
                     (120, 200, 255)
                 } else {
                     (200, 200, 200)
@@ -1171,19 +1191,20 @@ impl DesktopApp {
                         * (crate::tab_bar::TabContextMenuState::ITEM_HEIGHT
                             + crate::tab_bar::TabContextMenuState::ITEM_GAP);
 
-                // Hover highlight.
+                // Hover detection.
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                if px >= mx
+                let is_hovered = px >= mx
                     && px < mx + menu_w
                     && py >= iy
-                    && py < iy + crate::tab_bar::TabContextMenuState::ITEM_HEIGHT
-                {
+                    && py < iy + crate::tab_bar::TabContextMenuState::ITEM_HEIGHT;
+
+                if is_hovered {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: mx + 4.0,
                         y: iy,
                         w: menu_w - 8.0,
                         h: crate::tab_bar::TabContextMenuState::ITEM_HEIGHT,
-                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
+                        color: (0.35, 0.42, 0.60, 0.95),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
@@ -1193,7 +1214,11 @@ impl DesktopApp {
                     text: action.label().to_string(),
                     left: mx + 12.0,
                     top: iy + 5.0,
-                    color: (220, 220, 230),
+                    color: if is_hovered {
+                        (20, 20, 30)
+                    } else {
+                        (220, 220, 230)
+                    },
                 });
 
                 // Shortcut hint (right-aligned).
@@ -1203,7 +1228,11 @@ impl DesktopApp {
                         text: shortcut.to_string(),
                         left: mx + menu_w - shortcut.len() as f32 * cell_w - 12.0,
                         top: iy + 5.0,
-                        color: (120, 120, 140),
+                        color: if is_hovered {
+                            (40, 40, 60)
+                        } else {
+                            (120, 120, 140)
+                        },
                     });
                 }
             }
@@ -1219,6 +1248,7 @@ impl DesktopApp {
                 .max()
                 .unwrap_or(0);
             let menu_w = (max_label as f32 * cell_w + 32.0).max(NewTabMenuState::WIDTH);
+            self.new_tab_menu.effective_width = menu_w;
             let menu_h = self.new_tab_menu.menu_height();
             let mx = self.new_tab_menu.pos.0;
             let my = self.new_tab_menu.pos.1;
@@ -1260,19 +1290,20 @@ impl DesktopApp {
                     });
                 }
 
-                // Hover highlight.
+                // Hover detection.
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                if px >= mx
+                let is_hovered = px >= mx
                     && px < mx + menu_w
                     && py >= iy
-                    && py < iy + NewTabMenuState::ITEM_HEIGHT
-                {
+                    && py < iy + NewTabMenuState::ITEM_HEIGHT;
+
+                if is_hovered {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: mx + 4.0,
                         y: iy,
                         w: menu_w - 8.0,
                         h: NewTabMenuState::ITEM_HEIGHT,
-                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
+                        color: (0.35, 0.42, 0.60, 0.95),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
@@ -1282,7 +1313,11 @@ impl DesktopApp {
                     text: action.label().to_string(),
                     left: mx + 16.0,
                     top: iy + 7.0,
-                    color: (210, 215, 230),
+                    color: if is_hovered {
+                        (20, 20, 30)
+                    } else {
+                        (210, 215, 230)
+                    },
                 });
             }
         }
