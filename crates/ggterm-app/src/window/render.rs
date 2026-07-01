@@ -229,11 +229,7 @@ impl DesktopApp {
                 text: "+".to_string(),
                 left: x + tab_h * 0.5 - cell_w * 0.5,
                 top: 4.0 + 5.0,
-                color: (
-                    (theme_bg.0 * 255.0 * 1.5) as u8,
-                    (theme_bg.1 * 255.0 * 1.5) as u8,
-                    (theme_bg.2 * 255.0 * 1.5) as u8,
-                ),
+                color: (180, 185, 200),
             });
         }
 
