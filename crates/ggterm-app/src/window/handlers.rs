@@ -476,6 +476,16 @@ impl DesktopApp {
             return;
         }
 
+        // P34: Ctrl+Shift+Alt+N → reset layout to single pane
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyN) = &event.physical_key
+        {
+            self.reset_layout();
+            return;
+        }
+
         // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
         // Also handle quit confirm Esc/Enter.
         if self.quit_confirm {

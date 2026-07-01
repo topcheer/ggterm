@@ -784,6 +784,42 @@ impl DesktopApp {
         self.show_toast("Config reset to defaults");
     }
 
+    /// Reset window layout to a single pane (Ctrl+Shift+Alt+N).
+    /// Clears session persistence so next startup is clean.
+    pub(super) fn reset_layout(&mut self) {
+        // Clear session file so next launch starts fresh.
+        let _ = crate::session::clear_session();
+
+        // Close all tabs except the first, remove all splits from it.
+        while self.sessions.len() > 1 {
+            self.sessions.pop();
+        }
+        self.active = 0;
+
+        // Collapse split tree to single pane.
+        if self.sessions[0].pane_count() > 1 {
+            let shell = self.shell().to_string();
+            match crate::tab_session::TabSession::new_with_cwd(
+                self.config.cols,
+                self.config.rows,
+                &shell,
+                None,
+            ) {
+                Ok(new_session) => {
+                    self.sessions[0] = new_session;
+                }
+                Err(e) => {
+                    log::error!("Failed to create new session: {e}");
+                }
+            }
+        }
+
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+        self.show_toast("Layout reset to single pane");
+    }
+
     // ── P30-A: Scrollbar scroll-to-position ────────────────────────
 
     /// Scroll the active session's grid so the scrollbar thumb aligns with

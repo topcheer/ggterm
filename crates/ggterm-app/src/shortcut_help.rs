@@ -406,6 +406,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::System,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+N".into(),
+            description: "Reset layout to single pane".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
         // Effects / History
         ShortcutEntry {
             keys: "Ctrl+Shift+Y".into(),
