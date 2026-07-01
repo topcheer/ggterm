@@ -153,6 +153,16 @@ impl DesktopApp {
                 self.open_tab();
                 return;
             }
+            // Ctrl+Shift+T → reopen last closed tab (also Cmd+Shift+T on macOS)
+            if (self.mods.ctrl && self.mods.shift && key_name == "t")
+                || (cfg!(target_os = "macos")
+                    && self.mods.super_key
+                    && self.mods.shift
+                    && key_name == "t")
+            {
+                self.reopen_closed_tab();
+                return;
+            }
             // Ctrl+W → close tab (also Cmd+W on macOS)
             if self.check_keybinding(
                 "close_tab",

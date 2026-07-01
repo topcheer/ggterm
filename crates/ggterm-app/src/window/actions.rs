@@ -124,12 +124,38 @@ impl DesktopApp {
         if self.sessions.len() <= 1 {
             return;
         }
+        // Save the cwd of the active pane for "reopen closed tab".
+        self.last_closed_cwd = self.sessions[self.active].cwd().map(|p| p.to_path_buf());
         self.sessions.remove(self.active);
         if self.active >= self.sessions.len() {
             self.active = self.sessions.len() - 1;
         }
         log::info!("Closed tab, active={}", self.active + 1);
         self.save_session_on_exit();
+    }
+
+    /// Reopen the last closed tab in its original working directory.
+    pub(super) fn reopen_closed_tab(&mut self) {
+        if let Some(cwd) = self.last_closed_cwd.take() {
+            match TabSession::new_with_cwd(
+                self.config.cols,
+                self.config.rows,
+                self.shell(),
+                Some(&cwd),
+            ) {
+                Ok(session) => {
+                    self.sessions.push(session);
+                    self.active = self.sessions.len() - 1;
+                    log::info!("Reopened closed tab in {:?}", cwd);
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to reopen tab: {e}");
+                }
+            }
+        }
     }
 
     /// Switch to a specific tab by index (0-based).
