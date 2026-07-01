@@ -352,7 +352,7 @@ impl GlyphonRenderer {
     /// Returns `true` when the grid's content has changed (dirty flag set),
     /// or when the viewport offset has changed (pane repositioned).
     pub fn should_prepare_grid(&self, grid: &Grid) -> bool {
-        grid.content_dirty()
+        grid.content_dirty() || !self.highlights.is_empty()
     }
 
     /// Set the active render theme (P11-D).

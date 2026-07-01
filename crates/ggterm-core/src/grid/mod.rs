@@ -418,12 +418,14 @@ impl Grid {
         let max = self.scrollback.len();
         self.display_offset = (self.display_offset + n).min(max);
         self.damage.mark_all(self.height);
+        self.content_dirty = true;
     }
 
     /// Scroll the viewport down by `n` lines (towards the active bottom).
     pub fn scroll_down_viewport(&mut self, n: usize) {
         self.display_offset = self.display_offset.saturating_sub(n);
         self.damage.mark_all(self.height);
+        self.content_dirty = true;
     }
 
     /// Reset the viewport to the bottom (show active content).
@@ -431,6 +433,7 @@ impl Grid {
         if self.display_offset > 0 {
             self.display_offset = 0;
             self.damage.mark_all(self.height);
+            self.content_dirty = true;
         }
     }
 

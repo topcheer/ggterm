@@ -1710,19 +1710,38 @@ impl DesktopApp {
 
         // ── P32: Floating search bar overlay ─────────────────────────
         if self.search.visible {
-            let bar_w = 320.0;
-            let bar_h = 30.0;
+            let bar_w = 420.0;
+            let bar_h = 40.0;
             let bar_x = screen_w - bar_w - 16.0;
             let bar_y = 8.0;
 
+            // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: bar_x,
                 y: bar_y,
                 w: bar_w,
                 h: bar_h,
-                color: (0.1, 0.12, 0.18, 0.95),
-                radius: 8.0,
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
+                radius: 10.0,
                 stroke_width: 0.0,
+            });
+            // Accent border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: bar_x,
+                y: bar_y,
+                w: bar_w,
+                h: bar_h,
+                color: (0.35, 0.42, 0.60, 0.8),
+                radius: 10.0,
+                stroke_width: 1.5,
+            });
+
+            // Search icon "🔍" → use ">" as simplified icon.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: ">".to_string(),
+                left: bar_x + 12.0,
+                top: bar_y + 10.0,
+                color: (100, 140, 200),
             });
 
             // Mode indicator: "Aa" = case-insensitive, "AA" = case-sensitive.
@@ -1738,8 +1757,8 @@ impl DesktopApp {
             };
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: mode_label.to_string(),
-                left: bar_x + 8.0,
-                top: bar_y + 7.0,
+                left: bar_x + 30.0,
+                top: bar_y + 10.0,
                 color: mode_color,
             });
 
@@ -1747,22 +1766,43 @@ impl DesktopApp {
             let query_display = format!("{}_", self.search.query);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: query_display,
-                left: bar_x + 36.0,
-                top: bar_y + 7.0,
+                left: bar_x + 64.0,
+                top: bar_y + 10.0,
                 color: (230, 230, 240),
             });
 
-            // Match count.
+            // Match count — right-aligned.
             let match_info = self.search.match_count();
-            if match_info > 0 {
+            let count_text = if match_info > 0 {
                 let current = self.search.current_index().map(|i| i + 1).unwrap_or(0);
+                format!("{}/{}", current, match_info)
+            } else if !self.search.query.is_empty() {
+                "No results".to_string()
+            } else {
+                String::new()
+            };
+            if !count_text.is_empty() {
+                let count_color = if match_info > 0 {
+                    (100u8, 140, 180)
+                } else {
+                    (200u8, 100, 100)
+                };
+                let count_w = count_text.len() as f32 * cell_w;
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: format!("{}/{}", current, match_info),
-                    left: bar_x + bar_w - 60.0,
-                    top: bar_y + 7.0,
-                    color: (100, 140, 180),
+                    text: count_text,
+                    left: bar_x + bar_w - count_w - 14.0,
+                    top: bar_y + 10.0,
+                    color: count_color,
                 });
             }
+
+            // Hint text at bottom.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Tab: case  Enter: next  Esc: close".to_string(),
+                left: bar_x + 12.0,
+                top: bar_y + bar_h + 4.0,
+                color: (110, 110, 130),
+            });
         }
 
         // ── P33: URL hover tooltip ────────────────────────────────────
