@@ -1237,7 +1237,21 @@ impl DesktopApp {
                 }
             }
             (crate::mouse::MouseButton::Middle, ElementState::Pressed) => {
-                // Middle-click paste from system clipboard.
+                // Middle-click on tab closes it (like browsers).
+                // Otherwise, middle-click paste from system clipboard.
+                let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                let bounds = self.content_area_bounds();
+                if py < bounds.y as f32 && self.tab_bar.visible {
+                    let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+                    if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px)
+                        && self.sessions.len() > 1
+                    {
+                        // Switch to the tab first, then close it.
+                        self.switch_tab(tab_idx);
+                        self.close_tab();
+                        return;
+                    }
+                }
                 self.paste_from_clipboard();
             }
             (crate::mouse::MouseButton::Right, ElementState::Pressed) => {
