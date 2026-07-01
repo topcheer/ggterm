@@ -234,12 +234,17 @@ impl DesktopApp {
                     let is_hovered =
                         cur_x >= x && cur_x < x + w && cur_y >= tab_y && cur_y < tab_y + tab_h;
 
+                    // Check if hovering specifically the close button area.
+                    let close_btn_hovered = is_hovered && cur_x >= x + w - 28.0 && cur_x < x + w;
+
                     let close_x = x + w - 16.0 - cell_w * 0.5;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                        text: "x".to_string(),
+                        text: "\u{00d7}".to_string(),
                         left: close_x,
                         top: tab_y + 5.0,
-                        color: if tab.active {
+                        color: if close_btn_hovered {
+                            (220, 80, 80) // red on hover (browser-style)
+                        } else if tab.active {
                             (190, 195, 210)
                         } else if is_hovered {
                             (160, 165, 180)
