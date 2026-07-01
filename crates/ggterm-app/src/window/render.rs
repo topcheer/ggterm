@@ -494,6 +494,23 @@ impl DesktopApp {
                 radius: 12.0,
                 stroke_width: 1.0,
             });
+            // Header accent bar (gradient effect via overlapping rects).
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: 3.0,
+                color: (0.26, 0.63, 0.95, 0.8), // cyan-blue accent
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+            // ">_" terminal prompt symbol as visual logo.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: ">_".to_string(),
+                left: px + 20.0,
+                top: py + 16.0,
+                color: (103, 232, 249), // cyan
+            });
             let about_text = self.about.format_text();
             for (i, line) in about_text.lines().enumerate() {
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
