@@ -632,7 +632,14 @@ impl DesktopApp {
         if self.context_menu.visible {
             let cm = &self.context_menu;
             let (mx, my) = cm.pos;
-            let menu_w = crate::context_menu::ContextMenuState::WIDTH;
+            // Dynamic width: measure longest label.
+            let max_label = crate::context_menu::ContextMenuAction::all()
+                .iter()
+                .map(|a| a.label().chars().count())
+                .max()
+                .unwrap_or(0);
+            let menu_w = (max_label as f32 * cell_w + 32.0) // text + left/right padding
+                .max(crate::context_menu::ContextMenuState::WIDTH);
             let mh = cm.menu_height();
 
             // Background — theme-aware.
@@ -763,8 +770,18 @@ impl DesktopApp {
         // ── P28-H: Shell switcher dropdown ────────────────────────────
         if self.shell_switcher.open {
             let shells = self.shell_switcher.shells();
+            // Dynamic width: measure longest shell label.
+            let max_label = shells
+                .iter()
+                .map(|s| {
+                    let base = if s.is_default { ">> " } else { "   " };
+                    let ver = s.version.as_deref().unwrap_or("");
+                    base.len() + s.name.len() + 1 + ver.len()
+                })
+                .max()
+                .unwrap_or(10);
+            let dd_w = (max_label as f32 * cell_w + 24.0).max(200.0);
             let dd_h = (shells.len() as f32 + 0.5) * (cell_h + 4.0);
-            let dd_w = 220.0_f32;
             let dd_x = 12.0_f32;
             let dd_y = screen_h - dd_h - cell_h - 20.0;
 
@@ -1106,7 +1123,18 @@ impl DesktopApp {
 
         // ── P28: Tab right-click context menu ─────────────────────────
         if self.tab_context_menu.visible {
-            let menu_w = crate::tab_bar::TabContextMenuState::ITEM_WIDTH;
+            // Dynamic width: measure longest label + shortcut.
+            let max_label = crate::tab_bar::TabMenuAction::all()
+                .iter()
+                .map(|a| {
+                    let label_len = a.label().chars().count();
+                    let shortcut_len = a.shortcut().chars().count();
+                    label_len + shortcut_len + 4 // gap between label and shortcut
+                })
+                .max()
+                .unwrap_or(0);
+            let menu_w = (max_label as f32 * cell_w + 32.0)
+                .max(crate::tab_bar::TabContextMenuState::ITEM_WIDTH);
             let menu_h = self.tab_context_menu.menu_height();
             let mx = self.tab_context_menu.x;
             let my = self.tab_context_menu.y;
@@ -1180,7 +1208,13 @@ impl DesktopApp {
         // ── "+" dropdown menu rendering ──────────────────────────────
         if self.new_tab_menu.visible {
             use crate::new_tab_menu::{NewTabMenuAction, NewTabMenuState};
-            let menu_w = NewTabMenuState::WIDTH;
+            // Dynamic width: measure longest label.
+            let max_label = NewTabMenuAction::all()
+                .iter()
+                .map(|a| a.label().chars().count())
+                .max()
+                .unwrap_or(0);
+            let menu_w = (max_label as f32 * cell_w + 32.0).max(NewTabMenuState::WIDTH);
             let menu_h = self.new_tab_menu.menu_height();
             let mx = self.new_tab_menu.pos.0;
             let my = self.new_tab_menu.pos.1;
