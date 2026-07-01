@@ -141,25 +141,27 @@ impl DesktopApp {
         if let PhysicalKey::Code(code) = &event.physical_key {
             let key_name = keycode_to_name(code);
 
-            // Ctrl+T → new tab
+            // Ctrl+T → new tab (also Cmd+T on macOS)
             if self.check_keybinding(
                 "new_tab",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "t")
+            {
                 self.open_tab();
                 return;
             }
-            // Ctrl+W → close tab (or close active pane if splits exist)
+            // Ctrl+W → close tab (also Cmd+W on macOS)
             if self.check_keybinding(
                 "close_tab",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "w")
+            {
                 if self.active_session().pane_count() > 1 {
                     // Multiple panes: close the active pane instead of the tab.
                     self.active_session_mut().remove_active_pane();
@@ -756,9 +758,9 @@ impl DesktopApp {
             }
         }
 
-        // Alt+1-9 → switch to tab N (not configurable)
-        if self.mods.alt
-            && !self.mods.ctrl
+        // Alt+1-9 or Cmd+1-9 (macOS) → switch to tab N (not configurable)
+        if (self.mods.alt && !self.mods.ctrl
+            || cfg!(target_os = "macos") && self.mods.super_key && !self.mods.alt)
             && let PhysicalKey::Code(code) = &event.physical_key
         {
             let tab_idx = match code {
@@ -809,16 +811,18 @@ impl DesktopApp {
                         .handle_event(AppEvent::NextCommandBlock);
                     return;
                 }
-                // Ctrl+Shift+A → select all text (not configurable)
+                // Ctrl+Shift+A → select all text (also Cmd+A on macOS)
                 KeyCode::KeyA => {
-                    let grid = self.active_session().app().grid();
-                    let range = crate::terminal_actions::select_all_range(grid);
-                    self.selection
-                        .start(range.start_col as u16, range.start_row as u16);
-                    self.selection
-                        .extend(range.end_col as u16, range.end_row as u16);
-                    self.selection.finish();
-                    return;
+                    if self.mods.shift || (cfg!(target_os = "macos") && self.mods.super_key) {
+                        let grid = self.active_session().app().grid();
+                        let range = crate::terminal_actions::select_all_range(grid);
+                        self.selection
+                            .start(range.start_col as u16, range.start_row as u16);
+                        self.selection
+                            .extend(range.end_col as u16, range.end_row as u16);
+                        self.selection.finish();
+                        return;
+                    }
                 }
                 // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N, not configurable)
                 #[cfg(feature = "ai")]
