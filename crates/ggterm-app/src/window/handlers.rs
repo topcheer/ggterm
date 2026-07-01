@@ -1199,7 +1199,13 @@ impl DesktopApp {
                         // New tab button (+) → open dropdown menu below button.
                         if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
                             let btn = &layout.new_tab_button;
-                            let menu_x = btn.cx - crate::new_tab_menu::NewTabMenuState::WIDTH / 2.0;
+                            let menu_w = crate::new_tab_menu::NewTabMenuState::WIDTH;
+                            // Right-align: menu's right edge = button's right edge,
+                            // but clamp so it never goes off-screen on the left.
+                            let mut menu_x = btn.cx + btn.size / 2.0 - menu_w;
+                            if menu_x < 4.0 {
+                                menu_x = 4.0;
+                            }
                             let menu_y = btn.cy + btn.size / 2.0 + 2.0;
                             self.new_tab_menu.toggle(menu_x, menu_y);
                             if let Some(ref window) = self.window {
