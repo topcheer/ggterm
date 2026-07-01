@@ -614,15 +614,15 @@ impl DesktopApp {
                 radius: crate::context_menu::ContextMenuState::RADIUS,
                 stroke_width: 0.0,
             });
-            // Border.
+            // Border — use a bright accent so it's clearly visible.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
                 w: menu_w,
                 h: mh,
-                color: (theme_bg.0 * 2.2, theme_bg.1 * 2.2, theme_bg.2 * 2.2, 0.8),
+                color: (0.45, 0.52, 0.68, 0.9),
                 radius: crate::context_menu::ContextMenuState::RADIUS,
-                stroke_width: 1.0,
+                stroke_width: 1.5,
             });
 
             // Menu items.
@@ -1164,15 +1164,15 @@ impl DesktopApp {
                 radius: NewTabMenuState::RADIUS,
                 stroke_width: 0.0,
             });
-            // Border — visible accent line so it feels like a dropdown.
+            // Border — bright accent for clear visibility.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
                 w: menu_w,
                 h: menu_h,
-                color: (theme_bg.0 * 2.2, theme_bg.1 * 2.2, theme_bg.2 * 2.2, 0.8),
+                color: (0.45, 0.52, 0.68, 0.9),
                 radius: NewTabMenuState::RADIUS,
-                stroke_width: 1.0,
+                stroke_width: 1.5,
             });
 
             for (i, action) in NewTabMenuAction::all().iter().enumerate() {
