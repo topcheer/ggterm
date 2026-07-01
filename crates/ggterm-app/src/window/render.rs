@@ -1080,25 +1080,25 @@ impl DesktopApp {
             let mx = self.tab_context_menu.x;
             let my = self.tab_context_menu.y;
 
-            // Background.
+            // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
                 w: menu_w,
                 h: menu_h,
-                color: (0.1, 0.1, 0.14, 0.95),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
                 radius: 8.0,
                 stroke_width: 0.0,
             });
-            // Border.
+            // Border — bright accent.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: mx,
                 y: my,
                 w: menu_w,
                 h: menu_h,
-                color: (0.3, 0.35, 0.45, 0.6),
+                color: (0.45, 0.52, 0.68, 0.9),
                 radius: 8.0,
-                stroke_width: 1.0,
+                stroke_width: 1.5,
             });
 
             for (i, action) in crate::tab_bar::TabMenuAction::all().iter().enumerate() {
@@ -1120,7 +1120,7 @@ impl DesktopApp {
                         y: iy,
                         w: menu_w - 8.0,
                         h: crate::tab_bar::TabContextMenuState::ITEM_HEIGHT,
-                        color: (0.15, 0.25, 0.45, 0.6),
+                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
