@@ -195,11 +195,13 @@ impl GpuContext {
             return Ok(());
         }
 
-        // Single-pane fast path: delegate to the simpler method.
-        if panes.len() == 1 {
-            renderer.set_viewport_offset(0.0, 0.0);
-            return self.render_frame(surface, renderer, panes[0].grid, panes[0].cursor, bg_color);
-        }
+        // No fast-path fallback to render_frame() — always use the
+        // multi-pane path for consistent overlay text rendering.
+        // render_frame() uses render_to_pass() which merges overlay text
+        // with grid text in a single text_renderer.prepare() call, while
+        // the multi-pane path renders them separately. This subtle
+        // difference causes visible font inconsistencies between
+        // single-pane and multi-pane modes.
 
         let frame = match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,

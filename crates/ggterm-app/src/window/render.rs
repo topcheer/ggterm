@@ -36,12 +36,11 @@ impl DesktopApp {
             self.visual_bell_frames -= 1;
         }
 
-        // Now borrow session for grid + cursor data.
+        // Now borrow session for grid data (cursor built per-pane below).
         let session = &self.sessions[active];
         let grid = session.app().grid();
-        let mut cursor = cursor_state(session.app());
 
-        // P23-A: Apply cursor blink alpha.
+        // P23-A: Cursor blink state — applied per-pane in the multi-pane loop.
         let is_blink = matches!(
             session.app().terminal().cursor_style(),
             ggterm_core::CursorStyle::BlinkBlock
@@ -49,10 +48,8 @@ impl DesktopApp {
                 | ggterm_core::CursorStyle::BlinkBar
         );
         self.cursor_blink.set_enabled(is_blink);
-        if cursor.visible {
-            cursor.blink_alpha = self.cursor_blink.alpha();
-            cursor.visible = self.cursor_blink.is_visible();
-        }
+        let blink_alpha = self.cursor_blink.alpha();
+        let blink_visible = self.cursor_blink.is_visible();
 
         // P16-A: Wire search match highlights to renderer.
         // Convert SearchMatch(abs_row, col, len) → (visible_row, col_start, col_end).
@@ -1553,13 +1550,13 @@ impl DesktopApp {
         let cell_h_px = renderer.cell_height();
         let cell_w_px = renderer.cell_width();
         let bounds = content_bounds;
-        let content_x = bounds.x;
-        let content_y = bounds.y;
 
-        let pane_count = self.sessions[active].pane_count();
-        if pane_count > 1 {
+        // Always use multi-pane rendering path for consistent overlay text
+        // rendering (Issue: single-pane used render_to_pass which merges
+        // overlay text with grid text; multi-pane renders them separately,
+        // causing subtle font differences).
+        {
             // Resize panes to match their areas BEFORE rendering.
-            // This must happen before borrowing session for grid refs.
             {
                 let session = &mut self.sessions[active];
                 let tree = session.split_tree().clone();
@@ -1574,7 +1571,17 @@ impl DesktopApp {
             // Build cursor states per pane (owned values, no borrow issues).
             let cursors: Vec<_> = areas
                 .iter()
-                .filter_map(|(id, _)| session.pane_app(*id).map(cursor_state))
+                .filter_map(|(id, _)| {
+                    session.pane_app(*id).map(|app| {
+                        let mut cs = cursor_state(app);
+                        // Apply blink from DesktopApp's cursor_blink state.
+                        if cs.visible {
+                            cs.blink_alpha = blink_alpha;
+                            cs.visible = blink_visible;
+                        }
+                        cs
+                    })
+                })
                 .collect();
 
             // Build PaneRenderSpec list (grid refs borrow session, cursors from local vec).
@@ -1597,14 +1604,8 @@ impl DesktopApp {
                 log::error!("Render error: {e}");
             }
 
-            // P21-D: Clear prepare flags after render (mutable borrow, disjoint from gpu).
+            // P21-D: Clear prepare flags after render.
             self.sessions[active].clear_prepare_flags();
-        } else {
-            // Single pane: apply content area offset.
-            renderer.set_viewport_offset(content_x as f32, content_y as f32);
-            if let Err(e) = gpu.render_frame(surface, renderer, grid, &cursor, bg_color) {
-                log::error!("Render error: {e}");
-            }
         }
 
         // P19-C: Update tab bar display data.
