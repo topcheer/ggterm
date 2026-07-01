@@ -109,15 +109,17 @@ impl DesktopApp {
         let titles: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
         self.tab_bar.update(&titles, self.active);
 
-        // ── P26-C: Modern pill-shaped tab bar ──────────────────────────
+        // ── Tab bar: auto-fill width like browser tabs ─────────────────
         if self.tab_bar.visible {
-            let tab_h = (cell_h + 8.0).max(28.0); // comfortable tab height
-            let bar_h = tab_h + 6.0; // top padding + tab + bottom padding
-            let pad_x = 8.0_f32;
-            let tab_gap = 4.0_f32;
+            let tab_h = (cell_h + 8.0).max(28.0);
+            let bar_h = tab_h + 6.0;
             let tab_radius = 6.0_f32;
+            let cell_w = renderer.cell_width() as f32;
 
-            // Tab bar background — theme-aware, slightly lighter than terminal bg.
+            // Use compute_layout for auto-fill width calculation.
+            let layout = self.tab_bar.compute_layout(screen_w, cell_h);
+
+            // Tab bar background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: 0.0,
                 y: 0.0,
@@ -133,7 +135,7 @@ impl DesktopApp {
                 stroke_width: 0.0,
             });
 
-            // Bottom border line (subtle separator from terminal content).
+            // Bottom border separator.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: 0.0,
                 y: bar_h - 1.0,
@@ -144,30 +146,15 @@ impl DesktopApp {
                 stroke_width: 0.0,
             });
 
-            // Calculate tab widths based on content.
-            let cell_w = renderer.cell_width() as f32;
-            let tab_paddings = 12.0_f32; // horizontal padding inside each tab pill
-
-            // First pass: compute widths.
-            let tab_widths: Vec<f32> = self
-                .tab_bar
-                .tabs
-                .iter()
-                .map(|t| {
-                    let text_w = t.format().chars().count() as f32 * cell_w;
-                    (text_w + tab_paddings * 2.0).min(200.0) // cap at 200px
-                })
-                .collect();
-
-            // Second pass: render tabs.
-            let mut x = pad_x;
-            for (i, tab) in self.tab_bar.tabs.iter().enumerate() {
-                let w = tab_widths[i];
-                let tab_y = 4.0; // top padding
-                let title = tab.format();
+            // Render each tab pill using layout positions.
+            for tl in &layout.tabs {
+                let tab = &tl.info;
+                let x = tl.rect.x;
+                let w = tl.rect.w;
+                let tab_y = 4.0;
 
                 if tab.active {
-                    // Active tab: lighter surface derived from theme bg.
+                    // Active tab: brighter surface.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x,
                         y: tab_y,
@@ -177,7 +164,7 @@ impl DesktopApp {
                         radius: tab_radius,
                         stroke_width: 0.0,
                     });
-                    // Accent bottom border (glow effect).
+                    // Accent bottom border.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: x + tab_radius,
                         y: tab_y + tab_h - 2.0,
@@ -188,7 +175,7 @@ impl DesktopApp {
                         stroke_width: 0.0,
                     });
                 } else {
-                    // Inactive tab: slightly lighter than terminal bg.
+                    // Inactive tab.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x,
                         y: tab_y,
@@ -200,41 +187,53 @@ impl DesktopApp {
                     });
                 }
 
-                // Tab title text.
+                // Tab title text — truncate to fit tab width.
+                let title = tab.format();
+                let max_chars = ((w - 36.0) / cell_w).floor() as usize;
+                let display_title: String = if title.chars().count() > max_chars {
+                    format!(
+                        "{}…",
+                        title
+                            .chars()
+                            .take(max_chars.saturating_sub(1))
+                            .collect::<String>()
+                    )
+                } else {
+                    title
+                };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: title,
-                    left: x + tab_paddings,
+                    text: display_title,
+                    left: x + 12.0,
                     top: tab_y + 5.0,
                     color: if tab.active {
-                        (210, 214, 232) // text_primary (bright)
+                        (210, 214, 232)
                     } else {
-                        (120, 128, 154) // text_secondary (muted)
+                        (120, 128, 154)
                     },
                 });
 
-                // Close button "x" — show on active tab or when 2+ tabs exist.
+                // Close button "x".
                 if self.tab_bar.tabs.len() > 1 {
-                    let close_x = x + w - tab_paddings - cell_w * 0.5;
+                    let close_x = x + w - 16.0 - cell_w * 0.5;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                         text: "x".to_string(),
                         left: close_x,
                         top: tab_y + 5.0,
                         color: if tab.active {
-                            (180, 185, 200) // visible on active
+                            (180, 185, 200)
                         } else {
-                            (100, 105, 120) // dim on inactive
+                            (100, 105, 120)
                         },
                     });
                 }
-
-                x += w + tab_gap;
             }
 
-            // "+" new tab button at the end.
+            // "+" multi-function button at the end.
+            let btn_x = layout.new_tab_button.cx - layout.new_tab_button.size / 2.0;
             ui_rects.push(ggterm_render_wgpu::UiRect {
-                x,
+                x: btn_x,
                 y: 4.0,
-                w: tab_h,
+                w: layout.new_tab_button.size,
                 h: tab_h,
                 color: (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.6),
                 radius: tab_radius,
@@ -242,7 +241,7 @@ impl DesktopApp {
             });
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
-                left: x + tab_h * 0.5 - cell_w * 0.5,
+                left: layout.new_tab_button.cx - cell_w * 0.5,
                 top: 4.0 + 5.0,
                 color: (180, 185, 200),
             });

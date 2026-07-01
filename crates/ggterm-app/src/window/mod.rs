@@ -761,13 +761,38 @@ impl ApplicationHandler for DesktopApp {
             .with_title(&self.config.title)
             .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64));
 
-        // Set window icon from embedded PNG.
-        let icon_data = include_bytes!("../../../../assets/logo-32.png");
+        // Set window icon from embedded PNG — works on all platforms.
+        // winit's with_window_icon sets the title bar icon (Linux/Windows)
+        // and is used by some compositors on Wayland/X11.
+        let icon_data = include_bytes!("../../../../assets/logo-512.png");
         if let Ok(img) = image::load_from_memory(icon_data) {
             let rgba = img.to_rgba8();
             let (w, h) = rgba.dimensions();
             if let Ok(icon) = winit::window::Icon::from_rgba(rgba.into_raw(), w, h) {
                 attrs = attrs.with_window_icon(Some(icon));
+            }
+        }
+
+        // macOS: additionally set the Dock icon via NSApplication,
+        // since winit's window_icon doesn't affect the Dock on macOS.
+        #[cfg(target_os = "macos")]
+        unsafe {
+            use objc2::msg_send;
+            use objc2::runtime::AnyObject;
+            use objc2_foundation::NSData;
+
+            // NSImage::initWithData:(NSData *) — from the embedded PNG bytes.
+            let nsdata = NSData::with_bytes(icon_data);
+            let cls = objc2::runtime::AnyClass::get(c"NSImage").expect("NSImage class not found");
+            let alloc: *mut AnyObject = msg_send![cls, alloc];
+            let img: *mut AnyObject = msg_send![alloc, initWithData: &*nsdata];
+            if !img.is_null() {
+                let app: *mut AnyObject = msg_send![
+                    objc2::runtime::AnyClass::get(c"NSApplication").unwrap(),
+                    sharedApplication
+                ];
+                let _: () = msg_send![app, setApplicationIconImage: img];
+                let _: () = msg_send![img, release];
             }
         }
         if let Some(x) = self.saved_window_pos {

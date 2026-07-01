@@ -219,9 +219,10 @@ impl TabBarState {
 
     /// Compute the pill-shaped geometric layout for rendering.
     ///
+    /// Tabs auto-size to fill available width (like browser tabs).
     /// `surface_width` is the total render surface width in pixels.
     /// `font_size` is the current terminal font size (used to derive bar height).
-    pub fn compute_layout(&self, _surface_width: f32, font_size: f32) -> TabBarLayout {
+    pub fn compute_layout(&self, surface_width: f32, font_size: f32) -> TabBarLayout {
         if !self.visible || self.tabs.is_empty() {
             return TabBarLayout::default();
         }
@@ -230,11 +231,20 @@ impl TabBarState {
         let tab_height = bar_height - TAB_BAR_PADDING_V;
         let tab_y = TAB_BAR_PADDING_V;
 
+        // Available width = surface - left/right padding - "+" button
+        let available_width =
+            surface_width - TAB_BAR_PADDING_H * 2.0 - NEW_TAB_BUTTON_SIZE - TAB_GAP;
+        let tab_count = self.tabs.len() as f32;
+
+        // Each tab gets equal share, with min/max bounds.
+        let equal_w = (available_width / tab_count).floor();
+        let tab_w = equal_w.clamp(60.0, 220.0);
+
         let mut layouts = Vec::with_capacity(self.tabs.len());
         let mut x = TAB_BAR_PADDING_H;
 
         for tab in &self.tabs {
-            let w = tab.estimated_width();
+            let w = tab_w;
             let radius = TAB_CORNER_RADIUS.min(tab_height / 2.0);
 
             // Close button: right-aligned inside the pill.
