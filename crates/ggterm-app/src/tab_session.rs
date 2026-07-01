@@ -24,6 +24,8 @@ struct PaneSession {
     /// P21-D: True when grid needs re-prepare before next draw.
     /// Defaults to `true` so the first frame does a full prepare.
     needs_reprepare: bool,
+    /// Shell program path, saved for restart.
+    shell: String,
 }
 
 impl PaneSession {
@@ -52,6 +54,7 @@ impl PaneSession {
             pty: Some(pty),
             event_tx,
             needs_reprepare: true,
+            shell: shell.to_string(),
         })
     }
 
@@ -65,6 +68,48 @@ impl PaneSession {
             pty: None,
             event_tx,
             needs_reprepare: true,
+            shell: String::new(),
+        }
+    }
+
+    /// Restart the shell process: drop old PTY, create new one with same
+    /// shell + cwd, reset terminal grid.
+    fn restart_shell(&mut self) {
+        // Save cwd before dropping old pty.
+        let cwd = self.app.terminal().cwd().map(|p| p.to_path_buf());
+        let cols = self.app.grid().width() as u16;
+        let rows = self.app.grid().height() as u16;
+
+        // Drop old PTY (kills child process).
+        self.pty = None;
+
+        // Reset terminal grid.
+        crate::terminal_actions::clear_screen_and_scrollback(self.app.grid_mut());
+
+        // Spawn new shell.
+        let shell_integration = ShellIntegrationConfig::prepare(&self.shell);
+        let (program, spawn_args) = shell_integration.spawn_args();
+        let env_vars = shell_integration.env_vars();
+
+        match PtySession::open_with_cwd(
+            cols,
+            rows,
+            Some(&program),
+            &spawn_args,
+            &env_vars,
+            cwd.as_deref(),
+        ) {
+            Ok(new_pty) => {
+                if let Ok(reader) = new_pty.try_clone_reader() {
+                    spawn_pty_reader(reader, self.event_tx.clone());
+                }
+                self.pty = Some(new_pty);
+                self.needs_reprepare = true;
+                log::info!("Restarted shell: {}", program);
+            }
+            Err(e) => {
+                log::error!("Failed to restart shell: {}", e);
+            }
         }
     }
 }
@@ -417,6 +462,12 @@ impl TabSession {
     /// Cycle focus to the previous pane.
     pub fn focus_prev_pane(&mut self) {
         self.split_tree.focus_prev();
+    }
+
+    /// Restart the shell process in the active pane.
+    /// Drops the old PTY and spawns a fresh shell with the same config + cwd.
+    pub fn restart_active_shell(&mut self) {
+        self.active_pane_mut().restart_shell();
     }
 
     // ── Internal helpers ──

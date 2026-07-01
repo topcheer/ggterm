@@ -1614,13 +1614,8 @@ impl DesktopApp {
                 }
             }
             crate::context_menu::ContextMenuAction::Reset => {
-                // Full reinit: clear everything, then re-exec the shell.
-                crate::terminal_actions::clear_screen_and_scrollback(
-                    self.active_session_mut().app_mut().grid_mut(),
-                );
-                // Send Ctrl+D (EOF) to exit current shell, then it will be
-                // respawned. Alternatively send reset escape sequence.
-                self.write_to_pty(b"\x1bc"); // RIS — Reset to Initial State
+                // Full reinit: restart the shell process entirely.
+                self.active_session_mut().restart_active_shell();
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
