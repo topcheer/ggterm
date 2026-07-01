@@ -262,14 +262,15 @@ impl DesktopApp {
                 self.copy_selection_to_clipboard();
                 return;
             }
-            // Ctrl+Shift+K → clear screen + get fresh prompt
+            // Ctrl+Shift+K → clear screen + get fresh prompt (also Cmd+K on macOS)
             if self.check_keybinding(
                 "clear",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "k")
+            {
                 crate::terminal_actions::clear_screen_and_scrollback(
                     self.active_session_mut().app_mut().grid_mut(),
                 );
@@ -314,14 +315,14 @@ impl DesktopApp {
 
         // ── P19-B: Split pane shortcuts (not configurable) ──
 
-        // Ctrl+Shift+D → horizontal split (left | right)
-        if self.mods.ctrl
-            && self.mods.shift
-            && !self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyD) = &event.physical_key
-        {
-            self.split_pane_horizontal();
-            return;
+        // Ctrl+Shift+D → horizontal split (also Cmd+D on macOS)
+        if let PhysicalKey::Code(KeyCode::KeyD) = &event.physical_key {
+            let ctrl_shift = self.mods.ctrl && self.mods.shift && !self.mods.alt;
+            let cmd = cfg!(target_os = "macos") && self.mods.super_key && !self.mods.shift;
+            if ctrl_shift || cmd {
+                self.split_pane_horizontal();
+                return;
+            }
         }
 
         // Ctrl+Shift+\ → vertical split (top / bottom)
@@ -1054,6 +1055,7 @@ impl DesktopApp {
         if let Some(hit_id) = session.split_tree().pane_at_point(px, py, bounds) {
             let active = session.split_tree().active();
             if hit_id != active {
+                self.selection.clear();
                 self.active_session_mut()
                     .split_tree_mut()
                     .set_active(hit_id);
