@@ -53,15 +53,19 @@ impl DesktopApp {
 
         // P16-A: Wire search match highlights to renderer.
         // Convert SearchMatch(abs_row, col, len) → (visible_row, col_start, col_end).
+        // Must account for display_offset (scrollback scroll position).
         let scrollback_len = grid.scrollback_len();
         let grid_height = grid.height();
+        let display_offset = grid.display_offset();
         let search_highlights: Vec<(usize, usize, usize)> = if self.search.visible {
             self.search
                 .matches()
                 .iter()
                 .filter_map(|m| {
-                    let visible_row = m.abs_row.checked_sub(scrollback_len)?;
-                    // Only highlight rows within the visible grid.
+                    // visible_row = abs_row - (scrollback_len - display_offset)
+                    // This maps absolute row to the row index currently shown on screen.
+                    let base = scrollback_len.saturating_sub(display_offset);
+                    let visible_row = m.abs_row.checked_sub(base)?;
                     if visible_row < grid_height {
                         Some((visible_row, m.col, m.col + m.len.saturating_sub(1)))
                     } else {

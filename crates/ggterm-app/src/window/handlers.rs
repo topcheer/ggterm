@@ -824,10 +824,34 @@ impl DesktopApp {
                 search.close();
             }
             PhysicalKey::Code(KeyCode::Enter) => {
-                if self.mods.shift {
-                    search.prev_match();
+                let matched = if self.mods.shift {
+                    search.prev_match()
                 } else {
-                    search.next_match();
+                    search.next_match()
+                };
+                // Scroll viewport to show the matched position.
+                if let Some(m) = matched {
+                    let scrollback_len = self.sessions[self.active].app().grid().scrollback_len();
+                    let grid_height = self.sessions[self.active].app().grid().height();
+                    let visible_row = m.abs_row as isize - scrollback_len as isize;
+                    if visible_row < 0 {
+                        // Match is in scrollback — scroll up to show it at center.
+                        let target_offset = scrollback_len - m.abs_row;
+                        let grid = self.sessions[self.active]
+                            .app_mut()
+                            .terminal_mut()
+                            .grid_mut();
+                        let current_offset = grid.display_offset();
+                        // Scroll up enough to make the match visible.
+                        let desired_offset = target_offset
+                            .min(scrollback_len)
+                            .saturating_sub(grid_height / 3);
+                        if desired_offset > current_offset {
+                            grid.scroll_up_viewport(desired_offset - current_offset);
+                        } else if desired_offset < current_offset {
+                            grid.scroll_down_viewport(current_offset - desired_offset);
+                        }
+                    }
                 }
             }
             PhysicalKey::Code(KeyCode::Backspace) => {
