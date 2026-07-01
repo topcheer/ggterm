@@ -175,13 +175,22 @@ impl DesktopApp {
                         stroke_width: 0.0,
                     });
                 } else {
-                    // Inactive tab.
+                    // Inactive tab — brighten on hover.
+                    let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                    let is_hovered =
+                        cur_x >= x && cur_x < x + w && cur_y >= tab_y && cur_y < tab_y + tab_h;
+                    let brightness = if is_hovered { 1.45 } else { 1.3 };
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x,
                         y: tab_y,
                         w,
                         h: tab_h,
-                        color: (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.7),
+                        color: (
+                            theme_bg.0 * brightness,
+                            theme_bg.1 * brightness,
+                            theme_bg.2 * brightness,
+                            0.7,
+                        ),
                         radius: tab_radius,
                         stroke_width: 0.0,
                     });
@@ -212,17 +221,24 @@ impl DesktopApp {
                     },
                 });
 
-                // Close button "x".
+                // Close button "x" — show on active tab, hovered tab, or when 2+ tabs.
                 if self.tab_bar.tabs.len() > 1 {
+                    // Check if mouse is hovering this tab.
+                    let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                    let is_hovered =
+                        cur_x >= x && cur_x < x + w && cur_y >= tab_y && cur_y < tab_y + tab_h;
+
                     let close_x = x + w - 16.0 - cell_w * 0.5;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                         text: "x".to_string(),
                         left: close_x,
                         top: tab_y + 5.0,
                         color: if tab.active {
-                            (180, 185, 200)
+                            (190, 195, 210)
+                        } else if is_hovered {
+                            (160, 165, 180)
                         } else {
-                            (100, 105, 120)
+                            (80, 85, 100)
                         },
                     });
                 }
