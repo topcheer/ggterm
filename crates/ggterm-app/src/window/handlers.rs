@@ -780,6 +780,43 @@ impl DesktopApp {
         }
 
         // Alt+1-9 or Cmd+1-9 (macOS) → switch to tab N (not configurable)
+        // macOS: Cmd+Up/Cmd+Down → scroll one line, Cmd+PageUp/PageDown → scroll one page.
+        if cfg!(target_os = "macos") && self.mods.super_key && !self.mods.alt && !self.mods.ctrl {
+            let grid = self
+                .active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut();
+            let mut scrolled = false;
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    grid.scroll_up_viewport(1);
+                    scrolled = true;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    grid.scroll_down_viewport(1);
+                    scrolled = true;
+                }
+                PhysicalKey::Code(KeyCode::PageUp) => {
+                    grid.scroll_up_viewport(grid.height());
+                    scrolled = true;
+                }
+                PhysicalKey::Code(KeyCode::PageDown) => {
+                    grid.scroll_down_viewport(grid.height());
+                    scrolled = true;
+                }
+                _ => {}
+            }
+            if scrolled {
+                self.smooth_scroll.reset();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+        }
+
+        // Alt+1-9 or Cmd+1-9 (macOS) → switch to tab N (not configurable)
         if (self.mods.alt && !self.mods.ctrl
             || cfg!(target_os = "macos") && self.mods.super_key && !self.mods.alt)
             && let PhysicalKey::Code(code) = &event.physical_key
