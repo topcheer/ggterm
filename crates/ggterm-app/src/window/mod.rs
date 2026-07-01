@@ -1097,7 +1097,11 @@ impl ApplicationHandler for DesktopApp {
                 self.handle_mouse_input(state, button);
             }
             WindowEvent::CursorMoved { position: pos, .. } => {
-                self.cursor_pos = (pos.x, pos.y);
+                // Convert logical pixels to physical pixels to match
+                // renderer's resolution (which is in physical pixels).
+                let phys_x = pos.x * self.scale_factor;
+                let phys_y = pos.y * self.scale_factor;
+                self.cursor_pos = (phys_x, phys_y);
                 self.handle_cursor_moved();
             }
             WindowEvent::MouseWheel { delta, .. } => {
