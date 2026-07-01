@@ -586,14 +586,21 @@ impl DesktopApp {
 
     /// Poll for bell events from the terminal and trigger visual + audio bell (P11-E, P28-G).
     pub(super) fn poll_bell(&mut self) {
-        if self
-            .active_session_mut()
-            .app_mut()
-            .terminal_mut()
-            .take_bell()
-        {
+        let active = self.active;
+        let mut any_bell = false;
+        for (i, session) in self.sessions.iter_mut().enumerate() {
+            if session.app_mut().terminal_mut().take_bell() {
+                if i == active {
+                    // Active tab: visual bell + sound.
+                    any_bell = true;
+                } else {
+                    // Non-active tab: mark as unread (blue dot).
+                    session.mark_unread();
+                }
+            }
+        }
+        if any_bell {
             self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
-            // P28-G: Play bell sound if enabled and rate limiter allows.
             if self.bell_limiter.check() {
                 self.sound_player.play(crate::sound::SoundType::Bell);
             }
