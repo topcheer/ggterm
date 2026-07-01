@@ -845,6 +845,14 @@ impl DesktopApp {
     ///
     /// Accounts for tab bar height, status bar height, and content padding.
     /// Both the renderer and mouse handlers use this to ensure coordinates match.
+    fn tab_font_size(&self) -> f32 {
+        if let Some(ref renderer) = self.renderer {
+            renderer.cell_height() as f32
+        } else {
+            28.0
+        }
+    }
+
     /// Get the full window width for tab bar layout calculations.
     /// MUST match the width used in render.rs for hit-testing to work.
     fn tab_layout_width(&self) -> f32 {
@@ -1005,7 +1013,9 @@ impl DesktopApp {
             let bounds = self.content_area_bounds();
             let tab_bar_h = bounds.y as f32;
             if py < tab_bar_h {
-                let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
+                let layout = self
+                    .tab_bar
+                    .compute_layout(self.tab_layout_width(), self.tab_font_size());
                 if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
                     self.tab_context_menu.open(tab_idx, px, py);
                     if let Some(ref window) = self.window {
@@ -1159,7 +1169,9 @@ impl DesktopApp {
                     }
 
                     if py < bounds.y as f32 {
-                        let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
+                        let layout = self
+                            .tab_bar
+                            .compute_layout(self.tab_layout_width(), self.tab_font_size());
                         // New tab button (+).
                         if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
                             self.open_tab();
@@ -1250,7 +1262,9 @@ impl DesktopApp {
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
                 let bounds = self.content_area_bounds();
                 if py < bounds.y as f32 && self.tab_bar.visible {
-                    let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
+                    let layout = self
+                        .tab_bar
+                        .compute_layout(self.tab_layout_width(), self.tab_font_size());
                     if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px)
                         && self.sessions.len() > 1
                     {
@@ -1291,7 +1305,9 @@ impl DesktopApp {
             && self.tab_bar.visible
         {
             let px = self.cursor_pos.0 as f32;
-            let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
+            let layout = self
+                .tab_bar
+                .compute_layout(self.tab_layout_width(), self.tab_font_size());
             if let Some(target_idx) = self.tab_bar.tab_at_x(&layout, px)
                 && target_idx != drag_idx
             {
