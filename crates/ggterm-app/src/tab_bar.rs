@@ -231,14 +231,14 @@ impl TabBarState {
         let tab_height = bar_height - TAB_BAR_PADDING_V;
         let tab_y = TAB_BAR_PADDING_V;
 
-        // Available width = surface - left/right padding - "+" button
+        // Available width = surface - left/right padding - "+" button area
         let available_width =
             surface_width - TAB_BAR_PADDING_H * 2.0 - NEW_TAB_BUTTON_SIZE - TAB_GAP;
         let tab_count = self.tabs.len() as f32;
 
-        // Each tab gets equal share, with min/max bounds.
-        let equal_w = (available_width / tab_count).floor();
-        let tab_w = equal_w.clamp(60.0, 220.0);
+        // Each tab gets an equal share of the full available width.
+        // No max cap — tabs truly fill the window (like browser tabs).
+        let tab_w = (available_width / tab_count).floor();
 
         let mut layouts = Vec::with_capacity(self.tabs.len());
         let mut x = TAB_BAR_PADDING_H;
