@@ -732,6 +732,10 @@ impl DesktopApp {
                 let mut mgr = crate::config::ConfigManager::new();
                 *mgr.config_mut() = new_config;
                 self.config_mgr = Some(mgr);
+                // Save to disk.
+                if let Some(ref mut mgr) = self.config_mgr {
+                    let _ = mgr.save();
+                }
                 // Apply theme via theme manager.
                 self.active_session_mut()
                     .app_mut()
@@ -761,6 +765,10 @@ impl DesktopApp {
         let mut mgr = crate::config::ConfigManager::new();
         *mgr.config_mut() = default_config;
         self.config_mgr = Some(mgr);
+        // Save to disk.
+        if let Some(ref mut mgr) = self.config_mgr {
+            let _ = mgr.save();
+        }
         // Apply theme.
         self.active_session_mut()
             .app_mut()

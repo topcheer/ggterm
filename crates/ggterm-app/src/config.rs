@@ -757,6 +757,34 @@ impl ConfigManager {
         self.config_path.as_deref()
     }
 
+    /// Save the current config to disk.
+    ///
+    /// If no path was previously set, saves to the default location
+    /// (`~/.ggterm/config.toml`).
+    pub fn save(&mut self) -> Result<(), ConfigError> {
+        let path = match &self.config_path {
+            Some(p) => p.clone(),
+            None => match default_config_path() {
+                Some(p) => p,
+                None => {
+                    return Err(ConfigError::Io(
+                        "config path".into(),
+                        std::io::Error::new(std::io::ErrorKind::NotFound, "No home directory"),
+                    ));
+                }
+            },
+        };
+        let toml = self.config.export_to_toml()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| ConfigError::Io(parent.display().to_string(), e))?;
+        }
+        std::fs::write(&path, &toml).map_err(|e| ConfigError::Io(path.display().to_string(), e))?;
+        self.config_path = Some(path);
+        log::info!("Config saved");
+        Ok(())
+    }
+
     // ── File system watching (config-watch feature) ─────────────────────
 
     /// Start watching the config file for changes.
@@ -1944,5 +1972,26 @@ directory = "/opt/ggterm/lua"
     fn test_import_invalid_toml() {
         let result = Config::import_from_toml("not valid toml {{{");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_save_and_reload() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("ggterm_test_save.toml");
+        let _ = std::fs::remove_file(&path);
+
+        let mut mgr = ConfigManager::new();
+        mgr.config_mut().terminal.scrollback_lines = 5000;
+        mgr.config_path = Some(path.clone());
+        mgr.save().unwrap();
+        assert!(path.exists());
+
+        // Reload from disk.
+        let mut mgr2 = ConfigManager::new();
+        mgr2.config_path = Some(path.clone());
+        mgr2.reload().unwrap();
+        assert_eq!(mgr2.config().terminal.scrollback_lines, 5000);
+
+        let _ = std::fs::remove_file(&path);
     }
 }
