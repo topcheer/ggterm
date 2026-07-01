@@ -444,40 +444,46 @@ impl DesktopApp {
             return;
         };
 
+        // Helper: get cell text including combining characters.
+        let cell_text = |x: u16, y: u16, grid: &ggterm_core::Grid| -> String {
+            if let Some(cell) = grid.cell(x as usize, y as usize) {
+                let mut s = String::new();
+                s.push(cell.ch);
+                for &c in &cell.combining {
+                    s.push(c);
+                }
+                s
+            } else {
+                String::new()
+            }
+        };
+
         let grid = self.active_session().app().grid();
         let mut text = String::new();
 
         if sy == ey {
             // Single-line selection.
             for x in sx..=ex {
-                if let Some(cell) = grid.cell(x as usize, sy as usize) {
-                    text.push(cell.ch);
-                }
+                text.push_str(&cell_text(x, sy, grid));
             }
         } else {
             // Multi-line selection.
             // First line: from sx to end of row.
             let width = grid.width();
             for x in sx..width as u16 {
-                if let Some(cell) = grid.cell(x as usize, sy as usize) {
-                    text.push(cell.ch);
-                }
+                text.push_str(&cell_text(x, sy, grid));
             }
             text.push('\n');
             // Middle lines: full rows.
             for y in (sy + 1)..ey {
                 for x in 0..width as u16 {
-                    if let Some(cell) = grid.cell(x as usize, y as usize) {
-                        text.push(cell.ch);
-                    }
+                    text.push_str(&cell_text(x, y, grid));
                 }
                 text.push('\n');
             }
             // Last line: from start of row to ex.
             for x in 0..=ex {
-                if let Some(cell) = grid.cell(x as usize, ey as usize) {
-                    text.push(cell.ch);
-                }
+                text.push_str(&cell_text(x, ey, grid));
             }
         }
 
