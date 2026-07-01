@@ -394,6 +394,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::System,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+I".into(),
+            description: "Import config from clipboard".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+R".into(),
+            description: "Reset config to defaults".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
         // Effects / History
         ShortcutEntry {
             keys: "Ctrl+Shift+Y".into(),

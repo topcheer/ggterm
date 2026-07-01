@@ -719,6 +719,63 @@ impl DesktopApp {
         }
     }
 
+    /// Import configuration from clipboard contents (Ctrl+Shift+Alt+I).
+    pub(super) fn import_config(&mut self) {
+        let Some(clipboard) = crate::clipboard::read_clipboard() else {
+            self.show_toast("Clipboard is empty");
+            return;
+        };
+        match crate::config::Config::import_from_toml(&clipboard) {
+            Ok(new_config) => {
+                let theme_name = new_config.appearance.theme.clone();
+                let font_size = new_config.appearance.font_size;
+                let mut mgr = crate::config::ConfigManager::new();
+                *mgr.config_mut() = new_config;
+                self.config_mgr = Some(mgr);
+                // Apply theme via theme manager.
+                self.active_session_mut()
+                    .app_mut()
+                    .theme_manager()
+                    .set_by_name(&theme_name);
+                self.apply_theme_to_renderer();
+                // Apply font size.
+                if let Some(ref mut renderer) = self.renderer {
+                    renderer.set_font_size(font_size as f32);
+                }
+                self.last_applied_theme = theme_name;
+                self.last_applied_font_size = font_size as f32;
+                self.show_toast(format!("Config imported ({} bytes)", clipboard.len()));
+            }
+            Err(e) => {
+                log::error!("Config import failed: {e}");
+                self.show_toast("Import failed: invalid TOML");
+            }
+        }
+    }
+
+    /// Reset configuration to defaults (Ctrl+Shift+Alt+R).
+    pub(super) fn reset_config(&mut self) {
+        let default_config = crate::config::Config::reset_to_defaults();
+        let theme_name = default_config.appearance.theme.clone();
+        let font_size = default_config.appearance.font_size;
+        let mut mgr = crate::config::ConfigManager::new();
+        *mgr.config_mut() = default_config;
+        self.config_mgr = Some(mgr);
+        // Apply theme.
+        self.active_session_mut()
+            .app_mut()
+            .theme_manager()
+            .set_by_name(&theme_name);
+        self.apply_theme_to_renderer();
+        // Apply font size.
+        if let Some(ref mut renderer) = self.renderer {
+            renderer.set_font_size(font_size as f32);
+        }
+        self.last_applied_theme = theme_name;
+        self.last_applied_font_size = font_size as f32;
+        self.show_toast("Config reset to defaults");
+    }
+
     // ── P30-A: Scrollbar scroll-to-position ────────────────────────
 
     /// Scroll the active session's grid so the scrollbar thumb aligns with
