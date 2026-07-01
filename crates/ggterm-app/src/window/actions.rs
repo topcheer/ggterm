@@ -327,6 +327,19 @@ impl DesktopApp {
     pub(super) fn write_to_pty(&mut self, bytes: &[u8]) {
         use crate::broadcast_input::BroadcastMode;
 
+        // Auto-scroll to bottom on user input (standard terminal UX).
+        {
+            let grid = self
+                .active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut();
+            if grid.is_scrolled() {
+                grid.reset_viewport();
+                self.smooth_scroll.reset();
+            }
+        }
+
         match self.broadcast.mode {
             BroadcastMode::None => {
                 self.active_session_mut().write_to_pty(bytes);
