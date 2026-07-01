@@ -1366,9 +1366,7 @@ impl DesktopApp {
         if let Some(rename_idx) = self.renaming_tab
             && self.tab_bar.visible
         {
-            let layout = self
-                .tab_bar
-                .compute_layout(content_bounds.width as f32, 14.0);
+            let layout = self.tab_bar.compute_layout(screen_w, 14.0);
             if let Some(tab_layout) = layout.tabs.get(rename_idx) {
                 let rx = tab_layout.rect.x;
                 let ry = tab_layout.rect.y;

@@ -845,6 +845,16 @@ impl DesktopApp {
     ///
     /// Accounts for tab bar height, status bar height, and content padding.
     /// Both the renderer and mouse handlers use this to ensure coordinates match.
+    /// Get the full window width for tab bar layout calculations.
+    /// MUST match the width used in render.rs for hit-testing to work.
+    fn tab_layout_width(&self) -> f32 {
+        if let Some(ref renderer) = self.renderer {
+            renderer.resolution_width() as f32
+        } else {
+            self.config.cols as f32
+        }
+    }
+
     pub(super) fn content_area_bounds(&self) -> crate::splits::Rect {
         let cell_h = if let Some(ref renderer) = self.renderer {
             renderer.cell_height() as f32
@@ -995,7 +1005,7 @@ impl DesktopApp {
             let bounds = self.content_area_bounds();
             let tab_bar_h = bounds.y as f32;
             if py < tab_bar_h {
-                let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+                let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
                 if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
                     self.tab_context_menu.open(tab_idx, px, py);
                     if let Some(ref window) = self.window {
@@ -1149,7 +1159,7 @@ impl DesktopApp {
                     }
 
                     if py < bounds.y as f32 {
-                        let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+                        let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
                         // New tab button (+).
                         if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
                             self.open_tab();
@@ -1159,12 +1169,10 @@ impl DesktopApp {
                         if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
                             if tab_idx < layout.tabs.len() {
                                 let cb = &layout.tabs[tab_idx].close;
+                                let hit = cb.size / 2.0 + 4.0; // generous touch target
                                 let dx = px - cb.cx;
                                 let dy = py - cb.cy;
-                                if dx.abs() < cb.size
-                                    && dy.abs() < cb.size
-                                    && self.sessions.len() > 1
-                                {
+                                if dx.abs() <= hit && dy.abs() <= hit && self.sessions.len() > 1 {
                                     self.close_tab();
                                     return;
                                 }
@@ -1242,7 +1250,7 @@ impl DesktopApp {
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
                 let bounds = self.content_area_bounds();
                 if py < bounds.y as f32 && self.tab_bar.visible {
-                    let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+                    let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
                     if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px)
                         && self.sessions.len() > 1
                     {
@@ -1282,9 +1290,8 @@ impl DesktopApp {
         if let Some(drag_idx) = self.dragging_tab
             && self.tab_bar.visible
         {
-            let bounds = self.content_area_bounds();
             let px = self.cursor_pos.0 as f32;
-            let layout = self.tab_bar.compute_layout(bounds.width as f32, 14.0);
+            let layout = self.tab_bar.compute_layout(self.tab_layout_width(), 14.0);
             if let Some(target_idx) = self.tab_bar.tab_at_x(&layout, px)
                 && target_idx != drag_idx
             {
