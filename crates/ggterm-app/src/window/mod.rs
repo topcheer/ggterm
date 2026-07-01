@@ -558,29 +558,39 @@ impl DesktopApp {
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
-        match crate::session::load_session() {
-            Ok(Some(data)) => {
-                log::info!(
-                    "Found saved session: {} tab(s), restoring...",
-                    data.tabs.len()
-                );
-                // P31: Restore window geometry.
-                if let (Some(w), Some(h)) = (data.window_width, data.window_height) {
-                    desktop.saved_window_size = Some((w, h));
+        // Only restore if the config option is enabled (default: false).
+        if desktop
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.restore_session)
+            .unwrap_or(false)
+        {
+            match crate::session::load_session() {
+                Ok(Some(data)) => {
+                    log::info!(
+                        "Found saved session: {} tab(s), restoring...",
+                        data.tabs.len()
+                    );
+                    // P31: Restore window geometry.
+                    if let (Some(w), Some(h)) = (data.window_width, data.window_height) {
+                        desktop.saved_window_size = Some((w, h));
+                    }
+                    if let Some(x) = data.window_x {
+                        desktop.saved_window_pos = Some((x, data.window_y.unwrap_or(0)));
+                    }
+                    let plan = crate::session::SessionPlan::from_data(&data);
+                    desktop.restore_from_plan(&plan);
+                    desktop.restored_session = true;
                 }
-                if let Some(x) = data.window_x {
-                    desktop.saved_window_pos = Some((x, data.window_y.unwrap_or(0)));
+                Ok(None) => {
+                    log::info!("No saved session found, starting fresh");
                 }
-                let plan = crate::session::SessionPlan::from_data(&data);
-                desktop.restore_from_plan(&plan);
-                desktop.restored_session = true;
+                Err(e) => {
+                    log::warn!("Failed to load saved session: {e}");
+                }
             }
-            Ok(None) => {
-                log::info!("No saved session found, starting fresh");
-            }
-            Err(e) => {
-                log::warn!("Failed to load saved session: {e}");
-            }
+        } else {
+            log::info!("Session restore disabled in config, starting fresh");
         }
 
         // ── Step 7c: Load config-driven keybindings (P14-D) ──

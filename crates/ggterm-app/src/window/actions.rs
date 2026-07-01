@@ -20,6 +20,9 @@ impl DesktopApp {
             );
             self.sessions[self.active].remove_active_pane();
 
+            // Immediately persist the updated layout so it survives crashes.
+            self.save_session_on_exit();
+
             // Resize remaining pane(s) to fill the full content area.
             // The grid was sized for the split; now it needs full-window dimensions.
             if let Some(ref renderer) = self.renderer {
@@ -112,6 +115,7 @@ impl DesktopApp {
             self.active = self.sessions.len() - 1;
         }
         log::info!("Closed tab, active={}", self.active + 1);
+        self.save_session_on_exit();
     }
 
     /// Switch to a specific tab by index (0-based).
@@ -203,6 +207,15 @@ impl DesktopApp {
 
     /// Save session to disk on exit.
     pub(super) fn save_session_on_exit(&mut self) {
+        let restore = self
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.restore_session)
+            .unwrap_or(false);
+        if !restore {
+            let _ = crate::session::clear_session();
+            return;
+        }
         let data = self.capture_session();
         if let Err(e) = crate::session::save_session(&data) {
             log::warn!("Failed to save session: {e}");

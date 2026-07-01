@@ -140,6 +140,9 @@ pub struct TerminalConfig {
     pub scrollback_lines: usize,
     /// Shell program path. If empty, uses `$SHELL` or falls back to `/bin/sh`.
     pub shell: String,
+    /// Whether to restore the previous session (tabs, panes, splits) on startup.
+    /// Default: false (clean single-pane start).
+    pub restore_session: bool,
 }
 
 /// AI engine configuration.
@@ -170,6 +173,7 @@ impl Default for TerminalConfig {
         Self {
             scrollback_lines: 10_000,
             shell: String::new(),
+            restore_session: false,
         }
     }
 }
@@ -251,6 +255,7 @@ mod raw {
     pub struct Terminal {
         pub scrollback_lines: Option<usize>,
         pub shell: Option<String>,
+        pub restore_session: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -330,6 +335,9 @@ impl Config {
         }
         if let Some(v) = raw.terminal.shell {
             config.terminal.shell = v;
+        }
+        if let Some(v) = raw.terminal.restore_session {
+            config.terminal.restore_session = v;
         }
 
         if let Some(v) = raw.ai.enabled {
