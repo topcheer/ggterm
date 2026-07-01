@@ -1506,8 +1506,8 @@ impl DesktopApp {
                 radius: 6.0,
                 stroke_width: 0.0,
             });
-            let display_url = if url.len() > 55 {
-                format!("{}...", &url[..52])
+            let display_url = if url.chars().count() > 55 {
+                format!("{}...", url.chars().take(52).collect::<String>())
             } else {
                 url.clone()
             };

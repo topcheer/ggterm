@@ -144,8 +144,8 @@ impl AIOverlayState {
         match &self.content {
             Some(text) => {
                 // Truncate to a reasonable width for a status bar.
-                let truncated = if text.len() > 200 {
-                    format!("{}...", &text[..197])
+                let truncated = if text.chars().count() > 200 {
+                    format!("{}...", text.chars().take(197).collect::<String>())
                 } else {
                     text.clone()
                 };
@@ -170,8 +170,8 @@ impl AIOverlayState {
 
         match &self.content {
             Some(text) => {
-                let truncated = if text.len() > 200 {
-                    format!("{}...", &text[..197])
+                let truncated = if text.chars().count() > 200 {
+                    format!("{}...", text.chars().take(197).collect::<String>())
                 } else {
                     text.clone()
                 };
