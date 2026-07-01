@@ -176,31 +176,31 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
             }
         }
 
-        // Try rgb()/rgba()
-        if i + 4 <= bytes.len() {
-            let prefix = &text[i..(i + 4).min(text.len())];
-            if prefix == "rgb("
-                || (i + 5 <= bytes.len() && &text[i..(i + 5).min(text.len())] == "rgba(")
-            {
-                // Find closing paren
-                if let Some(end) = text[i..].find(')') {
-                    let candidate = &text[i..=i + end];
-                    if let Some(rgb) = parse_rgb_color(candidate) {
-                        results.push(ColorMatch {
-                            row: 0,
-                            col_start: i,
-                            col_end: i + end + 1,
-                            rgb,
-                            text: candidate.to_string(),
-                        });
-                        i += end + 1;
-                        continue;
-                    }
-                }
+        // Try rgb()/rgba() — use byte slice for prefix check to avoid
+        // slicing inside multi-byte UTF-8 sequences.
+        let is_rgb = i + 4 <= bytes.len() && &bytes[i..i + 4] == b"rgb(";
+        let is_rgba = i + 5 <= bytes.len() && &bytes[i..i + 5] == b"rgba(";
+        if (is_rgb || is_rgba)
+            && let Some(end) = text[i..].find(')')
+        {
+            let candidate = &text[i..=i + end];
+            if let Some(rgb) = parse_rgb_color(candidate) {
+                results.push(ColorMatch {
+                    row: 0,
+                    col_start: i,
+                    col_end: i + end + 1,
+                    rgb,
+                    text: candidate.to_string(),
+                });
+                i += end + 1;
+                continue;
             }
         }
 
-        i += 1;
+        // Advance by the full UTF-8 character width to avoid landing
+        // inside a multi-byte sequence (e.g. ✘ = 3 bytes).
+        let char_len = text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        i += char_len;
     }
 
     results
@@ -346,5 +346,21 @@ mod tests {
         assert_eq!(state.hovered_rgb(), Some((255, 0, 0)));
         state.clear();
         assert!(!state.is_active());
+    }
+
+    #[test]
+    fn t_scan_line_multibyte_no_panic() {
+        // Multi-byte UTF-8 characters (✘ = 3 bytes, → = 3 bytes) should
+        // not cause a panic when scanning for colors.
+        let matches = scan_line_for_colors("✘ error → fix #FF5733 ✘");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].rgb, (0xFF, 0x57, 0x33));
+    }
+
+    #[test]
+    fn t_scan_line_rgb_with_emoji() {
+        let matches = scan_line_for_colors("🎨 rgb(100, 200, 50) done");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].rgb, (100, 200, 50));
     }
 }
