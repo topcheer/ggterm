@@ -979,12 +979,20 @@ impl GlyphonRenderer {
         needs_prepare: bool,
         render_pass: &mut wgpu::RenderPass<'_>,
     ) -> Result<(), RenderError> {
+        // Temporarily remove overlay text so prepare_grid_with_dirty
+        // doesn't mix it into the pane's text atlas. Overlay text is
+        // rendered separately in render_overlays_to_pass with full-screen
+        // scissor. Without this, overlay text gets double-rendered
+        // (once clipped in pane pass, once in overlay pass), causing
+        // visual ghosting/blurriness in multi-pane mode.
+        let saved_overlay = std::mem::take(&mut self.overlay_text);
         if needs_prepare {
             self.prepare_grid(device, queue, grid, cursor)?;
             self.ensure_underline_pipeline(device);
             self.prepare_decorations(device, grid);
         }
-        // Always draw text + decorations (no overlay).
+        self.overlay_text = saved_overlay;
+        // Draw text + decorations only (no overlay text).
         self.text_renderer
             .render(&self.atlas, &self.viewport, render_pass)?;
         self.draw_decorations(render_pass);
