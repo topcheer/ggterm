@@ -1380,6 +1380,7 @@ impl DesktopApp {
 
                 self.button_held = None;
                 self.selection.finish();
+                self.selection_auto_scroll = 0;
                 // Copy selection to clipboard if active.
                 if self.selection.is_active() {
                     self.copy_selection_to_clipboard();
@@ -1530,35 +1531,20 @@ impl DesktopApp {
 
         // Extend selection while dragging.
         if self.selection.dragging {
-            // Auto-scroll when dragging near content area edges.
+            // Set auto-scroll direction based on proximity to edges.
+            // The actual scrolling happens in about_to_wait via a timer.
             let bounds = self.content_area_bounds();
             let py = self.cursor_pos.1 as f32;
             let top_y = bounds.y as f32;
             let bottom_y = (bounds.y + bounds.height) as f32;
-            let edge_zone = 40.0; // px from edge to trigger auto-scroll
+            let edge_zone = 40.0;
 
             if py <= top_y + edge_zone {
-                // Near top edge → scroll up through scrollback.
-                let grid_h = self.active_session().app().grid().height();
-                self.active_session_mut()
-                    .app_mut()
-                    .terminal_mut()
-                    .grid_mut()
-                    .scroll_up_viewport(1.max(grid_h / 10));
-                if let Some(ref window) = self.window {
-                    window.request_redraw();
-                }
+                self.selection_auto_scroll = -1;
             } else if py >= bottom_y - edge_zone {
-                // Near bottom edge → scroll down (towards newest).
-                let grid_h = self.active_session().app().grid().height();
-                self.active_session_mut()
-                    .app_mut()
-                    .terminal_mut()
-                    .grid_mut()
-                    .scroll_down_viewport(1.max(grid_h / 10));
-                if let Some(ref window) = self.window {
-                    window.request_redraw();
-                }
+                self.selection_auto_scroll = 1;
+            } else {
+                self.selection_auto_scroll = 0;
             }
 
             self.selection.extend(col, row);

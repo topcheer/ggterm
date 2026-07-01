@@ -119,6 +119,10 @@ pub struct DesktopApp {
     // ── Mouse support ──
     /// Current text selection state.
     selection: crate::mouse::MouseSelection,
+    /// Auto-scroll direction during selection drag: -1 = up, 0 = none, 1 = down.
+    selection_auto_scroll: i32,
+    /// Last auto-scroll tick time.
+    last_auto_scroll: std::time::Instant,
     /// Last known cursor position in pixels (for mouse wheel / drag).
     cursor_pos: (f64, f64),
     /// Mouse button currently held (for drag tracking).
@@ -488,6 +492,8 @@ impl DesktopApp {
             config_mgr: None,
             last_title: String::new(),
             selection: crate::mouse::MouseSelection::default(),
+            selection_auto_scroll: 0,
+            last_auto_scroll: std::time::Instant::now(),
             cursor_pos: (0.0, 0.0),
             button_held: None,
             drag_resize: None,
@@ -1252,6 +1258,31 @@ impl ApplicationHandler for DesktopApp {
             }
             if let Some(ref window) = self.window {
                 window.request_redraw();
+            }
+        }
+
+        // Selection drag auto-scroll: scroll viewport periodically while
+        // the user holds the mouse near the top or bottom edge.
+        if self.selection_auto_scroll != 0 {
+            let now = std::time::Instant::now();
+            let scroll_dir = self.selection_auto_scroll;
+            if now.duration_since(self.last_auto_scroll) >= std::time::Duration::from_millis(50) {
+                self.last_auto_scroll = now;
+                let grid_h = self.active_session().app().grid().height();
+                let scroll_amount = 1.max(grid_h / 10);
+                let grid = self
+                    .active_session_mut()
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut();
+                if scroll_dir < 0 {
+                    grid.scroll_up_viewport(scroll_amount);
+                } else {
+                    grid.scroll_down_viewport(scroll_amount);
+                }
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
             }
         }
 
