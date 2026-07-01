@@ -341,6 +341,7 @@ impl DesktopApp {
             && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::BracketRight) = &event.physical_key
         {
+            self.selection.clear();
             self.active_session_mut().focus_next_pane();
             return;
         }
@@ -351,6 +352,7 @@ impl DesktopApp {
             && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::BracketLeft) = &event.physical_key
         {
+            self.selection.clear();
             self.active_session_mut().focus_prev_pane();
             return;
         }
