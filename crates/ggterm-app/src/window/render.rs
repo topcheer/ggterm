@@ -768,25 +768,25 @@ impl DesktopApp {
             let dd_x = 12.0_f32;
             let dd_y = screen_h - dd_h - cell_h - 20.0;
 
-            // Background.
+            // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: dd_x,
                 y: dd_y,
                 w: dd_w,
                 h: dd_h,
-                color: (0.1, 0.1, 0.14, 0.92),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
                 radius: 8.0,
                 stroke_width: 0.0,
             });
-            // Border.
+            // Border — bright accent.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: dd_x,
                 y: dd_y,
                 w: dd_w,
                 h: dd_h,
-                color: (0.3, 0.35, 0.45, 0.6),
+                color: (0.45, 0.52, 0.68, 0.9),
                 radius: 8.0,
-                stroke_width: 1.0,
+                stroke_width: 1.5,
             });
 
             for (i, shell) in shells.iter().enumerate() {
@@ -811,7 +811,7 @@ impl DesktopApp {
                         y: sy,
                         w: dd_w - 8.0,
                         h: cell_h + 2.0,
-                        color: (0.15, 0.25, 0.45, 0.7),
+                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7),
                         radius: 4.0,
                         stroke_width: 0.0,
                     });
@@ -837,13 +837,13 @@ impl DesktopApp {
             let sb_y = 4.0_f32;
             let sb_h = screen_h - cell_h - 20.0; // leave room for status bar
 
-            // Background.
+            // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: sb_x,
                 y: sb_y,
                 w: sb_w,
                 h: sb_h,
-                color: (0.08, 0.08, 0.12, 0.92),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.95),
                 radius: 8.0,
                 stroke_width: 0.0,
             });
@@ -853,7 +853,7 @@ impl DesktopApp {
                 y: sb_y,
                 w: sb_w,
                 h: sb_h,
-                color: (0.3, 0.35, 0.45, 0.5),
+                color: (0.45, 0.52, 0.68, 0.7),
                 radius: 8.0,
                 stroke_width: 1.0,
             });
