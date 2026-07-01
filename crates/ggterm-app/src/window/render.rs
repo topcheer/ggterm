@@ -1489,6 +1489,36 @@ impl DesktopApp {
             }
         }
 
+        // ── P33: URL hover tooltip ────────────────────────────────────
+        if let Some(ref url) = self.hovered_link {
+            let tooltip_w = (url.len() as f32 * 7.0 + 24.0).min(400.0);
+            let tooltip_h = 24.0;
+            let px = self.cursor_pos.0 as f32 + 14.0;
+            let py = self.cursor_pos.1 as f32 + 14.0;
+            let px = px.min(screen_w - tooltip_w - 8.0);
+
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: tooltip_w,
+                h: tooltip_h,
+                color: (0.08, 0.10, 0.15, 0.95),
+                radius: 6.0,
+                stroke_width: 0.0,
+            });
+            let display_url = if url.len() > 55 {
+                format!("{}...", &url[..52])
+            } else {
+                url.clone()
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: display_url,
+                left: px + 10.0,
+                top: py + 5.0,
+                color: (100, 180, 255),
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
