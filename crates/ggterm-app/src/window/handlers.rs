@@ -1155,8 +1155,20 @@ impl DesktopApp {
                             self.open_tab();
                             return;
                         }
-                        // Click on a specific tab.
+                        // Close button (x) on a tab.
                         if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
+                            if tab_idx < layout.tabs.len() {
+                                let cb = &layout.tabs[tab_idx].close;
+                                let dx = px - cb.cx;
+                                let dy = py - cb.cy;
+                                if dx.abs() < cb.size
+                                    && dy.abs() < cb.size
+                                    && self.sessions.len() > 1
+                                {
+                                    self.close_tab();
+                                    return;
+                                }
+                            }
                             self.switch_tab(tab_idx);
                             // P30-B: Double-click → start rename.
                             if self.click_count == 2 {

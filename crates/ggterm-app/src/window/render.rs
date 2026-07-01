@@ -212,6 +212,21 @@ impl DesktopApp {
                     },
                 });
 
+                // Close button "x" — show on active tab or when 2+ tabs exist.
+                if self.tab_bar.tabs.len() > 1 {
+                    let close_x = x + w - tab_paddings - cell_w * 0.5;
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: "x".to_string(),
+                        left: close_x,
+                        top: tab_y + 5.0,
+                        color: if tab.active {
+                            (180, 185, 200) // visible on active
+                        } else {
+                            (100, 105, 120) // dim on inactive
+                        },
+                    });
+                }
+
                 x += w + tab_gap;
             }
 
