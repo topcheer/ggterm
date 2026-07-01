@@ -1537,7 +1537,7 @@ impl DesktopApp {
                     y: ry,
                     w: rw,
                     h: rh,
-                    color: (0.08, 0.10, 0.15, 0.98),
+                    color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.98),
                     radius: 6.0,
                     stroke_width: 0.0,
                 });
@@ -1705,7 +1705,7 @@ impl DesktopApp {
                 y: py,
                 w: tooltip_w,
                 h: tooltip_h,
-                color: (0.08, 0.10, 0.15, 0.95),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.95),
                 radius: 6.0,
                 stroke_width: 0.0,
             });
