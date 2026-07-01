@@ -205,7 +205,6 @@ pub struct DesktopApp {
 
     // ── About dialog + Menu bar (P19-A) ──
     /// About dialog state.
-    #[allow(dead_code)]
     about: crate::about_dialog::AboutDialog,
     /// Whether the menu bar has been installed.
     #[allow(dead_code)]
@@ -217,7 +216,6 @@ pub struct DesktopApp {
 
     // ── P23-A: Cursor blink animation ──
     /// Cursor blink phase tracker for smooth blink animation.
-    #[allow(dead_code)]
     cursor_blink: crate::cursor_blink::CursorBlink,
     /// P23-A: Copy/paste visual feedback flash.
     #[allow(dead_code)]
@@ -243,39 +241,28 @@ pub struct DesktopApp {
     /// P25-D: Broadcast input state (Ctrl+Shift+Alt+B).
     broadcast: crate::broadcast_input::BroadcastState,
     /// P25-E: Session recorder (None when not recording).
-    #[allow(dead_code)]
     recorder: Option<ggterm_core::recording::SessionRecorder>,
 
     // ── P28: Phase 28 features ──
     /// P28-A: Animation manager for transitions.
-    #[allow(dead_code)]
     animations: crate::animations::AnimationManager,
     /// P28-B: Color picker overlay state.
-    #[allow(dead_code)]
     color_picker: crate::color_picker::ColorPickerState,
     /// P28-C: Command history sidebar.
-    #[allow(dead_code)]
     cmd_history: crate::command_history::CommandHistoryState,
     /// P28-D: Workspace manager.
-    #[allow(dead_code)]
     workspaces: crate::workspace::WorkspaceManager,
     /// P28-E: File preview overlay.
-    #[allow(dead_code)]
     file_preview: crate::file_preview::FilePreviewState,
     /// P28-F: Performance monitor.
-    #[allow(dead_code)]
     perf_monitor: crate::perf_monitor::PerfMonitor,
     /// P28-F: Cursor particle system.
-    #[allow(dead_code)]
     cursor_particles: crate::perf_monitor::CursorParticleSystem,
     /// P28-G: Sound player.
-    #[allow(dead_code)]
     sound_player: crate::sound::SoundPlayer,
     /// P28-G: Bell rate limiter.
-    #[allow(dead_code)]
     bell_limiter: crate::sound::BellRateLimiter,
     /// P28-H: Shell switcher dropdown.
-    #[allow(dead_code)]
     shell_switcher: crate::shell_switcher::ShellSwitcherState,
     /// P28: Tab right-click context menu.
     tab_context_menu: crate::tab_bar::TabContextMenuState,
