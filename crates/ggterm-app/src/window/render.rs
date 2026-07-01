@@ -1139,6 +1139,19 @@ impl DesktopApp {
             for (i, action) in NewTabMenuAction::all().iter().enumerate() {
                 let (_, iy, _, _) = self.new_tab_menu.item_rect(i);
 
+                // Separator before Split items (after New Tab).
+                if i == 1 {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: mx + 8.0,
+                        y: iy - 4.0,
+                        w: menu_w - 16.0,
+                        h: 1.0,
+                        color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.4),
+                        radius: 0.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
                 // Hover highlight.
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
                 if px >= mx
@@ -1147,9 +1160,9 @@ impl DesktopApp {
                     && py < iy + NewTabMenuState::ITEM_HEIGHT
                 {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
-                        x: mx + 3.0,
+                        x: mx + 4.0,
                         y: iy,
-                        w: menu_w - 6.0,
+                        w: menu_w - 8.0,
                         h: NewTabMenuState::ITEM_HEIGHT,
                         color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
                         radius: 4.0,
@@ -1159,8 +1172,8 @@ impl DesktopApp {
 
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: action.label().to_string(),
-                    left: mx + 12.0,
-                    top: iy + 5.0,
+                    left: mx + 16.0,
+                    top: iy + 7.0,
                     color: (210, 215, 230),
                 });
             }

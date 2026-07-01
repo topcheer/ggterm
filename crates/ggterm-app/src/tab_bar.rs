@@ -23,7 +23,7 @@ const CLOSE_BUTTON_SIZE: f32 = 16.0;
 /// Gap between tab text and close button.
 const CLOSE_BUTTON_GAP: f32 = 4.0;
 /// Size of the "+" new tab button.
-const NEW_TAB_BUTTON_SIZE: f32 = 20.0;
+const NEW_TAB_BUTTON_SIZE: f32 = 28.0;
 /// Estimated average character width in pixels (at 14px monospace).
 const CHAR_WIDTH_ESTIMATE: f32 = 8.4;
 /// Maximum characters to show in a tab title before truncation.
@@ -318,7 +318,8 @@ impl TabBarState {
 
     /// Check if a pixel position is over the "+" new tab button.
     pub fn is_new_tab_button_at(&self, layout: &TabBarLayout, x: f32, y: f32) -> bool {
-        let half = layout.new_tab_button.size / 2.0;
+        // Generous click area: button size + 6px margin on each side.
+        let half = layout.new_tab_button.size / 2.0 + 6.0;
         (x - layout.new_tab_button.cx).abs() <= half && (y - layout.new_tab_button.cy).abs() <= half
     }
 }

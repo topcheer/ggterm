@@ -67,11 +67,11 @@ impl NewTabMenuState {
     }
 
     /// Menu item height in physical pixels.
-    pub const ITEM_HEIGHT: f32 = 28.0;
+    pub const ITEM_HEIGHT: f32 = 32.0;
     /// Menu padding in physical pixels.
-    pub const PADDING: f32 = 6.0;
+    pub const PADDING: f32 = 10.0;
     /// Menu width in physical pixels.
-    pub const WIDTH: f32 = 240.0;
+    pub const WIDTH: f32 = 280.0;
     /// Corner radius.
     pub const RADIUS: f32 = 8.0;
 
@@ -160,11 +160,11 @@ mod tests {
         let mut m = NewTabMenuState::default();
         m.show(100.0, 200.0);
         // First item.
-        assert_eq!(m.hit_test(150.0, 210.0), Some(0));
+        assert_eq!(m.hit_test(200.0, 215.0), Some(0));
         // Second item.
-        assert_eq!(m.hit_test(150.0, 240.0), Some(1));
+        assert_eq!(m.hit_test(200.0, 250.0), Some(1));
         // Third item.
-        assert_eq!(m.hit_test(150.0, 270.0), Some(2));
+        assert_eq!(m.hit_test(200.0, 285.0), Some(2));
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod tests {
         let mut m = NewTabMenuState::default();
         m.show(100.0, 200.0);
         assert_eq!(m.hit_test(50.0, 50.0), None);
-        assert_eq!(m.hit_test(400.0, 210.0), None);
+        assert_eq!(m.hit_test(500.0, 210.0), None);
         // When not visible, always None.
         m.hide();
         assert_eq!(m.hit_test(150.0, 210.0), None);
@@ -181,8 +181,8 @@ mod tests {
     #[test]
     fn t_menu_height() {
         let m = NewTabMenuState::default();
-        // 3 items * 28 + 2 * 6 padding = 84 + 12 = 96
-        assert_eq!(m.menu_height(), 96.0);
+        // 3 items * 32 + 2 * 10 padding = 96 + 20 = 116
+        assert_eq!(m.menu_height(), 116.0);
     }
 
     #[test]
@@ -190,10 +190,10 @@ mod tests {
         let mut m = NewTabMenuState::default();
         m.show(100.0, 200.0);
         let (x, y, w, h) = m.item_rect(0);
-        assert!((x - 106.0).abs() < 0.01);
-        assert!((y - 206.0).abs() < 0.01);
-        assert!((w - 228.0).abs() < 0.01);
-        assert!((h - 28.0).abs() < 0.01);
+        assert!((x - 110.0).abs() < 0.01);
+        assert!((y - 210.0).abs() < 0.01);
+        assert!((w - 260.0).abs() < 0.01);
+        assert!((h - 32.0).abs() < 0.01);
     }
 
     #[test]
