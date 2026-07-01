@@ -1196,10 +1196,11 @@ impl DesktopApp {
                         let layout = self
                             .tab_bar
                             .compute_layout(self.tab_layout_width(), self.tab_font_size());
-                        // New tab button (+) → open dropdown menu.
+                        // New tab button (+) → open dropdown menu below button.
                         if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
-                            let menu_x = px;
-                            let menu_y = py + 16.0; // below the + button
+                            let btn = &layout.new_tab_button;
+                            let menu_x = btn.cx - crate::new_tab_menu::NewTabMenuState::WIDTH / 2.0;
+                            let menu_y = btn.cy + btn.size / 2.0 + 2.0;
                             self.new_tab_menu.toggle(menu_x, menu_y);
                             if let Some(ref window) = self.window {
                                 window.request_redraw();
