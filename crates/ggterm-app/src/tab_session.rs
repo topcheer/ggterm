@@ -233,12 +233,16 @@ impl TabSession {
     }
 
     /// Pump events for **all** panes from their PTY reader threads.
-    pub fn pump(&mut self) {
+    /// Returns true if any pane had new data.
+    pub fn pump(&mut self) -> bool {
+        let mut had_data = false;
         for pane in self.panes.iter_mut().flatten() {
             if pane.app.pump() {
                 pane.needs_reprepare = true;
+                had_data = true;
             }
         }
+        had_data
     }
 
     /// Mark that this tab has unread output (called when non-active tab gets data).

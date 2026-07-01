@@ -1130,10 +1130,9 @@ impl ApplicationHandler for DesktopApp {
         let active = self.active;
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if i != active {
-                let had_data = session.app().terminal().grid().content_dirty();
-                session.pump();
-                let has_data = session.app().terminal().grid().content_dirty();
-                if has_data && !had_data {
+                // pump() returns true if any pane had data.
+                let had_data = session.pump();
+                if had_data {
                     session.mark_unread();
                 }
             }
