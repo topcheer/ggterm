@@ -136,12 +136,14 @@ impl DesktopApp {
     pub(super) fn switch_tab(&mut self, index: usize) {
         if index < self.sessions.len() {
             self.active = index;
+            self.sessions[self.active].clear_unread();
         }
     }
 
     /// Switch to the next tab (wraps).
     pub(super) fn next_tab(&mut self) {
         self.active = (self.active + 1) % self.sessions.len();
+        self.sessions[self.active].clear_unread();
     }
 
     /// Switch to the previous tab (wraps).
@@ -151,6 +153,7 @@ impl DesktopApp {
         } else {
             self.active - 1
         };
+        self.sessions[self.active].clear_unread();
     }
 
     // ── P23-E: Tab reordering ──

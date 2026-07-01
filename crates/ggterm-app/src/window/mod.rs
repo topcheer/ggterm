@@ -1118,8 +1118,20 @@ impl ApplicationHandler for DesktopApp {
             return;
         }
 
-        // Pump PTY events.
+        // Pump PTY events — active session first, then non-active.
         self.active_session_mut().pump();
+        // Pump non-active sessions and mark tabs with unread output.
+        let active = self.active;
+        for (i, session) in self.sessions.iter_mut().enumerate() {
+            if i != active {
+                let had_data = session.app().terminal().grid().content_dirty();
+                session.pump();
+                let has_data = session.app().terminal().grid().content_dirty();
+                if has_data && !had_data {
+                    session.mark_unread();
+                }
+            }
+        }
 
         // Sync terminal OSC 0/2 titles to tab sessions so the tab bar
         // shows the current program name (e.g. "vim", "zsh") instead of

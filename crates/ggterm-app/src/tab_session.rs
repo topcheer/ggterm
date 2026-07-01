@@ -128,6 +128,8 @@ pub struct TabSession {
     split_tree: SplitTree,
     /// Tab title (from OSC 0/2 or default).
     title: String,
+    /// True when this tab received output while not the active tab.
+    has_unread_output: bool,
 }
 
 impl TabSession {
@@ -151,6 +153,7 @@ impl TabSession {
             panes: vec![Some(pane)],
             split_tree: SplitTree::new(0),
             title,
+            has_unread_output: false,
         })
     }
 
@@ -162,6 +165,7 @@ impl TabSession {
             panes: vec![Some(pane)],
             split_tree: SplitTree::new(0),
             title: "test".to_string(),
+            has_unread_output: false,
         }
     }
 
@@ -235,6 +239,21 @@ impl TabSession {
                 pane.needs_reprepare = true;
             }
         }
+    }
+
+    /// Mark that this tab has unread output (called when non-active tab gets data).
+    pub fn mark_unread(&mut self) {
+        self.has_unread_output = true;
+    }
+
+    /// Clear unread status (called when tab becomes active).
+    pub fn clear_unread(&mut self) {
+        self.has_unread_output = false;
+    }
+
+    /// Check if this tab has unread output.
+    pub fn has_unread_output(&self) -> bool {
+        self.has_unread_output
     }
 
     /// P21-D: Check if a pane needs grid re-prepare.
