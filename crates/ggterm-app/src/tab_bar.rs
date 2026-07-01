@@ -71,21 +71,22 @@ impl TabInfo {
         }
     }
 
-    /// Format as a display string: `1:zsh*` (active) or `2:vim` (inactive).
+    /// Format as a display string for the tab pill.
+    /// Modern format: just the title (active/dirty state shown via pill styling).
     pub fn format(&self) -> String {
-        let title = self.truncated_title(12);
-        let suffix = if self.active { "*" } else { "" };
-        let dirty = if self.dirty && !self.active { "!" } else { "" };
-        format!("{}:{}{}{}", self.index, title, suffix, dirty)
+        let title = self.truncated_title(14);
+        let dirty = if self.dirty && !self.active {
+            " \u{2022}"
+        } else {
+            ""
+        };
+        format!("{}{}", title, dirty)
     }
 
     /// Estimated pixel width of the tab text content (index + title + close button).
     pub fn estimated_width(&self) -> f32 {
         let title = self.truncated_title(MAX_TAB_TITLE_CHARS);
-        // "N:" prefix + title text.
-        let prefix_chars = 2 + self.index.to_string().len().saturating_sub(1);
-        let text_width = (prefix_chars + title.chars().count()) as f32 * CHAR_WIDTH_ESTIMATE;
-        // inner padding + close button.
+        let text_width = title.chars().count() as f32 * CHAR_WIDTH_ESTIMATE;
         text_width + TAB_INNER_PADDING_H * 2.0 + CLOSE_BUTTON_GAP + CLOSE_BUTTON_SIZE
     }
 }
@@ -433,30 +434,29 @@ mod tests {
     #[test]
     fn t_tab_info_format_active() {
         let tab = TabInfo::new("zsh", 1, true);
-        assert_eq!(tab.format(), "1:zsh*");
+        assert_eq!(tab.format(), "zsh");
     }
 
     #[test]
     fn t_tab_info_format_inactive() {
         let tab = TabInfo::new("vim", 2, false);
-        assert_eq!(tab.format(), "2:vim");
+        assert_eq!(tab.format(), "vim");
     }
 
     #[test]
     fn t_tab_info_truncated_title() {
         let tab = TabInfo::new("very_long_process_name", 1, true);
         let formatted = tab.format();
-        // Should be truncated to 12 chars + ellipsis
-        assert!(formatted.starts_with("1:"));
+        // Should be truncated to 14 chars + ellipsis
         assert!(formatted.contains('\u{2026}'));
-        assert!(formatted.ends_with('*'));
+        assert!(!formatted.ends_with('*'));
     }
 
     #[test]
     fn t_tab_info_dirty_marker() {
         let mut tab = TabInfo::new("logs", 3, false);
         tab.dirty = true;
-        assert_eq!(tab.format(), "3:logs!");
+        assert_eq!(tab.format(), "logs \u{2022}");
     }
 
     #[test]
@@ -471,7 +471,7 @@ mod tests {
         let mut state = TabBarState::new();
         state.update(&["zsh", "vim", "logs"], 1);
         assert!(state.visible);
-        assert_eq!(state.format(), "1:zsh | 2:vim* | 3:logs");
+        assert_eq!(state.format(), "zsh | vim | logs");
     }
 
     #[test]
@@ -509,11 +509,11 @@ mod tests {
 
     #[test]
     fn t_active_dirty_suppresses_marker() {
-        // When active=true and dirty=true, dirty marker (!) is suppressed.
+        // When active=true and dirty=true, dirty marker is suppressed.
         let mut tab = TabInfo::new("logs", 1, true);
         tab.dirty = true;
-        // Should be "1:logs*" not "1:logs!*"
-        assert_eq!(tab.format(), "1:logs*");
+        // Should be just "logs" (no dirty dot when active)
+        assert_eq!(tab.format(), "logs");
     }
 
     #[test]
@@ -559,10 +559,9 @@ mod tests {
     fn t_format_inactive_last_tab() {
         let mut state = TabBarState::new();
         state.update(&["sh", "vim"], 0);
-        // Active is 0, so tab 1 is inactive.
         let formatted = state.format();
-        assert!(formatted.contains("1:sh*"));
-        assert!(formatted.contains("2:vim"));
+        assert!(formatted.contains("sh"));
+        assert!(formatted.contains("vim"));
     }
 
     // ── Pill layout tests ──────────────────────────────────────
