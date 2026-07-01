@@ -48,6 +48,8 @@ pub struct StatusBar {
     pub sound_enabled: bool,
     /// P28-H: Active shell name (e.g., "zsh", "bash").
     pub shell_name: String,
+    /// Current working directory (OSC 7). Empty = unknown.
+    pub cwd: String,
 }
 
 impl Default for StatusBar {
@@ -75,6 +77,7 @@ impl StatusBar {
             workspace_name: String::new(),
             sound_enabled: false,
             shell_name: String::new(),
+            cwd: String::new(),
         }
     }
 
@@ -303,8 +306,28 @@ impl StatusBar {
             seg!(self.shell_name.clone(), text_color);
         }
 
+        // CWD (from OSC 7). Show basename only for compactness.
+        if !self.cwd.is_empty() {
+            let display = std::path::Path::new(&self.cwd)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&self.cwd);
+            let home = dirs_or_home();
+            let display = if let Some(ref home) = home {
+                display.replace(home.as_str(), "~")
+            } else {
+                display.to_string()
+            };
+            seg!(display, dim_color);
+        }
+
         segs
     }
+}
+
+/// Helper to get home directory (avoids adding a dependency to this function's scope).
+fn dirs_or_home() -> Option<String> {
+    std::env::var("HOME").ok()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────

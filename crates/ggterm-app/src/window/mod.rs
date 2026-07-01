@@ -926,6 +926,12 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
+                // CWD from OSC 7 (pane-level cwd tracking).
+                self.status_bar.cwd = self
+                    .active_session()
+                    .cwd()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).
