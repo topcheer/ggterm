@@ -1882,6 +1882,10 @@ impl DesktopApp {
                 .filter_map(|(id, _)| {
                     session.pane_app(*id).map(|app| {
                         let mut cs = cursor_state(app);
+                        // Hide cursor when scrolled into scrollback history.
+                        if app.terminal().grid().is_scrolled() {
+                            cs.visible = false;
+                        }
                         // Apply blink from DesktopApp's cursor_blink state.
                         if cs.visible {
                             cs.blink_alpha = blink_alpha;
