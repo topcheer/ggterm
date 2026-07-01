@@ -23,6 +23,11 @@ scrollback_lines = 10000
 # Shell program path. Empty = use $SHELL or /bin/sh
 shell = ""
 
+# Restore previous session (tabs, splits, pane layout) on startup.
+# false = always start with a clean single-pane window (default)
+# true  = restore the layout from your last session
+restore_session = false
+
 [ai]
 # Enable AI features at startup
 enabled = false
