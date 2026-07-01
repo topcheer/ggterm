@@ -1540,6 +1540,21 @@ impl DesktopApp {
         {
             window.request_redraw();
         }
+
+        // Update system mouse cursor icon based on context.
+        if let Some(ref window) = self.window {
+            use winit::window::CursorIcon;
+            let py = self.cursor_pos.1 as f32;
+            let content_top = if self.tab_bar.visible { 30.0 } else { 0.0 };
+            let icon = if self.hovered_link.is_some() {
+                CursorIcon::Pointer
+            } else if py > content_top || self.selection.dragging {
+                CursorIcon::Text
+            } else {
+                CursorIcon::Default
+            };
+            window.set_cursor(icon);
+        }
     }
 
     /// P17-C: Update `hovered_link` based on the cell under the cursor.
