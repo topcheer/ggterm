@@ -237,6 +237,18 @@ impl DesktopApp {
                     // Check if hovering specifically the close button area.
                     let close_btn_hovered = is_hovered && cur_x >= x + w - 28.0 && cur_x < x + w;
 
+                    // Close button background circle on hover.
+                    if close_btn_hovered {
+                        ui_rects.push(ggterm_render_wgpu::UiRect {
+                            x: x + w - 22.0,
+                            y: tab_y + 4.0,
+                            w: 18.0,
+                            h: tab_h - 8.0,
+                            color: (220.0, 80.0, 80.0, 0.2),
+                            radius: 9.0,
+                            stroke_width: 0.0,
+                        });
+                    }
                     let close_x = x + w - 16.0 - cell_w * 0.5;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                         text: "\u{00d7}".to_string(),
@@ -257,12 +269,22 @@ impl DesktopApp {
 
             // "+" multi-function button at the end.
             let btn_x = layout.new_tab_button.cx - layout.new_tab_button.size / 2.0;
+            let btn_hovered = self.tab_bar.is_new_tab_button_at(
+                &layout,
+                self.cursor_pos.0 as f32,
+                self.cursor_pos.1 as f32,
+            );
+            let btn_bg = if btn_hovered {
+                (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
+            } else {
+                (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.6)
+            };
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: btn_x,
                 y: 4.0,
                 w: layout.new_tab_button.size,
                 h: tab_h,
-                color: (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.6),
+                color: btn_bg,
                 radius: tab_radius,
                 stroke_width: 0.0,
             });
@@ -270,7 +292,11 @@ impl DesktopApp {
                 text: "+".to_string(),
                 left: layout.new_tab_button.cx - cell_w * 0.5,
                 top: 4.0 + 5.0,
-                color: (180, 185, 200),
+                color: if btn_hovered {
+                    (255, 255, 255)
+                } else {
+                    (180, 185, 200)
+                },
             });
         }
 
