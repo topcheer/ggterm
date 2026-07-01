@@ -1123,18 +1123,22 @@ impl DesktopApp {
 
         // ── P28: Tab right-click context menu ─────────────────────────
         if self.tab_context_menu.visible {
-            // Dynamic width: measure longest label + shortcut.
+            // Dynamic width: label_width + gap + shortcut_width + padding.
             let max_label = crate::tab_bar::TabMenuAction::all()
                 .iter()
-                .map(|a| {
-                    let label_len = a.label().chars().count();
-                    let shortcut_len = a.shortcut().chars().count();
-                    label_len + shortcut_len + 4 // gap between label and shortcut
-                })
+                .map(|a| a.label().chars().count())
                 .max()
                 .unwrap_or(0);
-            let menu_w = (max_label as f32 * cell_w + 32.0)
-                .max(crate::tab_bar::TabContextMenuState::ITEM_WIDTH);
+            let max_shortcut = crate::tab_bar::TabMenuAction::all()
+                .iter()
+                .map(|a| a.shortcut().chars().count())
+                .max()
+                .unwrap_or(0);
+            // left_pad(12) + label + gap(2 cells) + shortcut + right_pad(12)
+            let menu_w = max_label as f32 * cell_w
+                + max_shortcut as f32 * cell_w
+                + cell_w * 2.0 // gap between label and shortcut
+                + 24.0; // left + right padding
             let menu_h = self.tab_context_menu.menu_height();
             let mx = self.tab_context_menu.x;
             let my = self.tab_context_menu.y;
@@ -1197,7 +1201,7 @@ impl DesktopApp {
                 if !shortcut.is_empty() {
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                         text: shortcut.to_string(),
-                        left: mx + menu_w - shortcut.len() as f32 * 7.0 - 12.0,
+                        left: mx + menu_w - shortcut.len() as f32 * cell_w - 12.0,
                         top: iy + 5.0,
                         color: (120, 120, 140),
                     });
@@ -1523,7 +1527,7 @@ impl DesktopApp {
         // ── P30-C: Toast notification ─────────────────────────────────
         if let Some((msg, frames)) = &self.toast {
             let alpha = (*frames as f32 / 120.0).min(1.0);
-            let toast_w = (msg.len() as f32 * 7.0 + 24.0).max(80.0);
+            let toast_w = (msg.len() as f32 * cell_w + 24.0).max(80.0);
             let toast_h = 32.0;
             let tx = (screen_w - toast_w) / 2.0;
             let ty = screen_h - 50.0; // bottom of screen
@@ -1728,7 +1732,7 @@ impl DesktopApp {
 
         // ── P33: URL hover tooltip ────────────────────────────────────
         if let Some(ref url) = self.hovered_link {
-            let tooltip_w = (url.len() as f32 * 7.0 + 24.0).min(400.0);
+            let tooltip_w = (url.len() as f32 * cell_w + 24.0).min(400.0);
             let tooltip_h = 24.0;
             let px = self.cursor_pos.0 as f32 + 14.0;
             let py = self.cursor_pos.1 as f32 + 14.0;
