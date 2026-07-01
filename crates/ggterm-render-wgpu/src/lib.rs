@@ -1012,9 +1012,15 @@ impl GlyphonRenderer {
         self.ensure_underline_pipeline(device);
         self.ensure_ui_pipeline(device);
 
-        // P33: Prepare and render overlay TEXT (tab bar, status bar, etc).
-        // In multi-pane mode, overlay text was being clipped by pane scissor rects.
-        // Now we render it here with full-screen visibility.
+        // Step 1: Draw UI backgrounds (tab bar, status bar, dialogs) FIRST
+        // so overlay text is rendered ON TOP, not hidden behind them.
+        self.prepare_overlay(device);
+        self.draw_overlay(render_pass);
+        self.prepare_ui(device);
+        self.draw_ui(render_pass);
+
+        // Step 2: Prepare and render overlay TEXT (tab bar, status bar, etc)
+        // on top of the UI backgrounds.
         let overlay_texts = std::mem::take(&mut self.overlay_text);
         if !overlay_texts.is_empty() {
             let metrics = Metrics::new(self.font_size, self.font_size);
@@ -1071,11 +1077,6 @@ impl GlyphonRenderer {
                 .render(&self.atlas, &self.viewport, render_pass)?;
         }
         self.overlay_text = overlay_texts;
-
-        self.prepare_overlay(device);
-        self.draw_overlay(render_pass);
-        self.prepare_ui(device);
-        self.draw_ui(render_pass);
         Ok(())
     }
 }
