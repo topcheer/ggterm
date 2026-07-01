@@ -104,6 +104,10 @@ impl DesktopApp {
         let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::new();
         let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::new();
 
+        // Theme background as normalized f32 — used for tab bar/status bar
+        // so they match the terminal content instead of hardcoded colors.
+        let theme_bg = (br as f32 / 255.0, bg as f32 / 255.0, bb as f32 / 255.0);
+
         // Update tab bar data.
         let titles: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
         self.tab_bar.update(&titles, self.active);
@@ -116,13 +120,18 @@ impl DesktopApp {
             let tab_gap = 4.0_f32;
             let tab_radius = 6.0_f32;
 
-            // Tab bar background — semi-transparent dark surface.
+            // Tab bar background — theme-aware, slightly lighter than terminal bg.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: 0.0,
                 y: 0.0,
                 w: screen_w,
                 h: bar_h,
-                color: (0.07, 0.07, 0.10, 0.92), // rich dark, slightly transparent
+                color: (
+                    theme_bg.0 * 1.15,
+                    theme_bg.1 * 1.15,
+                    theme_bg.2 * 1.15,
+                    0.95,
+                ),
                 radius: 0.0,
                 stroke_width: 0.0,
             });
@@ -133,7 +142,7 @@ impl DesktopApp {
                 y: bar_h - 1.0,
                 w: screen_w,
                 h: 1.0,
-                color: (0.15, 0.17, 0.23, 0.6),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.5),
                 radius: 0.0,
                 stroke_width: 0.0,
             });
@@ -161,13 +170,13 @@ impl DesktopApp {
                 let title = tab.format();
 
                 if tab.active {
-                    // Active tab: brighter surface with accent bottom border.
+                    // Active tab: lighter surface derived from theme bg.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x,
                         y: tab_y,
                         w,
                         h: tab_h,
-                        color: (0.14, 0.15, 0.22, 0.95), // surface_active
+                        color: (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.95),
                         radius: tab_radius,
                         stroke_width: 0.0,
                     });
@@ -177,18 +186,18 @@ impl DesktopApp {
                         y: tab_y + tab_h - 2.0,
                         w: w - tab_radius * 2.0,
                         h: 2.0,
-                        color: (0.48, 0.64, 0.97, 0.9), // accent blue glow
+                        color: (0.48, 0.64, 0.97, 0.9),
                         radius: 0.0,
                         stroke_width: 0.0,
                     });
                 } else {
-                    // Inactive tab: subtle hover surface.
+                    // Inactive tab: slightly lighter than terminal bg.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x,
                         y: tab_y,
                         w,
                         h: tab_h,
-                        color: (0.10, 0.10, 0.14, 0.7),
+                        color: (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.7),
                         radius: tab_radius,
                         stroke_width: 0.0,
                     });
@@ -489,24 +498,29 @@ impl DesktopApp {
             let bar_y = screen_h - bar_h;
             let pad_x = 12.0_f32;
 
-            // Rounded background fill (dark, semi-transparent).
+            // Rounded background fill — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: pad_x,
                 y: bar_y,
                 w: screen_w - pad_x * 2.0,
                 h: bar_h,
-                color: (0.1, 0.1, 0.13, 0.85),
+                color: (
+                    theme_bg.0 * 1.15,
+                    theme_bg.1 * 1.15,
+                    theme_bg.2 * 1.15,
+                    0.90,
+                ),
                 radius: 6.0,
                 stroke_width: 0.0,
             });
 
-            // Subtle top border stroke.
+            // Subtle top border stroke — theme-derived.
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: pad_x,
                 y: bar_y,
                 w: screen_w - pad_x * 2.0,
                 h: bar_h,
-                color: (0.25, 0.27, 0.32, 0.6),
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.5),
                 radius: 6.0,
                 stroke_width: 1.0,
             });
