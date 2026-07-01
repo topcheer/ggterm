@@ -245,7 +245,7 @@ impl DesktopApp {
                 self.copy_selection_to_clipboard();
                 return;
             }
-            // Ctrl+Shift+K → clear
+            // Ctrl+Shift+K → clear screen + get fresh prompt
             if self.check_keybinding(
                 "clear",
                 self.mods.ctrl,
@@ -256,9 +256,11 @@ impl DesktopApp {
                 crate::terminal_actions::clear_screen_and_scrollback(
                     self.active_session_mut().app_mut().grid_mut(),
                 );
+                // Send clear sequence so shell redraws a fresh prompt.
+                self.write_to_pty(b"\x1b[H\x1b[2J\x0c");
                 return;
             }
-            // Ctrl+Shift+R → reset terminal
+            // Ctrl+Shift+R → restart shell (full reset)
             if self.check_keybinding(
                 "reset",
                 self.mods.ctrl,
@@ -266,7 +268,7 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) {
-                crate::terminal_actions::soft_reset(self.active_session_mut().app_mut().grid_mut());
+                self.active_session_mut().restart_active_shell();
                 return;
             }
             // Ctrl+Shift+T → cycle theme
