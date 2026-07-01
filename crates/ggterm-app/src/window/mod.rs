@@ -760,6 +760,16 @@ impl ApplicationHandler for DesktopApp {
         let mut attrs = Window::default_attributes()
             .with_title(&self.config.title)
             .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64));
+
+        // Set window icon from embedded PNG.
+        let icon_data = include_bytes!("../../../../assets/logo-32.png");
+        if let Ok(img) = image::load_from_memory(icon_data) {
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            if let Ok(icon) = winit::window::Icon::from_rgba(rgba.into_raw(), w, h) {
+                attrs = attrs.with_window_icon(Some(icon));
+            }
+        }
         if let Some(x) = self.saved_window_pos {
             attrs = attrs.with_position(winit::dpi::LogicalPosition::new(x.0 as f64, x.1 as f64));
         }

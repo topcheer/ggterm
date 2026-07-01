@@ -22,6 +22,7 @@ desktop = [
     "dep:objc2",
     "dep:objc2-foundation",
     "dep:objc2-app-kit",
+    "dep:image",
 ]
 # AI integration: enables ggterm-ai engine bridge
 ai = ["dep:ggterm-ai"]
@@ -58,6 +59,7 @@ env_logger = { workspace = true, optional = true }
 ggterm-plugin = { path = "../ggterm-plugin", optional = true }
 notify = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 
 [dev-dependencies]
 ggterm-plugin = { path = "../ggterm-plugin" }
