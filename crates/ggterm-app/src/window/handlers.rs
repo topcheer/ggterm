@@ -123,6 +123,17 @@ impl DesktopApp {
             return;
         }
 
+        // Close "+" dropdown on Escape.
+        if self.new_tab_menu.visible
+            && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
+        {
+            self.new_tab_menu.hide();
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
         // ── P14-D: Config-driven keybinding dispatch ──
         // All configurable actions are resolved through check_keybinding().
         // The resolved_keybindings map is populated from ConfigManager at
@@ -1125,6 +1136,19 @@ impl DesktopApp {
         // Mouse tracking is OFF — handle selection and paste locally.
         match (mouse_button, state) {
             (crate::mouse::MouseButton::Left, ElementState::Pressed) => {
+                // "+" dropdown menu dispatch.
+                if self.new_tab_menu.visible {
+                    let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                    if let Some(idx) = self.new_tab_menu.hit_test(px, py) {
+                        self.execute_new_tab_menu_action(idx);
+                    }
+                    self.new_tab_menu.hide();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+
                 // P27-C: If context menu is open, handle item selection or close.
                 if self.context_menu.visible {
                     let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
@@ -1172,9 +1196,14 @@ impl DesktopApp {
                         let layout = self
                             .tab_bar
                             .compute_layout(self.tab_layout_width(), self.tab_font_size());
-                        // New tab button (+).
+                        // New tab button (+) → open dropdown menu.
                         if self.tab_bar.is_new_tab_button_at(&layout, px, py) {
-                            self.open_tab();
+                            let menu_x = px;
+                            let menu_y = py + 16.0; // below the + button
+                            self.new_tab_menu.toggle(menu_x, menu_y);
+                            if let Some(ref window) = self.window {
+                                window.request_redraw();
+                            }
                             return;
                         }
                         // Close button (x) on a tab.

@@ -52,6 +52,7 @@ pub mod event;
 pub mod font;
 pub mod input;
 pub mod mouse;
+pub mod new_tab_menu;
 pub mod search;
 pub mod session;
 pub mod settings_ui;

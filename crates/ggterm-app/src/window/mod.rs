@@ -266,6 +266,8 @@ pub struct DesktopApp {
     shell_switcher: crate::shell_switcher::ShellSwitcherState,
     /// P28: Tab right-click context menu.
     tab_context_menu: crate::tab_bar::TabContextMenuState,
+    /// "+" button dropdown menu.
+    new_tab_menu: crate::new_tab_menu::NewTabMenuState,
     /// P29-A: Shortcut help overlay (Ctrl+Shift+/).
     shortcut_help: crate::shortcut_help::ShortcutHelpState,
     /// P29-C: Quit confirmation dialog.
@@ -545,6 +547,7 @@ impl DesktopApp {
             bell_limiter: crate::sound::BellRateLimiter::default(),
             shell_switcher: crate::shell_switcher::ShellSwitcherState::new(),
             tab_context_menu: crate::tab_bar::TabContextMenuState::default(),
+            new_tab_menu: crate::new_tab_menu::NewTabMenuState::default(),
             shortcut_help: crate::shortcut_help::ShortcutHelpState::new(),
             quit_confirm: false,
             should_quit: false,

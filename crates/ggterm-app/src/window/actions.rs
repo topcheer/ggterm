@@ -105,6 +105,20 @@ impl DesktopApp {
         }
     }
 
+    /// Execute an action from the "+" dropdown menu.
+    pub(super) fn execute_new_tab_menu_action(&mut self, index: usize) {
+        use crate::new_tab_menu::NewTabMenuAction;
+        match NewTabMenuAction::all().get(index).copied() {
+            Some(NewTabMenuAction::NewTab) => self.open_tab(),
+            Some(NewTabMenuAction::SplitHorizontal) => self.split_pane_horizontal(),
+            Some(NewTabMenuAction::SplitVertical) => self.split_pane_vertical(),
+            None => {}
+        }
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     /// Close the active tab (keep at least 1).
     pub(super) fn close_tab(&mut self) {
         if self.sessions.len() <= 1 {

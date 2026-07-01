@@ -1091,6 +1091,65 @@ impl DesktopApp {
             }
         }
 
+        // ── "+" dropdown menu rendering ──────────────────────────────
+        if self.new_tab_menu.visible {
+            use crate::new_tab_menu::{NewTabMenuAction, NewTabMenuState};
+            let menu_w = NewTabMenuState::WIDTH;
+            let menu_h = self.new_tab_menu.menu_height();
+            let mx = self.new_tab_menu.pos.0;
+            let my = self.new_tab_menu.pos.1;
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: mx,
+                y: my,
+                w: menu_w,
+                h: menu_h,
+                color: (0.1, 0.1, 0.14, 0.95),
+                radius: NewTabMenuState::RADIUS,
+                stroke_width: 0.0,
+            });
+            // Border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: mx,
+                y: my,
+                w: menu_w,
+                h: menu_h,
+                color: (0.3, 0.35, 0.45, 0.6),
+                radius: NewTabMenuState::RADIUS,
+                stroke_width: 1.0,
+            });
+
+            for (i, action) in NewTabMenuAction::all().iter().enumerate() {
+                let (_, iy, _, _) = self.new_tab_menu.item_rect(i);
+
+                // Hover highlight.
+                let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                if px >= mx
+                    && px < mx + menu_w
+                    && py >= iy
+                    && py < iy + NewTabMenuState::ITEM_HEIGHT
+                {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: mx + NewTabMenuState::PADDING * 0.5,
+                        y: iy,
+                        w: menu_w - NewTabMenuState::PADDING,
+                        h: NewTabMenuState::ITEM_HEIGHT,
+                        color: (0.15, 0.25, 0.45, 0.6),
+                        radius: 4.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: action.label().to_string(),
+                    left: mx + 12.0,
+                    top: iy + 5.0,
+                    color: (220, 220, 230),
+                });
+            }
+        }
+
         // ── P29-A: Shortcut help overlay ──────────────────────────────
         if self.shortcut_help.visible {
             let panel_w = 520.0;
