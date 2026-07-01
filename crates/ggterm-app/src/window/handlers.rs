@@ -168,40 +168,43 @@ impl DesktopApp {
                 }
                 return;
             }
-            // Ctrl+= → zoom in
+            // Ctrl+= → zoom in (also Cmd+= on macOS)
             if self.check_keybinding(
                 "zoom_in",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "=")
+            {
                 if self.font_zoom.zoom_in() {
                     self.apply_font_size();
                 }
                 return;
             }
-            // Ctrl+- → zoom out
+            // Ctrl+- → zoom out (also Cmd+- on macOS)
             if self.check_keybinding(
                 "zoom_out",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "-")
+            {
                 if self.font_zoom.zoom_out() {
                     self.apply_font_size();
                 }
                 return;
             }
-            // Ctrl+0 → reset zoom
+            // Ctrl+0 → reset zoom (also Cmd+0 on macOS)
             if self.check_keybinding(
                 "zoom_reset",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "0")
+            {
                 if self.font_zoom.reset() {
                     self.apply_font_size();
                 }
@@ -223,25 +226,27 @@ impl DesktopApp {
                 self.debug_visible = !self.debug_visible;
                 return;
             }
-            // Ctrl+Shift+V → paste
-            if self.check_keybinding(
+            // Ctrl+Shift+V → paste (also Cmd+V on macOS)
+            if (self.check_keybinding(
                 "paste",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            )) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "v")
+            {
                 self.paste_from_clipboard();
                 return;
             }
-            // Ctrl+Shift+C → copy
-            if self.check_keybinding(
+            // Ctrl+Shift+C → copy (also Cmd+C on macOS)
+            if (self.check_keybinding(
                 "copy",
                 self.mods.ctrl,
                 self.mods.shift,
                 self.mods.alt,
                 key_name,
-            ) {
+            )) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "c")
+            {
                 self.copy_selection_to_clipboard();
                 return;
             }
