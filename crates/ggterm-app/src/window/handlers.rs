@@ -1570,7 +1570,7 @@ impl DesktopApp {
                         self.select_line_at(row);
                     }
                     _ => {
-                        // Single click: start normal selection.
+                        // Single click: start or extend selection.
                         // Close search bar and command palette (clicking away dismisses them).
                         if self.search.visible {
                             self.search.close();
@@ -1584,7 +1584,13 @@ impl DesktopApp {
                         if self.tab_context_menu.visible {
                             self.tab_context_menu.close();
                         }
-                        self.selection.start(col, row);
+                        if self.mods.shift && self.selection.start.is_some() {
+                            // Shift+Click: extend existing selection to this point.
+                            self.selection.extend(col, row);
+                        } else {
+                            // Normal click: start new selection.
+                            self.selection.start(col, row);
+                        }
                     }
                 }
                 if let Some(ref window) = self.window {
