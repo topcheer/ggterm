@@ -884,6 +884,37 @@ impl DesktopApp {
             }
         }
 
+        // Ctrl+Shift+Up/Down → scroll one line at a time (no Shift on macOS).
+        if self.mods.ctrl && self.mods.shift && !self.mods.alt {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(1);
+                    self.smooth_scroll.reset();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .grid_mut()
+                        .scroll_down_viewport(1);
+                    self.smooth_scroll.reset();
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Alt+1-9 or Cmd+1-9 (macOS) → switch to tab N (not configurable)
         // macOS: Cmd+Up/Cmd+Down → scroll one line, Cmd+PageUp/PageDown → scroll one page.
         if cfg!(target_os = "macos") && self.mods.super_key && !self.mods.alt && !self.mods.ctrl {
