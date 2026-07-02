@@ -61,19 +61,25 @@ impl CursorBlink {
     ///
     /// Uses a sine wave for smooth fade in/out.
     /// For steady cursors, returns 1.0.
-    pub fn alpha(&self) -> f32 {
+    /// When `focused` is false, returns a dim steady value (no blinking).
+    pub fn alpha_focused(&self, focused: bool) -> f32 {
         if !self.enabled {
             return 1.0;
         }
+        if !focused {
+            return 0.5;
+        }
         let elapsed = self.cycle_start.elapsed().as_secs_f32();
         let period = (BLINK_PHASE_MS * 2) as f32 / 1000.0;
-        // Sine wave: 0 → 1 → 0 over one period
         let phase = (elapsed % period) / period;
-        // Use a smooth curve that stays near 1.0 longer than near 0.0
-        // to mimic typical terminal blink (more visible than hidden)
         let raw = (std::f32::consts::TAU * phase).cos() * 0.5 + 0.5;
-        // Ensure minimum visibility of 0.15 for usability
         0.15 + raw * 0.85
+    }
+
+    /// Returns a smooth alpha value (0.0 to 1.0) for cursor rendering.
+    /// Assumes window is focused (blinking active).
+    pub fn alpha(&self) -> f32 {
+        self.alpha_focused(true)
     }
 
     /// Reset the blink cycle (e.g., on user input — cursor becomes solid).

@@ -48,7 +48,7 @@ impl DesktopApp {
                 | ggterm_core::CursorStyle::BlinkBar
         );
         self.cursor_blink.set_enabled(is_blink);
-        let blink_alpha = self.cursor_blink.alpha();
+        let blink_alpha = self.cursor_blink.alpha_focused(self.window_focused);
         let blink_visible = self.cursor_blink.is_visible();
 
         // P16-A: Wire search match highlights to renderer.
