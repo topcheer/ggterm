@@ -291,6 +291,9 @@ pub struct Modes {
     /// DECSET 12 — cursor blink attribute.
     /// Programs can control whether the cursor should blink.
     pub cursor_blink: bool,
+    /// DECSET 5 — DECSCNM screen mode (reverse video).
+    /// When enabled, foreground and background colors are swapped.
+    pub reverse_video: bool,
     /// modifyOtherKeys — xterm enhanced keyboard protocol.
     /// 0 = disabled, 1 = mode 1, 2 = mode 2.
     pub modify_other_keys: u8,
@@ -318,6 +321,7 @@ impl Modes {
             reflow: true,
             keypad_app: false,
             cursor_blink: true,
+            reverse_video: false,
             modify_other_keys: 0,
         }
     }
@@ -639,6 +643,11 @@ impl Terminal {
         self.modes.cursor_blink
     }
 
+    /// Return true if reverse video mode is active (DECSET 5 / DECSCNM).
+    pub fn reverse_video(&self) -> bool {
+        self.modes.reverse_video
+    }
+
     /// Take and clear a pending desktop notification (P24-E).
     /// Returns (title, body) if OSC 9 or OSC 777 was received.
     pub fn take_pending_notification(&mut self) -> Option<(String, String)> {
@@ -913,6 +922,7 @@ impl Terminal {
     fn set_dec_mode(&mut self, mode: u16, enable: bool) {
         match mode {
             7 => self.modes.auto_wrap = enable,
+            5 => self.modes.reverse_video = enable, // DECSCNM
             12 => self.modes.cursor_blink = enable,
             25 => self.modes.cursor_visible = enable,
             6 => {
@@ -1573,6 +1583,7 @@ impl Perform for Terminal {
                 let mode = params.first().copied().unwrap_or(0);
                 let is_set = match mode {
                     1 => self.modes.cursor_keys_app,    // DECCKM
+                    5 => self.modes.reverse_video,      // DECSCNM
                     7 => self.modes.auto_wrap,          // DECAWM
                     12 => self.modes.cursor_blink,      // Cursor blink
                     25 => self.modes.cursor_visible,    // DECTCEM
@@ -4189,6 +4200,41 @@ mod tests {
         assert!(
             resp_str.contains("12;2$y"),
             "mode 12 should be reset (2), got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_decset5_reverse_video_default() {
+        let t = Terminal::new(80, 24);
+        assert!(!t.reverse_video(), "reverse video should be off by default");
+    }
+
+    #[test]
+    fn t_decset5_reverse_video_on() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?5h"); // Enable reverse video
+        assert!(t.reverse_video());
+    }
+
+    #[test]
+    fn t_decset5_reverse_video_off() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?5h"); // Enable
+        feed(&mut t, b"\x1b[?5l"); // Disable
+        assert!(!t.reverse_video());
+    }
+
+    #[test]
+    fn t_decrqm_reverse_video() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?5h"); // Enable
+        feed(&mut t, b"\x1b[?5$p"); // Query mode 5
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("5;1$y"),
+            "mode 5 should be set (1), got: {}",
             resp_str
         );
     }

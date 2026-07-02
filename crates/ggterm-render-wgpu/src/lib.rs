@@ -155,6 +155,8 @@ pub struct GlyphonRenderer {
     /// Blink phase for SGR 5 blinking text (0.0 = visible, 1.0 = hidden).
     /// Driven by the app layer via `set_blink_phase()`.
     blink_phase: f32,
+    /// DECSCNM reverse video mode — swap fg/bg globally.
+    reverse_video: bool,
 }
 
 // ── P26-A: Modern UI Rendering ──────────────────────────────────
@@ -309,6 +311,7 @@ impl GlyphonRenderer {
             ui_vertex_count: 0,
             ui_pipeline: None,
             blink_phase: 0.0,
+            reverse_video: false,
         }
     }
 
@@ -357,6 +360,12 @@ impl GlyphonRenderer {
     /// The app layer drives this from the cursor blink timer.
     pub fn set_blink_phase(&mut self, phase: f32) {
         self.blink_phase = phase;
+    }
+
+    /// Set reverse video mode (DECSCNM / DECSET 5).
+    /// When enabled, foreground and background colors are swapped globally.
+    pub fn set_reverse_video(&mut self, on: bool) {
+        self.reverse_video = on;
     }
 
     /// P23-C: Determine whether `prepare_grid()` should be called for this grid.
@@ -493,6 +502,7 @@ impl GlyphonRenderer {
                 &row_highlights,
                 self.dynamic_fg,
                 self.dynamic_bg,
+                self.reverse_video,
             );
 
             for run in &runs {
@@ -1250,7 +1260,7 @@ mod tests {
         grid[(1, 0)] = Cell::with_char('i');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "Hi");
     }
@@ -1263,7 +1273,7 @@ mod tests {
         grid.put_char(2, 0, '好');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "你好");
     }
@@ -1273,7 +1283,7 @@ mod tests {
     fn test_grid_to_text_empty_row() {
         let grid = Grid::new(5, 1);
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None);
+        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "");
     }

@@ -102,6 +102,9 @@ impl DesktopApp {
         // SGR 5: Blink text — share the cursor blink phase for text blink.
         renderer.set_blink_phase(blink_alpha);
 
+        // DECSCNM: Reverse video mode — swap fg/bg globally.
+        renderer.set_reverse_video(session.app().terminal().reverse_video());
+
         // P19-G: Build overlay data (tab bar + settings + about).
         let cell_h = renderer.cell_height() as f32;
         let cell_w = renderer.cell_width() as f32;
