@@ -213,10 +213,6 @@ pub struct DesktopApp {
     // ── About dialog + Menu bar (P19-A) ──
     /// About dialog state.
     about: crate::about_dialog::AboutDialog,
-    /// Whether the menu bar has been installed.
-    #[allow(dead_code)]
-    menu_installed: bool,
-
     // ── P22-A: Session restore flag ──
     /// Whether we restored a saved session at startup.
     restored_session: bool,
@@ -537,7 +533,6 @@ impl DesktopApp {
             tab_bar: crate::tab_bar::TabBarState::new(),
             settings: crate::settings_ui::SettingsState::new(),
             about: crate::about_dialog::AboutDialog::new(),
-            menu_installed: false,
             restored_session: false,
             cursor_blink: crate::cursor_blink::CursorBlink::new(),
             command_palette: crate::command_palette::CommandPaletteState::default(),

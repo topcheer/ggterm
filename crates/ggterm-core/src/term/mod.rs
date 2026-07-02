@@ -1549,6 +1549,38 @@ impl Perform for Terminal {
                 let mode = params.first().copied().unwrap_or(0);
                 self.protected_attr = mode == 1;
             }
+            // XTVERSION — query terminal identification (CSI > Ps q)
+            // Programs like tmux use this to detect the terminal type.
+            // We respond: DCS >| ggterm(1.0) ST
+            b'q' if intermediates.contains(&b'>') => {
+                self.response_buffer
+                    .extend_from_slice(b"\x1bP>|ggterm(1.0)\x1b\\");
+            }
+            // DECRQM — request mode (CSI ? Pm $ p for DEC private modes)
+            // Programs query whether a mode is set. We respond with:
+            // CSI ? Pm ; Ps $ y  where Ps: 0=not recognized, 1=set, 2=reset, 3=permanently set, 4=permanently reset
+            b'p' if intermediates.contains(&b'$') && is_private => {
+                let mode = params.first().copied().unwrap_or(0);
+                let is_set = match mode {
+                    1 => self.modes.cursor_keys_app,    // DECCKM
+                    7 => self.modes.auto_wrap,          // DECAWM
+                    25 => self.modes.cursor_visible,    // DECTCEM
+                    47 => self.modes.alt_screen,        // Alt screen
+                    1047 => self.modes.alt_screen,      // Alt screen
+                    1049 => self.modes.alt_screen,      // Alt screen + cursor save
+                    2004 => self.modes.bracketed_paste, // Bracketed paste
+                    1000 | 1002 | 1003 => {
+                        self.modes.mouse_tracking
+                            || self.modes.mouse_button_event
+                            || self.modes.mouse_any_event
+                    }
+                    1006 => self.modes.mouse_sgr, // SGR mouse
+                    _ => false,
+                };
+                let status = if is_set { 1 } else { 2 };
+                let resp = format!("\x1b[?{};{}$y", mode, status);
+                self.response_buffer.extend_from_slice(resp.as_bytes());
+            }
             _ => {}
         }
     }
@@ -3990,6 +4022,73 @@ mod tests {
         assert!(
             !t.modes.insert,
             "insert should NOT be set by modifyOtherKeys"
+        );
+    }
+
+    #[test]
+    fn t_xtversion_query() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>q"); // XTVERSION query
+        let resp = t.take_response();
+        assert!(
+            resp.windows(7).any(|w| w == b"ggterm("),
+            "response should contain ggterm version, got: {:?}",
+            String::from_utf8_lossy(&resp)
+        );
+    }
+
+    #[test]
+    fn t_decrqm_cursor_visible_set() {
+        let mut t = Terminal::new(80, 24);
+        // Cursor is visible by default (DECSET 25)
+        feed(&mut t, b"\x1b[?25$p"); // Query DEC private mode 25
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains(";1$y"),
+            "mode 25 should be set (1), got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_decrqm_cursor_visible_reset() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?25l"); // Hide cursor
+        feed(&mut t, b"\x1b[?25$p"); // Query mode 25
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains(";2$y"),
+            "mode 25 should be reset (2), got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_decrqm_bracketed_paste() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?2004h"); // Enable bracketed paste
+        feed(&mut t, b"\x1b[?2004$p"); // Query mode 2004
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("2004;1$y"),
+            "mode 2004 should be set (1), got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_decrqm_unknown_mode() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?9999$p"); // Query unknown mode
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("9999;2$y"),
+            "unknown mode should be reset (2), got: {}",
+            resp_str
         );
     }
 }
