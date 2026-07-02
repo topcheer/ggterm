@@ -194,12 +194,21 @@ class GgtermFfi {
     transportIsAlive = _lib
         .lookupFunction<_IsAliveC, _IsAliveDart>(
             'ggterm_transport_is_alive');
-    sshConnect = _lib
-        .lookupFunction<_SshConnectC, _SshConnectDart>(
-            'ggterm_ssh_connect');
-    sshConnectKey = _lib
-        .lookupFunction<_SshConnectKeyC, _SshConnectKeyDart>(
-            'ggterm_ssh_connect_key');
+    // SSH functions are optional (behind the "ssh" feature flag in Rust)
+    try {
+      sshConnect = _lib
+          .lookupFunction<_SshConnectC, _SshConnectDart>(
+              'ggterm_ssh_connect');
+    } catch (_) {
+      sshConnect = (_, __, ___, ____, _____) => -1;
+    }
+    try {
+      sshConnectKey = _lib
+          .lookupFunction<_SshConnectKeyC, _SshConnectKeyDart>(
+              'ggterm_ssh_connect_key');
+    } catch (_) {
+      sshConnectKey = (_, __, ___, ____, _____) => -1;
+    }
     echoConnect = _lib
         .lookupFunction<_EchoConnectC, _EchoConnectDart>(
             'ggterm_echo_connect');

@@ -141,7 +141,8 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
     let cv_sel = sel_registerName(CString::new("contentView").unwrap().as_ptr());
     let content_view = msg_obj(window, cv_sel);
 
-    // [contentView addSubview:view positioned:0 relativeTo:nil]
+    // [contentView addSubview:view positioned:NSWindowBelow relativeTo:nil]
+    // NSWindowBelow = -1 (must not use 0 / NSWindowOut — AppKit asserts on macOS 26+)
     {
         let add_fn: unsafe extern "C" fn(
             *mut std::ffi::c_void,
@@ -155,7 +156,8 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
                 .unwrap()
                 .as_ptr(),
         );
-        add_fn(content_view, add_sel, view, 0, std::ptr::null_mut());
+        // NSWindowBelow = -1, NSWindowAbove = 1, NSWindowOut = 0
+        add_fn(content_view, add_sel, view, -1, std::ptr::null_mut());
     }
 
     // [window setOpaque: NO]

@@ -4,15 +4,23 @@
 //! [`TerminalTransport`](ggterm_core::TerminalTransport) for remote
 //! terminal sessions.
 //!
-//! # Example
+//! ## Architecture
 //!
-//! ```no_run
-//! use ggterm_ssh::SshSession;
-//! use ggterm_core::TerminalTransport;
+//! All SSH I/O runs on a background tokio task. The synchronous
+//! [`TerminalTransport`] methods are **instant and non-blocking** — they
+//! just read from / write to `std::sync::Mutex<Vec<u8>>` buffers.  This is
+//! critical because the FFI is called from Flutter's UI thread; any
+//! `block_on()` in `read()`/`write()` would freeze the entire app.
 //!
-//! let mut session = SshSession::connect("example.com", 22, "user", "pass").unwrap();
-//! session.write(b"ls -la\n");
-//! let data = session.read();
+//! ```text
+//!  Flutter UI thread          Background tokio task
+//!  ┌────────────┐             ┌─────────────────────┐
+//!  │ read()     │ ◄── drain ── │ channel.wait()      │
+//!  │            │              │  → push to read_buf │
+//!  │ write()    │ ── push ──► │  → pop write_buf    │
+//!  │            │              │  → channel.data()   │
+//!  │ resize()   │ ── push ──► │  → window_change()  │
+//!  └────────────┘             └─────────────────────┘
 //! ```
 
 pub mod error;
@@ -20,11 +28,13 @@ pub mod error;
 pub use error::SshError;
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use russh::client::{self};
 use russh::keys::{PrivateKey, PrivateKeyWithHashAlg};
-use russh::{Channel, ChannelMsg, Disconnect};
+use russh::{ChannelMsg, Disconnect};
+use tokio::sync::mpsc;
 
 // ─────────────────────────────────────────────────────────────────
 //  Client handler
@@ -52,20 +62,25 @@ impl client::Handler for ClientHandler {
 
 /// An active SSH terminal session.
 ///
-/// Wraps a russh connection + channel, bridging async SSH operations
-/// to the synchronous [`TerminalTransport`] trait via an internal
-/// tokio runtime.
+/// All async SSH I/O runs on a background tokio task communicating via
+/// shared buffers, so the synchronous [`TerminalTransport`] methods are
+/// non-blocking and safe to call from a UI thread.
 ///
 /// On drop, the session disconnects automatically.
 pub struct SshSession {
-    /// Dedicated tokio runtime for all async operations.
-    runtime: tokio::runtime::Runtime,
-    /// SSH client handle for disconnection.
+    /// Dedicated tokio runtime — owns the background I/O task.
+    /// Dropping the runtime cancels the task.
+    runtime: Option<tokio::runtime::Runtime>,
+    /// SSH client handle for graceful disconnection.
     handle: Option<client::Handle<ClientHandler>>,
-    /// The SSH channel for PTY I/O.
-    channel: Option<Channel<client::Msg>>,
-    /// Whether the session is alive.
-    alive: bool,
+    /// Sender for writing data to the SSH channel (background task drains).
+    write_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
+    /// Sender for resize commands (background task applies).
+    resize_tx: Option<mpsc::UnboundedSender<(u32, u32)>>,
+    /// Read buffer filled by background task, drained by `read()`.
+    read_buf: Arc<Mutex<Vec<u8>>>,
+    /// Session alive flag (shared with background task).
+    alive: Arc<AtomicBool>,
 }
 
 impl SshSession {
@@ -161,29 +176,84 @@ impl SshSession {
             .block_on(channel.request_shell(true))
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
+        // ── Spawn background I/O task ───────────────────────────
+        // All SSH reads/writes happen here, never blocking the FFI caller.
+        let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (resize_tx, mut resize_rx) = mpsc::unbounded_channel::<(u32, u32)>();
+        let read_buf = Arc::new(Mutex::new(Vec::<u8>::with_capacity(8192)));
+        let alive = Arc::new(AtomicBool::new(true));
+
+        let read_buf_task = read_buf.clone();
+        let alive_task = alive.clone();
+
+        runtime.spawn(async move {
+            let mut channel = channel;
+            loop {
+                // ── Drain pending writes (non-blocking) ────────────
+                // &self borrow, released after each iteration
+                while let Ok(data) = write_rx.try_recv() {
+                    let _ = channel.data(data.as_slice()).await;
+                }
+                // ── Apply pending resize (non-blocking) ────────────
+                while let Ok((cols, rows)) = resize_rx.try_recv() {
+                    let _ = channel.window_change(cols, rows, 0, 0).await;
+                }
+                // ── Read from SSH channel (5ms timeout) ────────────
+                // &mut self borrow — no other borrows active here
+                match tokio::time::timeout(
+                    std::time::Duration::from_millis(5),
+                    channel.wait(),
+                )
+                .await
+                {
+                    Ok(Some(ChannelMsg::Data { ref data })) => {
+                        if let Ok(mut buf) = read_buf_task.lock() {
+                            buf.extend_from_slice(data);
+                        }
+                    }
+                    Ok(Some(ChannelMsg::ExtendedData { ref data, .. })) => {
+                        if let Ok(mut buf) = read_buf_task.lock() {
+                            buf.extend_from_slice(data);
+                        }
+                    }
+                    Ok(Some(ChannelMsg::Eof)) | Ok(Some(ChannelMsg::Close)) | Ok(None) => {
+                        alive_task.store(false, Ordering::Relaxed);
+                        break;
+                    }
+                    Err(_) => {
+                        // Timeout — no data, loop back to check writes
+                    }
+                    _ => {}
+                }
+            }
+        });
+
         Ok(Self {
-            runtime,
+            runtime: Some(runtime),
             handle: Some(handle),
-            channel: Some(channel),
-            alive: true,
+            write_tx: Some(write_tx),
+            resize_tx: Some(resize_tx),
+            read_buf,
+            alive,
         })
     }
 
     /// Explicitly close the SSH session and disconnect.
     pub fn close(&mut self) {
-        if self.alive {
-            self.alive = false;
-            if let Some(ref channel) = self.channel {
-                let _ = self.runtime.block_on(channel.close());
-            }
-            self.channel = None;
-            if let Some(handle) = self.handle.take() {
-                let _ = self.runtime.block_on(handle.disconnect(
-                    Disconnect::ByApplication,
-                    "ggterm disconnect",
-                    "en",
-                ));
-            }
+        self.alive.store(false, Ordering::Relaxed);
+
+        // Drop senders to signal background task to stop writing.
+        self.write_tx.take();
+        self.resize_tx.take();
+
+        // Disconnect gracefully (best-effort).
+        if let (Some(runtime), Some(handle)) = (self.runtime.take(), self.handle.take()) {
+            let _ = runtime.block_on(handle.disconnect(
+                Disconnect::ByApplication,
+                "ggterm disconnect",
+                "en",
+            ));
+            // Dropping runtime cancels the background task.
         }
     }
 }
@@ -195,56 +265,34 @@ impl Drop for SshSession {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  TerminalTransport implementation (P7-B)
+//  TerminalTransport implementation
 // ─────────────────────────────────────────────────────────────────
+//
+// All methods are INSTANT and NON-BLOCKING.
+// They only touch shared buffers / channels — no async, no block_on.
 
 impl ggterm_core::TerminalTransport for SshSession {
     fn read(&mut self) -> Vec<u8> {
-        if !self.alive {
-            return Vec::new();
+        if let Ok(mut buf) = self.read_buf.lock() {
+            return std::mem::take(&mut *buf);
         }
-        let Some(ref mut channel) = self.channel else {
-            return Vec::new();
-        };
-        // Read one message's worth of data (non-blocking-ish via block_on).
-        self.runtime.block_on(async {
-            let mut out = Vec::new();
-            if let Some(msg) = channel.wait().await {
-                match msg {
-                    ChannelMsg::Data { ref data } => out.extend_from_slice(data),
-                    ChannelMsg::ExtendedData { ref data, .. } => out.extend_from_slice(data),
-                    ChannelMsg::Eof | ChannelMsg::Close => {}
-                    _ => {}
-                }
-            }
-            out
-        })
+        Vec::new()
     }
 
     fn write(&mut self, data: &[u8]) {
-        if !self.alive {
-            return;
+        if let Some(tx) = &self.write_tx {
+            let _ = tx.send(data.to_vec());
         }
-        let Some(ref channel) = self.channel else {
-            return;
-        };
-        let _ = self.runtime.block_on(channel.data(data));
     }
 
     fn resize(&mut self, cols: usize, rows: usize) {
-        if !self.alive {
-            return;
+        if let Some(tx) = &self.resize_tx {
+            let _ = tx.send((cols as u32, rows as u32));
         }
-        let Some(ref channel) = self.channel else {
-            return;
-        };
-        let _ = self
-            .runtime
-            .block_on(channel.window_change(cols as u32, rows as u32, 0, 0));
     }
 
     fn is_alive(&mut self) -> bool {
-        self.alive
+        self.alive.load(Ordering::Relaxed)
     }
 }
 

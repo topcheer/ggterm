@@ -1,10 +1,6 @@
 /// Dart mirror of Rust GGTermCell struct.
 ///
-/// Memory layout must match `#[repr(C)]` struct in ggterm-ffi/src/lib.rs:
-///   char_code: u32, flags: u16, fg: u32, bg: u32
-/// Total: 12 bytes (with u16 padding to 4-byte boundary → actual size 12).
-/// In practice, repr(C) on 64-bit: u32 + u16 + u32 + u32 with padding.
-/// We use explicit field offsets via dart:ffi Struct.
+/// Memory layout must match `#[repr(C)]` struct in ggterm-ffi/src/lib.rs.
 import 'dart:ffi';
 
 /// FFI struct matching Rust's `GGTermCell`.
@@ -18,8 +14,7 @@ import 'dart:ffi';
 /// offset 12: u32 bg
 /// ```
 /// Total size: 16 bytes.
-@TypedStruct()
-class GGTermCell extends Struct {
+final class GGTermCell extends Struct {
   @Uint32() external int charCode;
   @Uint16() external int flags;
   @Uint16() external int _padding;
@@ -92,8 +87,6 @@ class AnsiPalette {
   ];
 
   /// Resolve a packed color value to RGB.
-  /// [packed] is the u32 from FFI.
-  /// [defaultFg] and [defaultBg] are fallback RGB values.
   static int resolve(int packed, {int defaultFg = 0xD4D4D4, int defaultBg = 0x1E1E2E}) {
     if (ColorCodec.isDefault(packed)) return defaultFg;
     if (ColorCodec.isIndexed(packed)) {

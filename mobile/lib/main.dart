@@ -96,7 +96,9 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
   @override
   Widget build(BuildContext context) {
     return ConnectionScreen(
-      onConnect: (params) => _onConnect(params),
+      onConnect: (params) async {
+        await _onConnect(params);
+      },
       onEchoTest: () => _onConnect(const ConnectionParams(
         host: '', username: 'echo',
       ), echo: true),

@@ -23,7 +23,7 @@ class ConnectionParams {
 
 class ConnectionScreen extends StatefulWidget {
   /// Called when the user taps Connect.
-  final Future<bool> Function(ConnectionParams params) onConnect;
+  final Future<void> Function(ConnectionParams params) onConnect;
 
   /// Called when the user taps Echo Test.
   final VoidCallback? onEchoTest;
@@ -91,13 +91,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade900,
       appBar: AppBar(
         title: const Text('GGTerm — Connect'),
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
       ),
-      body: Container(
-        color: Colors.grey.shade950,
+      body: Padding(
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
@@ -193,7 +193,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.power_plug),
+                    : const Icon(Icons.electrical_services),
                 label: Text(_connecting ? 'Connecting...' : 'Connect'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
@@ -223,13 +223,16 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     ),
               ),
               const SizedBox(height: 8),
-              ListTile(
-                leading: const Icon(Icons.history, color: Colors.grey),
-                title: Text(
-                  'No saved connections',
-                  style: TextStyle(color: Colors.grey.shade600),
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  leading: const Icon(Icons.history, color: Colors.grey),
+                  title: Text(
+                    'No saved connections',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  dense: true,
                 ),
-                dense: true,
               ),
             ],
           ),

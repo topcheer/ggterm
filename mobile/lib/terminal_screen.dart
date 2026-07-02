@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 
 import 'ffi/session_manager.dart';
 import 'keyboard_bar.dart';
@@ -41,6 +42,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _showKeyboardBar = true;
   Timer? _renderTimer;
   bool _transportAlive = true;
+
+  // Hidden text field for capturing iOS system keyboard input.
+  final FocusNode _inputFocusNode = FocusNode();
+  final TextEditingController _inputController = TextEditingController();
+  String _lastInputText = '';
 
   // Cell dimensions derived from font size (monospace ratio ~0.6).
   double get _cellWidth => _fontSize * 0.6;
@@ -80,12 +86,110 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void dispose() {
     _renderTimer?.cancel();
+    _inputFocusNode.dispose();
+    _inputController.dispose();
     super.dispose();
   }
 
   void _sendKey(String keyName) {
     final codes = _keyNameToBytes(keyName);
     widget.sessionManager.sendInput(widget.sessionId, codes);
+  }
+
+  /// Handle text input from the hidden TextField.
+  /// Computes the delta between last and current text, then sends it.
+  void _onInputChanged(String newText) {
+    final oldText = _lastInputText;
+
+    // Detect backspace (text got shorter).
+    if (newText.length < oldText.length) {
+      final deletedCount = oldText.length - newText.length;
+      for (var i = 0; i < deletedCount; i++) {
+        widget.sessionManager.sendInput(widget.sessionId, [0x7F]); // DEL
+      }
+      _lastInputText = newText;
+      return;
+    }
+
+    // Detect new characters typed.
+    if (newText.length > oldText.length) {
+      final added = newText.substring(oldText.length);
+      final codes = <int>[];
+
+      for (final char in added.characters) {
+        if (_modifiers.ctrl) {
+          // Ctrl+letter → control character
+          final c = char.toLowerCase().codeUnitAt(0);
+          if (c >= 0x61 && c <= 0x7A) {
+            codes.add(c - 0x60); // a=1, b=2, ...
+          } else {
+            codes.addAll(char.codeUnits);
+          }
+        } else if (_modifiers.alt) {
+          codes.add(0x1B); // ESC prefix
+          codes.addAll(char.codeUnits);
+        } else {
+          codes.addAll(char.codeUnits);
+        }
+      }
+
+      if (codes.isNotEmpty) {
+        widget.sessionManager.sendInput(widget.sessionId, codes);
+      }
+      _modifiers.releaseAll();
+    }
+
+    _lastInputText = newText;
+  }
+
+  /// Handle hardware keyboard key events (for physical keyboards).
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+
+    // Enter
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x0D]);
+      return KeyEventResult.handled;
+    }
+    // Backspace
+    if (key == LogicalKeyboardKey.backspace) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x7F]);
+      return KeyEventResult.handled;
+    }
+    // Tab
+    if (key == LogicalKeyboardKey.tab) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x09]);
+      return KeyEventResult.handled;
+    }
+    // Escape
+    if (key == LogicalKeyboardKey.escape) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x1B]);
+      return KeyEventResult.handled;
+    }
+    // Arrow keys
+    if (key == LogicalKeyboardKey.arrowUp) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x41]);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x42]);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x44]);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x43]);
+      return KeyEventResult.handled;
+    }
+
+    // For printable characters, let the TextField handle it via _onInputChanged
+    return KeyEventResult.ignored;
   }
 
   void _sendChar(String char) {
@@ -158,10 +262,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _onTapUp(TapUpDetails details) {
+    // Tap on terminal area → bring up the iOS system keyboard
+    if (!_inputFocusNode.hasFocus) {
+      _inputFocusNode.requestFocus();
+    }
     final col = (details.localPosition.dx / _cellWidth).floor();
     final row = (details.localPosition.dy / _cellHeight).floor();
     debugPrint('Tap at col=$col row=$row');
-    // TODO: Forward tap for cursor positioning or mouse events
   }
 
   @override
@@ -199,7 +306,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Terminal canvas ──
+            // ── Terminal canvas with hidden text input ──
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -218,15 +325,49 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
                   return GestureDetector(
                     onScaleUpdate: _onScale,
-                    onTapUp: (details) => _onTapUp(details, constraints),
-                    child: CustomPaint(
-                      painter: _TerminalPainter(
-                        screen: _screen,
-                        theme: theme,
-                        cellWidth: _cellWidth,
-                        cellHeight: _cellHeight,
-                      ),
-                      child: Container(),
+                    onTapUp: _onTapUp,
+                    child: Stack(
+                      children: [
+                        // Terminal canvas
+                        CustomPaint(
+                          painter: _TerminalPainter(
+                            screen: _screen,
+                            theme: theme,
+                            cellWidth: _cellWidth,
+                            cellHeight: _cellHeight,
+                          ),
+                          child: Container(),
+                        ),
+                        // Hidden TextField to capture iOS system keyboard input.
+                        // Positioned off-screen so it's invisible but still
+                        // able to receive focus and bring up the keyboard.
+                        Positioned(
+                          left: -1000,
+                          top: -1000,
+                          child: SizedBox(
+                            width: 1,
+                            height: 1,
+                            child: Listener(
+                              onPointerDown: (_) {},
+                              child: TextField(
+                                controller: _inputController,
+                                focusNode: _inputFocusNode,
+                                onChanged: _onInputChanged,
+                                autofocus: false,
+                                style: const TextStyle(fontSize: 1),
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                autocorrect: false,
+                                enableSuggestions: false,
+                                keyboardType: TextInputType.visiblePassword,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
