@@ -1283,6 +1283,19 @@ impl ApplicationHandler for DesktopApp {
                 } else {
                     grid.scroll_down_viewport(scroll_amount);
                 }
+
+                // Extend selection to keep up with scrolled content.
+                if self.selection.dragging {
+                    let new_end_row = if scroll_dir < 0 {
+                        0 // Extend to top visible row
+                    } else {
+                        grid_h - 1 // Extend to bottom visible row
+                    };
+                    // Use the cursor column if available, otherwise 0 or max.
+                    let col = self.selection.end.map(|(c, _)| c).unwrap_or(0);
+                    self.selection.extend(col, new_end_row as u16);
+                }
+
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
