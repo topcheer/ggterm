@@ -139,9 +139,10 @@ pub fn row_to_runs(
                     && c.blink == blink
             });
 
-        if can_extend {
-            current.as_mut().unwrap().text.push(ch);
+        if can_extend && let Some(ref mut c) = current {
+            c.text.push(ch);
         } else {
+            #[allow(clippy::collapsible_if)]
             if let Some(r) = current.take() {
                 runs.push(r);
             }

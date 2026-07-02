@@ -38,7 +38,7 @@ fn sessions() -> &'static Mutex<HashMap<u32, MobileSession>> {
 
 fn next_id() -> u32 {
     let counter = NEXT_ID.get_or_init(|| Mutex::new(1));
-    let mut id = counter.lock().unwrap();
+    let mut id = counter.lock().unwrap_or_else(|e| e.into_inner());
     let val = *id;
     *id += 1;
     val
@@ -46,7 +46,7 @@ fn next_id() -> u32 {
 
 fn set_error(msg: impl Into<String>) {
     let storage = LAST_ERROR.get_or_init(|| Mutex::new(String::new()));
-    *storage.lock().unwrap() = msg.into();
+    *storage.lock().unwrap_or_else(|e| e.into_inner()) = msg.into();
 }
 
 // ── Session Lifecycle ──────────────────────────────────────────────────
@@ -56,7 +56,7 @@ fn set_error(msg: impl Into<String>) {
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_session_create(cols: usize, rows: usize) -> u32 {
     let id = next_id();
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     map.insert(
         id,
         MobileSession {
@@ -70,14 +70,14 @@ pub extern "C" fn ggterm_session_create(cols: usize, rows: usize) -> u32 {
 /// Destroy a session, dropping its terminal and transport.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_destroy(id: u32) {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     map.remove(&id);
 }
 
 /// Get the number of active sessions.
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_session_count() -> usize {
-    sessions().lock().unwrap().len()
+    sessions().lock().unwrap_or_else(|e| e.into_inner()).len()
 }
 
 // ── Terminal Operations ────────────────────────────────────────────────
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn ggterm_session_process_bytes(id: u32, data: *const u8, 
     if data.is_null() || len == 0 {
         return;
     }
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         unsafe {
             let slice = std::slice::from_raw_parts(data, len);
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn ggterm_session_send_input(id: u32, data: *const u8, len
     if data.is_null() || len == 0 {
         return;
     }
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         unsafe {
             let slice = std::slice::from_raw_parts(data, len);
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn ggterm_session_take_input(id: u32, buf: *mut u8, max_le
     if buf.is_null() || max_len == 0 {
         return 0;
     }
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         let input = s.handle.take_input();
         let n = input.len().min(max_len);
@@ -144,7 +144,7 @@ pub unsafe extern "C" fn ggterm_session_read_cells(
     if buf.is_null() || max_cells == 0 {
         return 0;
     }
-    let map = sessions().lock().unwrap();
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get(&id) {
         let cells = grid_to_ffi(s.handle.terminal.grid());
         let n = cells.len().min(max_cells);
@@ -165,7 +165,7 @@ pub unsafe extern "C" fn ggterm_session_dimensions(id: u32, cols: *mut usize, ro
     if cols.is_null() || rows.is_null() {
         return;
     }
-    let map = sessions().lock().unwrap();
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get(&id) {
         let grid = s.handle.terminal.grid();
         unsafe {
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn ggterm_session_cursor(id: u32, col: *mut usize, row: *m
     if col.is_null() || row.is_null() {
         return;
     }
-    let map = sessions().lock().unwrap();
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get(&id) {
         let (c, r) = s.handle.terminal.cursor();
         unsafe {
@@ -194,7 +194,7 @@ pub unsafe extern "C" fn ggterm_session_cursor(id: u32, col: *mut usize, row: *m
 /// Resize the terminal grid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize) {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         s.handle
             .terminal
@@ -210,7 +210,7 @@ pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize
 /// Consume the bell flag. Returns 1 if bell was rung, 0 otherwise.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_take_bell(id: u32) -> i32 {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id)
         && s.handle.terminal.take_bell()
     {
@@ -225,7 +225,7 @@ pub unsafe extern "C" fn ggterm_session_take_bell(id: u32) -> i32 {
 /// Returns the number of bytes read and processed.
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_transport_pump(id: u32) -> usize {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     let Some(s) = map.get_mut(&id) else {
         return 0;
     };
@@ -246,7 +246,7 @@ pub extern "C" fn ggterm_transport_pump(id: u32) -> usize {
 /// Flush queued input to the transport (send keystrokes to remote host).
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_transport_flush(id: u32) {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     let Some(s) = map.get_mut(&id) else {
         return;
     };
@@ -264,7 +264,7 @@ pub extern "C" fn ggterm_transport_flush(id: u32) {
 /// Check if the transport is alive.
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_transport_is_alive(id: u32) -> i32 {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     let Some(s) = map.get_mut(&id) else {
         return 0;
     };
@@ -324,7 +324,7 @@ pub unsafe extern "C" fn ggterm_ssh_connect(
 
     // Read cols/rows from session to set PTY size
     let (cols, rows) = {
-        let map = sessions().lock().unwrap();
+        let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
         if let Some(s) = map.get(&id) {
             let g = s.handle.terminal.grid();
             (g.width(), g.height())
@@ -337,7 +337,7 @@ pub unsafe extern "C" fn ggterm_ssh_connect(
     // Connect (this is blocking)
     match ggterm_ssh::SshSession::connect(&host_s, port, &user_s, &pass_s) {
         Ok(session) => {
-            let mut map = sessions().lock().unwrap();
+            let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
             if let Some(s) = map.get_mut(&id) {
                 // We need to resize the session to match our terminal size
                 let mut transport: Box<dyn TerminalTransport> = Box::new(session);
@@ -396,7 +396,7 @@ pub unsafe extern "C" fn ggterm_ssh_connect_key(
     };
 
     let (cols, rows) = {
-        let map = sessions().lock().unwrap();
+        let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
         if let Some(s) = map.get(&id) {
             let g = s.handle.terminal.grid();
             (g.width(), g.height())
@@ -413,7 +413,7 @@ pub unsafe extern "C" fn ggterm_ssh_connect_key(
         std::path::Path::new(&key_s),
     ) {
         Ok(session) => {
-            let mut map = sessions().lock().unwrap();
+            let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
             if let Some(s) = map.get_mut(&id) {
                 let mut transport: Box<dyn TerminalTransport> = Box::new(session);
                 transport.resize(cols, rows);
@@ -485,7 +485,7 @@ impl TerminalTransport for EchoTransport {
 /// Returns 0 on success.
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_echo_connect(id: u32) -> i32 {
-    let mut map = sessions().lock().unwrap();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         s.transport = Some(Box::new(EchoTransport::new()));
         0
@@ -504,15 +504,15 @@ pub extern "C" fn ggterm_last_error() -> *const c_char {
     static ERROR_BUF: OnceLock<Mutex<std::ffi::CString>> = OnceLock::new();
     let buf = ERROR_BUF.get_or_init(|| Mutex::new(std::ffi::CString::new("").unwrap()));
     let storage = LAST_ERROR.get_or_init(|| Mutex::new(String::new()));
-    let msg = storage.lock().unwrap();
+    let msg = storage.lock().unwrap_or_else(|e| e.into_inner());
     if msg.is_empty() {
         return c"".as_ptr();
     }
     // Update the buffer
     let cstr = std::ffi::CString::new(msg.as_str())
         .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
-    *buf.lock().unwrap() = cstr;
-    buf.lock().unwrap().as_ptr()
+    *buf.lock().unwrap_or_else(|e| e.into_inner()) = cstr;
+    buf.lock().unwrap_or_else(|e| e.into_inner()).as_ptr()
 }
 
 #[cfg(test)]

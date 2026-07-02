@@ -74,9 +74,10 @@ fn measure_cell_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
             }
         }
         // Fallback: total width / number of glyphs
-        if run.glyphs.len() >= 10 {
-            let total = run.glyphs.last().unwrap().x + run.glyphs.last().unwrap().w;
-            return total / 10.0;
+        if run.glyphs.len() >= 10
+            && let Some(last) = run.glyphs.last()
+        {
+            return (last.x + last.w) / 10.0;
         }
     }
 
