@@ -332,8 +332,17 @@ impl DesktopApp {
             let pane_offset_x = content_bounds.x as f32;
             let pane_offset_y = content_bounds.y as f32;
 
-            // Selection color: blue with 30% opacity.
-            let sel_color = (0.3, 0.55, 0.95, 0.30);
+            // Selection color: use theme selection_bg with 30% alpha.
+            let (sr, sg, sb) = {
+                let theme = self.sessions[self.active].app().theme();
+                theme.resolve_bg(&theme.selection_bg)
+            };
+            let sel_color = (
+                sr as f32 / 255.0,
+                sg as f32 / 255.0,
+                sb as f32 / 255.0,
+                0.35,
+            );
 
             if sy == ey {
                 // Single-row selection.
