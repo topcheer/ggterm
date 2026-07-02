@@ -305,6 +305,31 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::View,
             configurable: false,
         },
+        // Mouse
+        ShortcutEntry {
+            keys: "Cmd+Click (Ctrl+Click)".into(),
+            description: "Open URL under cursor".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Double-click".into(),
+            description: "Select word".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Triple-click".into(),
+            description: "Select line".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Middle-click".into(),
+            description: "Paste from clipboard".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
         ShortcutEntry {
             keys: "Ctrl+Shift+T".into(),
             description: "Cycle theme".into(),
