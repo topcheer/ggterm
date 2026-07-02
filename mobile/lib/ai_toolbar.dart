@@ -160,7 +160,7 @@ class _AiToolbarState extends State<AiToolbar> {
             constraints: const BoxConstraints(maxHeight: 200),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.grey.shade850,
+              color: Colors.grey.shade800,
               border: Border(
                 top: BorderSide(color: Colors.blue.withOpacity(0.3)),
               ),
