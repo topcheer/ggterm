@@ -262,6 +262,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Edit,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Shift+Arrows".into(),
+            description: "Extend selection".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Left/Right".into(),
+            description: "Extend selection by word".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
         // View
         ShortcutEntry {
             keys: "Ctrl+=".into(),
