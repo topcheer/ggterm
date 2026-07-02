@@ -288,6 +288,9 @@ pub struct Modes {
     /// DECPAM — keypad application mode (ESC =).
     /// When enabled, numeric keypad keys send SS3 sequences instead of digits.
     pub keypad_app: bool,
+    /// DECSET 12 — cursor blink attribute.
+    /// Programs can control whether the cursor should blink.
+    pub cursor_blink: bool,
     /// modifyOtherKeys — xterm enhanced keyboard protocol.
     /// 0 = disabled, 1 = mode 1, 2 = mode 2.
     pub modify_other_keys: u8,
@@ -314,6 +317,7 @@ impl Modes {
             synchronized_output: false,
             reflow: true,
             keypad_app: false,
+            cursor_blink: true,
             modify_other_keys: 0,
         }
     }
@@ -630,6 +634,11 @@ impl Terminal {
         self.modes.keypad_app
     }
 
+    /// Return true if cursor blink is enabled (DECSET 12).
+    pub fn cursor_blink_enabled(&self) -> bool {
+        self.modes.cursor_blink
+    }
+
     /// Take and clear a pending desktop notification (P24-E).
     /// Returns (title, body) if OSC 9 or OSC 777 was received.
     pub fn take_pending_notification(&mut self) -> Option<(String, String)> {
@@ -904,6 +913,7 @@ impl Terminal {
     fn set_dec_mode(&mut self, mode: u16, enable: bool) {
         match mode {
             7 => self.modes.auto_wrap = enable,
+            12 => self.modes.cursor_blink = enable,
             25 => self.modes.cursor_visible = enable,
             6 => {
                 self.modes.origin = enable;
@@ -1564,6 +1574,7 @@ impl Perform for Terminal {
                 let is_set = match mode {
                     1 => self.modes.cursor_keys_app,    // DECCKM
                     7 => self.modes.auto_wrap,          // DECAWM
+                    12 => self.modes.cursor_blink,      // Cursor blink
                     25 => self.modes.cursor_visible,    // DECTCEM
                     47 => self.modes.alt_screen,        // Alt screen
                     1047 => self.modes.alt_screen,      // Alt screen
@@ -4140,6 +4151,45 @@ mod tests {
         assert!(
             resp_str.contains("4;7;rgb:e5/e5/e5"),
             "should contain white color response"
+        );
+    }
+
+    #[test]
+    fn t_decset12_cursor_blink_default() {
+        let t = Terminal::new(80, 24);
+        assert!(
+            t.cursor_blink_enabled(),
+            "cursor blink should be enabled by default"
+        );
+    }
+
+    #[test]
+    fn t_decset12_cursor_blink_off() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?12l"); // Disable cursor blink
+        assert!(!t.cursor_blink_enabled());
+    }
+
+    #[test]
+    fn t_decset12_cursor_blink_on() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?12l"); // Disable
+        assert!(!t.cursor_blink_enabled());
+        feed(&mut t, b"\x1b[?12h"); // Enable
+        assert!(t.cursor_blink_enabled());
+    }
+
+    #[test]
+    fn t_decrqm_cursor_blink() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?12l"); // Disable
+        feed(&mut t, b"\x1b[?12$p"); // Query mode 12
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("12;2$y"),
+            "mode 12 should be reset (2), got: {}",
+            resp_str
         );
     }
 }

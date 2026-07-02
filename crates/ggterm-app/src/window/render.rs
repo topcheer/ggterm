@@ -41,12 +41,15 @@ impl DesktopApp {
         let grid = session.app().grid();
 
         // P23-A: Cursor blink state — applied per-pane in the multi-pane loop.
-        let is_blink = matches!(
+        let is_blink_style = matches!(
             session.app().terminal().cursor_style(),
             ggterm_core::CursorStyle::BlinkBlock
                 | ggterm_core::CursorStyle::BlinkUnderline
                 | ggterm_core::CursorStyle::BlinkBar
         );
+        // Respect DECSET 12: even blink-style cursors stay steady when
+        // the program has disabled cursor blinking (DECSET 12 = off).
+        let is_blink = is_blink_style && session.app().terminal().cursor_blink_enabled();
         self.cursor_blink.set_enabled(is_blink);
         let blink_alpha = self.cursor_blink.alpha_focused(self.window_focused);
         let blink_visible = self.cursor_blink.is_visible();
