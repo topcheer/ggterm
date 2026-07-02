@@ -75,6 +75,8 @@ impl InputKey {
 pub struct InputEncoder {
     /// Whether cursor keys should send application-mode sequences (DECCKM).
     cursor_app_mode: bool,
+    /// Whether keypad keys should send application-mode sequences (DECPAM).
+    keypad_app_mode: bool,
 }
 
 impl InputEncoder {
@@ -86,6 +88,11 @@ impl InputEncoder {
     /// Set cursor application mode (DECCKM).
     pub fn set_cursor_app_mode(&mut self, on: bool) {
         self.cursor_app_mode = on;
+    }
+
+    /// Set keypad application mode (DECPAM/DECPNM).
+    pub fn set_keypad_app_mode(&mut self, on: bool) {
+        self.keypad_app_mode = on;
     }
 
     /// Encode a key press into bytes to write to the PTY.

@@ -152,6 +152,9 @@ pub struct GlyphonRenderer {
     ui_vertex_count: u32,
     /// UI SDF pipeline (rounded rectangles with alpha + stroke).
     ui_pipeline: Option<wgpu::RenderPipeline>,
+    /// Blink phase for SGR 5 blinking text (0.0 = visible, 1.0 = hidden).
+    /// Driven by the app layer via `set_blink_phase()`.
+    blink_phase: f32,
 }
 
 // ── P26-A: Modern UI Rendering ──────────────────────────────────
@@ -305,6 +308,7 @@ impl GlyphonRenderer {
             ui_vertex_buffer: None,
             ui_vertex_count: 0,
             ui_pipeline: None,
+            blink_phase: 0.0,
         }
     }
 
@@ -345,6 +349,14 @@ impl GlyphonRenderer {
     /// Overlay rendering is NOT affected (uses absolute screen coords).
     pub fn set_viewport_offset(&mut self, x: f32, y: f32) {
         self.viewport_offset = (x, y);
+    }
+
+    /// Set the blink phase for SGR 5 blinking text.
+    ///
+    /// `phase` ranges from 0.0 (fully visible) to 1.0 (fully hidden).
+    /// The app layer drives this from the cursor blink timer.
+    pub fn set_blink_phase(&mut self, phase: f32) {
+        self.blink_phase = phase;
     }
 
     /// P23-C: Determine whether `prepare_grid()` should be called for this grid.
@@ -503,6 +515,10 @@ impl GlyphonRenderer {
                 let _ = run.bold; // suppress unused warning
                 if run.italic {
                     attrs = attrs.style(glyphon::Style::Italic);
+                }
+                // SGR 5: Blink — fade foreground alpha based on blink_phase.
+                if run.blink && self.blink_phase > 0.5 {
+                    attrs = attrs.color(GlyphonColor::rgba(run.fg.0, run.fg.1, run.fg.2, 0));
                 }
                 let attrs_list = AttrsList::new(&attrs);
 

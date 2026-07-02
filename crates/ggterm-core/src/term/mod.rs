@@ -285,6 +285,9 @@ pub struct Modes {
     /// When enabled, content reflows when the terminal is resized.
     /// Default: true.
     pub reflow: bool,
+    /// DECPAM — keypad application mode (ESC =).
+    /// When enabled, numeric keypad keys send SS3 sequences instead of digits.
+    pub keypad_app: bool,
 }
 
 impl Modes {
@@ -307,6 +310,7 @@ impl Modes {
             focus_event: false,
             synchronized_output: false,
             reflow: true,
+            keypad_app: false,
         }
     }
 }
@@ -610,6 +614,16 @@ impl Terminal {
     /// Return true if text reflow on resize is enabled (DECSET 2027, P24-B).
     pub fn reflow_enabled(&self) -> bool {
         self.modes.reflow
+    }
+
+    /// Return true if cursor keys are in application mode (DECCKM).
+    pub fn cursor_keys_app(&self) -> bool {
+        self.modes.cursor_keys_app
+    }
+
+    /// Return true if keypad is in application mode (DECPAM).
+    pub fn keypad_app(&self) -> bool {
+        self.modes.keypad_app
     }
 
     /// Take and clear a pending desktop notification (P24-E).
@@ -1561,6 +1575,14 @@ impl Perform for Terminal {
             return;
         }
         match final_byte {
+            b'=' => {
+                // DECPAM — keypad application mode
+                self.modes.keypad_app = true;
+            }
+            b'>' => {
+                // DECPNM — keypad normal mode
+                self.modes.keypad_app = false;
+            }
             b'7' => self.saved_cursor = self.cursor,
             b'8' => self.cursor = self.saved_cursor,
             b'c' => {
@@ -3874,5 +3896,31 @@ mod tests {
             note,
             Some(("Terminal".to_string(), "Body only".to_string()))
         );
+    }
+
+    #[test]
+    fn t_decpam_keypad_app_mode() {
+        let mut t = Terminal::new(80, 24);
+        assert!(!t.modes.keypad_app);
+        feed(&mut t, b"\x1b="); // DECPAM
+        assert!(t.modes.keypad_app);
+    }
+
+    #[test]
+    fn t_decpnm_keypad_normal_mode() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b="); // DECPAM
+        assert!(t.modes.keypad_app);
+        feed(&mut t, b"\x1b>"); // DECPNM
+        assert!(!t.modes.keypad_app);
+    }
+
+    #[test]
+    fn t_sgr_blink_flag() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5m");
+        assert!(t.flags.contains(CellFlags::BLINK));
+        feed(&mut t, b"\x1b[25m");
+        assert!(!t.flags.contains(CellFlags::BLINK));
     }
 }

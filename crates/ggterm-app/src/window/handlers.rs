@@ -245,7 +245,7 @@ impl DesktopApp {
                 self.debug_visible = !self.debug_visible;
                 return;
             }
-            // Ctrl+Shift+V → paste (also Cmd+V on macOS, Shift+Insert on Linux/Windows)
+            // Ctrl+Shift+V → paste (also Cmd+V on macOS, Shift+Insert on all platforms)
             if (self.check_keybinding(
                 "paste",
                 self.mods.ctrl,
@@ -253,10 +253,7 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             )) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "v")
-                || (!cfg!(target_os = "macos")
-                    && self.mods.shift
-                    && !self.mods.ctrl
-                    && key_name == "insert")
+                || (self.mods.shift && !self.mods.ctrl && !self.mods.alt && key_name == "insert")
             {
                 self.paste_from_clipboard();
                 return;
@@ -1120,6 +1117,10 @@ impl DesktopApp {
 
         // Use the shared keymap module for mapping.
         let mods: crate::input::KeyModifiers = self.mods.into();
+        // Sync cursor/keypad application modes from terminal to encoder.
+        let term = self.sessions[self.active].app().terminal();
+        self.encoder.set_cursor_app_mode(term.cursor_keys_app());
+        self.encoder.set_keypad_app_mode(term.keypad_app());
         if let Some(input_key) = map_winit_key(&event.physical_key, logical_text, &mods) {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {

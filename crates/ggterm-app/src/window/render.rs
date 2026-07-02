@@ -96,6 +96,9 @@ impl DesktopApp {
             _ => unreachable!("dynamic_bg stores Rgb"),
         }));
 
+        // SGR 5: Blink text — share the cursor blink phase for text blink.
+        renderer.set_blink_phase(blink_alpha);
+
         // P19-G: Build overlay data (tab bar + settings + about).
         let cell_h = renderer.cell_height() as f32;
         let cell_w = renderer.cell_width() as f32;

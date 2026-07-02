@@ -673,9 +673,11 @@ mod tests {
 
     #[test]
     fn t_destroy_cleans_up() {
+        let count_before = ggterm_session_count();
         let id = ggterm_session_create(80, 24);
-        assert_eq!(ggterm_session_count(), 1);
+        assert_eq!(ggterm_session_count(), count_before + 1);
         unsafe { ggterm_session_destroy(id) };
+        assert_eq!(ggterm_session_count(), count_before);
         // Session operations after destroy should be safe no-ops
         assert_eq!(ggterm_transport_is_alive(id), 0);
         assert_eq!(ggterm_transport_pump(id), 0);

@@ -19,6 +19,7 @@ pub struct TextRun {
     pub italic: bool,
     pub underline: bool,
     pub strikethrough: bool,
+    pub blink: bool,
 }
 
 /// Background color used for search-match highlights (warm amber).
@@ -112,6 +113,7 @@ pub fn row_to_runs(
         let italic = cell.flags.contains(CellFlags::ITALIC);
         let underline = cell.flags.contains(CellFlags::UNDERLINE);
         let strikethrough = cell.flags.contains(CellFlags::STRIKETHROUGH);
+        let blink = cell.flags.contains(CellFlags::BLINK);
 
         let ch = cell.ch;
         let is_wide = cell.flags.contains(CellFlags::WIDE_CHAR);
@@ -127,6 +129,7 @@ pub fn row_to_runs(
                     && c.italic == italic
                     && c.underline == underline
                     && c.strikethrough == strikethrough
+                    && c.blink == blink
             });
 
         if can_extend {
@@ -144,6 +147,7 @@ pub fn row_to_runs(
                 italic,
                 underline,
                 strikethrough,
+                blink,
             });
         }
     }
