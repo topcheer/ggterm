@@ -1533,6 +1533,12 @@ impl DesktopApp {
                         if self.command_palette.visible {
                             self.command_palette.visible = false;
                         }
+                        if self.context_menu.visible {
+                            self.context_menu.hide();
+                        }
+                        if self.tab_context_menu.visible {
+                            self.tab_context_menu.close();
+                        }
                         self.selection.start(col, row);
                     }
                 }
