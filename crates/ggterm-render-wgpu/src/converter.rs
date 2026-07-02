@@ -391,4 +391,24 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_row_to_runs_decscnm_reverse_video() {
+        // DECSCNM: when reverse_video=true, fg and bg are globally swapped.
+        let mut grid = Grid::new(1, 1);
+        let mut c = Cell::with_char('X');
+        c.fg = Color::Rgb(255, 128, 0); // orange
+        c.bg = Color::Rgb(0, 0, 255); // blue
+        grid[(0, 0)] = c;
+
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, true);
+
+        assert_eq!(runs[0].fg, (0, 0, 255), "fg should be swapped to bg color");
+        assert_eq!(
+            runs[0].bg,
+            (255, 128, 0),
+            "bg should be swapped to fg color"
+        );
+    }
 }

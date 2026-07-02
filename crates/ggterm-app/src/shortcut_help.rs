@@ -659,7 +659,11 @@ mod tests {
     #[test]
     fn t_category_color() {
         let c = ShortcutCategory::Tab.color();
-        assert!(c.0 <= 255 && c.1 <= 255 && c.2 <= 255);
+        // Color should not be all-zero (black) — each category has a distinct color.
+        assert!(
+            !(c.0 == 0 && c.1 == 0 && c.2 == 0),
+            "color should be non-black"
+        );
     }
 
     #[test]
