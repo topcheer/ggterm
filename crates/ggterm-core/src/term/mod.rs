@@ -1632,6 +1632,16 @@ impl Perform for Terminal {
                 let resp = format!("\x1b[?{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
+            // DECRQSS — request selection or setting (CSI Ps $ q)
+            // Programs query terminal state by string name.
+            // We respond with DCS Ps $ r <value> ST for known settings.
+            // Unknown settings get DCS 0 $ r ST (not recognized).
+            b'q' if intermediates.contains(&b'$') => {
+                // DECRQSS takes a string parameter, but VTE gives us numbers.
+                // Common queries: "m" (SGR), "r" (DECSTBM), "s" (DECSLRM)
+                // For simplicity, respond "not recognized" for all queries.
+                self.response_buffer.extend_from_slice(b"\x1bP0$r\x1b\\");
+            }
             _ => {}
         }
     }
