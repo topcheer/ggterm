@@ -159,7 +159,9 @@ pub fn group_command_blocks(marks: &[CommandMark]) -> Vec<CommandBlock> {
                     b.end_row = Some(mark.row);
                     b.exit_code = mark.exit_code;
                 }
-                blocks.push(current.take().unwrap());
+                if let Some(b) = current.take() {
+                    blocks.push(b);
+                }
             }
         }
     }
@@ -1782,7 +1784,7 @@ impl Perform for Terminal {
                 });
             }
             // OSC 10/11/12 — dynamic colors (P17-A)
-            Some(10) | Some(11) | Some(12) => {
+            Some(cmd_num @ 10..=12) => {
                 let payload = parts.next().unwrap_or("");
                 if payload == "?" {
                     // Query: report current color
@@ -1793,26 +1795,14 @@ impl Perform for Terminal {
                     };
                     let resp = match current {
                         Color::Rgb(r, g, b) => {
-                            format!(
-                                "\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
-                                cmd.unwrap(),
-                                r,
-                                g,
-                                b
-                            )
+                            format!("\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", cmd_num, r, g, b)
                         }
                         Color::Indexed(i) => {
                             let (r, g, b) = color_for_index(*i);
-                            format!(
-                                "\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
-                                cmd.unwrap(),
-                                r,
-                                g,
-                                b
-                            )
+                            format!("\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", cmd_num, r, g, b)
                         }
                         Color::Default => {
-                            format!("\x1b]{};rgb:ff/ff/ff\x1b\\", cmd.unwrap())
+                            format!("\x1b]{};rgb:ff/ff/ff\x1b\\", cmd_num)
                         }
                     };
                     self.response_buffer.extend_from_slice(resp.as_bytes());
