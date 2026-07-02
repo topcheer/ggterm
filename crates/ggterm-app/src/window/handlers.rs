@@ -404,6 +404,75 @@ impl DesktopApp {
             }
         }
 
+        // Ctrl+Shift+Arrows → extend selection by word (like editors).
+        if self.mods.ctrl && self.mods.shift && !self.mods.alt {
+            let cols = self.active_session().app().grid().width() as u16;
+            let (cur_col, cur_row): (u16, u16) = self
+                .selection
+                .end
+                .or(self.selection.start)
+                .unwrap_or((0, 0));
+            let extended: Option<(u16, u16)> = match &event.physical_key {
+                PhysicalKey::Code(KeyCode::ArrowLeft) => {
+                    // Jump to previous word boundary.
+                    let grid = self.active_session().app().grid();
+                    let mut c = cur_col;
+                    for _ in 0..cols {
+                        if c == 0 {
+                            break;
+                        }
+                        c -= 1;
+                        let ch = grid
+                            .display_cell(c as usize, cur_row as usize)
+                            .map(|cell| cell.ch)
+                            .unwrap_or(' ');
+                        if ch.is_whitespace() && c > 0 {
+                            let prev_ch = grid
+                                .display_cell((c - 1) as usize, cur_row as usize)
+                                .map(|cell| cell.ch)
+                                .unwrap_or(' ');
+                            if !prev_ch.is_whitespace() {
+                                break;
+                            }
+                        }
+                    }
+                    Some((c, cur_row))
+                }
+                PhysicalKey::Code(KeyCode::ArrowRight) => {
+                    // Jump to next word boundary.
+                    let grid = self.active_session().app().grid();
+                    let mut c = cur_col;
+                    let mut was_space = false;
+                    for _ in 0..cols {
+                        if c >= cols - 1 {
+                            break;
+                        }
+                        let ch = grid
+                            .display_cell(c as usize, cur_row as usize)
+                            .map(|cell| cell.ch)
+                            .unwrap_or(' ');
+                        if was_space && !ch.is_whitespace() {
+                            break;
+                        }
+                        was_space = ch.is_whitespace();
+                        c += 1;
+                    }
+                    Some((c, cur_row))
+                }
+                _ => None,
+            };
+            if let Some((c, r)) = extended {
+                if self.selection.start.is_none() {
+                    self.selection.start = Some((cur_col, cur_row));
+                }
+                self.selection.extend(c, r);
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+        }
+
         // Shift+Arrows (no Ctrl/Alt) → extend text selection (like editors).
         if self.mods.shift && !self.mods.ctrl && !self.mods.alt {
             let rows = self.active_session().app().grid().height() as u16;
