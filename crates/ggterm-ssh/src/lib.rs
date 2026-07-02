@@ -200,11 +200,8 @@ impl SshSession {
                 }
                 // ── Read from SSH channel (5ms timeout) ────────────
                 // &mut self borrow — no other borrows active here
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(5),
-                    channel.wait(),
-                )
-                .await
+                match tokio::time::timeout(std::time::Duration::from_millis(5), channel.wait())
+                    .await
                 {
                     Ok(Some(ChannelMsg::Data { ref data })) => {
                         if let Ok(mut buf) = read_buf_task.lock() {
