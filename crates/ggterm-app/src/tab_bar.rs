@@ -335,6 +335,8 @@ pub enum TabMenuAction {
     CloseTab,
     /// Duplicate this tab (same shell + working directory).
     DuplicateTab,
+    /// Rename this tab.
+    RenameTab,
     /// Switch to the next tab.
     NextTab,
     /// Switch to the previous tab.
@@ -348,6 +350,7 @@ impl TabMenuAction {
             Self::NewTab => "New Tab",
             Self::CloseTab => "Close Tab",
             Self::DuplicateTab => "Duplicate Tab",
+            Self::RenameTab => "Rename Tab",
             Self::NextTab => "Next Tab",
             Self::PrevTab => "Previous Tab",
         }
@@ -359,6 +362,7 @@ impl TabMenuAction {
             Self::NewTab,
             Self::CloseTab,
             Self::DuplicateTab,
+            Self::RenameTab,
             Self::NextTab,
             Self::PrevTab,
         ]
@@ -370,6 +374,7 @@ impl TabMenuAction {
             Self::NewTab => "Ctrl+T",
             Self::CloseTab => "Ctrl+W",
             Self::DuplicateTab => "",
+            Self::RenameTab => "",
             Self::NextTab => "Ctrl+Tab",
             Self::PrevTab => "Ctrl+Shift+Tab",
         }

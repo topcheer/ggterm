@@ -1042,6 +1042,14 @@ impl DesktopApp {
                 // Open a new tab (same shell as current).
                 self.open_tab();
             }
+            crate::tab_bar::TabMenuAction::RenameTab => {
+                if let Some(idx) = self.tab_context_menu.tab_index
+                    && idx < self.sessions.len()
+                {
+                    self.renaming_tab = Some(idx);
+                    self.rename_text = self.sessions[idx].title().to_owned();
+                }
+            }
             crate::tab_bar::TabMenuAction::NextTab => {
                 self.next_tab();
             }
