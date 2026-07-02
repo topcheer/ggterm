@@ -147,6 +147,7 @@ impl DesktopApp {
                 Ok(session) => {
                     self.sessions.push(session);
                     self.active = self.sessions.len() - 1;
+                    self.selection.clear();
                     log::info!("Reopened closed tab in {:?}", cwd);
                     if let Some(ref window) = self.window {
                         window.request_redraw();
@@ -154,8 +155,11 @@ impl DesktopApp {
                 }
                 Err(e) => {
                     log::error!("Failed to reopen tab: {e}");
+                    self.show_toast("Failed to reopen tab");
                 }
             }
+        } else {
+            self.show_toast("No recently closed tabs");
         }
     }
 
@@ -735,6 +739,7 @@ impl DesktopApp {
             mgr.current_name().to_owned()
         };
         self.apply_theme_to_renderer();
+        self.show_toast(format!("Theme: {name}"));
         log::info!("Theme: {name}");
     }
 
