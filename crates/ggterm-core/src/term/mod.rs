@@ -4330,4 +4330,20 @@ mod tests {
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
         assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'Y');
     }
+
+    #[test]
+    fn t_sos_pm_apc_consumed() {
+        // ESC X (SOS), ESC ^ (PM), ESC _ (APC) must be consumed like DCS.
+        let mut t = Terminal::new(80, 24);
+        // SOS
+        feed(&mut t, b"A\x1bXsome text\x1b\\B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        // PM
+        feed(&mut t, b"\x1b^private\x07C");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        // APC
+        feed(&mut t, b"\x1b_apc data\x1b\\D");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+    }
 }

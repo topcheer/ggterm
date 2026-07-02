@@ -142,6 +142,11 @@ impl Parser {
                 // Consume and discard everything until ST (ESC \).
                 self.state = State::DcsString;
             }
+            b'X' | b'^' | b'_' => {
+                // SOS (ESC X), PM (ESC ^), APC (ESC _) — string sequences
+                // that must be consumed until ST, same as DCS.
+                self.state = State::DcsString;
+            }
             // 0x20-0x2F: intermediate bytes
             0x20..=0x2f => {
                 self.state = State::EscapeIntermediate;
