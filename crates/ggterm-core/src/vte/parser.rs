@@ -81,6 +81,30 @@ impl Parser {
                 self.state = State::Ground;
             }
             State::Utf8Sequence => self.utf8_continue(byte, perform),
+            State::DcsString => {
+                if byte == 0x1b {
+                    self.state = State::DcsEsc;
+                } else if byte == 0x07 {
+                    // BEL can also terminate DCS (some implementations)
+                    self.state = State::Ground;
+                }
+                // Discard all other bytes
+            }
+            State::DcsEsc => {
+                // After ESC in DCS context: ST = ESC \
+                if byte != b'\\' {
+                    // Not ST — could be another escape, but we just
+                    // go back to consuming DCS data or ground.
+                    if byte == 0x1b {
+                        self.state = State::DcsEsc;
+                    } else {
+                        self.state = State::DcsString;
+                    }
+                } else {
+                    // ST received — end of DCS sequence
+                    self.state = State::Ground;
+                }
+            }
         }
     }
 
@@ -112,6 +136,11 @@ impl Parser {
             b']' => {
                 self.state = State::OscString;
                 self.string_buffer.clear();
+            }
+            b'P' => {
+                // DCS — Device Control String (ESC P ... ST)
+                // Consume and discard everything until ST (ESC \).
+                self.state = State::DcsString;
             }
             // 0x20-0x2F: intermediate bytes
             0x20..=0x2f => {
@@ -360,4 +389,8 @@ enum State {
     OscEsc,
     /// Accumulating a multi-byte UTF-8 character.
     Utf8Sequence,
+    /// Inside a DCS (Device Control String) — consume until ST.
+    DcsString,
+    /// After ESC inside a DCS — checking for ST (ESC \).
+    DcsEsc,
 }

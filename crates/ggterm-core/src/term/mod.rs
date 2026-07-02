@@ -4308,4 +4308,26 @@ mod tests {
         feed(&mut t, b"\x1b[0m");
         assert_eq!(t.underline_color, Color::Default);
     }
+
+    #[test]
+    fn t_dcs_sequence_not_printed() {
+        // DCS sequences (ESC P ... ST) must be consumed and NOT printed
+        // to the screen. Programs like tmux send DCS for capability queries.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"AB\x1bP1;2;3qSOME DCS DATA\x1b\\CD");
+        // A, B should be at columns 0-1, C, D at columns 2-3
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_dcs_bel_terminated() {
+        // Some implementations use BEL instead of ST to terminate DCS.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"X\x1bP1qdata\x07Y");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'Y');
+    }
 }
