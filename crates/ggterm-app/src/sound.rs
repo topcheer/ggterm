@@ -47,6 +47,7 @@ impl SoundType {
     }
 
     /// Get a description string (for logging on non-macOS).
+    #[cfg(not(target_os = "macos"))]
     fn description(self) -> &'static str {
         match self {
             SoundType::Bell => "bell",
@@ -253,6 +254,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn t_sound_type_description() {
         assert_eq!(SoundType::Bell.description(), "bell");
         assert_eq!(SoundType::Success.description(), "success");

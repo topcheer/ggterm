@@ -295,6 +295,19 @@ impl TabSession {
         }
     }
 
+    /// Flush terminal protocol responses (DA1, DA2, DSR, DECRQM, etc.)
+    /// from all panes' terminals back to their respective PTYs.
+    pub fn flush_responses(&mut self) {
+        for pane in self.panes.iter_mut().flatten() {
+            let resp = pane.app.terminal_mut().take_response();
+            if !resp.is_empty()
+                && let Some(ref mut pty) = pane.pty
+            {
+                let _ = pty.write(&resp);
+            }
+        }
+    }
+
     /// Check if the active pane's shell process is still alive.
     pub fn is_alive(&mut self) -> bool {
         self.active_pane_mut()

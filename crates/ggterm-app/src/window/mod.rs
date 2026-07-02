@@ -1136,6 +1136,14 @@ impl ApplicationHandler for DesktopApp {
             }
         }
 
+        // Flush terminal protocol responses (DA1, DA2, DSR, DECRQM,
+        // XTVERSION, OSC 4 color queries, etc.) back to the PTY.
+        // Without this, programs like vim, tmux, and ncurses never receive
+        // responses to their terminal capability queries.
+        for session in &mut self.sessions {
+            session.flush_responses();
+        }
+
         // Sync terminal OSC 0/2 titles to tab sessions so the tab bar
         // shows the current program name (e.g. "vim", "zsh") instead of
         // the static initial title.
