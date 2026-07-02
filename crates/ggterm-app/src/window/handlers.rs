@@ -404,6 +404,35 @@ impl DesktopApp {
             }
         }
 
+        // Shift+Arrows (no Ctrl/Alt) → extend text selection (like editors).
+        if self.mods.shift && !self.mods.ctrl && !self.mods.alt {
+            let rows = self.active_session().app().grid().height() as u16;
+            let (cur_col, cur_row) = self
+                .selection
+                .end
+                .or(self.selection.start)
+                .unwrap_or((0, 0));
+            let extended = match &event.physical_key {
+                PhysicalKey::Code(KeyCode::ArrowLeft) => Some((cur_col.saturating_sub(1), cur_row)),
+                PhysicalKey::Code(KeyCode::ArrowRight) => Some((cur_col + 1, cur_row)),
+                PhysicalKey::Code(KeyCode::ArrowUp) => Some((cur_col, cur_row.saturating_sub(1))),
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    Some((cur_col, (cur_row + 1).min(rows.saturating_sub(1))))
+                }
+                _ => None,
+            };
+            if let Some((c, r)) = extended {
+                if self.selection.start.is_none() {
+                    self.selection.start = Some((cur_col, cur_row));
+                }
+                self.selection.extend(c, r);
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+        }
+
         // Ctrl+Shift+B → toggle status bar visibility (not configurable)
         if self.mods.ctrl
             && self.mods.shift
