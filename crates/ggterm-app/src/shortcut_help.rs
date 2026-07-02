@@ -243,6 +243,13 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Split,
             configurable: false,
         },
+        // View
+        ShortcutEntry {
+            keys: "Ctrl+Shift+U".into(),
+            description: "Open URL at cursor".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
         // Edit
         ShortcutEntry {
             keys: "Ctrl+Shift+V".into(),

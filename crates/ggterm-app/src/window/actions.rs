@@ -461,6 +461,46 @@ impl DesktopApp {
         log::info!("Pane zoom: {}", self.pane_zoomed);
     }
 
+    /// Open URL at the current cursor position (or hovered link if any).
+    ///
+    /// Checks OSC 8 hyperlinks first, then plain-text URL detection.
+    pub(super) fn open_url_at_cursor(&mut self) {
+        // If a link is currently hovered, use that.
+        if let Some(ref link) = self.hovered_link {
+            let url = link.0.clone();
+            crate::mouse::open_url(&url);
+            self.show_toast(format!("Opened: {}", &url[..url.len().min(60)]));
+            return;
+        }
+
+        // Otherwise check cursor position.
+        let (row, col) = self.active_session().app().cursor();
+
+        let grid = self.active_session().app().grid();
+        let row_data = match grid.display_row(row) {
+            Some(r) => r,
+            None => return,
+        };
+
+        // Check OSC 8 hyperlink on cursor cell.
+        if col < row_data.cells.len()
+            && let Some(ref link) = row_data.cells[col].hyperlink
+        {
+            crate::mouse::open_url(link);
+            self.show_toast(format!("Opened: {}", &link[..link.len().min(60)]));
+            return;
+        }
+
+        // Plain-text URL detection.
+        let line: String = row_data.cells.iter().map(|c| c.ch).collect();
+        if let Some((_, _, url)) = crate::mouse::detect_url_at_position(&line, col) {
+            crate::mouse::open_url(&url);
+            self.show_toast(format!("Opened: {}", &url[..url.len().min(60)]));
+        } else {
+            self.show_toast("No URL at cursor");
+        }
+    }
+
     #[cfg(feature = "ai")]
     pub(super) fn trigger_ai_request(&mut self, action: ggterm_ai::Action) {
         // Show overlay immediately.

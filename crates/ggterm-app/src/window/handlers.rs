@@ -383,6 +383,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+U → open URL at cursor position
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyU) = &event.physical_key
+        {
+            self.open_url_at_cursor();
+            return;
+        }
+
         // Ctrl+Shift+Alt+Arrows → adjust split ratio
         if self.mods.ctrl && self.mods.shift && self.mods.alt {
             match &event.physical_key {
@@ -1013,11 +1023,7 @@ impl DesktopApp {
         }
 
         // Ctrl+Shift+PageUp → move tab left, Ctrl+Shift+PageDown → move tab right
-        if self.mods.ctrl
-            && self.mods.shift
-            && !self.mods.alt
-            && self.sessions.len() > 1
-        {
+        if self.mods.ctrl && self.mods.shift && !self.mods.alt && self.sessions.len() > 1 {
             match &event.physical_key {
                 PhysicalKey::Code(KeyCode::PageUp) => {
                     if self.active > 0 {
