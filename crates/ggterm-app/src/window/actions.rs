@@ -1058,4 +1058,46 @@ impl DesktopApp {
             }
         }
     }
+
+    /// Open the config file in the system's default editor (Ctrl+Shift+,).
+    /// Creates a default config if one doesn't exist.
+    pub(super) fn open_config_file(&mut self) {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+        let Some(home) = home else {
+            self.show_toast("Cannot find home directory");
+            return;
+        };
+        let dir = std::path::PathBuf::from(home).join(".ggterm");
+        let path = dir.join("config.toml");
+
+        // Create config directory + default config if missing.
+        if !path.exists() {
+            let _ = std::fs::create_dir_all(&dir);
+            let default_toml = self
+                .config_mgr
+                .as_ref()
+                .and_then(|m| m.config().export_to_toml().ok())
+                .unwrap_or_default();
+            if std::fs::write(&path, &default_toml).is_err() {
+                self.show_toast("Failed to create config file");
+                return;
+            }
+        }
+
+        // Open with system default editor.
+        #[cfg(target_os = "macos")]
+        let result = std::process::Command::new("open").arg(&path).spawn();
+        #[cfg(target_os = "linux")]
+        let result = std::process::Command::new("xdg-open").arg(&path).spawn();
+        #[cfg(target_os = "windows")]
+        let result = std::process::Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(&path)
+            .spawn();
+
+        match result {
+            Ok(_) => self.show_toast(format!("Opened {}", path.display())),
+            Err(_) => self.show_toast("Failed to open editor"),
+        }
+    }
 }

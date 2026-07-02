@@ -632,6 +632,20 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+, → open config file in editor (like VS Code)
+        // Cmd+, on macOS (standard "Preferences" shortcut)
+        if let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key {
+            let want_open = (cfg!(target_os = "macos")
+                && self.mods.super_key
+                && !self.mods.ctrl
+                && !self.mods.alt)
+                || (self.mods.ctrl && self.mods.shift && !self.mods.alt);
+            if want_open {
+                self.open_config_file();
+                return;
+            }
+        }
+
         // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
         // Also handle quit confirm Esc/Enter.
         if self.quit_confirm {

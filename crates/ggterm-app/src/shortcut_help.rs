@@ -468,6 +468,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+, (Cmd+,)".into(),
+            description: "Open config file in editor".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+Alt+E".into(),
             description: "Export config to clipboard".into(),
             category: ShortcutCategory::System,
