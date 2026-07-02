@@ -199,7 +199,8 @@ pub struct DesktopApp {
 
     // ── URL hover/click (P17-C) ──
     /// Currently hovered URL (OSC 8 hyperlink or plain-text URL).
-    hovered_link: Option<String>,
+    /// Stores (url, start_col, end_col, row) for underline rendering.
+    hovered_link: Option<(String, usize, usize, usize)>,
 
     // ── Tab bar overlay (P19-C) ──
     /// Tab bar display state for visual tab strip rendering.

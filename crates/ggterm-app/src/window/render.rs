@@ -1885,8 +1885,23 @@ impl DesktopApp {
             });
         }
 
-        // ── P33: URL hover tooltip ────────────────────────────────────
-        if let Some(ref url) = self.hovered_link {
+        // ── P33: URL hover tooltip + underline ────────────────────────
+        if let Some((ref url, start_col, end_col, link_row)) = self.hovered_link {
+            // Draw underline beneath the URL text.
+            let under_x = content_bounds.x as f32 + start_col as f32 * cell_w;
+            let under_w = (end_col - start_col) as f32 * cell_w;
+            let under_y = content_bounds.y as f32 + (link_row + 1) as f32 * cell_h - 2.0;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: under_x,
+                y: under_y,
+                w: under_w,
+                h: 1.5,
+                color: (0.4, 0.6, 1.0, 0.8),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // Tooltip showing the full URL.
             let tooltip_w = (url.len() as f32 * cell_w + 24.0).min(400.0);
             let tooltip_h = 24.0;
             let px = self.cursor_pos.0 as f32 + 14.0;

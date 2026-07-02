@@ -1581,8 +1581,8 @@ impl DesktopApp {
                 // P17-C: Cmd+Click (macOS) or Ctrl+Click (other) opens hovered URL.
                 let open_link = (cfg!(target_os = "macos") && self.mods.super_key)
                     || (!cfg!(target_os = "macos") && self.mods.ctrl);
-                if open_link && let Some(ref url) = self.hovered_link.take() {
-                    crate::mouse::open_url(url);
+                if open_link && let Some((url, _, _, _)) = self.hovered_link.take() {
+                    crate::mouse::open_url(&url);
                     return;
                 }
 
@@ -1807,7 +1807,18 @@ impl DesktopApp {
         {
             let cell = &cell_row.cells[col];
             if let Some(ref link) = cell.hyperlink {
-                self.hovered_link = Some(link.clone());
+                // Find extent of hyperlink cells in this row.
+                let mut start = col;
+                while start > 0 && cell_row.cells[start - 1].hyperlink.as_deref() == Some(link) {
+                    start -= 1;
+                }
+                let mut end = col + 1;
+                while end < cell_row.cells.len()
+                    && cell_row.cells[end].hyperlink.as_deref() == Some(link)
+                {
+                    end += 1;
+                }
+                self.hovered_link = Some((link.clone(), start, end, row));
                 return;
             }
         }
@@ -1815,8 +1826,8 @@ impl DesktopApp {
         // Fall back to plain-text URL detection.
         if let Some(cell_row) = grid.display_row(row) {
             let line: String = cell_row.cells.iter().map(|c| c.ch).collect();
-            if let Some((_, _, url)) = crate::mouse::detect_url_at_position(&line, col) {
-                self.hovered_link = Some(url);
+            if let Some((start, end, url)) = crate::mouse::detect_url_at_position(&line, col) {
+                self.hovered_link = Some((url, start, end, row));
                 return;
             }
         }
