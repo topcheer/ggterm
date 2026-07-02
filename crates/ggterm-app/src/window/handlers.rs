@@ -69,7 +69,11 @@ impl DesktopApp {
             new_rows
         );
 
-        self.active_session_mut().resize(new_cols, new_rows);
+        // Resize all sessions (not just active) so background tabs are ready
+        // when the user switches to them.
+        for session in self.sessions.iter_mut() {
+            session.resize(new_cols, new_rows);
+        }
 
         true
     }
