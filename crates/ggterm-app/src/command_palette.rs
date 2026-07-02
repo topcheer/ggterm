@@ -93,6 +93,30 @@ impl CommandRegistry {
             category: "Split".into(),
             shortcut: Some("Ctrl+Shift+[".into()),
         });
+        r.register(Command {
+            id: "split.zoom".into(),
+            label: "Toggle Pane Zoom".into(),
+            category: "Split".into(),
+            shortcut: Some("Ctrl+Shift+Z".into()),
+        });
+        r.register(Command {
+            id: "terminal.open_url".into(),
+            label: "Open URL at Cursor".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+U".into()),
+        });
+        r.register(Command {
+            id: "tab.move_left".into(),
+            label: "Move Tab Left".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+PageUp".into()),
+        });
+        r.register(Command {
+            id: "tab.move_right".into(),
+            label: "Move Tab Right".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+PageDown".into()),
+        });
         // Theme
         r.register(Command {
             id: "theme.cycle".into(),

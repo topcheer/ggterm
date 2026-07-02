@@ -1067,6 +1067,22 @@ impl DesktopApp {
             "tab.next" => {
                 self.next_tab();
             }
+            "tab.move_left" => {
+                if self.active > 0 {
+                    self.move_tab(self.active, self.active - 1);
+                }
+            }
+            "tab.move_right" => {
+                if self.active < self.sessions.len() - 1 {
+                    self.move_tab(self.active, self.active + 1);
+                }
+            }
+            "split.zoom" => {
+                self.toggle_pane_zoom();
+            }
+            "terminal.open_url" => {
+                self.open_url_at_cursor();
+            }
             "terminal.copy" => {
                 self.copy_selection_to_clipboard();
             }
