@@ -231,6 +231,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Split,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Z".into(),
+            description: "Toggle pane zoom (maximize/restore)".into(),
+            category: ShortcutCategory::Split,
+            configurable: false,
+        },
         // Edit
         ShortcutEntry {
             keys: "Ctrl+Shift+V".into(),

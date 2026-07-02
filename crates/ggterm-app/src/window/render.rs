@@ -460,9 +460,10 @@ impl DesktopApp {
         }
 
         // ── P26-D: Padded pane borders with rounded corners ───────────
+        // Skip borders when pane zoom mode is active (only active pane visible).
         let active = self.active;
         let tree = &self.sessions[active].split_tree();
-        if !tree.is_single() {
+        if !tree.is_single() && !self.pane_zoomed {
             // Use the SAME content bounds as the pane grid rendering for
             // perfect alignment between borders and text content.
             let areas = tree.areas(content_bounds);
@@ -1956,17 +1957,50 @@ impl DesktopApp {
         // overlay text with grid text; multi-pane renders them separately,
         // causing subtle font differences).
         {
+            // When pane zoom is active, render only the active pane at full bounds.
+            let pane_zoomed = self.pane_zoomed;
+
             // Resize panes to match their areas BEFORE rendering.
             {
                 let session = &mut self.sessions[active];
-                let tree = session.split_tree().clone();
-                let areas = tree.areas(bounds);
-                session.resize_panes_to_areas(&areas, cell_w_px, cell_h_px);
+                if pane_zoomed {
+                    // Zoom: resize active pane to full content area.
+                    let active_id = session.split_tree().active();
+                    let zoom_areas = vec![(
+                        active_id,
+                        crate::splits::Rect {
+                            x: bounds.x,
+                            y: bounds.y,
+                            width: bounds.width,
+                            height: bounds.height,
+                        },
+                    )];
+                    session.resize_panes_to_areas(&zoom_areas, cell_w_px, cell_h_px);
+                } else {
+                    let tree = session.split_tree().clone();
+                    let areas = tree.areas(bounds);
+                    session.resize_panes_to_areas(&areas, cell_w_px, cell_h_px);
+                }
             }
 
             let session = &self.sessions[active];
             let tree = session.split_tree();
-            let areas = tree.areas(bounds);
+
+            // When zoomed, render only the active pane at full bounds.
+            let areas: Vec<(usize, crate::splits::Rect)> = if pane_zoomed {
+                let active_id = tree.active();
+                vec![(
+                    active_id,
+                    crate::splits::Rect {
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: bounds.width,
+                        height: bounds.height,
+                    },
+                )]
+            } else {
+                tree.areas(bounds)
+            };
 
             // Build cursor states per pane (owned values, no borrow issues).
             let cursors: Vec<_> = areas

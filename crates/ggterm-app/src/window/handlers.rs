@@ -373,6 +373,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Z → toggle pane zoom (tmux-style maximize active pane)
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyZ) = &event.physical_key
+        {
+            self.toggle_pane_zoom();
+            return;
+        }
+
         // Ctrl+Shift+Alt+Arrows → adjust split ratio
         if self.mods.ctrl && self.mods.shift && self.mods.alt {
             match &event.physical_key {
@@ -1242,6 +1252,10 @@ impl DesktopApp {
         if session.pane_count() <= 1 {
             return false;
         }
+        // Skip when pane zoom is active (only active pane is visible).
+        if self.pane_zoomed {
+            return false;
+        }
 
         // Use the same content area bounds as the renderer.
         let bounds = self.content_area_bounds();
@@ -1268,6 +1282,10 @@ impl DesktopApp {
     pub(super) fn try_start_separator_drag(&mut self) -> bool {
         let session = self.active_session();
         if session.pane_count() <= 1 {
+            return false;
+        }
+        // Skip when pane zoom is active.
+        if self.pane_zoomed {
             return false;
         }
 

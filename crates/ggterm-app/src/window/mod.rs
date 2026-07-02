@@ -295,6 +295,8 @@ pub struct DesktopApp {
     saved_window_size: Option<(u32, u32)>,
     /// P23-E: Tab drag state (Some(tab_idx) when dragging).
     dragging_tab: Option<usize>,
+    /// Pane zoom mode: when true, only the active pane is rendered at full size.
+    pane_zoomed: bool,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -568,6 +570,7 @@ impl DesktopApp {
             saved_window_pos: None,
             saved_window_size: None,
             dragging_tab: None,
+            pane_zoomed: false,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -1228,6 +1231,9 @@ impl ApplicationHandler for DesktopApp {
                         .terminal_mut()
                         .grid_mut()
                         .set_scrollback(new_scrollback);
+
+                    // Show toast feedback for successful reload.
+                    self.show_toast("Config reloaded");
                 }
                 Ok(false) => {}
                 Err(e) => log::warn!("Config reload error: {e}"),

@@ -442,6 +442,25 @@ impl DesktopApp {
         }
     }
 
+    /// Toggle pane zoom mode (tmux-style zoom).
+    ///
+    /// When zoomed, only the active pane is rendered at full window size.
+    /// Toggling again restores the previous split layout.
+    pub(super) fn toggle_pane_zoom(&mut self) {
+        let has_splits = !self.active_session().split_tree().is_single();
+        if !has_splits && !self.pane_zoomed {
+            self.show_toast("No splits to zoom");
+            return;
+        }
+        self.pane_zoomed = !self.pane_zoomed;
+        if self.pane_zoomed {
+            self.show_toast("Pane zoomed (Ctrl+Shift+Z to restore)");
+        } else {
+            self.show_toast("Pane zoom restored");
+        }
+        log::info!("Pane zoom: {}", self.pane_zoomed);
+    }
+
     #[cfg(feature = "ai")]
     pub(super) fn trigger_ai_request(&mut self, action: ggterm_ai::Action) {
         // Show overlay immediately.
