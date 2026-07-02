@@ -977,6 +977,7 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
+                self.status_bar.pane_zoomed = self.pane_zoomed;
                 // CWD from OSC 7 (pane-level cwd tracking).
                 self.status_bar.cwd = self
                     .active_session()

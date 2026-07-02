@@ -50,6 +50,8 @@ pub struct StatusBar {
     pub shell_name: String,
     /// Current working directory (OSC 7). Empty = unknown.
     pub cwd: String,
+    /// Whether pane zoom mode is active.
+    pub pane_zoomed: bool,
 }
 
 impl Default for StatusBar {
@@ -78,6 +80,7 @@ impl StatusBar {
             sound_enabled: false,
             shell_name: String::new(),
             cwd: String::new(),
+            pane_zoomed: false,
         }
     }
 
@@ -211,6 +214,11 @@ impl StatusBar {
             parts.push("REC".to_string());
         }
 
+        // Pane zoom indicator.
+        if self.pane_zoomed {
+            parts.push("ZOOM".to_string());
+        }
+
         parts.join(" | ")
     }
 
@@ -289,6 +297,11 @@ impl StatusBar {
         // Recording.
         if self.recording {
             seg!("REC".to_string(), warn_color);
+        }
+
+        // Pane zoom.
+        if self.pane_zoomed {
+            seg!("ZOOM".to_string(), accent_color);
         }
 
         // P28-D: Workspace.
