@@ -1251,6 +1251,11 @@ impl Perform for Terminal {
                 }
                 self.cursor.pending_wrap = false;
             }
+            0x05 => {
+                // ENQ — transmit answerback message.
+                // Respond with a terminal identification string.
+                self.response_buffer.extend_from_slice(b"ggterm");
+            }
             0x09 => {
                 let width = self.grid.width();
                 let mut next = self.cursor.x + 1;
@@ -4345,5 +4350,14 @@ mod tests {
         // APC
         feed(&mut t, b"\x1b_apc data\x1b\\D");
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_enq_answerback() {
+        // ENQ (0x05) should trigger an answerback response.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x05");
+        let resp = t.take_response();
+        assert_eq!(resp, b"ggterm");
     }
 }
