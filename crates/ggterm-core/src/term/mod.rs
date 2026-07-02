@@ -288,6 +288,9 @@ pub struct Modes {
     /// DECPAM — keypad application mode (ESC =).
     /// When enabled, numeric keypad keys send SS3 sequences instead of digits.
     pub keypad_app: bool,
+    /// modifyOtherKeys — xterm enhanced keyboard protocol.
+    /// 0 = disabled, 1 = mode 1, 2 = mode 2.
+    pub modify_other_keys: u8,
 }
 
 impl Modes {
@@ -311,6 +314,7 @@ impl Modes {
             synchronized_output: false,
             reflow: true,
             keypad_app: false,
+            modify_other_keys: 0,
         }
     }
 }
@@ -1426,6 +1430,19 @@ impl Perform for Terminal {
             b'l' if is_private => {
                 self.set_dec_mode(params.first().copied().unwrap_or(0), false);
             }
+            // modifyOtherKeys: CSI > 4 ; Nm h / CSI > 4 ; Nm l
+            b'h' if intermediates.contains(&b'>') => {
+                let m = params.first().copied().unwrap_or(0);
+                if m == 4 {
+                    self.modes.modify_other_keys = params.get(1).copied().unwrap_or(1) as u8;
+                }
+            }
+            b'l' if intermediates.contains(&b'>') => {
+                let m = params.first().copied().unwrap_or(0);
+                if m == 4 {
+                    self.modes.modify_other_keys = 0;
+                }
+            }
             b'h' => {
                 let m = params.first().copied().unwrap_or(0);
                 if m == 4 {
@@ -1744,6 +1761,12 @@ impl Perform for Terminal {
                 if !body.is_empty() {
                     self.pending_notification = Some((title, body));
                 }
+            }
+            // OSC 21 — query window title (xterm extension).
+            // Respond with: OSC l <title> ST
+            Some(21) => {
+                let resp = format!("\x1b]l{}\x1b\\", self.title);
+                self.response_buffer.extend_from_slice(resp.as_bytes());
             }
             _ => {}
         }
@@ -3922,5 +3945,51 @@ mod tests {
         assert!(t.flags.contains(CellFlags::BLINK));
         feed(&mut t, b"\x1b[25m");
         assert!(!t.flags.contains(CellFlags::BLINK));
+    }
+
+    #[test]
+    fn t_modify_other_keys_set() {
+        let mut t = Terminal::new(80, 24);
+        assert_eq!(t.modes.modify_other_keys, 0);
+        feed(&mut t, b"\x1b[>4;1h"); // Enable mode 1
+        assert_eq!(t.modes.modify_other_keys, 1);
+        feed(&mut t, b"\x1b[>4;2h"); // Enable mode 2
+        assert_eq!(t.modes.modify_other_keys, 2);
+    }
+
+    #[test]
+    fn t_modify_other_keys_reset() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>4;2h");
+        assert_eq!(t.modes.modify_other_keys, 2);
+        feed(&mut t, b"\x1b[>4l"); // Disable
+        assert_eq!(t.modes.modify_other_keys, 0);
+    }
+
+    #[test]
+    fn t_osc21_title_query() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]0;My Title\x1b\\");
+        assert_eq!(t.title(), "My Title");
+        // Query title
+        feed(&mut t, b"\x1b]21\x1b\\");
+        let resp = t.take_response();
+        assert!(
+            resp.windows(3).any(|w| w == b"\x1b]l"),
+            "response should contain OSC l"
+        );
+        assert!(resp.windows(8).any(|w| w == b"My Title"));
+    }
+
+    #[test]
+    fn t_modify_other_keys_does_not_affect_insert_mode() {
+        let mut t = Terminal::new(80, 24);
+        // CSI > 4 ; 1 h should set modifyOtherKeys, NOT insert mode
+        feed(&mut t, b"\x1b[>4;1h");
+        assert_eq!(t.modes.modify_other_keys, 1);
+        assert!(
+            !t.modes.insert,
+            "insert should NOT be set by modifyOtherKeys"
+        );
     }
 }
