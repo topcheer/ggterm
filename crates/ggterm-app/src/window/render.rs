@@ -2043,6 +2043,15 @@ impl DesktopApp {
                         width: rect.width,
                         height: rect.height,
                         needs_prepare: session.pane_needs_prepare(*pane_id),
+                        reverse_video: app.terminal().reverse_video(),
+                        dynamic_fg: app.terminal().dynamic_fg().map(|c| match c {
+                            ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
+                            _ => unreachable!("dynamic_fg stores Rgb"),
+                        }),
+                        dynamic_bg: app.terminal().dynamic_bg().map(|c| match c {
+                            ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
+                            _ => unreachable!("dynamic_bg stores Rgb"),
+                        }),
                     });
                 }
             }

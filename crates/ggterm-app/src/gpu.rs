@@ -278,6 +278,11 @@ impl GpuContext {
 
                 pass.set_scissor_rect(x, y, w, h);
                 renderer.set_viewport_offset(x as f32, y as f32);
+                // Per-pane terminal state: each pane has its own reverse_video,
+                // dynamic_fg, dynamic_bg from its terminal.
+                renderer.set_reverse_video(spec.reverse_video);
+                renderer.set_dynamic_fg(spec.dynamic_fg);
+                renderer.set_dynamic_bg(spec.dynamic_bg);
                 renderer
                     .render_pane_to_pass(
                         &self.device,
@@ -355,6 +360,12 @@ pub struct PaneRenderSpec<'a> {
     pub height: u32,
     /// P21-D: Whether to re-prepare glyphon buffers (true when grid changed).
     pub needs_prepare: bool,
+    /// DECSCNM reverse video mode for this pane.
+    pub reverse_video: bool,
+    /// Dynamic foreground color override (OSC 10) for this pane.
+    pub dynamic_fg: Option<(u8, u8, u8)>,
+    /// Dynamic background color override (OSC 11) for this pane.
+    pub dynamic_bg: Option<(u8, u8, u8)>,
 }
 
 /// Create a wgpu Instance + Adapter + Surface from a window.
