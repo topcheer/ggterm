@@ -1424,6 +1424,13 @@ impl DesktopApp {
                     }
                     _ => {
                         // Single click: start normal selection.
+                        // Close search bar and command palette (clicking away dismisses them).
+                        if self.search.visible {
+                            self.search.close();
+                        }
+                        if self.command_palette.visible {
+                            self.command_palette.visible = false;
+                        }
                         self.selection.start(col, row);
                     }
                 }
