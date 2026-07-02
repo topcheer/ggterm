@@ -47,7 +47,6 @@ impl SoundType {
     }
 
     /// Get a description string (for logging on non-macOS).
-    #[allow(dead_code)]
     fn description(self) -> &'static str {
         match self {
             SoundType::Bell => "bell",

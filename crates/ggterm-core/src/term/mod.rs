@@ -1800,6 +1800,28 @@ impl Perform for Terminal {
                 let resp = format!("\x1b]l{}\x1b\\", self.title);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
+            // OSC 4 — set/query color palette entries.
+            // Query format: OSC 4 ; index ; ? ST → responds OSC 4 ; index ; rgb:RR/GG/BB ST
+            // Set format: OSC 4 ; index ; rgb:RR/GG/BB ST
+            // Multiple pairs can appear: OSC 4 ; 0 ; ? ; 1 ; ? ST
+            Some(4) => {
+                let payload = parts.next().unwrap_or("");
+                let mut fields = payload.split(';');
+                while let Some(idx_str) = fields.next() {
+                    let Ok(idx) = idx_str.parse::<u8>() else {
+                        continue;
+                    };
+                    let spec = fields.next().unwrap_or("");
+                    if spec == "?" {
+                        // Query: respond with current palette color
+                        let (r, g, b) = color_for_index(idx);
+                        let resp =
+                            format!("\x1b]4;{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", idx, r, g, b);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    // Setting colors is a no-op for now (palette is fixed)
+                }
+            }
             _ => {}
         }
     }
@@ -4089,6 +4111,35 @@ mod tests {
             resp_str.contains("9999;2$y"),
             "unknown mode should be reset (2), got: {}",
             resp_str
+        );
+    }
+
+    #[test]
+    fn t_osc4_color_query_single() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;1;?\x1b\\"); // Query color index 1 (red)
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("4;1;rgb:cd/00/00"),
+            "red palette query should return rgb:cd/00/00, got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_osc4_color_query_multiple() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;0;?;7;?\x1b\\"); // Query black and white
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("4;0;rgb:00/00/00"),
+            "should contain black color response"
+        );
+        assert!(
+            resp_str.contains("4;7;rgb:e5/e5/e5"),
+            "should contain white color response"
         );
     }
 }
