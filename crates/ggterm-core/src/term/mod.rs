@@ -344,6 +344,8 @@ pub struct Terminal {
     pub(crate) fg: Color,
     /// Current background colour.
     pub(crate) bg: Color,
+    /// Current underline colour (SGR 58; set to Default by SGR 59).
+    pub(crate) underline_color: Color,
     /// Current cell flags (bold, italic, underline, ...).
     pub(crate) flags: CellFlags,
     /// Tab stop positions (one bool per column).
@@ -506,6 +508,7 @@ impl Terminal {
             modes: Modes::defaults(),
             fg: Color::Default,
             bg: Color::Default,
+            underline_color: Color::Default,
             flags: CellFlags::empty(),
             tab_stops,
             command_marks: Vec::new(),
@@ -996,6 +999,7 @@ impl Terminal {
                 0 => {
                     self.fg = Color::Default;
                     self.bg = Color::Default;
+                    self.underline_color = Color::Default;
                     self.flags = CellFlags::empty();
                 }
                 1 => self.flags |= CellFlags::BOLD,
@@ -1017,6 +1021,7 @@ impl Terminal {
                 39 => self.fg = Color::Default,
                 40..=47 => self.bg = Color::Indexed((p - 40) as u8),
                 49 => self.bg = Color::Default,
+                59 => self.underline_color = Color::Default,
                 90..=97 => self.fg = Color::Indexed((p - 90 + 8) as u8),
                 100..=107 => self.bg = Color::Indexed((p - 100 + 8) as u8),
                 38 | 48 => {
@@ -1047,6 +1052,30 @@ impl Terminal {
                                     }
                                 }
                                 i += 4;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                // SGR 58 — set underline color (extended: 5 = palette, 2 = RGB)
+                58 => {
+                    if i + 1 < params.len() {
+                        match params[i + 1] {
+                            5 => {
+                                if i + 2 < params.len() {
+                                    self.underline_color = Color::Indexed(params[i + 2] as u8);
+                                    i += 2;
+                                }
+                            }
+                            2 => {
+                                if i + 4 < params.len() {
+                                    self.underline_color = Color::Rgb(
+                                        params[i + 2] as u8,
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                    );
+                                    i += 4;
+                                }
                             }
                             _ => {}
                         }
@@ -4237,5 +4266,36 @@ mod tests {
             "mode 5 should be set (1), got: {}",
             resp_str
         );
+    }
+
+    #[test]
+    fn t_sgr58_underline_color_rgb() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[58;2;100;150;200m");
+        assert_eq!(t.underline_color, Color::Rgb(100, 150, 200));
+    }
+
+    #[test]
+    fn t_sgr58_underline_color_indexed() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[58;5;42m");
+        assert_eq!(t.underline_color, Color::Indexed(42));
+    }
+
+    #[test]
+    fn t_sgr59_default_underline_color() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[58;5;42m");
+        assert_eq!(t.underline_color, Color::Indexed(42));
+        feed(&mut t, b"\x1b[59m");
+        assert_eq!(t.underline_color, Color::Default);
+    }
+
+    #[test]
+    fn t_sgr0_resets_underline_color() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[58;2;10;20;30m");
+        feed(&mut t, b"\x1b[0m");
+        assert_eq!(t.underline_color, Color::Default);
     }
 }
