@@ -326,6 +326,14 @@ impl crate::engine::LLMProvider for LLMClient {
 mod tests {
     use super::*;
 
+    /// Mutex to serialize tests that touch global env vars, preventing races.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII guard that holds the env mutex for the duration of a test.
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn t_config_default() {
         let config = AIConfig::default();
@@ -350,6 +358,7 @@ mod tests {
 
     #[test]
     fn t_config_from_env_no_vars() {
+        let _g = env_lock();
         // Clear any existing env vars
         remove_env("GGTERM_AI_API_KEY");
         remove_env("OPENAI_API_KEY");
@@ -360,6 +369,7 @@ mod tests {
 
     #[test]
     fn t_config_from_env_with_key() {
+        let _g = env_lock();
         set_env("GGTERM_AI_API_KEY", "test-key-1234567890");
         let config = AIConfig::from_env();
         assert!(config.has_api_key());
@@ -369,6 +379,7 @@ mod tests {
 
     #[test]
     fn t_config_openai_fallback() {
+        let _g = env_lock();
         remove_env("GGTERM_AI_API_KEY");
         set_env("OPENAI_API_KEY", "sk-fallback-key");
         let config = AIConfig::from_env();
@@ -379,6 +390,7 @@ mod tests {
 
     #[test]
     fn t_config_ggterm_takes_priority() {
+        let _g = env_lock();
         set_env("GGTERM_AI_API_KEY", "primary-key");
         set_env("OPENAI_API_KEY", "fallback-key");
         let config = AIConfig::from_env();
@@ -389,6 +401,7 @@ mod tests {
 
     #[test]
     fn t_config_custom_base_url() {
+        let _g = env_lock();
         set_env("GGTERM_AI_BASE_URL", "https://api.deepseek.com/v1");
         let config = AIConfig::from_env();
         assert_eq!(config.base_url, "https://api.deepseek.com/v1");
@@ -397,6 +410,7 @@ mod tests {
 
     #[test]
     fn t_config_custom_model() {
+        let _g = env_lock();
         set_env("GGTERM_AI_MODEL", "gpt-4o");
         let config = AIConfig::from_env();
         assert_eq!(config.model, "gpt-4o");
@@ -405,6 +419,7 @@ mod tests {
 
     #[test]
     fn t_config_custom_timeout() {
+        let _g = env_lock();
         set_env("GGTERM_AI_TIMEOUT", "30");
         let config = AIConfig::from_env();
         assert_eq!(config.timeout, Duration::from_secs(30));
@@ -413,6 +428,7 @@ mod tests {
 
     #[test]
     fn t_config_invalid_timeout_falls_back() {
+        let _g = env_lock();
         set_env("GGTERM_AI_TIMEOUT", "not-a-number");
         let config = AIConfig::from_env();
         assert_eq!(config.timeout, Duration::from_secs(60));
@@ -421,6 +437,7 @@ mod tests {
 
     #[test]
     fn t_config_custom_temperature() {
+        let _g = env_lock();
         set_env("GGTERM_AI_TEMPERATURE", "0.1");
         let config = AIConfig::from_env();
         assert!((config.temperature - 0.1).abs() < 0.01);
