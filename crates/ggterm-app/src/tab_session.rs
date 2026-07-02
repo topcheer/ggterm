@@ -336,10 +336,15 @@ impl TabSession {
         cell_h: u32,
     ) {
         for (id, rect) in areas {
-            let cols =
-                ((rect.width as f32 / cell_w as f32) as u16).max(crate::desktop_config::MIN_COLS);
-            let rows =
-                ((rect.height as f32 / cell_h as f32) as u16).max(crate::desktop_config::MIN_ROWS);
+            #[cfg(feature = "desktop")]
+            let (min_cols, min_rows) = (
+                crate::desktop_config::MIN_COLS,
+                crate::desktop_config::MIN_ROWS,
+            );
+            #[cfg(not(feature = "desktop"))]
+            let (min_cols, min_rows): (u16, u16) = (10, 3);
+            let cols = ((rect.width as f32 / cell_w as f32) as u16).max(min_cols);
+            let rows = ((rect.height as f32 / cell_h as f32) as u16).max(min_rows);
             if let Some(pane) = self.panes.get_mut(*id).and_then(|p| p.as_mut()) {
                 let cur_cols = pane.app.grid().width() as u16;
                 let cur_rows = pane.app.grid().height() as u16;
