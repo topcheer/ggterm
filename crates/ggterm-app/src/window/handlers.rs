@@ -1012,6 +1012,29 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+PageUp → move tab left, Ctrl+Shift+PageDown → move tab right
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && self.sessions.len() > 1
+        {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::PageUp) => {
+                    if self.active > 0 {
+                        self.move_tab(self.active, self.active - 1);
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::PageDown) => {
+                    if self.active < self.sessions.len() - 1 {
+                        self.move_tab(self.active, self.active + 1);
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Phase 8-D: Ctrl+Shift+Up/Down for command block navigation (not configurable)
         if self.mods.ctrl
             && self.mods.shift

@@ -206,6 +206,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Tab,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+PageUp/Down".into(),
+            description: "Move tab left/right".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
         // Splits
         ShortcutEntry {
             keys: "Ctrl+Shift+D".into(),
