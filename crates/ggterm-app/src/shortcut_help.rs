@@ -200,6 +200,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Tab,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+T".into(),
+            description: "Reopen last closed tab".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
         // Splits
         ShortcutEntry {
             keys: "Ctrl+Shift+D".into(),
@@ -241,6 +247,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
         ShortcutEntry {
             keys: "Ctrl+Shift+A".into(),
             description: "Select all text".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Insert".into(),
+            description: "Copy selection (Linux/Windows)".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Shift+Insert".into(),
+            description: "Paste from clipboard (Linux/Windows)".into(),
             category: ShortcutCategory::Edit,
             configurable: false,
         },
@@ -302,6 +320,30 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
         },
         ShortcutEntry {
             keys: "Ctrl+Shift+End".into(),
+            description: "Scroll to bottom".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Shift+PageUp".into(),
+            description: "Scroll up one page".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Shift+PageDown".into(),
+            description: "Scroll down one page".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Shift+Home".into(),
+            description: "Scroll to top of scrollback".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Shift+End".into(),
             description: "Scroll to bottom".into(),
             category: ShortcutCategory::Search,
             configurable: false,
