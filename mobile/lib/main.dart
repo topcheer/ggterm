@@ -1,15 +1,12 @@
 /// GGTerm mobile entry point.
 ///
 /// Flow: ConnectionScreen → (connect) → TerminalScreen.
-///
-/// The session manager will be provided by flutter_rust_bridge once the
-/// Rust core library is wired up. For now, the UI shell is self-contained.
+/// Uses dart:ffi to bridge to the Rust ggterm_ffi library.
 
 import 'package:flutter/material.dart';
 
+import 'ffi/session_manager.dart';
 import 'connection_screen.dart';
-import 'keyboard_bar.dart';
-import 'ai_toolbar.dart';
 import 'terminal_screen.dart';
 import 'theme.dart';
 
@@ -30,24 +27,79 @@ class GGTermApp extends StatelessWidget {
         colorSchemeSeed: Colors.blue,
         useMaterial3: true,
       ),
-      home: const ConnectionScreen(
-        onConnect: _placeholderConnect,
-      ),
+      home: const _ConnectionEntry(),
     );
   }
 }
 
-/// Placeholder connection handler.
-///
-/// In production this will:
-/// 1. Initialize the Rust session via flutter_rust_bridge.
-/// 2. Establish SSH connection.
-/// 3. Return true on success.
-Future<bool> _placeholderConnect(ConnectionParams params) async {
-  // Simulate connection attempt.
-  await Future.delayed(const Duration(milliseconds: 500));
-  debugPrint(
-      'Connect: ${params.username}@${params.host}:${params.port} '
-      '(key: ${params.keyFilePath ?? "password"})');
-  return true;
+class _ConnectionEntry extends StatefulWidget {
+  const _ConnectionEntry();
+
+  @override
+  State<_ConnectionEntry> createState() => _ConnectionEntryState();
+}
+
+class _ConnectionEntryState extends State<_ConnectionEntry> {
+  final _sessionManager = SessionManager();
+
+  @override
+  void dispose() {
+    _sessionManager.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onConnect(ConnectionParams params, {bool echo = false}) async {
+    // Create session
+    final sessionId = _sessionManager.createSession(80, 24);
+
+    bool connected = false;
+    if (echo) {
+      connected = _sessionManager.echoConnect(sessionId);
+    } else {
+      // SSH connect (blocking — in production, run on background isolate)
+      connected = _sessionManager.sshConnect(sessionId, SshConnectionParams(
+        host: params.host,
+        port: params.port,
+        user: params.username,
+        password: params.password,
+        keyFilePath: params.keyFilePath,
+      ));
+    }
+
+    if (connected && mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TerminalScreen(
+            sessionManager: _sessionManager,
+            sessionId: sessionId,
+            title: echo ? 'Echo Mode' : '${params.username}@${params.host}',
+          ),
+        ),
+      ).then((_) {
+        // Clean up session when terminal screen is popped
+        _sessionManager.destroySession(sessionId);
+      });
+    } else {
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: ${_sessionManager.lastError.isEmpty ? "Unknown error" : _sessionManager.lastError}'),
+            backgroundColor: Colors.red.shade800,
+          ),
+        );
+        _sessionManager.destroySession(sessionId);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConnectionScreen(
+      onConnect: (params) => _onConnect(params),
+      onEchoTest: () => _onConnect(const ConnectionParams(
+        host: '', username: 'echo',
+      ), echo: true),
+    );
+  }
 }

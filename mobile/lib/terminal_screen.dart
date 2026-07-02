@@ -1,67 +1,32 @@
-/// Main terminal screen with custom Canvas-based cell renderer.
+/// Main terminal screen with FFI-backed Canvas renderer.
 ///
-/// Receives [SessionManager] (from flutter_rust_bridge) and renders
-/// terminal cells via [CustomPaint] + [_TerminalPainter].
-/// Touch gestures: pan to scroll scrollback, pinch to zoom font.
+/// Receives [SessionManager] and session ID from the connection flow.
+/// A timer loop pumps transport data and flushes input at ~30fps,
+/// then repaints the terminal via [CustomPaint].
+///
+/// Touch gestures: pan to scroll scrollback, pinch to zoom font,
+/// tap to position cursor.
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 
+import 'ffi/session_manager.dart';
+import 'keyboard_bar.dart';
 import 'theme.dart';
 
-// ── Data types bridged from Rust ──────────────────────────────────────
-
-/// A single terminal cell with character + color info.
-class TerminalCell {
-  final String char;
-  final int fgIndex; // ANSI 0-15, or -1 for default fg
-  final int bgIndex; // ANSI 0-15, or -1 for default bg
-  final bool bold;
-  final bool italic;
-  final bool underline;
-
-  const TerminalCell({
-    this.char = ' ',
-    this.fgIndex = -1,
-    this.bgIndex = -1,
-    this.bold = false,
-    this.italic = false,
-    this.underline = false,
-  });
-}
-
-/// Snapshot of the terminal screen for rendering.
-class ScreenData {
-  final List<TerminalCell> cells; // flat array, row-major
-  final int cursorCol;
-  final int cursorRow;
-  final int cols;
-  final int rows;
-  final int scrollOffset; // scrollback offset (0 = bottom/latest)
-
-  const ScreenData({
-    required this.cells,
-    this.cursorCol = 0,
-    this.cursorRow = 0,
-    this.cols = 80,
-    this.rows = 24,
-    this.scrollOffset = 0,
-  });
-}
-
-// ── TerminalScreen widget ─────────────────────────────────────────────
-
-/// Placeholder for the Rust-bridged session manager.
-typedef SessionManager = dynamic;
-
 class TerminalScreen extends StatefulWidget {
-  final SessionManager session;
+  final SessionManager sessionManager;
+  final int sessionId;
+  final String title;
   final TerminalTheme theme;
 
   const TerminalScreen({
     super.key,
-    required this.session,
+    required this.sessionManager,
+    required this.sessionId,
+    this.title = 'Terminal',
     this.theme = darkTheme,
   });
 
@@ -70,49 +35,121 @@ class TerminalScreen extends StatefulWidget {
 }
 
 class _TerminalScreenState extends State<TerminalScreen> {
-  double _fontSize = 14.0;
-  double _scrollOffset = 0.0;
-  ScreenData _screen = const ScreenData(cells: []);
+  double _fontSize = 13.0;
+  ScreenSnapshot _screen = ScreenSnapshot.empty;
+  final _modifiers = ModifierState();
+  bool _showKeyboardBar = true;
+  Timer? _renderTimer;
+  bool _transportAlive = true;
 
   // Cell dimensions derived from font size (monospace ratio ~0.6).
   double get _cellWidth => _fontSize * 0.6;
-  double get _cellHeight => _fontSize * 1.2;
+  double get _cellHeight => _fontSize * 1.3;
 
   @override
   void initState() {
     super.initState();
-    _updateScreen();
+    _startRenderLoop();
   }
 
-  void _updateScreen() {
-    // TODO: Poll ScreenData from SessionManager via flutter_rust_bridge.
-    // For now, generate a placeholder grid.
-    final cols = 80;
-    final rows = 24;
-    final cells = List<TerminalCell>.filled(
-      cols * rows,
-      const TerminalCell(char: ' '),
-    );
-    // Write a welcome message on the first line.
-    const welcome = 'GGTerm Mobile — Ready';
-    for (var i = 0; i < welcome.length && i < cols; i++) {
-      cells[i] = TerminalCell(char: welcome[i], fgIndex: 14); // bright cyan
-    }
-    setState(() {
-      _screen = ScreenData(
-        cells: cells,
-        cols: cols,
-        rows: rows,
-        cursorCol: welcome.length,
-        cursorRow: 0,
-      );
+  void _startRenderLoop() {
+    _renderTimer?.cancel();
+    // ~30fps pump + render cycle
+    _renderTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      if (!mounted) return;
+      final mgr = widget.sessionManager;
+      final id = widget.sessionId;
+
+      // Pump transport data
+      mgr.pumpAndFlush(id);
+
+      // Check alive
+      final alive = mgr.isAlive(id);
+      if (alive != _transportAlive) {
+        _transportAlive = alive;
+      }
+
+      // Get screen snapshot
+      final snapshot = mgr.getScreenSnapshot(id);
+      setState(() {
+        _screen = snapshot;
+      });
     });
   }
 
-  // ── Gesture handlers ──
+  @override
+  void dispose() {
+    _renderTimer?.cancel();
+    super.dispose();
+  }
+
+  void _sendKey(String keyName) {
+    final codes = _keyNameToBytes(keyName);
+    widget.sessionManager.sendInput(widget.sessionId, codes);
+  }
+
+  void _sendChar(String char) {
+    if (char.isEmpty) return;
+    // Apply modifier prefix
+    final prefix = _modifiers.prefix;
+    final codes = <int>[];
+
+    if (prefix.contains('Ctrl')) {
+      // Ctrl+letter → control character
+      final c = char.toLowerCase().codeUnitAt(0);
+      if (c >= 0x61 && c <= 0x7A) {
+        codes.add(c - 0x60); // a=1, b=2, ...
+      }
+    } else if (prefix.contains('Alt')) {
+      codes.add(0x1B); // ESC prefix
+      codes.addAll(char.codeUnits);
+    } else {
+      codes.addAll(char.codeUnits);
+    }
+
+    widget.sessionManager.sendInput(widget.sessionId, codes);
+    _modifiers.releaseAll();
+  }
+
+  /// Convert special key names to terminal escape sequences.
+  List<int> _keyNameToBytes(String name) {
+    switch (name) {
+      case 'Enter':
+        return [0x0D];
+      case 'Tab':
+        return [0x09];
+      case 'Escape':
+        return [0x1B];
+      case 'Backspace':
+        return [0x7F];
+      case 'CtrlC':
+        return [0x03]; // SIGINT
+      case 'CtrlD':
+        return [0x04]; // EOF
+      case 'CtrlZ':
+        return [0x1A]; // SIGTSTP
+      case 'Up':
+        return [0x1B, 0x5B, 0x41]; // ESC [ A
+      case 'Down':
+        return [0x1B, 0x5B, 0x42];
+      case 'Right':
+        return [0x1B, 0x5B, 0x43];
+      case 'Left':
+        return [0x1B, 0x5B, 0x44];
+      case 'Home':
+        return [0x1B, 0x5B, 0x48]; // ESC [ H
+      case 'End':
+        return [0x1B, 0x5B, 0x46]; // ESC [ F
+      case 'PageUp':
+        return [0x1B, 0x5B, 0x35, 0x7E]; // ESC [ 5 ~
+      case 'PageDown':
+        return [0x1B, 0x5B, 0x36, 0x7E]; // ESC [ 6 ~
+      default:
+        return name.codeUnits;
+    }
+  }
 
   void _onScale(ScaleUpdateDetails details) {
-    // Pinch to zoom font.
     if ((details.scale - 1.0).abs() > 0.01) {
       setState(() {
         _fontSize = (_fontSize * details.scale).clamp(8.0, 32.0);
@@ -120,20 +157,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  void _onPan(DragUpdateDetails details) {
-    // Pan to scroll scrollback.
-    setState(() {
-      _scrollOffset = (_scrollOffset - details.delta.dy)
-          .clamp(0.0, _screen.rows * _cellHeight);
-    });
-  }
-
-  void _onTapUp(TapUpDetails details, BoxConstraints constraints) {
-    // Convert tap position to cell coordinates.
+  void _onTapUp(TapUpDetails details) {
     final col = (details.localPosition.dx / _cellWidth).floor();
     final row = (details.localPosition.dy / _cellHeight).floor();
     debugPrint('Tap at col=$col row=$row');
-    // TODO: Forward tap to session for cursor positioning or mouse events.
+    // TODO: Forward tap for cursor positioning or mouse events
   }
 
   @override
@@ -142,6 +170,32 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
     return Scaffold(
       backgroundColor: theme.background,
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: Colors.grey.shade900,
+        foregroundColor: Colors.white,
+        actions: [
+          // Transport status indicator
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _transportAlive ? Colors.green : Colors.red,
+                ),
+              ),
+            ),
+          ),
+          // Toggle keyboard bar
+          IconButton(
+            icon: Icon(_showKeyboardBar ? Icons.keyboard_hide : Icons.keyboard),
+            onPressed: () => setState(() => _showKeyboardBar = !_showKeyboardBar),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -149,18 +203,28 @@ class _TerminalScreenState extends State<TerminalScreen> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  // Compute grid dimensions from available space
+                  final cols = (constraints.maxWidth / _cellWidth).floor().clamp(10, 300);
+                  final rows = ((constraints.maxHeight - (_showKeyboardBar ? 44 : 0)) / _cellHeight)
+                      .floor()
+                      .clamp(3, 100);
+
+                  // Resize terminal if dimensions changed
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_screen.cols != cols || _screen.rows != rows) {
+                      widget.sessionManager.resize(widget.sessionId, cols, rows);
+                    }
+                  });
+
                   return GestureDetector(
                     onScaleUpdate: _onScale,
-                    onVerticalDragUpdate: _onPan,
-                    onTapUp: (details) =>
-                        _onTapUp(details, constraints),
+                    onTapUp: (details) => _onTapUp(details, constraints),
                     child: CustomPaint(
                       painter: _TerminalPainter(
                         screen: _screen,
                         theme: theme,
                         cellWidth: _cellWidth,
                         cellHeight: _cellHeight,
-                        scrollPixelOffset: _scrollOffset,
                       ),
                       child: Container(),
                     ),
@@ -168,6 +232,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 },
               ),
             ),
+
+            // ── Keyboard bar ──
+            if (_showKeyboardBar)
+              KeyboardBar(
+                modifiers: _modifiers,
+                onKey: _sendKey,
+              ),
           ],
         ),
       ),
@@ -175,21 +246,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 }
 
-// ── Custom painter ────────────────────────────────────────────────────
+// ── Custom painter with real FFI data ────────────────────────────────
 
 class _TerminalPainter extends CustomPainter {
-  final ScreenData screen;
+  final ScreenSnapshot screen;
   final TerminalTheme theme;
   final double cellWidth;
   final double cellHeight;
-  final double scrollPixelOffset;
 
   _TerminalPainter({
     required this.screen,
     required this.theme,
     required this.cellWidth,
     required this.cellHeight,
-    this.scrollPixelOffset = 0.0,
   });
 
   @override
@@ -198,16 +267,13 @@ class _TerminalPainter extends CustomPainter {
     final bgPaint = Paint()..color = theme.background;
     canvas.drawRect(Offset.zero & size, bgPaint);
 
-    final fgDefault = theme.foreground;
-    final bgDefault = theme.background;
+    if (screen.cells.isEmpty) return;
 
-    // Clip to visible area.
     canvas.clipRect(Offset.zero & size);
 
     final cols = screen.cols;
     final rows = screen.rows;
-    final maxVisibleRows =
-        math.min(rows, (size.height / cellHeight).floor());
+    final maxVisibleRows = math.min(rows, (size.height / cellHeight).floor());
 
     for (var row = 0; row < maxVisibleRows; row++) {
       final y = row * cellHeight;
@@ -219,30 +285,29 @@ class _TerminalPainter extends CustomPainter {
 
         final cell = screen.cells[idx];
 
-        // Resolve background.
-        final cellBg = cell.bgIndex >= 0 && cell.bgIndex < theme.palette.length
-            ? theme.palette[cell.bgIndex]
-            : bgDefault;
+        // Resolve background color.
+        final cellBg = Color(0xFF000000 | cell.bgRgb);
 
         // Draw cell background.
         final bgRect = Rect.fromLTWH(x, y, cellWidth, cellHeight);
         canvas.drawRect(bgRect, Paint()..color = cellBg);
 
-        // Resolve foreground.
-        final cellFg = cell.fgIndex >= 0 && cell.fgIndex < theme.palette.length
-            ? theme.palette[cell.fgIndex]
-            : fgDefault;
+        // Resolve foreground color.
+        final cellFg = Color(0xFF000000 | cell.fgRgb);
 
         // Draw character.
-        if (cell.char.isNotEmpty && cell.char != ' ') {
+        if (cell.charCode != 0) {
           final textStyle = TextStyle(
             color: cellFg,
             fontSize: cellHeight * 0.85,
             fontFamily: 'monospace',
             fontWeight: cell.bold ? FontWeight.bold : FontWeight.normal,
             fontStyle: cell.italic ? FontStyle.italic : FontStyle.normal,
-            decoration:
-                cell.underline ? TextDecoration.underline : TextDecoration.none,
+            decoration: cell.underline
+                ? TextDecoration.underline
+                : cell.strikethrough
+                    ? TextDecoration.lineThrough
+                    : TextDecoration.none,
           );
 
           final tp = TextPainter(
@@ -250,7 +315,6 @@ class _TerminalPainter extends CustomPainter {
             textDirection: TextDirection.ltr,
           )..layout();
 
-          // Center character in cell.
           final dx = x + (cellWidth - tp.width) / 2;
           final dy = y + (cellHeight - tp.height) / 2;
           tp.paint(canvas, Offset(dx, dy));
@@ -259,7 +323,7 @@ class _TerminalPainter extends CustomPainter {
         // Draw cursor (block style).
         if (col == screen.cursorCol && row == screen.cursorRow) {
           final cursorPaint = Paint()
-            ..color = theme.cursor.withOpacity(0.6)
+            ..color = theme.cursor.withOpacity(0.5)
             ..blendMode = BlendMode.srcOver;
           canvas.drawRect(bgRect, cursorPaint);
         }
@@ -269,9 +333,6 @@ class _TerminalPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TerminalPainter old) {
-    return old.screen != screen ||
-        old.cellWidth != cellWidth ||
-        old.cellHeight != cellHeight ||
-        old.scrollPixelOffset != scrollPixelOffset;
+    return true; // Always repaint — FFI data may have changed
   }
 }

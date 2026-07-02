@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 
-/// SSH connection parameters.
+/// SSH connection parameters (passed to SessionManager).
 class ConnectionParams {
   final String host;
   final int port;
@@ -22,12 +22,16 @@ class ConnectionParams {
 }
 
 class ConnectionScreen extends StatefulWidget {
-  /// Called when the user taps Connect. Return true to navigate to terminal.
+  /// Called when the user taps Connect.
   final Future<bool> Function(ConnectionParams params) onConnect;
+
+  /// Called when the user taps Echo Test.
+  final VoidCallback? onEchoTest;
 
   const ConnectionScreen({
     super.key,
     required this.onConnect,
+    this.onEchoTest,
   });
 
   @override
@@ -45,7 +49,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   bool _connecting = false;
   bool _obscurePassword = true;
   bool _useKeyFile = false;
-  String? _errorMessage;
 
   @override
   void dispose() {
@@ -60,39 +63,26 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _connecting = true;
-      _errorMessage = null;
-    });
+    setState(() => _connecting = true);
 
     final params = ConnectionParams(
       host: _hostController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 22,
       username: _userController.text.trim(),
       password: _passController.text,
-      keyFilePath:
-          _useKeyFile && _keyController.text.isNotEmpty
-              ? _keyController.text.trim()
-              : null,
+      keyFilePath: _useKeyFile && _keyController.text.isNotEmpty
+          ? _keyController.text.trim()
+          : null,
     );
 
     try {
-      final success = await widget.onConnect(params);
-      if (success && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const TerminalScreenPlaceholder(),
-          ),
-        );
-      } else {
-        setState(() {
-          _errorMessage = 'Connection failed. Check your credentials.';
-        });
-      }
+      await widget.onConnect(params);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Error: $e';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _connecting = false);
     }
@@ -194,31 +184,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // ── Error message ──
-              if (_errorMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade900.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade700),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.red.shade300),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: Colors.red.shade200),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
               // ── Connect button ──
               FilledButton.icon(
                 onPressed: _connecting ? null : _connect,
@@ -235,9 +200,22 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 ),
               ),
 
+              const SizedBox(height: 12),
+
+              // ── Echo Test button (no SSH needed) ──
+              if (widget.onEchoTest != null)
+                OutlinedButton.icon(
+                  onPressed: () => widget.onEchoTest!(),
+                  icon: const Icon(Icons.terminal),
+                  label: const Text('Echo Test (No SSH)'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                ),
+
               const SizedBox(height: 24),
 
-              // ── Recent connections (placeholder) ──
+              // ── Recent connections ──
               Text(
                 'Recent Connections',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -245,7 +223,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     ),
               ),
               const SizedBox(height: 8),
-              // TODO: Populate from saved connection history.
               ListTile(
                 leading: const Icon(Icons.history, color: Colors.grey),
                 title: Text(
@@ -258,19 +235,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Temporary placeholder until TerminalScreen is wired with session manager.
-class TerminalScreenPlaceholder extends StatelessWidget {
-  const TerminalScreenPlaceholder({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Terminal')),
-      body: const Center(child: Text('Terminal session would appear here.')),
     );
   }
 }

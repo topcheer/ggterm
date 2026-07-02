@@ -5,6 +5,7 @@
 //! the terminal without depending on Rust's type system.
 
 pub mod api;
+pub mod transport;
 
 use ggterm_core::{Cell, Color, Grid, Parser, Terminal};
 use std::ffi::c_int;

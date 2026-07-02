@@ -174,9 +174,9 @@ class _KeyboardBarState extends State<KeyboardBar> {
             // Special keys
             _keyButton('Esc', 'Escape'),
             _keyButton('Tab', 'Tab'),
-            _keyButton('Ctrl-C', 'C'), // SIGINT shortcut
-                       _keyButton('Ctrl-D', 'D'), // EOF shortcut
-            _keyButton('Ctrl-Z', 'Z'), // SIGTSTP shortcut
+            _keyButton('^C', 'CtrlC'), // SIGINT
+            _keyButton('^D', 'CtrlD'), // EOF
+            _keyButton('^Z', 'CtrlZ'), // SIGTSTP
             // Separator
             Container(
               width: 1,

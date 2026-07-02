@@ -1,0 +1,217 @@
+/// Low-level dart:ffi bindings for the ggterm_ffi C-ABI.
+///
+/// Maps all Rust extern "C" functions to Dart equivalents.
+/// Usage:
+/// ```dart
+/// final ffi = GgtermFfi();
+/// final sessionId = ffi.sessionCreate(80, 24);
+/// ffi.sessionProcessBytes(sessionId, data);
+/// ffi.sessionDestroy(sessionId);
+/// ```
+import 'dart:ffi';
+import 'dart:io';
+import 'package:ffi/ffi.dart';
+
+import 'types.dart';
+
+// ── Function type definitions ─────────────────────────────────────────
+
+typedef _SessionCreateC = Uint32 Function(Uint32 cols, Uint32 rows);
+typedef _SessionCreateDart = int Function(int cols, int rows);
+
+typedef _SessionDestroyC = Void Function(Uint32 id);
+typedef _SessionDestroyDart = void Function(int id);
+
+typedef _SessionCountC = IntPtr Function();
+typedef _SessionCountDart = int Function();
+
+typedef _ProcessBytesC = Void Function(
+    Uint32 id, Pointer<Uint8> data, IntPtr len);
+typedef _ProcessBytesDart = void Function(
+    int id, Pointer<Uint8> data, int len);
+
+typedef _SendInputC = Void Function(
+    Uint32 id, Pointer<Uint8> data, IntPtr len);
+typedef _SendInputDart = void Function(
+    int id, Pointer<Uint8> data, int len);
+
+typedef _TakeInputC = IntPtr Function(
+    Uint32 id, Pointer<Uint8> buf, IntPtr maxLen);
+typedef _TakeInputDart = int Function(
+    int id, Pointer<Uint8> buf, int maxLen);
+
+typedef _ReadCellsC = IntPtr Function(
+    Uint32 id, Pointer<GGTermCell> buf, IntPtr maxCells);
+typedef _ReadCellsDart = int Function(
+    int id, Pointer<GGTermCell> buf, int maxCells);
+
+typedef _DimensionsC = Void Function(
+    Uint32 id, Pointer<IntPtr> cols, Pointer<IntPtr> rows);
+typedef _DimensionsDart = void Function(
+    int id, Pointer<IntPtr> cols, Pointer<IntPtr> rows);
+
+typedef _CursorC = Void Function(
+    Uint32 id, Pointer<IntPtr> col, Pointer<IntPtr> row);
+typedef _CursorDart = void Function(
+    int id, Pointer<IntPtr> col, Pointer<IntPtr> row);
+
+typedef _ResizeC = Void Function(Uint32 id, Uint32 cols, Uint32 rows);
+typedef _ResizeDart = void Function(int id, int cols, int rows);
+
+typedef _TakeBellC = Int32 Function(Uint32 id);
+typedef _TakeBellDart = int Function(int id);
+
+typedef _PumpC = IntPtr Function(Uint32 id);
+typedef _PumpDart = int Function(int id);
+
+typedef _FlushC = Void Function(Uint32 id);
+typedef _FlushDart = void Function(int id);
+
+typedef _IsAliveC = Int32 Function(Uint32 id);
+typedef _IsAliveDart = int Function(int id);
+
+typedef _SshConnectC = Int32 Function(
+    Uint32 id, Pointer<Utf8> host, Uint16 port, Pointer<Utf8> user, Pointer<Utf8> password);
+typedef _SshConnectDart = int Function(
+    int id, Pointer<Utf8> host, int port, Pointer<Utf8> user, Pointer<Utf8> password);
+
+typedef _SshConnectKeyC = Int32 Function(
+    Uint32 id, Pointer<Utf8> host, Uint16 port, Pointer<Utf8> user, Pointer<Utf8> keyPath);
+typedef _SshConnectKeyDart = int Function(
+    int id, Pointer<Utf8> host, int port, Pointer<Utf8> user, Pointer<Utf8> keyPath);
+
+typedef _EchoConnectC = Int32 Function(Uint32 id);
+typedef _EchoConnectDart = int Function(int id);
+
+typedef _LastErrorC = Pointer<Utf8> Function();
+typedef _LastErrorDart = Pointer<Utf8> Function();
+
+// ── FFI bindings class ────────────────────────────────────────────────
+
+/// Provides all C-ABI bindings to the ggterm_ffi shared library.
+class GgtermFfi {
+  late final DynamicLibrary _lib;
+
+  // Bound functions
+  late final int Function(int, int) sessionCreate;
+  late final void Function(int) sessionDestroy;
+  late final int Function() sessionCount;
+  late final void Function(int, Pointer<Uint8>, int) sessionProcessBytes;
+  late final void Function(int, Pointer<Uint8>, int) sessionSendInput;
+  late final int Function(int, Pointer<Uint8>, int) sessionTakeInput;
+  late final int Function(int, Pointer<GGTermCell>, int) sessionReadCells;
+  late final void Function(int, Pointer<IntPtr>, Pointer<IntPtr>) sessionDimensions;
+  late final void Function(int, Pointer<IntPtr>, Pointer<IntPtr>) sessionCursor;
+  late final void Function(int, int, int) sessionResize;
+  late final int Function(int) sessionTakeBell;
+  late final int Function(int) transportPump;
+  late final void Function(int) transportFlush;
+  late final int Function(int) transportIsAlive;
+  late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnect;
+  late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnectKey;
+  late final int Function(int) echoConnect;
+  late final Pointer<Utf8> Function() lastError;
+
+  /// Load the ggterm_ffi library.
+  ///
+  /// On desktop: loads from build directory or system path.
+  /// On mobile: loads from the bundled library in the app bundle.
+  GgtermFfi({String? libraryPath}) {
+    if (libraryPath != null) {
+      _lib = DynamicLibrary.open(libraryPath);
+    } else {
+      _lib = _loadLibrary();
+    }
+    _bindFunctions();
+  }
+
+  DynamicLibrary _loadLibrary() {
+    if (Platform.isMacOS || Platform.isLinux) {
+      // Try several common locations
+      const candidates = [
+        'libggterm_ffi.dylib',
+        'libggterm_ffi.so',
+        './libggterm_ffi.dylib',
+        '../target/debug/libggterm_ffi.dylib',
+        '../target/debug/libggterm_ffi.so',
+        '../target/release/libggterm_ffi.dylib',
+      ];
+      for (final path in candidates) {
+        try {
+          return DynamicLibrary.open(path);
+        } catch (_) {
+          continue;
+        }
+      }
+    }
+    if (Platform.isIOS || Platform.isAndroid) {
+      // Static linking — the symbols are already in the process
+      return DynamicLibrary.process();
+    }
+    throw UnsupportedError('Unsupported platform for ggterm_ffi');
+  }
+
+  void _bindFunctions() {
+    sessionCreate = _lib
+        .lookupFunction<_SessionCreateC, _SessionCreateDart>(
+            'ggterm_session_create');
+    sessionDestroy = _lib
+        .lookupFunction<_SessionDestroyC, _SessionDestroyDart>(
+            'ggterm_session_destroy');
+    sessionCount = _lib
+        .lookupFunction<_SessionCountC, _SessionCountDart>(
+            'ggterm_session_count');
+    sessionProcessBytes = _lib
+        .lookupFunction<_ProcessBytesC, _ProcessBytesDart>(
+            'ggterm_session_process_bytes');
+    sessionSendInput = _lib
+        .lookupFunction<_SendInputC, _SendInputDart>(
+            'ggterm_session_send_input');
+    sessionTakeInput = _lib
+        .lookupFunction<_TakeInputC, _TakeInputDart>(
+            'ggterm_session_take_input');
+    sessionReadCells = _lib
+        .lookupFunction<_ReadCellsC, _ReadCellsDart>(
+            'ggterm_session_read_cells');
+    sessionDimensions = _lib
+        .lookupFunction<_DimensionsC, _DimensionsDart>(
+            'ggterm_session_dimensions');
+    sessionCursor = _lib
+        .lookupFunction<_CursorC, _CursorDart>(
+            'ggterm_session_cursor');
+    sessionResize = _lib
+        .lookupFunction<_ResizeC, _ResizeDart>(
+            'ggterm_session_resize');
+    sessionTakeBell = _lib
+        .lookupFunction<_TakeBellC, _TakeBellDart>(
+            'ggterm_session_take_bell');
+    transportPump = _lib
+        .lookupFunction<_PumpC, _PumpDart>(
+            'ggterm_transport_pump');
+    transportFlush = _lib
+        .lookupFunction<_FlushC, _FlushDart>(
+            'ggterm_transport_flush');
+    transportIsAlive = _lib
+        .lookupFunction<_IsAliveC, _IsAliveDart>(
+            'ggterm_transport_is_alive');
+    sshConnect = _lib
+        .lookupFunction<_SshConnectC, _SshConnectDart>(
+            'ggterm_ssh_connect');
+    sshConnectKey = _lib
+        .lookupFunction<_SshConnectKeyC, _SshConnectKeyDart>(
+            'ggterm_ssh_connect_key');
+    echoConnect = _lib
+        .lookupFunction<_EchoConnectC, _EchoConnectDart>(
+            'ggterm_echo_connect');
+    lastError = _lib
+        .lookupFunction<_LastErrorC, _LastErrorDart>(
+            'ggterm_last_error');
+  }
+
+  /// Get the last error message as a Dart string.
+  String getLastErrorString() {
+    final ptr = lastError();
+    if (ptr == nullptr) return '';
+    return ptr.toDartString();
+  }
+}
