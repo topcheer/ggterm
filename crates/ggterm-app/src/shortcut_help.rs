@@ -350,7 +350,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+T".into(),
+            keys: "Ctrl+Shift+Alt+T".into(),
             description: "Cycle theme".into(),
             category: ShortcutCategory::View,
             configurable: false,

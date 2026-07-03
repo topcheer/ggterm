@@ -317,7 +317,7 @@ pub fn default_keybindings() -> std::collections::HashMap<String, (bool, bool, b
     // Terminal actions
     m.insert("clear".into(), (true, true, false, "K".into()));
     m.insert("reset".into(), (true, true, false, "R".into()));
-    m.insert("cycle_theme".into(), (true, true, false, "T".into()));
+    m.insert("cycle_theme".into(), (true, true, true, "T".into()));
     m
 }
 

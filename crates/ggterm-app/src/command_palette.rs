@@ -122,7 +122,7 @@ impl CommandRegistry {
             id: "theme.cycle".into(),
             label: "Cycle Theme".into(),
             category: "Theme".into(),
-            shortcut: Some("Ctrl+Shift+T".into()),
+            shortcut: Some("Ctrl+Shift+Alt+T".into()),
         });
         r.register(Command {
             id: "font.zoom_in".into(),
@@ -303,7 +303,7 @@ impl CommandRegistry {
             id: "theme.cycle".into(),
             label: "Cycle Theme".into(),
             category: "Settings".into(),
-            shortcut: Some("Ctrl+Shift+T".into()),
+            shortcut: Some("Ctrl+Shift+Alt+T".into()),
         });
         r.register(Command {
             id: "font.zoom_in".into(),
