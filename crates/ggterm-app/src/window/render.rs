@@ -2011,10 +2011,12 @@ impl DesktopApp {
         }
 
         // ── P30-A: Scrollbar ──────────────────────────────────────────
-        // Show a thin scrollbar on the right edge when there's scrollback.
+        // Show a thin scrollbar on the right edge when there's scrollback
+        // and we're NOT in alternate screen mode (vim, less, htop, etc).
         {
+            let is_alt = self.sessions[self.active].app().terminal().is_alt_screen();
             let scrollback_len = grid.scrollback_len();
-            if scrollback_len > 0 {
+            if scrollback_len > 0 && !is_alt {
                 let total_rows = scrollback_len + grid.height();
                 let visible_ratio = grid.height() as f32 / total_rows as f32;
                 let visible_ratio = visible_ratio.clamp(0.05, 1.0);
