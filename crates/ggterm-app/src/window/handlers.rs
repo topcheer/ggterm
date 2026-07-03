@@ -2170,6 +2170,24 @@ impl DesktopApp {
 
     /// Handle mouse wheel events — scroll scrollback or report to PTY.
     pub(super) fn handle_mouse_wheel(&mut self, delta: winit::event::MouseScrollDelta) {
+        // Ctrl+Shift+Wheel → zoom font size (VS Code / iTerm2 style).
+        if self.mods.ctrl && self.mods.shift && !self.mods.alt {
+            let y = match delta {
+                winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.y as f32 / 16.0).round(),
+            };
+            let changed = if y > 0.0 {
+                self.font_zoom.zoom_in()
+            } else {
+                self.font_zoom.zoom_out()
+            };
+            if changed {
+                self.apply_font_size();
+                self.show_toast(format!("{:.0}px", self.font_zoom.current_size()));
+            }
+            return;
+        }
+
         // P20-D: Route wheel events to the pane under the cursor.
         if self.maybe_switch_pane_focus()
             && let Some(ref window) = self.window
