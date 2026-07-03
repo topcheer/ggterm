@@ -404,6 +404,10 @@ pub struct Terminal {
     /// Pending desktop notification from OSC 9/777 (P24-E).
     /// (title, body) pair. Consumed by the event loop.
     pub(crate) pending_notification: Option<(String, String)>,
+    /// Remote SSH host (from OSC 1337 RemoteHost=).
+    pub(crate) remote_host: Option<String>,
+    /// Scrollback mark row (from OSC 1337 SetMark).
+    pub(crate) mark_row: Option<usize>,
 }
 
 /// Parse an OSC 7 working directory URI.
@@ -551,6 +555,8 @@ impl Terminal {
             cwd: None,
             protected_attr: false,
             pending_notification: None,
+            remote_host: None,
+            mark_row: None,
         }
     }
 
@@ -716,6 +722,16 @@ impl Terminal {
     /// Return the current working directory set via OSC 7 (P22-D).
     pub fn cwd(&self) -> Option<&std::path::Path> {
         self.cwd.as_deref()
+    }
+
+    /// Return the remote SSH host (from OSC 1337 RemoteHost=).
+    pub fn remote_host(&self) -> Option<&str> {
+        self.remote_host.as_deref()
+    }
+
+    /// Return the scrollback mark row (from OSC 1337 SetMark).
+    pub fn mark_row(&self) -> Option<usize> {
+        self.mark_row
     }
 
     /// Return the device response buffer (DA/DSR replies).
@@ -1947,6 +1963,29 @@ impl Perform for Terminal {
                         self.response_buffer.extend_from_slice(resp.as_bytes());
                     }
                     // Setting colors is a no-op for now (palette is fixed)
+                }
+            }
+            // OSC 1337 — iTerm2 shell integration protocol.
+            // Key sub-protocols we support:
+            //   OSC 1337 ; CurrentDir=<path>    — update cwd (like OSC 7)
+            //   OSC 1337 ; RemoteHost=user@host — track remote SSH host
+            //   OSC 1337 ; SetMark              — set a scrollback mark
+            //   OSC 1337 ; ClearScrollback      — clear scrollback history
+            // Other 1337 extensions (inline images, profile switching) are ignored.
+            Some(1337) => {
+                let payload = parts.next().unwrap_or("");
+                if let Some(path) = payload.strip_prefix("CurrentDir=") {
+                    if let Ok(p) = std::path::PathBuf::from(path).canonicalize() {
+                        self.cwd = Some(p);
+                    } else {
+                        self.cwd = Some(std::path::PathBuf::from(path));
+                    }
+                } else if let Some(host) = payload.strip_prefix("RemoteHost=") {
+                    self.remote_host = Some(host.to_string());
+                } else if payload == "SetMark" {
+                    self.mark_row = Some(self.cursor().1);
+                } else if payload == "ClearScrollback" {
+                    self.grid_mut().clear_scrollback();
                 }
             }
             _ => {}
@@ -4606,5 +4645,46 @@ mod tests {
             s.contains("4;196;rgb:ff/00/00"),
             "OSC 4 query for 196 should be rgb:ff/00/00, got: {s}"
         );
+    }
+
+    // ================================================================
+    //  OSC 1337 — iTerm2 shell integration (4 tests)
+    // ================================================================
+
+    #[test]
+    fn t_osc1337_current_dir() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]1337;CurrentDir=/home/user/projects\x1b\\");
+        assert_eq!(t.cwd().unwrap().to_str().unwrap(), "/home/user/projects");
+    }
+
+    #[test]
+    fn t_osc1337_remote_host() {
+        let mut t = Terminal::new(80, 24);
+        feed(
+            &mut t,
+            b"\x1b]1337;RemoteHost=root@server.example.com\x1b\\",
+        );
+        assert_eq!(t.remote_host().unwrap(), "root@server.example.com");
+    }
+
+    #[test]
+    fn t_osc1337_set_mark() {
+        let mut t = Terminal::new(80, 24);
+        // Move cursor to row 5
+        feed(&mut t, b"\x1b[6;1H");
+        feed(&mut t, b"\x1b]1337;SetMark\x1b\\");
+        assert_eq!(t.mark_row(), Some(5));
+    }
+
+    #[test]
+    fn t_osc1337_clear_scrollback() {
+        let mut t = Terminal::new(10, 3);
+        // Fill content and scroll to generate scrollback
+        feed(&mut t, b"AAAA\nBBBB\nCCCC\nDDDD");
+        assert!(t.grid().scrollback_len() > 0);
+        // Clear scrollback
+        feed(&mut t, b"\x1b]1337;ClearScrollback\x1b\\");
+        assert_eq!(t.grid().scrollback_len(), 0);
     }
 }
