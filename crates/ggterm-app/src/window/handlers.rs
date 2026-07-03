@@ -829,6 +829,12 @@ impl DesktopApp {
                     self.handle_settings_right();
                     return;
                 }
+                PhysicalKey::Code(KeyCode::Enter) => {
+                    // Enter = save and close (same as Esc with save).
+                    self.apply_settings_on_close();
+                    self.settings.close();
+                    return;
+                }
                 _ => {}
             }
         }

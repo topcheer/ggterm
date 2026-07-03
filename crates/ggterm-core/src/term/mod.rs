@@ -612,6 +612,11 @@ impl Terminal {
         self.cursor_style
     }
 
+    /// Set the cursor style (used by config to override default).
+    pub fn set_cursor_style(&mut self, style: CursorStyle) {
+        self.cursor_style = style;
+    }
+
     pub fn title(&self) -> &str {
         &self.title
     }

@@ -155,13 +155,19 @@ impl DesktopApp {
             }
         }
 
-        // Apply scrollback to all sessions.
+        // Apply scrollback + cursor style to all sessions.
         let scrollback = self.settings.scrollback_lines;
+        let cursor_style = match self.settings.cursor_style.as_str() {
+            "underline" => ggterm_core::CursorStyle::BlinkUnderline,
+            "bar" => ggterm_core::CursorStyle::BlinkBar,
+            _ => ggterm_core::CursorStyle::BlinkBlock,
+        };
         for session in &mut self.sessions {
             let pane_ids: Vec<usize> = session.pane_ids();
             for pane_id in pane_ids {
                 if let Some(app) = session.pane_app_mut(pane_id) {
                     app.terminal_mut().grid_mut().set_scrollback(scrollback);
+                    app.terminal_mut().set_cursor_style(cursor_style);
                 }
             }
         }

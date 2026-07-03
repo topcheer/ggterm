@@ -891,6 +891,24 @@ impl ApplicationHandler for DesktopApp {
         // P11-D: Apply active theme to renderer on startup.
         self.apply_theme_to_renderer();
 
+        // Apply cursor style from config to all sessions.
+        let cursor_style = self
+            .config_mgr
+            .as_ref()
+            .map(|mgr| match mgr.config().appearance.cursor_style.as_str() {
+                "underline" => ggterm_core::CursorStyle::BlinkUnderline,
+                "bar" => ggterm_core::CursorStyle::BlinkBar,
+                _ => ggterm_core::CursorStyle::BlinkBlock,
+            })
+            .unwrap_or(ggterm_core::CursorStyle::BlinkBlock);
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.terminal_mut().set_cursor_style(cursor_style);
+                }
+            }
+        }
+
         log::info!("Window + GPU initialized");
     }
 
@@ -1198,6 +1216,11 @@ impl ApplicationHandler for DesktopApp {
                     let new_theme = cfg.appearance.theme.clone();
                     let new_font_size = cfg.appearance.font_size as f32;
                     let new_scrollback = cfg.terminal.scrollback_lines;
+                    let new_cursor_style = match cfg.appearance.cursor_style.as_str() {
+                        "underline" => ggterm_core::CursorStyle::BlinkUnderline,
+                        "bar" => ggterm_core::CursorStyle::BlinkBar,
+                        _ => ggterm_core::CursorStyle::BlinkBlock,
+                    };
                     log::info!(
                         "Config reloaded: theme={}, font_size={}, scrollback={}",
                         new_theme,
@@ -1230,6 +1253,12 @@ impl ApplicationHandler for DesktopApp {
                         .terminal_mut()
                         .grid_mut()
                         .set_scrollback(new_scrollback);
+
+                    // Apply cursor style from config.
+                    self.active_session_mut()
+                        .app_mut()
+                        .terminal_mut()
+                        .set_cursor_style(new_cursor_style);
 
                     // Show toast feedback for successful reload.
                     self.show_toast("Config reloaded");
