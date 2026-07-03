@@ -27,6 +27,23 @@ pub trait Perform {
     /// - `final_byte`: the final byte 0x40-0x7E that identifies the command
     fn csi(&mut self, _intermediates: &[u8], _params: &[u16], _final_byte: u8) {}
 
+    /// CSI with colon sub-parameters.
+    ///
+    /// Called when the CSI sequence contains colon-separated sub-parameters
+    /// (e.g. `CSI 4:1 m` for single underline). `subs` is parallel to `params`:
+    /// `subs[i]` is the sub-parameter value for `params[i]`, or 0 if none.
+    ///
+    /// Default implementation delegates to `csi()` for backwards compatibility.
+    fn csi_with_subs(
+        &mut self,
+        intermediates: &[u8],
+        params: &[u16],
+        _subs: &[u16],
+        final_byte: u8,
+    ) {
+        self.csi(intermediates, params, final_byte);
+    }
+
     /// ESC sequence: `ESC` intermediates final.
     fn esc(&mut self, _intermediates: &[u8], _final_byte: u8) {}
 

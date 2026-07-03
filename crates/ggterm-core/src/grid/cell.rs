@@ -27,6 +27,12 @@ bitflags! {
         const WIDE_SPACER = 0x200;
         /// Protected (DECSCA) — immune to DECSED selective erase.
         const PROTECTED = 0x400;
+        // Underline style sub-flags (SGR 4:N):
+        // 0x000 = none (UNDERLINE alone = single solid), 0x800+0x1000 combo:
+        const UNDERLINE_DOUBLE = 0x800;  // SGR 4:2
+        const UNDERLINE_CURLY  = 0x1000; // SGR 4:3
+        const UNDERLINE_DOTTED = 0x2000; // SGR 4:4
+        const UNDERLINE_DASHED = 0x4000; // SGR 4:5
     }
 }
 

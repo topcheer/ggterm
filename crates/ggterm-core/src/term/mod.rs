@@ -1119,7 +1119,13 @@ impl Terminal {
                 9 => self.flags |= CellFlags::STRIKETHROUGH,
                 22 => self.flags &= !(CellFlags::BOLD | CellFlags::DIM),
                 23 => self.flags &= !CellFlags::ITALIC,
-                24 => self.flags &= !CellFlags::UNDERLINE,
+                24 => {
+                    self.flags &= !CellFlags::UNDERLINE;
+                    self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                        | CellFlags::UNDERLINE_CURLY
+                        | CellFlags::UNDERLINE_DOTTED
+                        | CellFlags::UNDERLINE_DASHED);
+                }
                 25 => self.flags &= !CellFlags::BLINK,
                 27 => self.flags &= !CellFlags::REVERSE,
                 28 => self.flags &= !CellFlags::HIDDEN,
@@ -1814,6 +1820,56 @@ impl Perform for Terminal {
         }
     }
 
+    fn csi_with_subs(
+        &mut self,
+        intermediates: &[u8],
+        params: &[u16],
+        subs: &[u16],
+        final_byte: u8,
+    ) {
+        // Handle SGR 4:N underline styles (only when sub-parameters are present).
+        if final_byte == b'm' && !intermediates.contains(&b'?') && subs.iter().any(|&s| s != 0) {
+            let mut i = 0;
+            while i < params.len() {
+                let p = params[i];
+                let sub = subs.get(i).copied().unwrap_or(0);
+                match (p, sub) {
+                    (4, 0) | (4, 1) => {
+                        self.flags |= CellFlags::UNDERLINE;
+                        self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                            | CellFlags::UNDERLINE_CURLY
+                            | CellFlags::UNDERLINE_DOTTED
+                            | CellFlags::UNDERLINE_DASHED);
+                    }
+                    (4, 2) => {
+                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOUBLE;
+                    }
+                    (4, 3) => {
+                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_CURLY;
+                    }
+                    (4, 4) => {
+                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOTTED;
+                    }
+                    (4, 5) => {
+                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DASHED;
+                    }
+                    (24, _) => {
+                        self.flags &= !CellFlags::UNDERLINE;
+                        self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                            | CellFlags::UNDERLINE_CURLY
+                            | CellFlags::UNDERLINE_DOTTED
+                            | CellFlags::UNDERLINE_DASHED);
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            return;
+        }
+        // Default: delegate to regular csi()
+        self.csi(intermediates, params, final_byte);
+    }
+
     fn esc(&mut self, intermediates: &[u8], final_byte: u8) {
         // SCS: ESC ( <final> — designate G0 character set
         if intermediates.contains(&b'(') {
@@ -2266,6 +2322,52 @@ mod tests {
                 .flags
                 .contains(CellFlags::UNDERLINE)
         );
+    }
+
+    #[test]
+    fn t_sgr_underline_double() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:2mD");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::UNDERLINE));
+        assert!(flags.contains(CellFlags::UNDERLINE_DOUBLE));
+    }
+
+    #[test]
+    fn t_sgr_underline_curly() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:3mC");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::UNDERLINE));
+        assert!(flags.contains(CellFlags::UNDERLINE_CURLY));
+    }
+
+    #[test]
+    fn t_sgr_underline_dotted() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:4m.");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::UNDERLINE));
+        assert!(flags.contains(CellFlags::UNDERLINE_DOTTED));
+    }
+
+    #[test]
+    fn t_sgr_underline_dashed() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:5m-");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::UNDERLINE));
+        assert!(flags.contains(CellFlags::UNDERLINE_DASHED));
+    }
+
+    #[test]
+    fn t_sgr_underline_style_reset() {
+        // SGR 24 (no sub) clears all underline styles.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:3mC\x1b[24mR");
+        let flags_after = t.grid().cell(1, 0).unwrap().flags;
+        assert!(!flags_after.contains(CellFlags::UNDERLINE));
+        assert!(!flags_after.contains(CellFlags::UNDERLINE_CURLY));
     }
 
     #[test]

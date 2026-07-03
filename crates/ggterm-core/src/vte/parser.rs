@@ -29,8 +29,15 @@ pub struct Parser {
     /// Accumulated parameters for CSI/DCS sequences.
     params: [u16; 16],
     param_count: usize,
+    /// Sub-parameters for the current parameter (colon-separated).
+    /// e.g. `4:1` stores sub=1 for the current param.
+    /// We pack the sub-value into the high byte of params: params[i] = main | (sub << 8).
+    /// A sub of 0 means no sub-parameter was given (default).
+    param_sub: [u16; 16],
     /// True if the current parameter has been explicitly set.
     param_set: bool,
+    /// True if currently collecting a colon sub-parameter value.
+    in_sub_param: bool,
     /// Accumulator for OSC string data.
     string_buffer: Vec<u8>,
     /// UTF-8 decoding state.
@@ -47,7 +54,9 @@ impl Parser {
             intermediate_count: 0,
             params: [0; 16],
             param_count: 0,
+            param_sub: [0; 16],
             param_set: false,
+            in_sub_param: false,
             string_buffer: Vec::with_capacity(256),
             utf8_buf: [0; 4],
             utf8_len: 0,
@@ -237,9 +246,16 @@ impl Parser {
         match byte {
             b'0'..=b'9' => {
                 let idx = self.param_count.min(self.params.len() - 1);
-                self.params[idx] = self.params[idx]
-                    .saturating_mul(10)
-                    .saturating_add((byte - b'0') as u16);
+                if self.in_sub_param {
+                    // Colon sub-parameter: accumulate into param_sub.
+                    self.param_sub[idx] = self.param_sub[idx]
+                        .saturating_mul(10)
+                        .saturating_add((byte - b'0') as u16);
+                } else {
+                    self.params[idx] = self.params[idx]
+                        .saturating_mul(10)
+                        .saturating_add((byte - b'0') as u16);
+                }
                 self.param_set = true;
             }
             b';' => {
@@ -247,6 +263,11 @@ impl Parser {
                     self.param_count += 1;
                 }
                 self.param_set = false;
+                self.in_sub_param = false;
+            }
+            // Colon sub-parameter separator (e.g. SGR 4:1 for underline style).
+            b':' => {
+                self.in_sub_param = true;
             }
             // Intermediate bytes
             0x20..=0x2f => {
@@ -312,8 +333,10 @@ impl Parser {
             self.param_count
         };
         let inter = unsafe { self.intermediates.get_unchecked(..self.intermediate_count) };
-        let params = unsafe { self.params.get_unchecked(..count.min(self.params.len())) };
-        perform.csi(inter, params, final_byte);
+        let n = count.min(self.params.len());
+        let params = unsafe { self.params.get_unchecked(..n) };
+        let subs = unsafe { self.param_sub.get_unchecked(..n) };
+        perform.csi_with_subs(inter, params, subs, final_byte);
     }
 
     /// Reset sequence accumulation state.
@@ -321,7 +344,9 @@ impl Parser {
         self.intermediate_count = 0;
         self.param_count = 0;
         self.params = [0; 16];
+        self.param_sub = [0; 16];
         self.param_set = false;
+        self.in_sub_param = false;
     }
 
     // -- UTF-8 handling ------------------------------------------------------

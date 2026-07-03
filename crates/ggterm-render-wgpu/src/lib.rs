@@ -727,12 +727,111 @@ impl GlyphonRenderer {
                     if cell.flags.contains(ggterm_core::CellFlags::UNDERLINE)
                         || cell.hyperlink.is_some()
                     {
-                        let py = row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
-                        let y0 = 1.0 - py / screen_h * 2.0;
-                        let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                        for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
-                        {
-                            underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                        let has_double = cell
+                            .flags
+                            .contains(ggterm_core::CellFlags::UNDERLINE_DOUBLE);
+                        let has_curly =
+                            cell.flags.contains(ggterm_core::CellFlags::UNDERLINE_CURLY);
+                        let has_dotted = cell
+                            .flags
+                            .contains(ggterm_core::CellFlags::UNDERLINE_DOTTED);
+                        let has_dashed = cell
+                            .flags
+                            .contains(ggterm_core::CellFlags::UNDERLINE_DASHED);
+
+                        if has_dotted {
+                            // Dotted: 3 short segments per cell.
+                            for seg in 0..3 {
+                                let sx0 = px + cell_w * (seg as f32 * 0.33 + 0.04);
+                                let sx1 = sx0 + cell_w * 0.22;
+                                let py =
+                                    row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
+                                let y0 = 1.0 - py / screen_h * 2.0;
+                                let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                                let nx0 = sx0 / screen_w * 2.0 - 1.0;
+                                let nx1 = sx1 / screen_w * 2.0 - 1.0;
+                                for &(x, y) in &[
+                                    (nx0, y0),
+                                    (nx1, y0),
+                                    (nx0, y1),
+                                    (nx1, y0),
+                                    (nx1, y1),
+                                    (nx0, y1),
+                                ] {
+                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                }
+                            }
+                        } else if has_dashed {
+                            // Dashed: 2 segments per cell with gaps.
+                            for seg in 0..2 {
+                                let sx0 = px + cell_w * (seg as f32 * 0.5 + 0.05);
+                                let sx1 = sx0 + cell_w * 0.4;
+                                let py =
+                                    row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
+                                let y0 = 1.0 - py / screen_h * 2.0;
+                                let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                                let nx0 = sx0 / screen_w * 2.0 - 1.0;
+                                let nx1 = sx1 / screen_w * 2.0 - 1.0;
+                                for &(x, y) in &[
+                                    (nx0, y0),
+                                    (nx1, y0),
+                                    (nx0, y1),
+                                    (nx1, y0),
+                                    (nx1, y1),
+                                    (nx0, y1),
+                                ] {
+                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                }
+                            }
+                        } else if has_curly {
+                            // Curly: approximate with 8 short wave segments.
+                            for step in 0..8 {
+                                let frac = step as f32 / 8.0;
+                                let next_frac = (step + 1) as f32 / 8.0;
+                                let sx0 = px + cell_w * frac;
+                                let sx1 = px + cell_w * next_frac;
+                                let wave = if step % 2 == 0 { 0.0 } else { 2.0 };
+                                let py = row_idx as f32 * cell_h
+                                    + underline_y
+                                    + wave
+                                    + self.viewport_offset.1;
+                                let y0 = 1.0 - py / screen_h * 2.0;
+                                let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                                let nx0 = sx0 / screen_w * 2.0 - 1.0;
+                                let nx1 = sx1 / screen_w * 2.0 - 1.0;
+                                for &(x, y) in &[
+                                    (nx0, y0),
+                                    (nx1, y0),
+                                    (nx0, y1),
+                                    (nx1, y0),
+                                    (nx1, y1),
+                                    (nx0, y1),
+                                ] {
+                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                }
+                            }
+                        } else {
+                            // Solid underline (single or double).
+                            let py = row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
+                            let y0 = 1.0 - py / screen_h * 2.0;
+                            let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                            for &(x, y) in
+                                &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
+                            {
+                                underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                            }
+                            // Double underline: second line above the first.
+                            if has_double {
+                                let py2 = row_idx as f32 * cell_h + underline_y - 3.0
+                                    + self.viewport_offset.1;
+                                let y2 = 1.0 - py2 / screen_h * 2.0;
+                                let y3 = 1.0 - (py2 + thickness) / screen_h * 2.0;
+                                for &(x, y) in
+                                    &[(x0, y2), (x1, y2), (x0, y3), (x1, y2), (x1, y3), (x0, y3)]
+                                {
+                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                }
+                            }
                         }
                     }
 
