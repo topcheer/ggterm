@@ -259,8 +259,9 @@ impl TabBarState {
         let tab_count = self.tabs.len() as f32;
 
         // Each tab gets an equal share of the full available width.
-        // No max cap — tabs truly fill the window (like browser tabs).
-        let tab_w = (available_width / tab_count).floor();
+        // Enforce a minimum tab width so titles remain readable with many tabs.
+        const MIN_TAB_WIDTH: f32 = 80.0;
+        let tab_w = (available_width / tab_count).floor().max(MIN_TAB_WIDTH);
 
         let mut layouts = Vec::with_capacity(self.tabs.len());
         let mut x = left_margin;

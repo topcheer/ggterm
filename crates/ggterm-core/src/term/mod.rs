@@ -1628,6 +1628,11 @@ impl Perform for Terminal {
                         let resp = format!("\x1b[4;{};{}t", h, w);
                         self.response_buffer.extend_from_slice(resp.as_bytes());
                     }
+                    11 => {
+                        // Report window iconified state: CSI 1 t (not iconified).
+                        // xterm extension — programs query window visibility.
+                        self.response_buffer.extend_from_slice(b"\x1b[1t");
+                    }
                     22 => {
                         // Push title onto stack (xterm windowops).
                         // Param 2 = icon title, param 1 = window title.
@@ -4650,6 +4655,16 @@ mod tests {
         let s = String::from_utf8_lossy(&resp);
         // Should report CSI 8 ; 40 ; 120 t (rows=40, cols=120)
         assert!(s.contains("8;40;120t"), "size report wrong, got: {s}");
+    }
+
+    #[test]
+    fn t_csi_11t_window_state() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[11t");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Should respond CSI 1 t (not iconified)
+        assert!(s.contains("\x1b[1t"), "window state report wrong, got: {s}");
     }
 
     #[test]
