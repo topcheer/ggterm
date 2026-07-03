@@ -131,6 +131,8 @@ pub struct AppearanceConfig {
     pub cell_width: u32,
     /// Cell height in pixels.
     pub cell_height: u32,
+    /// Default cursor style: "block", "underline", or "bar".
+    pub cursor_style: String,
 }
 
 /// Terminal behaviour configuration.
@@ -164,6 +166,7 @@ impl Default for AppearanceConfig {
             font_size: 14,
             cell_width: 8,
             cell_height: 16,
+            cursor_style: "block".to_string(),
         }
     }
 }
@@ -248,6 +251,7 @@ mod raw {
         pub font_size: Option<u32>,
         pub cell_width: Option<u32>,
         pub cell_height: Option<u32>,
+        pub cursor_style: Option<String>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -328,6 +332,14 @@ impl Config {
         }
         if let Some(v) = raw.appearance.cell_height {
             config.appearance.cell_height = v;
+        }
+        if let Some(v) = raw.appearance.cursor_style {
+            let normalized = v.to_lowercase();
+            if matches!(normalized.as_str(), "block" | "underline" | "bar") {
+                config.appearance.cursor_style = normalized;
+            } else {
+                log::warn!("Invalid cursor_style '{v}', expected: block, underline, bar");
+            }
         }
 
         if let Some(v) = raw.terminal.scrollback_lines {
@@ -745,6 +757,7 @@ impl ConfigManager {
             || new_config.appearance.font_size != self.config.appearance.font_size
             || new_config.appearance.cell_width != self.config.appearance.cell_width
             || new_config.appearance.cell_height != self.config.appearance.cell_height
+            || new_config.appearance.cursor_style != self.config.appearance.cursor_style
             || new_config.terminal.scrollback_lines != self.config.terminal.scrollback_lines
             || new_config.terminal.shell != self.config.terminal.shell
             || new_config.ai.enabled != self.config.ai.enabled
@@ -2001,5 +2014,31 @@ directory = "/opt/ggterm/lua"
         assert_eq!(mgr2.config().terminal.scrollback_lines, 5000);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_cursor_style_config() {
+        // Valid cursor styles
+        let toml = r#"
+[appearance]
+cursor_style = "underline"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.appearance.cursor_style, "underline");
+
+        let toml_bar = r#"
+[appearance]
+cursor_style = "bar"
+"#;
+        let config_bar = Config::from_toml_str(toml_bar).unwrap();
+        assert_eq!(config_bar.appearance.cursor_style, "bar");
+
+        // Invalid cursor style falls back to default (block)
+        let toml_bad = r#"
+[appearance]
+cursor_style = "fancy"
+"#;
+        let config_bad = Config::from_toml_str(toml_bad).unwrap();
+        assert_eq!(config_bad.appearance.cursor_style, "block");
     }
 }

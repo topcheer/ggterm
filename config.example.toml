@@ -16,6 +16,9 @@ font_size = 14
 cell_width = 8
 cell_height = 16
 
+# Default cursor style: "block", "underline", or "bar"
+cursor_style = "block"
+
 [terminal]
 # Maximum scrollback history lines
 scrollback_lines = 10000
