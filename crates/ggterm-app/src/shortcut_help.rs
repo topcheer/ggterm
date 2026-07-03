@@ -423,6 +423,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+Up".into(),
+            description: "Scroll to mark (OSC 1337)".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Shift+PageUp".into(),
             description: "Scroll up one page".into(),
             category: ShortcutCategory::Search,

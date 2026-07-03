@@ -1033,6 +1033,38 @@ impl DesktopApp {
             }
         }
 
+        // Ctrl+Shift+Alt+Up → scroll to mark (OSC 1337 SetMark).
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::ArrowUp) = &event.physical_key
+        {
+            let mark = self.active_session().app().terminal().mark_row();
+            let scrollback_len = self.active_session().app().grid().scrollback_len();
+            let current_offset = self.active_session().app().grid().display_offset();
+            if let Some(mark_row) = mark {
+                let target_offset = scrollback_len.saturating_sub(mark_row);
+                let grid = self
+                    .active_session_mut()
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut();
+                if target_offset > current_offset {
+                    grid.scroll_up_viewport(target_offset - current_offset);
+                } else if target_offset < current_offset {
+                    grid.scroll_down_viewport(current_offset - target_offset);
+                }
+                self.smooth_scroll.reset();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                self.show_toast(format!("Jumped to mark (line {})", mark_row));
+            } else {
+                self.show_toast("No mark set".to_string());
+            }
+            return;
+        }
+
         // Alt+1-9 or Cmd+1-9 (macOS) → switch to tab N (not configurable)
         // macOS: Cmd+Up/Cmd+Down → scroll one line, Cmd+PageUp/PageDown → scroll one page.
         if cfg!(target_os = "macos") && self.mods.super_key && !self.mods.alt && !self.mods.ctrl {
