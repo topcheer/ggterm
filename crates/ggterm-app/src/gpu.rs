@@ -283,6 +283,7 @@ impl GpuContext {
                 renderer.set_reverse_video(spec.reverse_video);
                 renderer.set_dynamic_fg(spec.dynamic_fg);
                 renderer.set_dynamic_bg(spec.dynamic_bg);
+                renderer.set_underline_color(spec.underline_color);
                 renderer
                     .render_pane_to_pass(
                         &self.device,
@@ -366,6 +367,8 @@ pub struct PaneRenderSpec<'a> {
     pub dynamic_fg: Option<(u8, u8, u8)>,
     /// Dynamic background color override (OSC 11) for this pane.
     pub dynamic_bg: Option<(u8, u8, u8)>,
+    /// SGR 58 underline color override for this pane.
+    pub underline_color: Option<(u8, u8, u8)>,
 }
 
 /// Create a wgpu Instance + Adapter + Surface from a window.

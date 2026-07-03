@@ -472,7 +472,7 @@ fn parse_xcolor(spec: &str) -> Option<Color> {
 
 /// Lookup the RGB value for a 16-color palette index.
 /// P17-A: used by OSC 10/11 query responses.
-fn color_for_index(idx: u8) -> (u8, u8, u8) {
+pub fn color_for_index(idx: u8) -> (u8, u8, u8) {
     match idx {
         0 => (0, 0, 0),        // black
         1 => (205, 0, 0),      // red
@@ -651,6 +651,11 @@ impl Terminal {
     /// Return true if reverse video mode is active (DECSET 5 / DECSCNM).
     pub fn reverse_video(&self) -> bool {
         self.modes.reverse_video
+    }
+
+    /// Return a reference to the current underline color (SGR 58).
+    pub fn underline_color_ref(&self) -> &Color {
+        &self.underline_color
     }
 
     /// Take and clear a pending desktop notification (P24-E).

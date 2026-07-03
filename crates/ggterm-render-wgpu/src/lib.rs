@@ -158,6 +158,9 @@ pub struct GlyphonRenderer {
     blink_phase: f32,
     /// DECSCNM reverse video mode — swap fg/bg globally.
     reverse_video: bool,
+    /// Override color for underline/strikethrough decorations (SGR 58).
+    /// When None, uses the cell's foreground color.
+    underline_color: Option<(u8, u8, u8)>,
 }
 
 // ── P26-A: Modern UI Rendering ──────────────────────────────────
@@ -313,6 +316,7 @@ impl GlyphonRenderer {
             ui_pipeline: None,
             blink_phase: 0.0,
             reverse_video: false,
+            underline_color: None,
         }
     }
 
@@ -367,6 +371,12 @@ impl GlyphonRenderer {
     /// When enabled, foreground and background colors are swapped globally.
     pub fn set_reverse_video(&mut self, on: bool) {
         self.reverse_video = on;
+    }
+
+    /// Set the override color for underline/strikethrough decorations (SGR 58).
+    /// When None, decorations use the cell's foreground color.
+    pub fn set_underline_color(&mut self, color: Option<(u8, u8, u8)>) {
+        self.underline_color = color;
     }
 
     /// P23-C: Determine whether `prepare_grid()` should be called for this grid.
@@ -684,10 +694,12 @@ impl GlyphonRenderer {
                 if let Some(cell) = grid.display_cell(col_idx, row_idx) {
                     let theme = &self.theme;
                     let fg = theme.resolve_fg(&cell.fg);
+                    // Use SGR 58 underline color if set, otherwise cell fg.
+                    let dec_color = self.underline_color.unwrap_or(fg);
                     let (r, g, b) = (
-                        fg.0 as f32 / 255.0,
-                        fg.1 as f32 / 255.0,
-                        fg.2 as f32 / 255.0,
+                        dec_color.0 as f32 / 255.0,
+                        dec_color.1 as f32 / 255.0,
+                        dec_color.2 as f32 / 255.0,
                     );
 
                     let px = col_idx as f32 * cell_w + self.viewport_offset.0;

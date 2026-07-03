@@ -105,6 +105,16 @@ impl DesktopApp {
         // DECSCNM: Reverse video mode — swap fg/bg globally.
         renderer.set_reverse_video(session.app().terminal().reverse_video());
 
+        // SGR 58: Underline color override.
+        renderer.set_underline_color(match session.app().terminal().underline_color_ref() {
+            ggterm_core::Color::Rgb(r, g, b) => Some((*r, *g, *b)),
+            ggterm_core::Color::Indexed(i) => {
+                let (r, g, b) = ggterm_core::term::color_for_index(*i);
+                Some((r, g, b))
+            }
+            ggterm_core::Color::Default => None,
+        });
+
         // P19-G: Build overlay data (tab bar + settings + about).
         let cell_h = renderer.cell_height() as f32;
         let cell_w = renderer.cell_width() as f32;
@@ -2052,6 +2062,14 @@ impl DesktopApp {
                             ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
                             _ => unreachable!("dynamic_bg stores Rgb"),
                         }),
+                        underline_color: match app.terminal().underline_color_ref() {
+                            ggterm_core::Color::Rgb(r, g, b) => Some((*r, *g, *b)),
+                            ggterm_core::Color::Indexed(i) => {
+                                let (r, g, b) = ggterm_core::term::color_for_index(*i);
+                                Some((r, g, b))
+                            }
+                            ggterm_core::Color::Default => None,
+                        },
                     });
                 }
             }
