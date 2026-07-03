@@ -1627,25 +1627,41 @@ impl Perform for Terminal {
             b'p' if intermediates.contains(&b'$') && is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 let is_set = match mode {
-                    1 => self.modes.cursor_keys_app,    // DECCKM
-                    5 => self.modes.reverse_video,      // DECSCNM
-                    7 => self.modes.auto_wrap,          // DECAWM
-                    12 => self.modes.cursor_blink,      // Cursor blink
-                    25 => self.modes.cursor_visible,    // DECTCEM
-                    47 => self.modes.alt_screen,        // Alt screen
-                    1047 => self.modes.alt_screen,      // Alt screen
-                    1049 => self.modes.alt_screen,      // Alt screen + cursor save
-                    2004 => self.modes.bracketed_paste, // Bracketed paste
-                    1000 | 1002 | 1003 => {
-                        self.modes.mouse_tracking
-                            || self.modes.mouse_button_event
-                            || self.modes.mouse_any_event
-                    }
-                    1006 => self.modes.mouse_sgr, // SGR mouse
+                    1 => self.modes.cursor_keys_app,        // DECCKM
+                    5 => self.modes.reverse_video,          // DECSCNM
+                    6 => self.modes.origin,                 // DECOM
+                    7 => self.modes.auto_wrap,              // DECAWM
+                    12 => self.modes.cursor_blink,          // Cursor blink
+                    25 => self.modes.cursor_visible,        // DECTCEM
+                    47 => self.modes.alt_screen,            // Alt screen (47)
+                    1000 => self.modes.mouse_tracking,      // Mouse tracking
+                    1002 => self.modes.mouse_button_event,  // Button-event mouse
+                    1003 => self.modes.mouse_any_event,     // Any-event mouse
+                    1004 => self.modes.focus_event,         // Focus event reporting
+                    1005 => self.modes.mouse_utf8,          // UTF-8 mouse
+                    1006 => self.modes.mouse_sgr,           // SGR mouse
+                    1015 => self.modes.mouse_urxvt,         // URXVT mouse
+                    1016 => false,                          // SGR-pixel mouse (not supported)
+                    1047 => self.modes.alt_screen,          // Alt screen (1047)
+                    1049 => self.modes.alt_screen,          // Alt screen + cursor save (1049)
+                    2004 => self.modes.bracketed_paste,     // Bracketed paste
+                    2026 => self.modes.synchronized_output, // Synchronized output
+                    2027 => self.modes.reflow,              // Text reflow
                     _ => false,
                 };
                 let status = if is_set { 1 } else { 2 };
                 let resp = format!("\x1b[?{};{}$y", mode, status);
+                self.response_buffer.extend_from_slice(resp.as_bytes());
+            }
+            // DECRQM for ANSI modes (CSI Ps $ p, no private '?')
+            b'p' if intermediates.contains(&b'$') && !is_private => {
+                let mode = params.first().copied().unwrap_or(0);
+                let is_set = match mode {
+                    4 => self.modes.insert, // IRM — insert mode
+                    _ => false,
+                };
+                let status = if is_set { 1 } else { 2 };
+                let resp = format!("\x1b[{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
             // DECRQSS — request selection or setting (CSI Ps $ q)
@@ -4358,5 +4374,81 @@ mod tests {
         feed(&mut t, b"\x05");
         let resp = t.take_response();
         assert_eq!(resp, b"ggterm");
+    }
+
+    // ── DECRQM extended mode tests ─────────────────────────────
+
+    #[test]
+    fn t_decrqm_focus_event_mode() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1004h"); // Enable focus events
+        feed(&mut t, b"\x1b[?1004$p"); // Query mode 1004
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("1004;1$y"),
+            "focus event should be set, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_decrqm_synchronized_output() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?2026$p"); // Query mode 2026 (should be off)
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("2026;2$y"),
+            "sync output should be reset, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_decrqm_reflow_default() {
+        let t = Terminal::new(80, 24);
+        assert!(t.reflow_enabled()); // Default on
+    }
+
+    #[test]
+    fn t_decrqm_mouse_sgr() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1006h"); // Enable SGR mouse
+        feed(&mut t, b"\x1b[?1006$p"); // Query mode 1006
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("1006;1$y"), "SGR mouse should be set, got: {s}");
+    }
+
+    #[test]
+    fn t_decrqm_origin_mode() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?6h"); // Enable origin mode
+        feed(&mut t, b"\x1b[?6$p"); // Query mode 6
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("6;1$y"), "origin mode should be set, got: {s}");
+    }
+
+    #[test]
+    fn t_decrqm_auto_wrap_default() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?7$p"); // Query mode 7
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("7;1$y"),
+            "auto_wrap should be set by default, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_decrqm_ansi_irm() {
+        // ANSI mode 4 (IRM) — insert mode
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4h"); // Enable insert mode
+        feed(&mut t, b"\x1b[4$p"); // Query ANSI mode 4
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("4;1$y"), "IRM should be set, got: {s}");
     }
 }

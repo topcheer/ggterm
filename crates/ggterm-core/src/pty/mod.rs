@@ -142,6 +142,16 @@ impl PtySession {
         });
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
+        // Tell TUI libraries and ncurses that we support 24-bit true color.
+        // This is checked by: blessed, ink, terminal-kit, picocolors,
+        // chalk, ncurses (with --enable-direct-color), vim/neovim, etc.
+        cmd.env("COLORTERM", "truecolor");
+        // Also set the standard terminfo color count for programs that
+        // check it independently.
+        cmd.env("COLORFGBG", "15;0"); // fg=white bg=black (overridable by app)
+        // Tell programs the terminal type for feature detection.
+        cmd.env("TERM_PROGRAM", "ggterm");
+        cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
 
         // Apply extra env vars
         for (key, value) in env_vars {
