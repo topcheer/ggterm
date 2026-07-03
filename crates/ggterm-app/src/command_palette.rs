@@ -197,6 +197,12 @@ impl CommandRegistry {
             category: "Terminal".into(),
             shortcut: Some("Ctrl+Shift+V".into()),
         });
+        r.register(Command {
+            id: "terminal.save_scrollback".into(),
+            label: "Save Scrollback to File".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+S".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),

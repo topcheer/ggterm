@@ -689,6 +689,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+S → save scrollback to file
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyS) = &event.physical_key
+        {
+            self.save_scrollback_to_file();
+            return;
+        }
+
         // Ctrl+Shift+, → open config file in editor (like VS Code)
         // Cmd+, on macOS (standard "Preferences" shortcut)
         if let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key {

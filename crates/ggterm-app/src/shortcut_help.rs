@@ -282,6 +282,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+S".into(),
+            description: "Save scrollback to file".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Insert".into(),
             description: "Copy selection (Linux/Windows)".into(),
             category: ShortcutCategory::Edit,

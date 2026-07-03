@@ -390,6 +390,31 @@ impl Grid {
         self.scrollback.get(index).map(|r| r.text())
     }
 
+    /// Export the entire terminal content (scrollback + visible screen) as plain text.
+    ///
+    /// Lines are joined with `\n`. Trailing whitespace is trimmed per line.
+    /// Empty trailing lines are omitted.
+    pub fn export_text(&self) -> String {
+        let mut lines: Vec<String> = Vec::with_capacity(self.scrollback.len() + self.height);
+
+        // Scrollback (oldest first)
+        for row in &self.scrollback {
+            lines.push(row.text().trim_end().to_string());
+        }
+
+        // Visible screen
+        for row in &self.rows {
+            lines.push(row.text().trim_end().to_string());
+        }
+
+        // Trim trailing empty lines
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+
+        lines.join("\n")
+    }
+
     /// Set the maximum scrollback capacity.
     /// Truncates existing scrollback if new limit is smaller.
     pub fn set_scrollback(&mut self, max: usize) {
@@ -1252,5 +1277,52 @@ mod tests {
         // Reading doesn't set dirty.
         let _ = g.row(0);
         assert!(!g.content_dirty(), "read-only ops should not mark dirty");
+    }
+
+    // ================================================================
+    //  Export text (3 tests)
+    // ================================================================
+
+    #[test]
+    fn test_export_text_visible_only() {
+        let mut g = Grid::new(10, 3);
+        g.put_char(0, 0, 'H');
+        g.put_char(1, 0, 'i');
+        g.put_char(0, 1, 'W');
+        g.put_char(1, 1, 'o');
+        g.put_char(2, 1, 'r');
+        g.put_char(3, 1, 'l');
+        g.put_char(4, 1, 'd');
+
+        let text = g.export_text();
+        assert_eq!(text, "Hi\nWorld");
+    }
+
+    #[test]
+    fn test_export_text_with_scrollback() {
+        let mut g = Grid::with_scrollback(10, 2, 100);
+        // Fill first row, then scroll it to scrollback
+        g.put_char(0, 0, 'O');
+        g.put_char(1, 0, 'l');
+        g.put_char(2, 0, 'd');
+        g.scroll_up(1);
+        // Row 0 is now blank (new), write on row 0
+        g.put_char(0, 0, 'N');
+        g.put_char(1, 0, 'e');
+        g.put_char(2, 0, 'w');
+
+        let text = g.export_text();
+        assert_eq!(text, "Old\nNew");
+    }
+
+    #[test]
+    fn test_export_text_trims_trailing_empty() {
+        let g = Grid::new(10, 5);
+        // Only row 0 has content
+        let mut g = g;
+        g.put_char(0, 0, 'X');
+
+        let text = g.export_text();
+        assert_eq!(text, "X");
     }
 }

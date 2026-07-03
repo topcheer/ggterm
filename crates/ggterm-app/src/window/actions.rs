@@ -827,6 +827,37 @@ impl DesktopApp {
         self.write_to_pty(&bytes);
     }
 
+    /// Save the entire terminal scrollback + visible screen to a timestamped file.
+    ///
+    /// Writes to `~/ggterm-export-{unix_timestamp}.txt`.
+    /// Shows a toast with the file path on success.
+    pub(super) fn save_scrollback_to_file(&mut self) {
+        let text = self.active_session().app().grid().export_text();
+
+        // Generate timestamped filename using epoch seconds
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let filename = format!("ggterm-export-{ts}.txt");
+
+        let path = std::env::var("HOME")
+            .map(|h| std::path::PathBuf::from(h).join(&filename))
+            .unwrap_or_else(|_| std::path::PathBuf::from(&filename));
+
+        match std::fs::write(&path, &text) {
+            Ok(_) => {
+                let lines = text.lines().count();
+                self.show_toast(format!("Saved {lines} lines to ~/{filename}"));
+                log::info!("Scrollback saved to {}", path.display());
+            }
+            Err(e) => {
+                self.show_toast(format!("Save failed: {e}"));
+                log::error!("Scrollback save failed: {e}");
+            }
+        }
+    }
+
     /// Poll for pending OSC 52 clipboard set operations.
     ///
     /// Called from `about_to_wait` to apply any OSC 52 clipboard changes
@@ -1375,6 +1406,9 @@ impl DesktopApp {
             }
             "terminal.reset" => {
                 self.active_session_mut().app_mut().terminal_mut().ris();
+            }
+            "terminal.save_scrollback" => {
+                self.save_scrollback_to_file();
             }
             "settings.open" => {
                 self.pending_open_settings = true;
