@@ -707,7 +707,12 @@ impl GlyphonRenderer {
                     let theme = &self.theme;
                     let fg = theme.resolve_fg(&cell.fg);
                     // Use SGR 58 underline color if set, otherwise cell fg.
-                    let dec_color = self.underline_color.unwrap_or(fg);
+                    // For OSC 8 hyperlinks, use the same blue tint as the text.
+                    let dec_color = self.underline_color.unwrap_or(if cell.hyperlink.is_some() {
+                        (100, 160, 255)
+                    } else {
+                        fg
+                    });
                     let (r, g, b) = (
                         dec_color.0 as f32 / 255.0,
                         dec_color.1 as f32 / 255.0,
