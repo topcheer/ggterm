@@ -1786,6 +1786,7 @@ impl Perform for Terminal {
                 let mode = params.first().copied().unwrap_or(0);
                 let is_set = match mode {
                     4 => self.modes.insert, // IRM — insert mode
+                    20 => false,            // LNM — line feed/new line mode (always reset)
                     _ => false,
                 };
                 let status = if is_set { 1 } else { 2 };
