@@ -14,6 +14,9 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
 
+[target.'cfg(target_os = "android")'.dependencies]
+libc = "0.2"
+
 [features]
 default = []
 ssh = ["dep:ggterm-ssh"]

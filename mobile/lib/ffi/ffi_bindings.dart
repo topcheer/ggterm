@@ -83,6 +83,9 @@ typedef _SshConnectKeyDart = int Function(
 typedef _EchoConnectC = Int32 Function(Uint32 id);
 typedef _EchoConnectDart = int Function(int id);
 
+typedef _LocalShellConnectC = Int32 Function(Uint32 id);
+typedef _LocalShellConnectDart = int Function(int id);
+
 typedef _LastErrorC = Pointer<Utf8> Function();
 typedef _LastErrorDart = Pointer<Utf8> Function();
 
@@ -110,6 +113,7 @@ class GgtermFfi {
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnect;
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnectKey;
   late final int Function(int) echoConnect;
+  late final int Function(int) localShellConnect;
   late final Pointer<Utf8> Function() lastError;
 
   /// Load the ggterm_ffi library.
@@ -212,6 +216,14 @@ class GgtermFfi {
     echoConnect = _lib
         .lookupFunction<_EchoConnectC, _EchoConnectDart>(
             'ggterm_echo_connect');
+    try {
+      localShellConnect = _lib
+          .lookupFunction<_LocalShellConnectC, _LocalShellConnectDart>(
+              'ggterm_local_shell_connect');
+    } catch (_) {
+      // Not available on this platform (iOS / desktop).
+      localShellConnect = (_) => -1;
+    }
     lastError = _lib
         .lookupFunction<_LastErrorC, _LastErrorDart>(
             'ggterm_last_error');

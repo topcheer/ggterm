@@ -28,10 +28,14 @@ class ConnectionScreen extends StatefulWidget {
   /// Called when the user taps Echo Test.
   final VoidCallback? onEchoTest;
 
+  /// Called when the user taps Local Shell (Android only).
+  final VoidCallback? onLocalShell;
+
   const ConnectionScreen({
     super.key,
     required this.onConnect,
     this.onEchoTest,
+    this.onLocalShell,
   });
 
   @override
@@ -208,6 +212,17 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   onPressed: () => widget.onEchoTest!(),
                   icon: const Icon(Icons.terminal),
                   label: const Text('Echo Test (No SSH)'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                ),
+
+              // ── Local Shell button (Android only) ──
+              if (widget.onLocalShell != null)
+                OutlinedButton.icon(
+                  onPressed: () => widget.onLocalShell!(),
+                  icon: const Icon(Icons.phone_android),
+                  label: const Text('Local Shell'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(44),
                   ),

@@ -3,6 +3,7 @@
 /// Flow: ConnectionScreen → (connect) → TerminalScreen.
 /// Uses dart:ffi to bridge to the Rust ggterm_ffi library.
 
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import 'ffi/session_manager.dart';
@@ -48,13 +49,18 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
     super.dispose();
   }
 
-  Future<void> _onConnect(ConnectionParams params, {bool echo = false}) async {
+  Future<void> _onConnect(ConnectionParams params, {bool echo = false, bool localShell = false}) async {
     // Create session
     final sessionId = _sessionManager.createSession(80, 24);
 
     bool connected = false;
+    String title = '';
     if (echo) {
       connected = _sessionManager.echoConnect(sessionId);
+      title = 'Echo Mode';
+    } else if (localShell) {
+      connected = _sessionManager.localShellConnect(sessionId);
+      title = 'Local Shell';
     } else {
       // SSH connect (blocking — in production, run on background isolate)
       connected = _sessionManager.sshConnect(sessionId, SshConnectionParams(
@@ -64,6 +70,7 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
         password: params.password,
         keyFilePath: params.keyFilePath,
       ));
+      title = '${params.username}@${params.host}';
     }
 
     if (connected && mounted) {
@@ -72,7 +79,7 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
           builder: (_) => TerminalScreen(
             sessionManager: _sessionManager,
             sessionId: sessionId,
-            title: echo ? 'Echo Mode' : '${params.username}@${params.host}',
+            title: title,
           ),
         ),
       ).then((_) {
@@ -102,6 +109,11 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
       onEchoTest: () => _onConnect(const ConnectionParams(
         host: '', username: 'echo',
       ), echo: true),
+      onLocalShell: Platform.isAndroid
+          ? () => _onConnect(const ConnectionParams(
+              host: '', username: 'local',
+            ), localShell: true)
+          : null,
     );
   }
 }

@@ -262,6 +262,16 @@ class SessionManager {
     return _ffi.echoConnect(id) == 0;
   }
 
+  /// Connect to a local shell (Android only).
+  /// Uses forkpty() to spawn /system/bin/sh.
+  bool localShellConnect(int id) {
+    final result = _ffi.localShellConnect(id);
+    if (result != 0) {
+      lastError = _ffi.getLastErrorString();
+    }
+    return result == 0;
+  }
+
   /// Pump data: read from transport → feed into terminal.
   /// Returns bytes read.
   int pump(int id) {

@@ -6,6 +6,8 @@
 
 pub mod api;
 pub mod transport;
+#[cfg(target_os = "android")]
+pub mod local_shell;
 
 use ggterm_core::{Cell, Color, Grid, Parser, Terminal};
 use std::ffi::c_int;

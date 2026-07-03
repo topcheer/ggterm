@@ -495,6 +495,54 @@ pub extern "C" fn ggterm_echo_connect(id: u32) -> i32 {
     }
 }
 
+/// Start a local shell transport (Android only).
+///
+/// Uses forkpty() to spawn /system/bin/sh inside a PTY.
+/// Returns 0 on success, -1 on failure.
+///
+/// On non-Android platforms, always returns -1.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_local_shell_connect(id: u32) -> i32 {
+    let (cols, rows) = {
+        let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(s) = map.get(&id) {
+            let g = s.handle.terminal.grid();
+            (g.width(), g.height())
+        } else {
+            set_error("session not found");
+            return -1;
+        }
+    };
+
+    match crate::local_shell::LocalShellTransport::connect(cols, rows) {
+        Ok(transport) => {
+            let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(s) = map.get_mut(&id) {
+                let mut t: Box<dyn TerminalTransport> = Box::new(transport);
+                t.resize(cols, rows);
+                s.transport = Some(t);
+                0
+            } else {
+                set_error("session disappeared during local shell connect");
+                -1
+            }
+        }
+        Err(e) => {
+            set_error(format!("Local shell failed: {e}"));
+            -1
+        }
+    }
+}
+
+/// Stub for non-Android platforms — always returns -1.
+#[cfg(not(target_os = "android"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_local_shell_connect(_id: u32) -> i32 {
+    set_error("local shell is only available on Android");
+    -1
+}
+
 // ── Error Reporting ────────────────────────────────────────────────────
 
 /// Get the last error message as a C string.
