@@ -847,6 +847,9 @@ impl DesktopApp {
     ///
     /// Reads from the clipboard via `pbpaste` (macOS) or platform equivalent.
     /// If bracketed paste mode is active, wraps the text in escape markers.
+    /// Safety: when bracketed paste is NOT active and the text contains
+    /// newlines, we strip trailing newlines and show a warning toast to
+    /// prevent accidental command execution.
     pub(super) fn paste_from_clipboard(&mut self) {
         let Some(text) = crate::clipboard::read_clipboard() else {
             log::debug!("Paste: clipboard empty or unavailable");
@@ -857,6 +860,24 @@ impl DesktopApp {
         }
 
         let bracketed = self.active_session().app().terminal().bracketed_paste();
+
+        // Safety: if the program doesn't support bracketed paste and the
+        // clipboard contains newlines, strip trailing newlines so the first
+        // line doesn't get auto-executed as a command.
+        let text = if !bracketed && text.contains('\n') {
+            let stripped = text.trim_end_matches(['\n', '\r']);
+            let line_count = text.lines().count();
+            if line_count > 1 {
+                self.show_toast(format!(
+                    "Pasted first line ({} lines stripped)",
+                    line_count.saturating_sub(1)
+                ));
+            }
+            stripped.to_string()
+        } else {
+            text
+        };
+
         let bytes = crate::clipboard::bracket_paste(&text, bracketed);
         log::debug!("Paste: {} bytes (bracketed={})", bytes.len(), bracketed);
         self.write_to_pty(&bytes);
