@@ -207,6 +207,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+I".into(),
+            description: "Rename current tab".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+PageUp/Down".into(),
             description: "Move tab left/right".into(),
             category: ShortcutCategory::Tab,

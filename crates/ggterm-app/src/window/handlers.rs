@@ -390,6 +390,20 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+I → rename current tab
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyI) = &event.physical_key
+        {
+            self.renaming_tab = Some(self.active);
+            self.rename_text = self.sessions[self.active].title().to_string();
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
         // Ctrl+Shift+Alt+Arrows → adjust split ratio
         if self.mods.ctrl && self.mods.shift && self.mods.alt {
             match &event.physical_key {

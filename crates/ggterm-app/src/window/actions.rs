@@ -1221,6 +1221,13 @@ impl DesktopApp {
                     self.move_tab(self.active, self.active + 1);
                 }
             }
+            "tab.rename" => {
+                self.renaming_tab = Some(self.active);
+                self.rename_text = self.sessions[self.active].title().to_string();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
             "split.zoom" => {
                 self.toggle_pane_zoom();
             }

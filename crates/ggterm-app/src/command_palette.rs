@@ -68,6 +68,12 @@ impl CommandRegistry {
             category: "Tab".into(),
             shortcut: Some("Ctrl+Shift+Tab".into()),
         });
+        r.register(Command {
+            id: "tab.rename".into(),
+            label: "Rename Current Tab".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+I".into()),
+        });
         // Split commands
         r.register(Command {
             id: "split.horizontal".into(),
