@@ -1094,7 +1094,7 @@ impl ApplicationHandler for DesktopApp {
                                     } else {
                                         t.to_string()
                                     };
-                                    let truncated: String = label.chars().take(12).collect();
+                                    let truncated: String = label.chars().take(20).collect();
                                     // P16-D: Add alt-screen indicator.
                                     let alt = if s.app().terminal().is_alt_screen() {
                                         " (alt)"
