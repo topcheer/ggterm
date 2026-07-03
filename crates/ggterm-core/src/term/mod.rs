@@ -1632,7 +1632,7 @@ impl Perform for Terminal {
                 }
             }
             // DA1 — primary device attributes
-            b'c' if !intermediates.contains(&b'>') => {
+            b'c' if !intermediates.contains(&b'>') && !intermediates.contains(&b'=') => {
                 // Respond: CSI ? 62 ; 1 ; 2 ; 4 ; 6 ; 9 ; 15 ; 16 ; 22 c
                 // VT220-level, with basic capabilities
                 self.response_buffer
@@ -1642,6 +1642,13 @@ impl Perform for Terminal {
             b'c' if intermediates.contains(&b'>') => {
                 // Respond: CSI > 41 ; 0 ; 0 c (VT220)
                 self.response_buffer.extend_from_slice(b"\x1b[>41;0;0c");
+            }
+            // DA3 — tertiary device attributes (CSI = c)
+            // Response: DCS ! | <8 hex digits> ST
+            // xterm returns the terminal session ID as 8 hex digits.
+            b'c' if intermediates.contains(&b'=') => {
+                self.response_buffer
+                    .extend_from_slice(b"\x1bP!|00000000\x1b\\");
             }
             // DSR — device status report (CSI 6 n → cursor position)
             b'n' => {
@@ -1977,7 +1984,10 @@ impl Perform for Terminal {
         let cmd = parts.next().and_then(|s| s.parse::<u16>().ok());
         match cmd {
             Some(0) | Some(2) => {
-                self.title = parts.next().unwrap_or("").to_string();
+                // Strip control characters to prevent terminal injection
+                // and log forging via window title.
+                let raw = parts.next().unwrap_or("");
+                self.title = raw.chars().filter(|c| !c.is_control()).collect();
             }
             Some(8) => {
                 // OSC 8 — Hyperlink.
@@ -4500,6 +4510,42 @@ mod tests {
             resp.windows(7).any(|w| w == b"ggterm("),
             "response should contain ggterm version, got: {:?}",
             String::from_utf8_lossy(&resp)
+        );
+    }
+
+    #[test]
+    fn t_da1_primary_device_attributes() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[c"); // DA1 query
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1b[?62;"),
+            "DA1 should start with VT220 code, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_da2_secondary_device_attributes() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>c"); // DA2 query
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1b[>41;"),
+            "DA2 should report terminal class 41, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_da3_tertiary_device_attributes() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[=c"); // DA3 query
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1bP!|") && s.ends_with("\x1b\\"),
+            "DA3 should respond with DCS format, got: {s}"
         );
     }
 
