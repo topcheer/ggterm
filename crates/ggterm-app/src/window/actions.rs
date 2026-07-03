@@ -87,6 +87,26 @@ impl DesktopApp {
         self.apply_settings_live();
     }
 
+    /// Load current config values into the settings state before opening.
+    pub(super) fn load_settings_from_config(&mut self) {
+        if let Some(ref mgr) = self.config_mgr {
+            let cfg = mgr.config();
+            self.settings
+                .load_from_config(&crate::settings_ui::SettingsSnapshot {
+                    theme: cfg.appearance.theme.clone(),
+                    font_size: cfg.appearance.font_size,
+                    font_family: cfg.appearance.font_family.clone(),
+                    cursor_style: cfg.appearance.cursor_style.clone(),
+                    scrollback_lines: cfg.terminal.scrollback_lines,
+                    shell: cfg.terminal.shell.clone(),
+                    restore_session: cfg.terminal.restore_session,
+                    ai_enabled: cfg.ai.enabled,
+                    ai_endpoint: cfg.ai.api_endpoint.clone(),
+                    ai_model: cfg.ai.model.clone(),
+                });
+        }
+    }
+
     /// Apply appearance changes immediately for live visual feedback.
     fn apply_settings_live(&mut self) {
         // Theme

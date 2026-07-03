@@ -799,23 +799,7 @@ impl DesktopApp {
             && let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key
         {
             if !self.settings.visible {
-                // Load current config values before opening.
-                if let Some(ref mgr) = self.config_mgr {
-                    let cfg = mgr.config();
-                    self.settings
-                        .load_from_config(&crate::settings_ui::SettingsSnapshot {
-                            theme: cfg.appearance.theme.clone(),
-                            font_size: cfg.appearance.font_size,
-                            font_family: cfg.appearance.font_family.clone(),
-                            cursor_style: cfg.appearance.cursor_style.clone(),
-                            scrollback_lines: cfg.terminal.scrollback_lines,
-                            shell: cfg.terminal.shell.clone(),
-                            restore_session: cfg.terminal.restore_session,
-                            ai_enabled: cfg.ai.enabled,
-                            ai_endpoint: cfg.ai.api_endpoint.clone(),
-                            ai_model: cfg.ai.model.clone(),
-                        });
-                }
+                self.load_settings_from_config();
             }
             self.settings.toggle();
             return;
@@ -1581,6 +1565,17 @@ impl DesktopApp {
                             }
                             let menu_y = btn.cy + btn.size / 2.0 + 2.0;
                             self.new_tab_menu.toggle(menu_x, menu_y);
+                            if let Some(ref window) = self.window {
+                                window.request_redraw();
+                            }
+                            return;
+                        }
+                        // Settings gear button → toggle settings overlay.
+                        if self.tab_bar.is_settings_button_at(&layout, px, py) {
+                            if !self.settings.visible {
+                                self.load_settings_from_config();
+                            }
+                            self.settings.toggle();
                             if let Some(ref window) = self.window {
                                 window.request_redraw();
                             }

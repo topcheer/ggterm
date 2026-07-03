@@ -337,6 +337,39 @@ impl DesktopApp {
                     (180, 185, 200)
                 },
             });
+
+            // Settings gear button at the far right.
+            let gear_hovered = self.tab_bar.is_settings_button_at(
+                &layout,
+                self.cursor_pos.0 as f32,
+                self.cursor_pos.1 as f32,
+            );
+            let gear_bg = if gear_hovered {
+                (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
+            } else {
+                (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.6)
+            };
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: layout.settings_button.cx - layout.settings_button.size / 2.0,
+                y: 4.0,
+                w: layout.settings_button.size,
+                h: tab_h,
+                color: gear_bg,
+                radius: tab_radius,
+                stroke_width: 0.0,
+            });
+            // Use a simple gear-like symbol: we use the Unicode gear character.
+            // If it doesn't render, fallback to a colon-like icon.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "\u{2699}".to_string(), // ⚙ gear symbol
+                left: layout.settings_button.cx - cell_w * 0.5,
+                top: 4.0 + 5.0,
+                color: if gear_hovered {
+                    (255, 255, 255)
+                } else {
+                    (180, 185, 200)
+                },
+            });
         }
 
         // ── P27-A: Text selection highlight ────────────────────────────

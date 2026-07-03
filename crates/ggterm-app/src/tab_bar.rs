@@ -147,6 +147,8 @@ pub struct TabBarLayout {
     pub tabs: Vec<TabLayout>,
     /// "+" new tab button position.
     pub new_tab_button: CloseButtonRect,
+    /// Settings gear button position (right side of tab bar).
+    pub settings_button: CloseButtonRect,
     /// Total bar height in pixels.
     pub bar_height: f32,
     /// Whether the layout is empty / hidden.
@@ -158,6 +160,11 @@ impl Default for TabBarLayout {
         Self {
             tabs: Vec::new(),
             new_tab_button: CloseButtonRect {
+                cx: 0.0,
+                cy: 0.0,
+                size: NEW_TAB_BUTTON_SIZE,
+            },
+            settings_button: CloseButtonRect {
                 cx: 0.0,
                 cy: 0.0,
                 size: NEW_TAB_BUTTON_SIZE,
@@ -280,11 +287,20 @@ impl TabBarState {
         let new_tab_x = x + NEW_TAB_BUTTON_SIZE / 2.0;
         let new_tab_y = tab_y + tab_height / 2.0;
 
+        // Settings gear button at the far right of the tab bar.
+        let settings_x = surface_width - NEW_TAB_BUTTON_SIZE;
+        let settings_y = tab_y + tab_height / 2.0;
+
         TabBarLayout {
             tabs: layouts,
             new_tab_button: CloseButtonRect {
                 cx: new_tab_x,
                 cy: new_tab_y,
+                size: NEW_TAB_BUTTON_SIZE,
+            },
+            settings_button: CloseButtonRect {
+                cx: settings_x,
+                cy: settings_y,
                 size: NEW_TAB_BUTTON_SIZE,
             },
             bar_height,
@@ -321,6 +337,13 @@ impl TabBarState {
         // Generous click area: button size + 6px margin on each side.
         let half = layout.new_tab_button.size / 2.0 + 6.0;
         (x - layout.new_tab_button.cx).abs() <= half && (y - layout.new_tab_button.cy).abs() <= half
+    }
+
+    /// Check if a pixel position is over the settings gear button.
+    pub fn is_settings_button_at(&self, layout: &TabBarLayout, x: f32, y: f32) -> bool {
+        let half = layout.settings_button.size / 2.0 + 6.0;
+        (x - layout.settings_button.cx).abs() <= half
+            && (y - layout.settings_button.cy).abs() <= half
     }
 }
 
