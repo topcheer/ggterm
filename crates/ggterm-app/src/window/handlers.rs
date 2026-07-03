@@ -396,6 +396,33 @@ impl DesktopApp {
             return;
         }
 
+        // Alt+h/j/k/l → vim-style pane navigation (tmux-navigator compatible)
+        if !self.mods.ctrl && !self.mods.shift && self.mods.alt {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::KeyJ) => {
+                    self.selection.clear();
+                    self.active_session_mut().focus_next_pane();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::KeyK) => {
+                    self.selection.clear();
+                    self.active_session_mut().focus_prev_pane();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::KeyH) => {
+                    self.selection.clear();
+                    self.active_session_mut().focus_prev_pane();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::KeyL) => {
+                    self.selection.clear();
+                    self.active_session_mut().focus_next_pane();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Ctrl+Shift+Z → toggle pane zoom (tmux-style maximize active pane)
         if self.mods.ctrl
             && self.mods.shift

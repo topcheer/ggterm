@@ -288,6 +288,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Alt+H/J/K/L".into(),
+            description: "Vim-style pane navigation".into(),
+            category: ShortcutCategory::Terminal,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Insert".into(),
             description: "Copy selection (Linux/Windows)".into(),
             category: ShortcutCategory::Edit,
