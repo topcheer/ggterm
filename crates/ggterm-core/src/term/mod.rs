@@ -355,6 +355,8 @@ pub struct Terminal {
     pub(crate) command_marks: Vec<CommandMark>,
     /// Terminal title (set via OSC 0/2).
     pub(crate) title: String,
+    /// Title stack for CSI 22t/23t (push/pop title).
+    pub(crate) title_stack: Vec<String>,
     /// UTF-8 reassembly buffer for multi-byte sequences.
     pub(crate) utf8_buf: Vec<u8>,
     /// G0 character set designation.
@@ -514,6 +516,7 @@ impl Terminal {
             tab_stops,
             command_marks: Vec::new(),
             title: String::new(),
+            title_stack: Vec::new(),
             utf8_buf: Vec::with_capacity(4),
             g0_charset: Charset::default(),
             g1_charset: Charset::default(),
@@ -1569,12 +1572,32 @@ impl Perform for Terminal {
                     }
                     14 => {
                         // Report text area size in pixels: CSI 4 ; height ; width t
-                        let cw: usize = (15.0_f32 * 0.6).ceil() as usize;
-                        let ch: usize = (15.0_f32 * 1.3).ceil() as usize;
+                        // We don't know the actual pixel size from the terminal model,
+                        // so estimate based on a standard cell size.
+                        let cw: usize = 10;
+                        let ch: usize = 20;
                         let h = self.grid.height() * ch;
                         let w = self.grid.width() * cw;
                         let resp = format!("\x1b[4;{};{}t", h, w);
                         self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    22 => {
+                        // Push title onto stack (xterm windowops).
+                        // Param 2 = icon title, param 1 = window title.
+                        // We only track one title, so save it regardless of param.
+                        let kind = params.get(1).copied().unwrap_or(0);
+                        if kind == 0 || kind == 2 || kind == 1 {
+                            self.title_stack.push(self.title.clone());
+                        }
+                    }
+                    23 => {
+                        // Pop title from stack (xterm windowops).
+                        let kind = params.get(1).copied().unwrap_or(0);
+                        if (kind == 0 || kind == 2 || kind == 1)
+                            && let Some(popped) = self.title_stack.pop()
+                        {
+                            self.title = popped;
+                        }
                     }
                     _ => {}
                 }
@@ -4450,5 +4473,47 @@ mod tests {
         let resp = t.take_response();
         let s = String::from_utf8_lossy(&resp);
         assert!(s.contains("4;1$y"), "IRM should be set, got: {s}");
+    }
+
+    #[test]
+    fn t_title_push_pop() {
+        // Set title → push → change → pop → restore
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]2;My Shell\x07"); // OSC 2: set title
+        assert_eq!(t.title(), "My Shell");
+
+        feed(&mut t, b"\x1b[22;2t"); // Push title
+        feed(&mut t, b"\x1b]2;vim\x07"); // Change title
+        assert_eq!(t.title(), "vim");
+
+        feed(&mut t, b"\x1b[23;2t"); // Pop title
+        assert_eq!(t.title(), "My Shell");
+    }
+
+    #[test]
+    fn t_title_push_pop_multiple() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]0;A\x07"); // Set title A
+        feed(&mut t, b"\x1b[22t"); // Push
+        feed(&mut t, b"\x1b]0;B\x07"); // Set title B
+        feed(&mut t, b"\x1b[22t"); // Push
+        feed(&mut t, b"\x1b]0;C\x07"); // Set title C
+        assert_eq!(t.title(), "C");
+
+        feed(&mut t, b"\x1b[23t"); // Pop → B
+        assert_eq!(t.title(), "B");
+
+        feed(&mut t, b"\x1b[23t"); // Pop → A
+        assert_eq!(t.title(), "A");
+    }
+
+    #[test]
+    fn t_csi_18t_size_report() {
+        let mut t = Terminal::new(120, 40);
+        feed(&mut t, b"\x1b[18t");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Should report CSI 8 ; 40 ; 120 t (rows=40, cols=120)
+        assert!(s.contains("8;40;120t"), "size report wrong, got: {s}");
     }
 }
