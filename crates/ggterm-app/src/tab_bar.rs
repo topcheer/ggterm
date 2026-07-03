@@ -238,11 +238,16 @@ impl TabBarState {
         let tab_height = bar_height - TAB_BAR_PADDING_V;
         let tab_y = TAB_BAR_PADDING_V;
 
-        // Available width = surface - left/right padding - both buttons area
-        // Account for: + button, gear button, and gaps between them.
+        // macOS: reserve space for traffic light buttons on the left.
+        #[cfg(target_os = "macos")]
+        let left_margin = crate::titlebar::TRAFFIC_LIGHT_WIDTH;
+        #[cfg(not(target_os = "macos"))]
+        let left_margin = TAB_BAR_PADDING_H;
+
+        // Available width = surface - left margin - right padding - both buttons area
         let buttons_width = NEW_TAB_BUTTON_SIZE * 2.0   // + button + gear button
             + TAB_GAP * 3.0; // gap before +, between + and gear, after gear
-        let available_width = surface_width - TAB_BAR_PADDING_H * 2.0 - buttons_width;
+        let available_width = surface_width - left_margin - TAB_BAR_PADDING_H - buttons_width;
         let tab_count = self.tabs.len() as f32;
 
         // Each tab gets an equal share of the full available width.
@@ -250,7 +255,7 @@ impl TabBarState {
         let tab_w = (available_width / tab_count).floor();
 
         let mut layouts = Vec::with_capacity(self.tabs.len());
-        let mut x = TAB_BAR_PADDING_H;
+        let mut x = left_margin;
 
         for tab in &self.tabs {
             let w = tab_w;

@@ -773,6 +773,18 @@ impl ApplicationHandler for DesktopApp {
             .with_title(&self.config.title)
             .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64));
 
+        // macOS: hide native titlebar but keep traffic light buttons.
+        // We draw our own unified titlebar (tab bar serves as drag area).
+        #[cfg(target_os = "macos")]
+        {
+            attrs = attrs.with_decorations(false);
+        }
+        // Linux/Windows: full custom titlebar with window control buttons.
+        #[cfg(not(target_os = "macos"))]
+        {
+            attrs = attrs.with_decorations(false);
+        }
+
         // Set window icon from embedded PNG — works on all platforms.
         // winit's with_window_icon sets the title bar icon (Linux/Windows)
         // and is used by some compositors on Wayland/X11.
@@ -876,9 +888,15 @@ impl ApplicationHandler for DesktopApp {
         self.config.cols = renderer.cols().max(10) as u16;
         self.config.rows = renderer.rows().max(3) as u16;
 
-        self.window = Some(window);
+        self.window = Some(window.clone());
         self.surface = Some(surface);
         self.gpu = Some(gpu);
+
+        // macOS: restore traffic light buttons on frameless window.
+        #[cfg(target_os = "macos")]
+        {
+            crate::titlebar::install_traffic_lights(&window);
+        }
         self.renderer = Some(renderer);
 
         // P18-C: CRITICAL — resize terminal sessions to match renderer.

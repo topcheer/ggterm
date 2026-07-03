@@ -1616,6 +1616,11 @@ impl DesktopApp {
                             }
                             return;
                         }
+                        // Empty area of tab bar → start window drag.
+                        if let Some(ref window) = self.window {
+                            let _ = window.drag_window();
+                        }
+                        return;
                     }
                 }
 
