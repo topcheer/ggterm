@@ -1849,7 +1849,28 @@ impl DesktopApp {
             use winit::window::CursorIcon;
             let py = self.cursor_pos.1 as f32;
             let content_top = if self.tab_bar.visible { 30.0 } else { 0.0 };
-            let icon = if self.hovered_link.is_some() {
+            // Check if hovering over a pane separator.
+            let on_separator = if let Some(is_horizontal) = self.drag_resize {
+                Some(is_horizontal)
+            } else if !self.pane_zoomed {
+                let session = self.active_session();
+                if session.pane_count() > 1 {
+                    let bounds = self.content_area_bounds();
+                    let (px, py) = (self.cursor_pos.0 as u32, self.cursor_pos.1 as u32);
+                    session.split_tree().separator_at_point(px, py, bounds)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let icon = if let Some(is_horizontal) = on_separator {
+                if is_horizontal {
+                    CursorIcon::ColResize
+                } else {
+                    CursorIcon::RowResize
+                }
+            } else if self.hovered_link.is_some() {
                 CursorIcon::Pointer
             } else if py > content_top || self.selection.dragging {
                 CursorIcon::Text
