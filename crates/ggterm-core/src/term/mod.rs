@@ -491,7 +491,20 @@ pub fn color_for_index(idx: u8) -> (u8, u8, u8) {
         13 => (255, 0, 255),   // bright magenta
         14 => (0, 255, 255),   // bright cyan
         15 => (255, 255, 255), // bright white
-        _ => (0, 0, 0),
+        // xterm 216-color cube: indices 16-231
+        16..=231 => {
+            let cube = [0u8, 95, 135, 175, 215, 255];
+            let offset = (idx - 16) as usize;
+            let r = cube[offset / 36];
+            let g = cube[(offset / 6) % 6];
+            let b = cube[offset % 6];
+            (r, g, b)
+        }
+        // Grayscale ramp: indices 232-255 (24 steps from 8 to 238)
+        232..=255 => {
+            let v = 8 + (idx - 232) * 10;
+            (v, v, v)
+        }
     }
 }
 
@@ -4515,5 +4528,51 @@ mod tests {
         let s = String::from_utf8_lossy(&resp);
         // Should report CSI 8 ; 40 ; 120 t (rows=40, cols=120)
         assert!(s.contains("8;40;120t"), "size report wrong, got: {s}");
+    }
+
+    #[test]
+    fn t_color_palette_16_colors() {
+        assert_eq!(color_for_index(0), (0, 0, 0));
+        assert_eq!(color_for_index(7), (229, 229, 229));
+        assert_eq!(color_for_index(15), (255, 255, 255));
+    }
+
+    #[test]
+    fn t_color_palette_cube() {
+        // Index 16 = (0, 0, 0) — start of cube
+        assert_eq!(color_for_index(16), (0, 0, 0));
+        // Index 21 = (0, 0, 255) — blue max
+        assert_eq!(color_for_index(21), (0, 0, 255));
+        // Index 196 = (255, 0, 0) — red max
+        assert_eq!(color_for_index(196), (255, 0, 0));
+        // Index 231 = (255, 255, 255) — white max
+        assert_eq!(color_for_index(231), (255, 255, 255));
+    }
+
+    #[test]
+    fn t_color_palette_grayscale() {
+        // Index 232 = darkest gray (8)
+        assert_eq!(color_for_index(232), (8, 8, 8));
+        // Index 255 = lightest gray (238)
+        let v = 8 + (255 - 232) * 10;
+        assert_eq!(color_for_index(255), (v, v, v));
+        // Middle of ramp
+        assert_eq!(
+            color_for_index(243),
+            (8 + 11 * 10, 8 + 11 * 10, 8 + 11 * 10)
+        );
+    }
+
+    #[test]
+    fn t_osc4_query_256_color() {
+        // Querying palette index 196 (red) should return correct RGB
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;196;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("4;196;rgb:ff/00/00"),
+            "OSC 4 query for 196 should be rgb:ff/00/00, got: {s}"
+        );
     }
 }
