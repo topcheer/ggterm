@@ -46,7 +46,7 @@ pub fn row_to_runs(
     reverse_video: bool,
     palette_overrides: &std::collections::HashMap<u8, (u8, u8, u8)>,
 ) -> Vec<TextRun> {
-    let mut runs = Vec::new();
+    let mut runs: Vec<TextRun> = Vec::with_capacity(16);
     let mut current: Option<TextRun> = None;
 
     for col in 0..grid.width() {

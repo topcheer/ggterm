@@ -695,8 +695,8 @@ impl GlyphonRenderer {
         let screen_w = self.resolution.width as f32;
         let screen_h = self.resolution.height as f32;
 
-        let mut underline_verts: Vec<f32> = Vec::new();
-        let mut strike_verts: Vec<f32> = Vec::new();
+        let mut underline_verts: Vec<f32> = Vec::with_capacity(512);
+        let mut strike_verts: Vec<f32> = Vec::with_capacity(128);
         let underline_y = cell_h - 2.0;
         let strike_y = cell_h * 0.5; // mid-line for strikethrough
         let thickness = 1.0;
