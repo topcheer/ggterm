@@ -845,25 +845,53 @@ impl DesktopApp {
 
     /// Poll for bell events from the terminal and trigger visual + audio bell (P11-E, P28-G).
     pub(super) fn poll_bell(&mut self) {
+        // Check bell_mode from config: "none" disables all bell effects.
+        let bell_mode = {
+            #[cfg(feature = "config-watch")]
+            {
+                self.config_mgr
+                    .as_ref()
+                    .map(|m| m.config().terminal.bell_mode.as_str())
+                    .unwrap_or("visual")
+            }
+            #[cfg(not(feature = "config-watch"))]
+            {
+                "visual"
+            }
+        };
+        if bell_mode == "none" {
+            // Still consume the bell flag to avoid buildup.
+            for session in &mut self.sessions {
+                let _ = session.app_mut().terminal_mut().take_bell();
+            }
+            return;
+        }
+
         let active = self.active;
         let mut any_bell = false;
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if session.app_mut().terminal_mut().take_bell() {
                 if i == active {
-                    // Active tab: visual bell + sound.
                     any_bell = true;
                 } else {
-                    // Non-active tab: mark as unread (blue dot).
                     session.mark_unread();
                 }
             }
         }
         if any_bell {
-            self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
-            if self.bell_limiter.check() {
+            // Visual bell (flash) unless mode is "sound" only.
+            if bell_mode == "visual" {
+                self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
+            }
+            // Sound bell only when mode is "sound".
+            if bell_mode == "sound" && self.bell_limiter.check() {
                 self.sound_player.play(crate::sound::SoundType::Bell);
             }
-            log::debug!("Bell triggered");
+            // Also play sound in visual mode if sound is enabled.
+            if bell_mode == "visual" && self.bell_limiter.check() {
+                self.sound_player.play(crate::sound::SoundType::Bell);
+            }
+            log::debug!("Bell triggered (mode: {})", bell_mode);
         }
     }
 

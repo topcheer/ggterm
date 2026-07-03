@@ -152,6 +152,9 @@ pub struct TerminalConfig {
     /// Whether to restore the previous session (tabs, panes, splits) on startup.
     /// Default: false (clean single-pane start).
     pub restore_session: bool,
+    /// Bell behavior: "none", "visual", or "sound".
+    /// Default: "visual" (flash the terminal).
+    pub bell_mode: String,
 }
 
 /// AI engine configuration.
@@ -186,6 +189,7 @@ impl Default for TerminalConfig {
             scrollback_lines: 10_000,
             shell: String::new(),
             restore_session: false,
+            bell_mode: "visual".to_string(),
         }
     }
 }
@@ -271,6 +275,7 @@ mod raw {
         pub scrollback_lines: Option<usize>,
         pub shell: Option<String>,
         pub restore_session: Option<bool>,
+        pub bell_mode: Option<String>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -369,6 +374,12 @@ impl Config {
         if let Some(v) = raw.terminal.restore_session {
             config.terminal.restore_session = v;
         }
+        if let Some(v) = raw.terminal.bell_mode {
+            let mode = v.to_lowercase();
+            if mode == "none" || mode == "visual" || mode == "sound" {
+                config.terminal.bell_mode = mode;
+            }
+        }
 
         if let Some(v) = raw.ai.enabled {
             config.ai.enabled = v;
@@ -447,6 +458,7 @@ impl Config {
             (self.terminal.scrollback_lines as i64).into(),
         );
         terminal.insert("shell".into(), self.terminal.shell.clone().into());
+        terminal.insert("bell_mode".into(), self.terminal.bell_mode.clone().into());
         root.insert("terminal".into(), terminal.into());
 
         // [ai]

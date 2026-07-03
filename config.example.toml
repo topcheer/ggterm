@@ -40,6 +40,12 @@ shell = ""
 # true  = restore the layout from your last session
 restore_session = false
 
+# Bell behavior when terminal sends BEL (0x07).
+# "visual" = flash the terminal briefly (default)
+# "sound"  = play a system sound
+# "none"   = silently ignore
+# bell_mode = "visual"
+
 [ai]
 # Enable AI features at startup
 enabled = false
