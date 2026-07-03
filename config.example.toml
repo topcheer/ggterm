@@ -24,6 +24,10 @@ cursor_style = "block"
 # Adjust at runtime: Ctrl+Shift+Alt+[ (less opaque) / ] (more opaque)
 # background_opacity = 1.0
 
+# Terminal content padding in pixels (all four sides).
+# Default: 8. Set to 0 for edge-to-edge text, or larger for more breathing room.
+# padding = 8
+
 [terminal]
 # Maximum scrollback history lines
 scrollback_lines = 10000

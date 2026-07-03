@@ -670,6 +670,16 @@ impl DesktopApp {
         1.0
     }
 
+    /// Get the terminal content padding in physical pixels.
+    /// Reads from config if available, falls back to default CONTENT_PADDING.
+    fn content_padding(&self) -> u32 {
+        #[cfg(feature = "config-watch")]
+        if let Some(ref mgr) = self.config_mgr {
+            return mgr.config().appearance.padding;
+        }
+        crate::desktop_config::CONTENT_PADDING as u32
+    }
+
     /// Adjust background opacity by a delta, clamped to [0.1, 1.0].
     /// Shows a toast notification with the current value.
     fn adjust_opacity(&mut self, delta: f32) {

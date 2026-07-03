@@ -1288,7 +1288,7 @@ impl DesktopApp {
         } else {
             0
         };
-        let pad = crate::desktop_config::CONTENT_PADDING as u32;
+        let pad = self.content_padding();
 
         let content_x = pad;
         let content_y = tab_bar_h + pad;

@@ -137,6 +137,9 @@ pub struct AppearanceConfig {
     /// Values below 1.0 allow the desktop wallpaper or windows behind the
     /// terminal to show through. Default: 1.0 (opaque).
     pub background_opacity: f32,
+    /// Terminal content padding in pixels (applied to all four sides).
+    /// Default: 8 (matches the built-in CONTENT_PADDING).
+    pub padding: u32,
 }
 
 /// Terminal behaviour configuration.
@@ -172,6 +175,7 @@ impl Default for AppearanceConfig {
             cell_height: 16,
             cursor_style: "block".to_string(),
             background_opacity: 1.0,
+            padding: 8,
         }
     }
 }
@@ -258,6 +262,7 @@ mod raw {
         pub cell_height: Option<u32>,
         pub cursor_style: Option<String>,
         pub background_opacity: Option<f32>,
+        pub padding: Option<u32>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -351,6 +356,9 @@ impl Config {
             // Clamp to valid range.
             config.appearance.background_opacity = v.clamp(0.0, 1.0);
         }
+        if let Some(v) = raw.appearance.padding {
+            config.appearance.padding = v.min(100); // cap at 100px
+        }
 
         if let Some(v) = raw.terminal.scrollback_lines {
             config.terminal.scrollback_lines = v;
@@ -429,6 +437,7 @@ impl Config {
             "background_opacity".into(),
             (self.appearance.background_opacity as f64).into(),
         );
+        appearance.insert("padding".into(), (self.appearance.padding as i64).into());
         root.insert("appearance".into(), appearance.into());
 
         // [terminal]
@@ -1149,6 +1158,22 @@ background_opacity = 2.0
         // Round-trip
         let config2 = Config::from_toml_str(&toml_str).unwrap();
         assert!((config2.appearance.background_opacity - 0.85).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_padding_default() {
+        let config = Config::default();
+        assert_eq!(config.appearance.padding, 8);
+    }
+
+    #[test]
+    fn test_padding_parse() {
+        let toml = r#"
+[appearance]
+padding = 16
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.appearance.padding, 16);
     }
 
     #[test]
