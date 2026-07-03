@@ -789,16 +789,16 @@ impl ApplicationHandler for DesktopApp {
 
             // NSImage::initWithData:(NSData *) — from the embedded PNG bytes.
             let nsdata = NSData::with_bytes(icon_data);
-            let cls = objc2::runtime::AnyClass::get(c"NSImage").expect("NSImage class not found");
-            let alloc: *mut AnyObject = msg_send![cls, alloc];
-            let img: *mut AnyObject = msg_send![alloc, initWithData: &*nsdata];
-            if !img.is_null() {
-                let app: *mut AnyObject = msg_send![
-                    objc2::runtime::AnyClass::get(c"NSApplication").unwrap(),
-                    sharedApplication
-                ];
-                let _: () = msg_send![app, setApplicationIconImage: img];
-                let _: () = msg_send![img, release];
+            if let Some(cls) = objc2::runtime::AnyClass::get(c"NSImage") {
+                let alloc: *mut AnyObject = msg_send![cls, alloc];
+                let img: *mut AnyObject = msg_send![alloc, initWithData: &*nsdata];
+                if !img.is_null() {
+                    if let Some(app_cls) = objc2::runtime::AnyClass::get(c"NSApplication") {
+                        let app: *mut AnyObject = msg_send![app_cls, sharedApplication];
+                        let _: () = msg_send![app, setApplicationIconImage: img];
+                    }
+                    let _: () = msg_send![img, release];
+                }
             }
         }
         if let Some(x) = self.saved_window_pos {
