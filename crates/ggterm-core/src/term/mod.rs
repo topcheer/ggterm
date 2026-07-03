@@ -1803,8 +1803,10 @@ impl Perform for Terminal {
             b'p' if intermediates.contains(&b'$') && !is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 let is_set = match mode {
-                    4 => self.modes.insert, // IRM — insert mode
-                    20 => false,            // LNM — line feed/new line mode (always reset)
+                    4 => self.modes.insert,        // IRM — insert mode
+                    7 => self.modes.auto_wrap,     // DECAWM — autowrap
+                    12 => self.modes.cursor_blink, // Cursor blink
+                    20 => false,                   // LNM — line feed/new line mode
                     _ => false,
                 };
                 let status = if is_set { 1 } else { 2 };
@@ -4892,6 +4894,24 @@ mod tests {
             s.contains("1004;1$y"),
             "focus event should be set, got: {s}"
         );
+    }
+
+    #[test]
+    fn t_decrqm_autowrap_mode() {
+        let mut t = Terminal::new(80, 24);
+        // Autowrap is on by default.
+        feed(&mut t, b"\x1b[7$p"); // Query ANSI mode 7 (DECAWM)
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("7;1$y"),
+            "autowrap should be set by default, got: {s}"
+        );
+        feed(&mut t, b"\x1b[?7l"); // Disable autowrap
+        feed(&mut t, b"\x1b[7$p"); // Query again
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("7;2$y"), "autowrap should be reset, got: {s}");
     }
 
     #[test]
