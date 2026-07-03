@@ -20,6 +20,26 @@ pub struct Cursor {
     pub pending_wrap: bool,
 }
 
+/// State saved/restored by DECSC/DECRC (ESC 7 / ESC 8).
+///
+/// Per the VT220/xterm specification, DECSC saves:
+/// - Cursor position (x, y) and pending wrap
+/// - Current SGR attributes (fg, bg, underline color, flags)
+/// - Character set designation (G0, G1, active set)
+/// - Autowrap (DECAWM) mode
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DecscState {
+    pub(crate) cursor: Cursor,
+    pub(crate) fg: Color,
+    pub(crate) bg: Color,
+    pub(crate) underline_color: Color,
+    pub(crate) flags: CellFlags,
+    pub(crate) g0_charset: Charset,
+    pub(crate) g1_charset: Charset,
+    pub(crate) active_g1: bool,
+    pub(crate) auto_wrap: bool,
+}
+
 /// OSC 133 command mark kind (Shell Integration protocol).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandMarkKind {
@@ -341,8 +361,12 @@ pub struct Terminal {
     pub(crate) grid: Grid,
     /// Active cursor position and pending-wrap flag.
     pub(crate) cursor: Cursor,
-    /// Saved cursor (for DECSC/DECRC and alt-screen swap).
+    /// Saved cursor (for alt-screen swap only).
     pub(crate) saved_cursor: Cursor,
+    /// Full saved state for DECSC/DECRC (ESC 7 / ESC 8).
+    /// Per xterm spec, DECSC saves cursor position, SGR attributes,
+    /// character set designation, and autowrap flag.
+    pub(crate) decsc_state: Option<DecscState>,
     /// Terminal mode flags.
     pub(crate) modes: Modes,
     /// Current foreground colour.
@@ -531,6 +555,7 @@ impl Terminal {
             grid: Grid::new(width, height),
             cursor: Cursor::default(),
             saved_cursor: Cursor::default(),
+            decsc_state: None,
             modes: Modes::defaults(),
             fg: Color::Default,
             bg: Color::Default,
@@ -1800,8 +1825,39 @@ impl Perform for Terminal {
                 // DECPNM — keypad normal mode
                 self.modes.keypad_app = false;
             }
-            b'7' => self.saved_cursor = self.cursor,
-            b'8' => self.cursor = self.saved_cursor,
+            // DECSC — save cursor and terminal state (ESC 7).
+            // Saves: cursor position, pending wrap, SGR attributes,
+            // character set designation, autowrap mode.
+            b'7' => {
+                self.decsc_state = Some(DecscState {
+                    cursor: self.cursor,
+                    fg: self.fg,
+                    bg: self.bg,
+                    underline_color: self.underline_color,
+                    flags: self.flags,
+                    g0_charset: self.g0_charset,
+                    g1_charset: self.g1_charset,
+                    active_g1: self.active_g1,
+                    auto_wrap: self.modes.auto_wrap,
+                });
+            }
+            // DECRC — restore cursor and terminal state (ESC 8).
+            b'8' => {
+                if let Some(state) = &self.decsc_state {
+                    self.cursor = state.cursor;
+                    self.fg = state.fg;
+                    self.bg = state.bg;
+                    self.underline_color = state.underline_color;
+                    self.flags = state.flags;
+                    self.g0_charset = state.g0_charset;
+                    self.g1_charset = state.g1_charset;
+                    self.active_g1 = state.active_g1;
+                    self.modes.auto_wrap = state.auto_wrap;
+                } else {
+                    // No saved state — restore to home position (xterm behavior).
+                    self.cursor = Cursor::default();
+                }
+            }
             b'c' => {
                 let w = self.grid.width();
                 let h = self.grid.height();
@@ -4799,5 +4855,64 @@ mod tests {
         feed(&mut t, b"\x1b]104;0;1;2\x1b\\");
         // No crash = success. Response buffer should be empty.
         assert!(t.take_response().is_empty());
+    }
+
+    // ================================================================
+    // DECSC / DECRC — full state save/restore (ESC 7 / ESC 8)
+    // ================================================================
+
+    #[test]
+    fn t_decsc_restores_cursor_position() {
+        let mut t = Terminal::new(80, 24);
+        // Move cursor to row 5, col 10
+        feed(&mut t, b"\x1b[6;11H");
+        // Save state (ESC 7)
+        feed(&mut t, b"\x1b7");
+        // Move cursor away
+        feed(&mut t, b"\x1b[1;1H");
+        assert_eq!((t.cursor().0, t.cursor().1), (0, 0));
+        // Restore (ESC 8)
+        feed(&mut t, b"\x1b8");
+        assert_eq!((t.cursor().0, t.cursor().1), (10, 5));
+    }
+
+    #[test]
+    fn t_decsc_restores_sgr_attributes() {
+        let mut t = Terminal::new(80, 24);
+        // Set bold + red foreground
+        feed(&mut t, b"\x1b[1;31m");
+        // Save state
+        feed(&mut t, b"\x1b7");
+        // Clear attributes
+        feed(&mut t, b"\x1b[0m");
+        assert!(!t.flags.contains(CellFlags::BOLD));
+        // Restore
+        feed(&mut t, b"\x1b8");
+        assert!(t.flags.contains(CellFlags::BOLD));
+    }
+
+    #[test]
+    fn t_decsc_restores_autowrap_mode() {
+        let mut t = Terminal::new(80, 24);
+        // Disable autowrap
+        feed(&mut t, b"\x1b[?7l");
+        assert!(!t.modes.auto_wrap);
+        // Save
+        feed(&mut t, b"\x1b7");
+        // Re-enable autowrap
+        feed(&mut t, b"\x1b[?7h");
+        assert!(t.modes.auto_wrap);
+        // Restore — should be disabled again
+        feed(&mut t, b"\x1b8");
+        assert!(!t.modes.auto_wrap);
+    }
+
+    #[test]
+    fn t_decsc_no_saved_state_restores_home() {
+        // DECRC without prior DECSC should restore cursor to (0,0).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[10;10H");
+        feed(&mut t, b"\x1b8");
+        assert_eq!((t.cursor().0, t.cursor().1), (0, 0));
     }
 }
