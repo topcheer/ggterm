@@ -44,6 +44,7 @@ pub fn row_to_runs(
     dynamic_fg: Option<(u8, u8, u8)>,
     dynamic_bg: Option<(u8, u8, u8)>,
     reverse_video: bool,
+    palette_overrides: &std::collections::HashMap<u8, (u8, u8, u8)>,
 ) -> Vec<TextRun> {
     let mut runs = Vec::new();
     let mut current: Option<TextRun> = None;
@@ -78,6 +79,18 @@ pub fn row_to_runs(
         } else {
             crate::colors::map_bg(bg, theme)
         };
+
+        // OSC 4: Apply custom palette overrides for indexed colors.
+        if let ggterm_core::Color::Indexed(n) = &cell.fg
+            && let Some(rgb) = palette_overrides.get(n)
+        {
+            fg_rgb = *rgb;
+        }
+        if let ggterm_core::Color::Indexed(n) = &cell.bg
+            && let Some(rgb) = palette_overrides.get(n)
+        {
+            bg_rgb = *rgb;
+        }
 
         // P13-A: DIM — reduce foreground brightness to ~60%.
         if cell.flags.contains(CellFlags::DIM) {
@@ -215,7 +228,17 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].text, "ABC");
     }
@@ -230,7 +253,17 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         assert_eq!(runs.len(), 3);
         assert_eq!(runs[0].text, "A");
         assert_eq!(runs[1].text, "B");
@@ -247,7 +280,17 @@ mod tests {
         grid[(2, 0)] = Cell::with_char('C');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         assert_eq!(runs.len(), 3);
         assert!(!runs[0].bold);
         assert!(runs[1].bold);
@@ -264,7 +307,17 @@ mod tests {
         grid[(1, 0)] = b;
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         assert_eq!(runs.len(), 2);
         // REVERSE: fg becomes bg color
         assert_eq!(runs[1].fg, (0, 0, 255)); // was bg
@@ -281,7 +334,17 @@ mod tests {
         let theme = RenderTheme::default();
         let cursor = CursorState::new(1, 0);
 
-        let runs = row_to_runs(&grid, 0, &theme, Some(&cursor), &[], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            Some(&cursor),
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         // Cursor cell should have swapped colors → different run
         assert!(runs.len() >= 2);
     }
@@ -305,7 +368,17 @@ mod tests {
         grid.put_char(3, 0, 'B');
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         let total: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(total.trim_end(), "A中B");
     }
@@ -320,8 +393,28 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
-        let runs2 = row_to_runs(&grid, 0, &theme, None, &[(99, 99)], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
+        let runs2 = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[(99, 99)],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         // Neither should have highlight colors
         for r in &runs {
             assert_ne!(r.bg, HIGHLIGHT_BG);
@@ -339,7 +432,17 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[(1, 2)], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[(1, 2)],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
 
         // Find the run(s) containing 'B' and 'C' (cols 1,2)
         let mut found_highlight = false;
@@ -365,7 +468,17 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 0), (3, 3)], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[(0, 0), (3, 3)],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
 
         let mut highlight_count = 0;
         for r in &runs {
@@ -388,7 +501,17 @@ mod tests {
             grid[(i, 0)] = Cell::with_char(ch);
         }
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[(0, 1)], None, None, false);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[(0, 1)],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
 
         // Find run containing 'C' and 'D' — they must NOT be highlighted
         for r in &runs {
@@ -411,7 +534,17 @@ mod tests {
         grid[(0, 0)] = c;
 
         let theme = RenderTheme::default();
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, true);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            true,
+            &std::collections::HashMap::new(),
+        );
 
         assert_eq!(runs[0].fg, (0, 0, 255), "fg should be swapped to bg color");
         assert_eq!(

@@ -105,6 +105,9 @@ impl DesktopApp {
             _ => unreachable!("dynamic_bg stores Rgb"),
         }));
 
+        // OSC 4: Sync custom palette overrides from terminal to renderer.
+        renderer.set_palette_overrides(term.palette_overrides().clone());
+
         // SGR 5: Blink text — share the cursor blink phase for text blink.
         renderer.set_blink_phase(blink_alpha);
 

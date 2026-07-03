@@ -20,6 +20,7 @@ use glyphon::{
     FontSystem, Metrics, PrepareError, RenderError as GlyphonRenderError, Resolution, Shaping,
     SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Unified error type for GPU text rendering operations.
@@ -131,6 +132,9 @@ pub struct GlyphonRenderer {
     dynamic_fg: Option<(u8, u8, u8)>,
     /// Dynamic background color (OSC 11) — overrides theme default bg.
     dynamic_bg: Option<(u8, u8, u8)>,
+    /// Custom palette overrides (OSC 4) — maps color index to RGB.
+    /// Applied to Color::Indexed values during rendering.
+    palette_overrides: HashMap<u8, (u8, u8, u8)>,
     // ── P19-G: UI Overlay rendering ──
     /// Overlay text specs: (text, left_px, top_px, (r,g,b)).
     overlay_text: Vec<OverlayTextSpec>,
@@ -305,6 +309,7 @@ impl GlyphonRenderer {
             highlights: Vec::new(),
             dynamic_fg: None,
             dynamic_bg: None,
+            palette_overrides: HashMap::new(),
             overlay_text: Vec::new(),
             overlay_rects: Vec::new(),
             overlay_vertex_buffer: None,
@@ -418,6 +423,12 @@ impl GlyphonRenderer {
         self.dynamic_bg = color;
     }
 
+    /// Set custom palette overrides (OSC 4).
+    /// Programs like base16-shell set these to change the terminal color scheme.
+    pub fn set_palette_overrides(&mut self, overrides: HashMap<u8, (u8, u8, u8)>) {
+        self.palette_overrides = overrides;
+    }
+
     /// Set the font size and recompute cell metrics.
     ///
     /// Line height = font_size (1.0x, for seamless box-drawing chars).
@@ -514,6 +525,7 @@ impl GlyphonRenderer {
                 self.dynamic_fg,
                 self.dynamic_bg,
                 self.reverse_video,
+                &self.palette_overrides,
             );
 
             for run in &runs {
@@ -1275,7 +1287,17 @@ mod tests {
         grid[(1, 0)] = Cell::with_char('i');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = converter::row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "Hi");
     }
@@ -1288,7 +1310,17 @@ mod tests {
         grid.put_char(2, 0, '好');
 
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = converter::row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "你好");
     }
@@ -1298,7 +1330,17 @@ mod tests {
     fn test_grid_to_text_empty_row() {
         let grid = Grid::new(5, 1);
         let theme = RenderTheme::default();
-        let runs = converter::row_to_runs(&grid, 0, &theme, None, &[], None, None, false);
+        let runs = converter::row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
         let text: String = runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(text.trim_end(), "");
     }

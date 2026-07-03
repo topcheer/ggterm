@@ -7,6 +7,7 @@
 
 use crate::grid::{Cell, CellFlags, Color, Grid};
 use crate::vte::Perform;
+use std::collections::HashMap;
 use unicode_width::UnicodeWidthChar;
 
 /// Terminal cursor state.
@@ -434,6 +435,10 @@ pub struct Terminal {
     pub(crate) remote_host: Option<String>,
     /// Scrollback mark row (from OSC 1337 SetMark).
     pub(crate) mark_row: Option<usize>,
+    /// Custom palette overrides set via OSC 4.
+    /// Maps color index → (R, G, B). Programs like base16-shell use this
+    /// to change the terminal's color scheme.
+    pub(crate) palette_overrides: HashMap<u8, (u8, u8, u8)>,
 }
 
 /// Parse an OSC 7 working directory URI.
@@ -585,6 +590,7 @@ impl Terminal {
             pending_notification: None,
             remote_host: None,
             mark_row: None,
+            palette_overrides: HashMap::new(),
         }
     }
 
@@ -765,6 +771,21 @@ impl Terminal {
     /// Return the scrollback mark row (from OSC 1337 SetMark).
     pub fn mark_row(&self) -> Option<usize> {
         self.mark_row
+    }
+
+    /// Return the custom palette overrides (OSC 4).
+    /// Maps color index → (R, G, B). Used by the renderer to resolve
+    /// Color::Indexed values with program-set colors.
+    pub fn palette_overrides(&self) -> &HashMap<u8, (u8, u8, u8)> {
+        &self.palette_overrides
+    }
+
+    /// Resolve a color index to RGB, considering custom palette overrides (OSC 4).
+    pub fn resolve_palette_color(&self, idx: u8) -> (u8, u8, u8) {
+        self.palette_overrides
+            .get(&idx)
+            .copied()
+            .unwrap_or_else(|| color_for_index(idx))
     }
 
     /// Return the device response buffer (DA/DSR replies).
@@ -2026,12 +2047,22 @@ impl Perform for Terminal {
                     let spec = fields.next().unwrap_or("");
                     if spec == "?" {
                         // Query: respond with current palette color
-                        let (r, g, b) = color_for_index(idx);
+                        // (use override if set, otherwise built-in palette)
+                        let (r, g, b) = self
+                            .palette_overrides
+                            .get(&idx)
+                            .copied()
+                            .unwrap_or_else(|| color_for_index(idx));
                         let resp =
                             format!("\x1b]4;{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", idx, r, g, b);
                         self.response_buffer.extend_from_slice(resp.as_bytes());
+                    } else if let Some(color) = parse_xcolor(spec) {
+                        // Set: store the override in the palette map.
+                        let Color::Rgb(r, g, b) = color else {
+                            continue;
+                        };
+                        self.palette_overrides.insert(idx, (r, g, b));
                     }
-                    // Setting colors is a no-op for now (palette is fixed)
                 }
             }
             // OSC 1337 — iTerm2 shell integration protocol.
@@ -2060,10 +2091,19 @@ impl Perform for Terminal {
             // OSC 104 — reset color palette entries.
             // OSC 104 ; index ST → reset specific entry
             // OSC 104 ST          → reset ALL entries
-            // Since our palette is fixed, reset is effectively a no-op.
-            // We still consume it to prevent "unhandled OSC" noise.
             Some(104) => {
-                // No-op: palette overrides not yet stored.
+                let payload = parts.next().unwrap_or("");
+                if payload.is_empty() {
+                    // Reset all palette overrides.
+                    self.palette_overrides.clear();
+                } else {
+                    // Reset specific entries.
+                    for idx_str in payload.split(';') {
+                        if let Ok(idx) = idx_str.parse::<u8>() {
+                            self.palette_overrides.remove(&idx);
+                        }
+                    }
+                }
             }
             // OSC 110 / 111 / 112 — reset dynamic colors (fg/bg/cursor).
             // OSC 110 ST → reset foreground (OSC 10)
@@ -3992,7 +4032,7 @@ mod tests {
         t.take_response(); // clear
         // Query cursor color
         feed(&mut t, b"\x1b]12;?\x1b\\");
-        let resp = String::from_utf8_lossy(&t.response_buffer());
+        let resp = String::from_utf8_lossy(t.response_buffer());
         assert!(
             resp.contains("12;rgb:aa/bb/cc"),
             "OSC 12 query should return set cursor color, got: {resp}"
@@ -4006,7 +4046,7 @@ mod tests {
         feed(&mut t, b"\x1b[31m");
         // Query fg color
         feed(&mut t, b"\x1b]10;?\x1b\\");
-        let resp = String::from_utf8_lossy(&t.response_buffer());
+        let resp = String::from_utf8_lossy(t.response_buffer());
         assert!(
             resp.contains("rgb:"),
             "query response should contain rgb: spec"
@@ -4428,6 +4468,69 @@ mod tests {
             resp_str.contains("4;7;rgb:e5/e5/e5"),
             "should contain white color response"
         );
+    }
+
+    #[test]
+    fn t_osc4_color_set_and_query() {
+        // Set color index 1 (red) to a custom value, then query it.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;1;rgb:ff/00/ff\x1b\\"); // Set index 1 to magenta
+        let _ = t.take_response(); // Clear any pending response
+
+        // Query the modified color
+        feed(&mut t, b"\x1b]4;1;?\x1b\\");
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("4;1;rgb:ff/00/ff"),
+            "after SET, query should return new color, got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_osc4_color_set_affects_resolve() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;2;rgb:01/02/03\x1b\\"); // Set index 2
+        assert_eq!(
+            t.resolve_palette_color(2),
+            (1, 2, 3),
+            "resolve_palette_color should return overridden value"
+        );
+        // Other indices should still return built-in colors
+        assert_eq!(t.resolve_palette_color(1), (205, 0, 0));
+    }
+
+    #[test]
+    fn t_osc104_reset_specific_palette_entry() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;1;rgb:ff/00/ff\x1b\\"); // Override index 1
+        assert_eq!(t.resolve_palette_color(1), (255, 0, 255));
+
+        // Reset index 1 only
+        feed(&mut t, b"\x1b]104;1\x1b\\");
+        assert_eq!(
+            t.resolve_palette_color(1),
+            (205, 0, 0),
+            "should revert to built-in red after OSC 104 reset"
+        );
+    }
+
+    #[test]
+    fn t_osc104_reset_all_palette() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;1;rgb:ff/00/ff\x1b\\"); // Override index 1
+        feed(&mut t, b"\x1b]4;5;rgb:01/02/03\x1b\\"); // Override index 5
+
+        // Reset ALL palette entries
+        feed(&mut t, b"\x1b]104\x1b\\");
+        assert_eq!(t.resolve_palette_color(1), (205, 0, 0), "index 1 reverted");
+        assert_eq!(
+            t.resolve_palette_color(5),
+            (205, 0, 205),
+            "index 5 reverted"
+        );
+        assert!(t.palette_overrides().is_empty(), "all overrides cleared");
     }
 
     #[test]

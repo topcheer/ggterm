@@ -83,7 +83,17 @@ fn bench_row_to_runs(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("empty", label), &grid, |b, g| {
             b.iter(|| {
                 for row in 0..g.height() {
-                    black_box(row_to_runs(g, row, &theme, Some(&cursor), &[]));
+                    black_box(row_to_runs(
+                        g,
+                        row,
+                        &theme,
+                        Some(&cursor),
+                        &[],
+                        None,
+                        None,
+                        false,
+                        &std::collections::HashMap::new(),
+                    ));
                 }
             })
         });
@@ -95,7 +105,17 @@ fn bench_row_to_runs(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("ascii", label), &grid, |b, g| {
             b.iter(|| {
                 for row in 0..g.height() {
-                    black_box(row_to_runs(g, row, &theme, Some(&cursor), &[]));
+                    black_box(row_to_runs(
+                        g,
+                        row,
+                        &theme,
+                        Some(&cursor),
+                        &[],
+                        None,
+                        None,
+                        false,
+                        &std::collections::HashMap::new(),
+                    ));
                 }
             })
         });
@@ -107,7 +127,17 @@ fn bench_row_to_runs(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("mixed_sgr_cjk", label), &grid, |b, g| {
             b.iter(|| {
                 for row in 0..g.height() {
-                    black_box(row_to_runs(g, row, &theme, Some(&cursor), &[]));
+                    black_box(row_to_runs(
+                        g,
+                        row,
+                        &theme,
+                        Some(&cursor),
+                        &[],
+                        None,
+                        None,
+                        false,
+                        &std::collections::HashMap::new(),
+                    ));
                 }
             })
         });
@@ -220,13 +250,37 @@ fn bench_single_row(c: &mut Criterion) {
         // ASCII row
         let grid_ascii = ascii_grid(w, 1);
         group.bench_with_input(BenchmarkId::new("ascii", label), &grid_ascii, |b, g| {
-            b.iter(|| black_box(row_to_runs(g, 0, &theme, Some(&cursor), &[])))
+            b.iter(|| {
+                black_box(row_to_runs(
+                    g,
+                    0,
+                    &theme,
+                    Some(&cursor),
+                    &[],
+                    None,
+                    None,
+                    false,
+                    &std::collections::HashMap::new(),
+                ))
+            })
         });
 
         // Mixed SGR row
         let grid_mixed = mixed_sgr_grid(w, 1);
         group.bench_with_input(BenchmarkId::new("mixed_sgr", label), &grid_mixed, |b, g| {
-            b.iter(|| black_box(row_to_runs(g, 0, &theme, Some(&cursor), &[])))
+            b.iter(|| {
+                black_box(row_to_runs(
+                    g,
+                    0,
+                    &theme,
+                    Some(&cursor),
+                    &[],
+                    None,
+                    None,
+                    false,
+                    &std::collections::HashMap::new(),
+                ))
+            })
         });
     }
 

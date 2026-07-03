@@ -397,7 +397,7 @@ mod tests {
         let e = PtyError::Pty("test error".to_string());
         assert!(format!("{}", e).contains("test error"));
 
-        let io_err = PtyError::Io(io::Error::new(io::ErrorKind::Other, "io fail"));
+        let io_err = PtyError::Io(io::Error::other("io fail"));
         assert!(format!("{}", io_err).contains("io fail"));
     }
 
