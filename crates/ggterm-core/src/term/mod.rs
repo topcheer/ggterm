@@ -1795,6 +1795,13 @@ impl Perform for Terminal {
                 // For simplicity, respond "not recognized" for all queries.
                 self.response_buffer.extend_from_slice(b"\x1bP0$r\x1b\\");
             }
+            // DECREQTPARM — Request Terminal Parameters (CSI Ps x)
+            // Programs use this during startup to detect terminal type.
+            // Response: CSI 2 ; 1 ; 0 ; 0 ; 0 ; 0 x
+            //   2 = respond to request, 1 = no parity, rest = unused
+            b'x' => {
+                self.response_buffer.extend_from_slice(b"\x1b[2;1;0;0;0;0x");
+            }
             _ => {}
         }
     }
@@ -4824,6 +4831,19 @@ mod tests {
         let s = String::from_utf8_lossy(&resp);
         // Should respond CSI 1 t (not iconified)
         assert!(s.contains("\x1b[1t"), "window state report wrong, got: {s}");
+    }
+
+    #[test]
+    fn t_decreqtparm_response() {
+        // CSI x (DECREQTPARM) — programs use this during terminal init.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[x");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("\x1b[2;1;0;0;0;0x"),
+            "DECREQTPARM response wrong, got: {s}"
+        );
     }
 
     #[test]

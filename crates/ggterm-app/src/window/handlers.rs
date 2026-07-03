@@ -75,6 +75,9 @@ impl DesktopApp {
             session.resize(new_cols, new_rows);
         }
 
+        // Show a brief size indicator toast.
+        self.show_toast(format!("{}x{}", new_cols, new_rows));
+
         true
     }
 
