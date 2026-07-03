@@ -148,6 +148,18 @@ impl CommandRegistry {
             category: "Font".into(),
             shortcut: Some("Ctrl+0".into()),
         });
+        r.register(Command {
+            id: "opacity.increase".into(),
+            label: "Increase Background Opacity".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+Alt+]".into()),
+        });
+        r.register(Command {
+            id: "opacity.decrease".into(),
+            label: "Decrease Background Opacity".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+Alt+[".into()),
+        });
         // Terminal actions
         r.register(Command {
             id: "terminal.clear".into(),

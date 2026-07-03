@@ -1370,6 +1370,12 @@ impl DesktopApp {
                 self.font_zoom.reset();
                 self.apply_font_size();
             }
+            "opacity.increase" => {
+                self.adjust_opacity(0.05);
+            }
+            "opacity.decrease" => {
+                self.adjust_opacity(-0.05);
+            }
             "view.fullscreen" => {
                 self.toggle_fullscreen();
             }
