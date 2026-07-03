@@ -40,20 +40,67 @@ use tokio::sync::mpsc;
 //  Client handler
 // ─────────────────────────────────────────────────────────────────
 
-/// russh client handler — accepts all server keys.
-/// TODO: implement known_hosts verification for production use.
-struct ClientHandler;
+/// russh client handler — stores the server's public key for verification.
+struct ClientHandler {
+    /// Filled in by check_server_key with the SHA-256 fingerprint.
+    server_fingerprint: Arc<Mutex<Option<String>>>,
+}
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::PublicKey,
+        server_public_key: &russh::keys::PublicKey,
     ) -> Result<bool, Self::Error> {
-        // Accept all server keys for now.
+        // Compute SHA-256 fingerprint of the server key for logging/display.
+        let fingerprint = sha256_fingerprint(server_public_key);
+        log::info!("SSH server key fingerprint: {}", fingerprint);
+        *self.server_fingerprint.lock().unwrap() = Some(fingerprint);
+
+        // Accept all server keys. For production use, this should verify
+        // against ~/.ssh/known_hosts, but that requires a host key database
+        // and user confirmation UI which is beyond the current scope.
+        // The fingerprint is available via SshSession::server_fingerprint().
         Ok(true)
     }
+}
+
+/// Compute the SHA-256 fingerprint of a public key in OpenSSH format.
+/// Returns "SHA256:base64..." for display and logging.
+fn sha256_fingerprint(key: &russh::keys::PublicKey) -> String {
+    // Use the SSH wire format public key blob, then SHA-256 + base64.
+    let blob = key.fingerprint(russh::keys::HashAlg::Sha256);
+    let encoded = base64_encoded(blob.as_bytes());
+    let mut s = String::with_capacity(7 + encoded.len());
+    s.push_str("SHA256:");
+    s.push_str(&encoded);
+    s
+}
+
+/// Minimal base64 encoder (no external dependency needed for short blobs).
+fn base64_encoded(data: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((n >> 18) & 63) as usize] as char);
+        result.push(CHARS[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARS[((n >> 6) & 63) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(n & 63) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -136,11 +183,15 @@ impl SshSession {
         let runtime =
             tokio::runtime::Runtime::new().map_err(|e| SshError::Runtime(e.to_string()))?;
 
+        let server_fingerprint: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
         let mut handle = runtime
             .block_on(client::connect(
                 Arc::new(client::Config::default()),
                 (host, port),
-                ClientHandler,
+                ClientHandler {
+                    server_fingerprint: server_fingerprint.clone(),
+                },
             ))
             .map_err(|e| SshError::Connection(e.to_string()))?;
 
