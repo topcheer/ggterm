@@ -250,6 +250,15 @@ impl TabSession {
         self.has_unread_output = true;
     }
 
+    /// Returns true if any pane's grid has dirty content (needs redraw).
+    /// Used in multi-pane mode where background panes are also visible.
+    pub fn any_pane_dirty(&self) -> bool {
+        self.panes
+            .iter()
+            .flatten()
+            .any(|pane| pane.app.terminal().grid().content_dirty())
+    }
+
     /// Clear unread status (called when tab becomes active).
     pub fn clear_unread(&mut self) {
         self.has_unread_output = false;

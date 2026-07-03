@@ -1309,12 +1309,9 @@ impl ApplicationHandler for DesktopApp {
 
         // P23-C: Conditional redraw — only request redraw when there's
         // content to show (dirty grid, pending resize, bell, or cursor blink).
-        let content_dirty = self
-            .active_session()
-            .app()
-            .terminal()
-            .grid()
-            .content_dirty();
+        // Check ALL panes in the active session, not just the active one,
+        // because background panes' output is also visible in split mode.
+        let content_dirty = self.active_session().any_pane_dirty();
         let need_redraw = content_dirty
             || self.pending_resize.is_some()
             || self
