@@ -56,6 +56,7 @@ pub mod new_tab_menu;
 pub mod search;
 pub mod session;
 pub mod settings_ui;
+#[cfg(feature = "desktop")]
 pub mod settings_window;
 pub mod shell_integration;
 pub mod smooth_scroll;
@@ -67,6 +68,7 @@ pub mod tab_session;
 pub mod tabs;
 pub mod terminal_actions;
 pub mod theme;
+#[cfg(feature = "desktop")]
 pub mod titlebar;
 pub mod ui_theme;
 pub mod version_info;

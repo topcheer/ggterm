@@ -50,8 +50,8 @@
       "match_pattern": "cannot find `\\w+` in `crate`|E0433",
       "tool_pattern": "cargo build|cargo test|cargo check|cargo clippy",
       "fix_hint": "Add `mod \u003cmodule_name\u003e;` to lib.rs/main.rs or check that the module path and feature flags are correct",
-      "hit_count": 1,
-      "last_seen": "2026-07-02T23:15:30.204365+08:00",
+      "hit_count": 8,
+      "last_seen": "2026-07-03T17:32:54.096162+08:00",
       "created_at": "2026-07-02T23:15:30.204365+08:00"
     },
     {
@@ -129,6 +129,17 @@
       "hit_count": 1,
       "last_seen": "2026-07-03T13:29:23.629842+08:00",
       "created_at": "2026-07-03T13:29:23.629842+08:00"
+    },
+    {
+      "id": "r-0a3bb63d",
+      "category": "build",
+      "rule": "Before using `use` statements for external crates or local workspace crates, verify the crate is listed in Cargo.toml dependencies (or dev-dependencies) and the correct feature flags are enabled",
+      "match_pattern": "error\\[E0432\\].*unresolved import",
+      "tool_pattern": "cargo build|cargo test|cargo check|cargo clippy",
+      "fix_hint": "Add the missing crate to Cargo.toml [dependencies] or enable the required feature flag, e.g. add `objc2 = \"x.y\"` or `raw-window-handle = \"x.y\"` to Cargo.toml",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T17:33:10.298868+08:00",
+      "created_at": "2026-07-03T17:33:10.298868+08:00"
     }
   ]
 }
