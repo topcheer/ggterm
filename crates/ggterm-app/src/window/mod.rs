@@ -322,6 +322,8 @@ pub fn default_keybindings() -> std::collections::HashMap<String, (bool, bool, b
     m.insert("clear".into(), (true, true, false, "K".into()));
     m.insert("reset".into(), (true, true, false, "R".into()));
     m.insert("cycle_theme".into(), (true, true, true, "T".into()));
+    // Copy current working directory (from OSC 7)
+    m.insert("copy_cwd".into(), (true, true, false, "P".into()));
     m
 }
 

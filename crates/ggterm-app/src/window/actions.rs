@@ -1333,6 +1333,14 @@ impl DesktopApp {
             "terminal.copy" => {
                 self.copy_selection_to_clipboard();
             }
+            "terminal.copy_cwd" => {
+                if let Some(cwd) = self.active_session().cwd() {
+                    crate::clipboard::set_clipboard_bytes(cwd.to_string_lossy().as_bytes());
+                    self.show_toast("Copied path");
+                } else {
+                    self.show_toast("No path available");
+                }
+            }
             "terminal.clear" => {
                 // Clear visible screen by sending Ctrl+L equivalent.
                 self.write_to_pty(b"\x1b[H\x1b[2J");

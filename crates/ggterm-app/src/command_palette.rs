@@ -174,6 +174,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+C".into()),
         });
         r.register(Command {
+            id: "terminal.copy_cwd".into(),
+            label: "Copy Current Directory Path".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+P".into()),
+        });
+        r.register(Command {
             id: "terminal.paste".into(),
             label: "Paste".into(),
             category: "Terminal".into(),

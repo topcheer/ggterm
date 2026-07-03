@@ -312,6 +312,22 @@ impl DesktopApp {
                 self.cycle_theme();
                 return;
             }
+            // Ctrl+Shift+P → copy current working directory
+            if self.check_keybinding(
+                "copy_cwd",
+                self.mods.ctrl,
+                self.mods.shift,
+                self.mods.alt,
+                key_name,
+            ) {
+                if let Some(cwd) = self.active_session().cwd() {
+                    crate::clipboard::set_clipboard_bytes(cwd.to_string_lossy().as_bytes());
+                    self.show_toast("Copied path");
+                } else {
+                    self.show_toast("No path available");
+                }
+                return;
+            }
             // Ctrl+Shift+F → toggle search
             if self.check_keybinding(
                 "search",
@@ -1647,7 +1663,15 @@ impl DesktopApp {
                             }
                             return;
                         }
-                        // Empty area of tab bar → start window drag.
+                        // Empty area of tab bar → start window drag,
+                        // or maximize on double-click (macOS convention).
+                        if self.click_count == 2 {
+                            self.maximized = !self.maximized;
+                            if let Some(ref window) = self.window {
+                                window.set_maximized(self.maximized);
+                            }
+                            return;
+                        }
                         if let Some(ref window) = self.window {
                             let _ = window.drag_window();
                         }

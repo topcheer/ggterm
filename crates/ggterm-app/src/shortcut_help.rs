@@ -270,6 +270,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+P".into(),
+            description: "Copy current directory path".into(),
+            category: ShortcutCategory::Edit,
+            configurable: true,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+A".into(),
             description: "Select all text".into(),
             category: ShortcutCategory::Edit,
