@@ -50,6 +50,8 @@ pub struct StatusBar {
     pub shell_name: String,
     /// Current working directory (OSC 7). Empty = unknown.
     pub cwd: String,
+    /// Remote SSH host (OSC 1337 RemoteHost=). Empty = local.
+    pub remote_host: String,
     /// Whether pane zoom mode is active.
     pub pane_zoomed: bool,
 }
@@ -80,6 +82,7 @@ impl StatusBar {
             sound_enabled: false,
             shell_name: String::new(),
             cwd: String::new(),
+            remote_host: String::new(),
             pane_zoomed: false,
         }
     }
@@ -317,6 +320,11 @@ impl StatusBar {
         // P28-H: Shell name.
         if !self.shell_name.is_empty() {
             seg!(self.shell_name.clone(), text_color);
+        }
+
+        // Remote SSH host (from OSC 1337 RemoteHost=).
+        if !self.remote_host.is_empty() {
+            seg!(format!("SSH:{}", self.remote_host), accent_color);
         }
 
         // CWD (from OSC 7). Show basename only for compactness.
@@ -661,5 +669,17 @@ mod tests {
         // Separator color should be dim (all channels low).
         let (_, color) = seps[0];
         assert!(color.0 < 120 && color.1 < 120 && color.2 < 120);
+    }
+
+    #[test]
+    fn t_segments_remote_host() {
+        let mut sb = StatusBar::new();
+        sb.remote_host = "root@server.com".into();
+        let segs = sb.format_segments();
+        let texts: Vec<&str> = segs.iter().map(|(t, _)| t.as_str()).collect();
+        assert!(
+            texts.contains(&"SSH:root@server.com"),
+            "should contain SSH host indicator, got: {texts:?}"
+        );
     }
 }

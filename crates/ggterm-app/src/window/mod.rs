@@ -1062,6 +1062,14 @@ impl ApplicationHandler for DesktopApp {
                     .cwd()
                     .map(|p| p.display().to_string())
                     .unwrap_or_default();
+                // Remote host from OSC 1337 RemoteHost=
+                self.status_bar.remote_host = self
+                    .active_session()
+                    .app()
+                    .terminal()
+                    .remote_host()
+                    .unwrap_or("")
+                    .to_string();
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).
