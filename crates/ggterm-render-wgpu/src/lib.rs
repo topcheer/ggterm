@@ -845,6 +845,17 @@ impl GlyphonRenderer {
                             strike_verts.extend_from_slice(&[x, y, r, g, b]);
                         }
                     }
+
+                    // Overline (SGR 53) — line at the very top of the cell.
+                    if cell.flags.contains(ggterm_core::CellFlags::OVERLINE) {
+                        let py = row_idx as f32 * cell_h + self.viewport_offset.1;
+                        let y0 = 1.0 - py / screen_h * 2.0;
+                        let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
+                        for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
+                        {
+                            strike_verts.extend_from_slice(&[x, y, r, g, b]);
+                        }
+                    }
                 }
             }
         }

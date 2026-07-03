@@ -1117,6 +1117,8 @@ impl Terminal {
                 7 => self.flags |= CellFlags::REVERSE,
                 8 => self.flags |= CellFlags::HIDDEN,
                 9 => self.flags |= CellFlags::STRIKETHROUGH,
+                // SGR 21 — doubly underlined (xterm). Equivalent to SGR 4:2.
+                21 => self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOUBLE,
                 22 => self.flags &= !(CellFlags::BOLD | CellFlags::DIM),
                 23 => self.flags &= !CellFlags::ITALIC,
                 24 => {
@@ -1130,6 +1132,9 @@ impl Terminal {
                 27 => self.flags &= !CellFlags::REVERSE,
                 28 => self.flags &= !CellFlags::HIDDEN,
                 29 => self.flags &= !CellFlags::STRIKETHROUGH,
+                // SGR 53 — overline on. SGR 55 — overline off.
+                53 => self.flags |= CellFlags::OVERLINE,
+                55 => self.flags &= !CellFlags::OVERLINE,
                 30..=37 => self.fg = Color::Indexed((p - 30) as u8),
                 39 => self.fg = Color::Default,
                 40..=47 => self.bg = Color::Indexed((p - 40) as u8),
@@ -2378,6 +2383,32 @@ mod tests {
         let flags_after = t.grid().cell(1, 0).unwrap().flags;
         assert!(!flags_after.contains(CellFlags::UNDERLINE));
         assert!(!flags_after.contains(CellFlags::UNDERLINE_CURLY));
+    }
+
+    #[test]
+    fn t_sgr21_double_underline() {
+        // SGR 21 = double underline (xterm convention).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[21mD");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::UNDERLINE));
+        assert!(flags.contains(CellFlags::UNDERLINE_DOUBLE));
+    }
+
+    #[test]
+    fn t_sgr53_overline() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[53mO");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::OVERLINE));
+    }
+
+    #[test]
+    fn t_sgr55_overline_off() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[53mO\x1b[55mR");
+        let flags = t.grid().cell(1, 0).unwrap().flags;
+        assert!(!flags.contains(CellFlags::OVERLINE));
     }
 
     #[test]

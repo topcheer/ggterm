@@ -33,6 +33,8 @@ bitflags! {
         const UNDERLINE_CURLY  = 0x1000; // SGR 4:3
         const UNDERLINE_DOTTED = 0x2000; // SGR 4:4
         const UNDERLINE_DASHED = 0x4000; // SGR 4:5
+        /// Overline (SGR 53) — line above the character.
+        const OVERLINE = 0x8000;
     }
 }
 
