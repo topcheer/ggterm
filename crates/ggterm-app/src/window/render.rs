@@ -1057,11 +1057,18 @@ impl DesktopApp {
                 let offset = grid.display_offset();
                 let indicator_y =
                     content_bounds.y as f32 + content_bounds.height as f32 - cell_h - 4.0;
-                // Wider pill if we show line count.
-                let pill_w = if offset < 100 {
-                    cell_w * 3.5
+                // Show "↓ N" for small offsets, "↓ N%" for larger ones.
+                let scrollback_len = grid.scrollback_len();
+                let total_lines = scrollback_len + grid.height();
+                let pct = if total_lines > 0 {
+                    (offset * 100 / total_lines).min(100)
                 } else {
-                    cell_w * 4.5
+                    0
+                };
+                let pill_w = if pct > 0 {
+                    cell_w * 5.0 // "↓ 42%" needs more room
+                } else {
+                    cell_w * 3.5
                 };
                 let indicator_x =
                     content_bounds.x as f32 + content_bounds.width as f32 - pill_w - 4.0;
@@ -1075,11 +1082,11 @@ impl DesktopApp {
                     radius: 4.0,
                     stroke_width: 0.0,
                 });
-                // Show "↓ N" where N is lines scrolled back.
+                // Show "↓ N" for small offsets, "↓ PCT%" for larger ones.
                 let label = if offset < 100 {
                     format!("\u{2193} {}", offset) // ↓ N
                 } else {
-                    "\u{2193}".to_string() // just ↓
+                    format!("\u{2193} {}%", pct) // ↓ N%
                 };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: label,
