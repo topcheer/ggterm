@@ -238,9 +238,11 @@ impl TabBarState {
         let tab_height = bar_height - TAB_BAR_PADDING_V;
         let tab_y = TAB_BAR_PADDING_V;
 
-        // Available width = surface - left/right padding - "+" button area
-        let available_width =
-            surface_width - TAB_BAR_PADDING_H * 2.0 - NEW_TAB_BUTTON_SIZE - TAB_GAP;
+        // Available width = surface - left/right padding - both buttons area
+        // Account for: + button, gear button, and gaps between them.
+        let buttons_width = NEW_TAB_BUTTON_SIZE * 2.0   // + button + gear button
+            + TAB_GAP * 3.0; // gap before +, between + and gear, after gear
+        let available_width = surface_width - TAB_BAR_PADDING_H * 2.0 - buttons_width;
         let tab_count = self.tabs.len() as f32;
 
         // Each tab gets an equal share of the full available width.
@@ -287,8 +289,9 @@ impl TabBarState {
         let new_tab_x = x + NEW_TAB_BUTTON_SIZE / 2.0;
         let new_tab_y = tab_y + tab_height / 2.0;
 
-        // Settings gear button at the far right of the tab bar.
-        let settings_x = surface_width - NEW_TAB_BUTTON_SIZE;
+        // Settings gear button — separated from "+" by a gap.
+        let settings_x =
+            new_tab_x + NEW_TAB_BUTTON_SIZE / 2.0 + TAB_GAP + NEW_TAB_BUTTON_SIZE / 2.0;
         let settings_y = tab_y + tab_height / 2.0;
 
         TabBarLayout {

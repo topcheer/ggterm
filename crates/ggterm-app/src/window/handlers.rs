@@ -807,7 +807,7 @@ impl DesktopApp {
             return;
         }
 
-        // Ctrl+, (comma) → toggle settings overlay (P19-C)
+        // Ctrl+, (comma) → toggle settings overlay
         if self.mods.ctrl
             && !self.mods.shift
             && let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key
