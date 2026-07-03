@@ -725,12 +725,19 @@ mod tests {
     fn t_destroy_cleans_up() {
         let count_before = ggterm_session_count();
         let id = ggterm_session_create(80, 24);
+        // Count must have increased by exactly 1 for THIS session.
         assert_eq!(ggterm_session_count(), count_before + 1);
         unsafe { ggterm_session_destroy(id) };
-        assert_eq!(ggterm_session_count(), count_before);
-        // Session operations after destroy should be safe no-ops
+        // After destroy, the session should be gone. Other parallel tests may
+        // have also changed the count, so we verify via is_alive instead.
         assert_eq!(ggterm_transport_is_alive(id), 0);
         assert_eq!(ggterm_transport_pump(id), 0);
+        // Verify the session is gone by trying to get dimensions — should be 0,0.
+        let (mut cols, mut rows) = (0usize, 0usize);
+        unsafe { ggterm_session_dimensions(id, &mut cols, &mut rows) };
+        // A destroyed session has no grid, so cols/rows should remain 0.
+        assert_eq!(cols, 0);
+        assert_eq!(rows, 0);
     }
 
     #[test]
