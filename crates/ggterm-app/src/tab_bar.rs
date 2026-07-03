@@ -42,6 +42,8 @@ pub struct TabInfo {
     pub active: bool,
     /// Whether the tab has unseen output (dirty / bell).
     pub dirty: bool,
+    /// Whether this tab has a pending bell (BEL received while inactive).
+    pub bell: bool,
 }
 
 impl TabInfo {
@@ -52,6 +54,7 @@ impl TabInfo {
             index,
             active,
             dirty: false,
+            bell: false,
         }
     }
 
@@ -73,14 +76,17 @@ impl TabInfo {
 
     /// Format as a display string for the tab pill.
     /// Modern format: just the title (active/dirty state shown via pill styling).
+    /// When bell is pending (non-active tab), show a bell glyph.
     pub fn format(&self) -> String {
         let title = self.truncated_title(14);
-        let dirty = if self.dirty && !self.active {
-            " \u{2022}"
+        let suffix = if self.bell && !self.active {
+            " \u{1F514}" // BELL emoji
+        } else if self.dirty && !self.active {
+            " \u{2022}" // bullet
         } else {
             ""
         };
-        format!("{}{}", title, dirty)
+        format!("{}{}", title, suffix)
     }
 
     /// Estimated pixel width of the tab text content (index + title + close button).
@@ -195,7 +201,13 @@ impl TabBarState {
     }
 
     /// Rebuild the tab list from session titles and active index.
+    /// `bell_flags` indicates which tabs have a pending bell indicator.
     pub fn update(&mut self, titles: &[&str], active: usize) {
+        self.update_with_bells(titles, active, &[]);
+    }
+
+    /// Rebuild the tab list with bell indicators.
+    pub fn update_with_bells(&mut self, titles: &[&str], active: usize, bell_flags: &[bool]) {
         self.tabs = titles
             .iter()
             .enumerate()
@@ -204,6 +216,7 @@ impl TabBarState {
                 index: i + 1,
                 active: i == active,
                 dirty: false,
+                bell: bell_flags.get(i).copied().unwrap_or(false),
             })
             .collect();
         // Always show tab bar (even with 1 tab) so the "+" new-tab button
@@ -573,6 +586,31 @@ mod tests {
         tab.dirty = true;
         // Should be just "logs" (no dirty dot when active)
         assert_eq!(tab.format(), "logs");
+    }
+
+    #[test]
+    fn t_bell_shows_on_inactive_tab() {
+        let mut tab = TabInfo::new("server", 2, false);
+        tab.bell = true;
+        // Format should include bell glyph.
+        assert!(tab.format().contains('\u{1F514}'), "should show bell glyph");
+    }
+
+    #[test]
+    fn t_bell_suppressed_on_active_tab() {
+        let mut tab = TabInfo::new("server", 1, true);
+        tab.bell = true;
+        // Active tab suppresses bell indicator.
+        assert_eq!(tab.format(), "server");
+    }
+
+    #[test]
+    fn t_update_with_bells() {
+        let mut state = TabBarState::new();
+        state.update_with_bells(&["a", "b", "c"], 0, &[false, true, false]);
+        assert!(!state.tabs[0].bell);
+        assert!(state.tabs[1].bell);
+        assert!(!state.tabs[2].bell);
     }
 
     #[test]

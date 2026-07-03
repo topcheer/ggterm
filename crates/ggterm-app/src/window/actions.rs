@@ -962,6 +962,7 @@ impl DesktopApp {
                     any_bell = true;
                 } else {
                     session.mark_unread();
+                    session.mark_bell();
                 }
             }
         }

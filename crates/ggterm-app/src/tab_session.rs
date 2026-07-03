@@ -130,6 +130,9 @@ pub struct TabSession {
     title: String,
     /// True when this tab received output while not the active tab.
     has_unread_output: bool,
+    /// True when this tab received a bell (BEL) while not active.
+    /// Cleared when the user switches to this tab.
+    has_bell: bool,
 }
 
 impl TabSession {
@@ -154,6 +157,7 @@ impl TabSession {
             split_tree: SplitTree::new(0),
             title,
             has_unread_output: false,
+            has_bell: false,
         })
     }
 
@@ -166,6 +170,7 @@ impl TabSession {
             split_tree: SplitTree::new(0),
             title: "test".to_string(),
             has_unread_output: false,
+            has_bell: false,
         }
     }
 
@@ -250,6 +255,17 @@ impl TabSession {
         self.has_unread_output = true;
     }
 
+    /// Mark that this tab received a bell while not active.
+    /// The bell indicator shows on the tab until the user switches to it.
+    pub fn mark_bell(&mut self) {
+        self.has_bell = true;
+    }
+
+    /// Returns true if this tab has a pending bell indicator.
+    pub fn has_bell(&self) -> bool {
+        self.has_bell
+    }
+
     /// Returns true if any pane's grid has dirty content (needs redraw).
     /// Used in multi-pane mode where background panes are also visible.
     pub fn any_pane_dirty(&self) -> bool {
@@ -259,9 +275,10 @@ impl TabSession {
             .any(|pane| pane.app.terminal().grid().content_dirty())
     }
 
-    /// Clear unread status (called when tab becomes active).
+    /// Clear unread status and bell indicator (called when tab becomes active).
     pub fn clear_unread(&mut self) {
         self.has_unread_output = false;
+        self.has_bell = false;
     }
 
     /// Check if this tab has unread output.
@@ -954,5 +971,19 @@ mod tests {
         let session = TabSession::new_test(80, 24);
         // Only one pane initially — cwd should be queryable per-pane
         assert!(session.pane_cwd(0).is_none());
+    }
+
+    // ── Bell indicator tests ──
+
+    #[test]
+    fn test_bell_mark_and_clear() {
+        let mut session = TabSession::new_test(80, 24);
+        assert!(!session.has_bell(), "new session should not have bell");
+
+        session.mark_bell();
+        assert!(session.has_bell(), "should have bell after mark_bell");
+
+        session.clear_unread();
+        assert!(!session.has_bell(), "bell should clear with clear_unread");
     }
 }

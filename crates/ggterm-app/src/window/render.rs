@@ -136,7 +136,9 @@ impl DesktopApp {
 
         // Update tab bar data.
         let titles: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
-        self.tab_bar.update(&titles, self.active);
+        let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
+        self.tab_bar
+            .update_with_bells(&titles, self.active, &bell_flags);
 
         // ── Tab bar: auto-fill width like browser tabs ─────────────────
         if self.tab_bar.visible {
@@ -2306,7 +2308,9 @@ impl DesktopApp {
 
         // P19-C: Update tab bar display data.
         let titles: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
-        self.tab_bar.update(&titles, self.active);
+        let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
+        self.tab_bar
+            .update_with_bells(&titles, self.active, &bell_flags);
         if self.tab_bar.visible {
             log::debug!("tab_bar: {}", self.tab_bar.format());
         }
