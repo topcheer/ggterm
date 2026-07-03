@@ -94,6 +94,7 @@ Platform Abstraction (ConPTY / POSIX)
 - **6 Themes**: dark, light, dracula, solarized-dark, solarized-light, gruvbox
 - **Config Hot-Reload**: theme/font/scrollback switching without restart
 - **DPI-Aware Rendering**: per-run grid alignment, multi-platform fonts (Menlo/DejaVu/Cascadia)
+- **Background Opacity**: configurable transparency (0-100%) with Ctrl+Shift+Alt+[/] adjustment
 - **Combining Characters**: zero-width marks for accented chars and emoji modifiers
 - **URL Detection**: Cmd+Click opens URLs, hover detection
 - **Custom Keybindings**: TOML [keybindings] with 13 configurable actions
@@ -395,6 +396,9 @@ CLI options override `~/.ggterm/config.toml` values.
 | `Ctrl+=` | Zoom in (increase font size) (*) |
 | `Ctrl+-` | Zoom out (decrease font size) (*) |
 | `Ctrl+0` | Reset font size (*) |
+| `Ctrl+Shift+Wheel` | Zoom in/out with mouse wheel |
+| `Ctrl+Shift+Alt+[` | Decrease background opacity |
+| `Ctrl+Shift+Alt+]` | Increase background opacity |
 | `Ctrl+Shift+T` | Cycle through themes (*) |
 | `F11` | Toggle fullscreen (*) |
 | `Ctrl+Shift+Enter` | Toggle maximized |
