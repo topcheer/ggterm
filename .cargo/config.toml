@@ -1,0 +1,7 @@
+[target.aarch64-linux-android]
+linker = "/Users/zhanju/AndroidSDK/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang"
+ar = "/Users/zhanju/AndroidSDK/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+
+[target.x86_64-linux-android]
+linker = "/Users/zhanju/AndroidSDK/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android24-clang"
+ar = "/Users/zhanju/AndroidSDK/ndk/29.0.14206865/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"

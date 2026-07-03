@@ -148,9 +148,13 @@ class GgtermFfi {
         }
       }
     }
-    if (Platform.isIOS || Platform.isAndroid) {
+    if (Platform.isIOS) {
       // Static linking — the symbols are already in the process
       return DynamicLibrary.process();
+    }
+    if (Platform.isAndroid) {
+      // Shared library packaged in jniLibs
+      return DynamicLibrary.open('libggterm_ffi.so');
     }
     throw UnsupportedError('Unsupported platform for ggterm_ffi');
   }

@@ -267,7 +267,7 @@ class SessionManager {
   bool localShellConnect(int id) {
     final result = _ffi.localShellConnect(id);
     if (result != 0) {
-      lastError = _ffi.getLastErrorString();
+      _lastError = _ffi.getLastErrorString();
     }
     return result == 0;
   }

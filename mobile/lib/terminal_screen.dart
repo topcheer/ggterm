@@ -353,6 +353,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
                                 controller: _inputController,
                                 focusNode: _inputFocusNode,
                                 onChanged: _onInputChanged,
+                                onSubmitted: (_) {
+                                  // Enter key on mobile soft keyboard
+                                  // sends CR to terminal.
+                                  widget.sessionManager
+                                      .sendInput(widget.sessionId, [0x0D]);
+                                  // Keep focus and clear text for next input.
+                                  _inputController.clear();
+                                  _lastInputText = '';
+                                  _inputFocusNode.requestFocus();
+                                },
                                 autofocus: false,
                                 style: const TextStyle(fontSize: 1),
                                 decoration: const InputDecoration(

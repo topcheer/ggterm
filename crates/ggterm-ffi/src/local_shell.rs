@@ -10,8 +10,8 @@
 
 use ggterm_core::TerminalTransport;
 use std::ffi::CString;
-use std::io::{self, Read, Write};
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::io;
+use std::os::unix::io::RawFd;
 
 /// Errors from local shell operations.
 #[derive(Debug)]
@@ -227,7 +227,8 @@ unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellErro
     );
 
     if pid < 0 {
-        return Err(LocalShellError::Forkpty(*libc::__errno_location()));
+        let errno = io::Error::last_os_error().raw_os_error().unwrap_or(-1);
+        return Err(LocalShellError::Forkpty(errno));
     }
 
     if pid == 0 {

@@ -172,6 +172,7 @@ class _KeyboardBarState extends State<KeyboardBar> {
               color: Colors.grey.shade700,
             ),
             // Special keys
+            _keyButton('Enter', 'Enter'),
             _keyButton('Esc', 'Escape'),
             _keyButton('Tab', 'Tab'),
             _keyButton('^C', 'CtrlC'), // SIGINT
