@@ -83,6 +83,10 @@ impl Grid {
 
     /// Resize the grid. Existing content is preserved where possible.
     pub fn resize(&mut self, width: usize, height: usize) {
+        // Save the current scroll position — we restore it after resize
+        // so the user doesn't lose their place in the scrollback.
+        let saved_offset = self.display_offset;
+
         // Resize each existing row
         for row in &mut self.rows {
             row.resize(width);
@@ -105,7 +109,8 @@ impl Grid {
         self.height = height;
         self.scroll_top = 0;
         self.scroll_bottom = height;
-        self.display_offset = 0;
+        // Restore scroll position, clamped to new scrollback size.
+        self.display_offset = saved_offset.min(self.scrollback.len());
         self.damage = DamageTracker::new(width);
         self.damage.mark_all(height);
         self.content_dirty = true;
@@ -1097,6 +1102,46 @@ mod tests {
         g.resize(10, 3);
         assert_eq!(g.height(), 3);
         assert_eq!(g.scrollback_len(), 2);
+    }
+
+    #[test]
+    fn resize_preserves_scroll_position() {
+        // When scrolling up in scrollback and then resizing, the scroll
+        // position should be preserved (not reset to bottom).
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        // Fill content to create scrollback
+        for i in 0..10 {
+            g[(0, 0)] = Cell::with_char((b'A' + i as u8) as char);
+            g.scroll_up(1);
+        }
+        assert!(g.scrollback_len() > 0);
+        // Scroll up 3 lines
+        g.scroll_up_viewport(3);
+        assert_eq!(g.display_offset(), 3);
+        // Resize — scroll position should be preserved
+        g.resize(10, 5);
+        assert_eq!(
+            g.display_offset(),
+            3,
+            "scroll position should survive resize"
+        );
+    }
+
+    #[test]
+    fn resize_clamps_scroll_position() {
+        // If scrollback shrinks during resize, offset should be clamped.
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        for i in 0..10 {
+            g[(0, 0)] = Cell::with_char((b'A' + i as u8) as char);
+            g.scroll_up(1);
+        }
+        let scrollback_len = g.scrollback_len();
+        g.scroll_up_viewport(scrollback_len);
+        assert_eq!(g.display_offset(), scrollback_len);
+        // Clear scrollback and resize — offset should clamp to 0
+        g.clear_scrollback();
+        g.resize(10, 5);
+        assert_eq!(g.display_offset(), 0);
     }
 
     // ================================================================
