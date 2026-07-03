@@ -110,6 +110,8 @@ pub struct SettingsWindowState {
     themes: Vec<String>,
     /// Available cursor styles.
     cursor_styles: Vec<String>,
+    /// Last known mouse position (physical pixels).
+    mouse_pos: (f32, f32),
 }
 
 impl SettingsWindowState {
@@ -192,6 +194,7 @@ impl SettingsWindowState {
             scale_factor,
             themes: Self::THEMES.iter().map(|s| s.to_string()).collect(),
             cursor_styles: Self::CURSOR_STYLES.iter().map(|s| s.to_string()).collect(),
+            mouse_pos: (0.0, 0.0),
         })
     }
 
@@ -352,7 +355,6 @@ impl SettingsWindowState {
                 true
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                // Mouse wheel to adjust selected field.
                 let up = match delta {
                     MouseScrollDelta::LineDelta(_, y) => *y > 0.0,
                     MouseScrollDelta::PixelDelta(pos) => pos.y > 0.0,
@@ -361,7 +363,65 @@ impl SettingsWindowState {
                 self.window.request_redraw();
                 true
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_pos = (position.x as f32, position.y as f32);
+                // Hit-test which field the cursor is over.
+                if let Some(field) = self.field_at_pos(position.x as f32, position.y as f32)
+                    && field != self.selected
+                {
+                    self.selected = field;
+                    self.window.request_redraw();
+                }
+                true
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                let (px, py) = self.mouse_pos;
+                if let Some(field) = self.field_at_pos(px, py) {
+                    self.selected = field;
+                    // Click on the right half → adjust (next value).
+                    // Click on the left half → just select.
+                    let scale = self.scale_factor as f32;
+                    let margin = 24.0 * scale;
+                    let value_x = margin + (self.width as f32 - margin * 2.0) * 0.5;
+                    if px > value_x {
+                        self.adjust_field(true);
+                    }
+                    self.window.request_redraw();
+                    return true;
+                }
+                false
+            }
             _ => false,
+        }
+    }
+
+    /// Find which settings field is at a pixel position.
+    fn field_at_pos(&self, px: f32, py: f32) -> Option<SettingsField> {
+        let scale = self.scale_factor as f32;
+        let margin = 24.0 * scale;
+        let row_h = 36.0 * scale;
+        let header_h = 48.0 * scale;
+
+        // Check if x is within content area.
+        if px < margin || px > self.width as f32 - margin {
+            return None;
+        }
+
+        let start_y = margin + header_h;
+        if py < start_y {
+            return None;
+        }
+
+        let row_idx = ((py - start_y) / row_h) as usize;
+        let fields = SettingsField::all();
+        if row_idx < fields.len() {
+            Some(fields[row_idx])
+        } else {
+            None
         }
     }
 
@@ -514,9 +574,31 @@ impl SettingsWindowState {
             // Right-align value by estimating text width.
             let char_w = self.ui_font_size * scale * 0.6;
             let approx_w = value_text.len() as f32 * char_w;
+            let value_x = margin + content_w - approx_w - 12.0 * scale;
+
+            // Selected non-boolean field: show ◀ ▶ arrows to indicate adjustability.
+            if is_selected
+                && !matches!(
+                    field,
+                    SettingsField::RestoreSession | SettingsField::AiEnabled
+                )
+            {
+                for (arrow, ax) in [
+                    ("\u{25C0}", value_x - char_w * 2.0), // ◀ before value
+                    ("\u{25B6}", value_x + approx_w + char_w * 0.5), // ▶ after value
+                ] {
+                    texts.push(OverlayTextSpec {
+                        text: arrow.to_string(),
+                        left: ax,
+                        top: y + 8.0 * scale,
+                        color: (100, 130, 180),
+                    });
+                }
+            }
+
             texts.push(OverlayTextSpec {
                 text: value_text,
-                left: margin + content_w - approx_w - 12.0 * scale,
+                left: value_x,
                 top: y + 8.0 * scale,
                 color: if is_selected {
                     (130, 200, 255)
