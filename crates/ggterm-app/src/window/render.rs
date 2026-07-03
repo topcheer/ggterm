@@ -548,8 +548,8 @@ impl DesktopApp {
                 stroke_width: 0.0,
             });
             // Center panel with rounded corners.
-            let pw = screen_w * 0.5;
-            let ph = screen_h * 0.55;
+            let pw = screen_w * 0.52;
+            let ph = screen_h * 0.72;
             let px = (screen_w - pw) * 0.5;
             let py = (screen_h - ph) * 0.5;
             // Panel fill.
@@ -572,44 +572,136 @@ impl DesktopApp {
                 radius: 12.0,
                 stroke_width: 1.0,
             });
-            // Settings text lines.
-            let theme_str = self.settings.theme.clone();
-            let font_str = self.settings.font_size.to_string();
-            let scrollback_str = self.settings.scrollback_lines.to_string();
-            let shell_str = self.settings.shell.clone();
-            let ai_str = (if self.settings.ai_enabled {
-                "on"
-            } else {
-                "off"
-            })
-            .to_string();
-            let endpoint_str = self.settings.ai_endpoint.clone();
-            let model_str = self.settings.ai_model.clone();
-            let fields: [(&str, &str); 7] = [
-                ("Theme", &theme_str),
-                ("Font Size", &font_str),
-                ("Scrollback", &scrollback_str),
-                ("Shell", &shell_str),
-                ("AI", &ai_str),
-                ("AI Endpoint", &endpoint_str),
-                ("AI Model", &model_str),
-            ];
-            for (i, (label, value)) in fields.iter().enumerate() {
-                let line = format!(
-                    "  {}  {}: {}",
-                    if i as u8 == self.settings.selected as u8 {
-                        ">"
-                    } else {
-                        " "
-                    },
-                    label,
-                    value
-                );
+            // Header accent bar.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: 3.0,
+                color: (0.26, 0.63, 0.95, 0.8),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // Settings title.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Settings".to_string(),
+                left: px + 20.0,
+                top: py + 18.0,
+                color: (240, 240, 250),
+            });
+
+            // Build field rows from SettingsState.
+            let rows = self.settings.field_rows();
+            let mut current_section: Option<crate::settings_ui::SettingsSection> = None;
+            let mut y_offset = py + 44.0;
+
+            for (section, label, value) in &rows {
+                // Insert section header when section changes.
+                if current_section != Some(*section) {
+                    current_section = Some(*section);
+                    y_offset += 6.0;
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: section.label().to_string(),
+                        left: px + 20.0,
+                        top: y_offset,
+                        color: (90, 160, 230),
+                    });
+                    y_offset += cell_h;
+                }
+
+                // Check if this row is selected.
+                let field_for_row = match (*section, *label) {
+                    (crate::settings_ui::SettingsSection::Appearance, "Theme") => {
+                        Some(crate::settings_ui::SettingsField::Theme)
+                    }
+                    (crate::settings_ui::SettingsSection::Appearance, "Font Size") => {
+                        Some(crate::settings_ui::SettingsField::FontSize)
+                    }
+                    (crate::settings_ui::SettingsSection::Appearance, "Cursor Style") => {
+                        Some(crate::settings_ui::SettingsField::CursorStyle)
+                    }
+                    (crate::settings_ui::SettingsSection::Appearance, "Font Family") => {
+                        Some(crate::settings_ui::SettingsField::FontFamily)
+                    }
+                    (crate::settings_ui::SettingsSection::Terminal, "Scrollback") => {
+                        Some(crate::settings_ui::SettingsField::Scrollback)
+                    }
+                    (crate::settings_ui::SettingsSection::Terminal, "Shell") => {
+                        Some(crate::settings_ui::SettingsField::Shell)
+                    }
+                    (crate::settings_ui::SettingsSection::Terminal, "Restore Session") => {
+                        Some(crate::settings_ui::SettingsField::RestoreSession)
+                    }
+                    (crate::settings_ui::SettingsSection::Ai, "AI Enabled") => {
+                        Some(crate::settings_ui::SettingsField::AiEnabled)
+                    }
+                    (crate::settings_ui::SettingsSection::Ai, "AI Endpoint") => {
+                        Some(crate::settings_ui::SettingsField::AiEndpoint)
+                    }
+                    (crate::settings_ui::SettingsSection::Ai, "AI Model") => {
+                        Some(crate::settings_ui::SettingsField::AiModel)
+                    }
+                    _ => None,
+                };
+                let is_selected = field_for_row == Some(self.settings.selected);
+
+                // Highlight selected row background.
+                if is_selected {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: px + 12.0,
+                        y: y_offset - 2.0,
+                        w: pw - 24.0,
+                        h: cell_h + 2.0,
+                        color: (0.26, 0.52, 0.85, 0.25),
+                        radius: 4.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                // Row text: "  > Label: value" (selected) or "    Label: value"
+                let prefix = if is_selected { "  > " } else { "    " };
+                let row_color = if is_selected {
+                    (255, 255, 255)
+                } else {
+                    (190, 190, 200)
+                };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: line,
+                    text: format!("{}{}: {}", prefix, label, value),
                     left: px + 20.0,
-                    top: py + 40.0 + i as f32 * cell_h,
-                    color: (200, 200, 210),
+                    top: y_offset,
+                    color: row_color,
+                });
+                y_offset += cell_h;
+            }
+
+            // Footer help text.
+            y_offset += 8.0;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px + 12.0,
+                y: y_offset,
+                w: pw - 24.0,
+                h: 1.0,
+                color: (0.3, 0.3, 0.4, 0.5),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+            y_offset += 6.0;
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Up/Down: Navigate    Left/Right: Change    Esc: Close".to_string(),
+                left: px + 20.0,
+                top: y_offset,
+                color: (120, 120, 140),
+            });
+
+            // Error message if present.
+            if let Some(err) = self.settings.error_text() {
+                y_offset += cell_h;
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: format!("Error: {}", err),
+                    left: px + 20.0,
+                    top: y_offset,
+                    color: (255, 100, 100),
                 });
             }
         }

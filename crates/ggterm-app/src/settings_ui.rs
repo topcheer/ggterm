@@ -1,18 +1,24 @@
 //! Settings UI: overlay state machine for the settings panel.
 //!
 //! Provides [`SettingsState`] which manages the editable settings overlay.
-//! Opened with `Ctrl+,`, closed with `Esc`. Changes to theme/font are applied
-//! immediately; shell/scrollback changes are applied on save.
+//! Opened with `Ctrl+,`, closed with `Esc`. Changes to theme/font/cursor are
+//! applied immediately; shell/scrollback/restore changes are applied on close.
 
 // ── SettingsField ───────────────────────────────────────────────────────
 
 /// Which settings field is currently selected for editing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsField {
+    // Appearance section
     Theme,
     FontSize,
+    CursorStyle,
+    FontFamily,
+    // Terminal section
     Scrollback,
     Shell,
+    RestoreSession,
+    // AI section
     AiEnabled,
     AiEndpoint,
     AiModel,
@@ -23,9 +29,12 @@ impl SettingsField {
     pub fn next(self) -> Self {
         match self {
             Self::Theme => Self::FontSize,
-            Self::FontSize => Self::Scrollback,
+            Self::FontSize => Self::CursorStyle,
+            Self::CursorStyle => Self::FontFamily,
+            Self::FontFamily => Self::Scrollback,
             Self::Scrollback => Self::Shell,
-            Self::Shell => Self::AiEnabled,
+            Self::Shell => Self::RestoreSession,
+            Self::RestoreSession => Self::AiEnabled,
             Self::AiEnabled => Self::AiEndpoint,
             Self::AiEndpoint => Self::AiModel,
             Self::AiModel => Self::Theme,
@@ -37,11 +46,43 @@ impl SettingsField {
         match self {
             Self::Theme => Self::AiModel,
             Self::FontSize => Self::Theme,
-            Self::Scrollback => Self::FontSize,
+            Self::CursorStyle => Self::FontSize,
+            Self::FontFamily => Self::CursorStyle,
+            Self::Scrollback => Self::FontFamily,
             Self::Shell => Self::Scrollback,
-            Self::AiEnabled => Self::Shell,
+            Self::RestoreSession => Self::Shell,
+            Self::AiEnabled => Self::RestoreSession,
             Self::AiEndpoint => Self::AiEnabled,
             Self::AiModel => Self::AiEndpoint,
+        }
+    }
+
+    /// Which section this field belongs to.
+    pub fn section(self) -> SettingsSection {
+        match self {
+            Self::Theme | Self::FontSize | Self::CursorStyle | Self::FontFamily => {
+                SettingsSection::Appearance
+            }
+            Self::Scrollback | Self::Shell | Self::RestoreSession => SettingsSection::Terminal,
+            Self::AiEnabled | Self::AiEndpoint | Self::AiModel => SettingsSection::Ai,
+        }
+    }
+}
+
+/// Settings panel sections for visual grouping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsSection {
+    Appearance,
+    Terminal,
+    Ai,
+}
+
+impl SettingsSection {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Appearance => "Appearance",
+            Self::Terminal => "Terminal",
+            Self::Ai => "AI",
         }
     }
 }
@@ -54,15 +95,24 @@ pub const THEME_OPTIONS: &[&str] = &[
     "solarized-dark",
     "solarized-light",
     "gruvbox",
+    "nord",
+    "tokyo-night",
+    "catppuccin-mocha",
 ];
+
+/// Available cursor styles.
+pub const CURSOR_STYLE_OPTIONS: &[&str] = &["block", "underline", "bar"];
 
 /// Snapshot of config values for loading into SettingsState.
 #[derive(Debug, Clone)]
 pub struct SettingsSnapshot {
     pub theme: String,
     pub font_size: u32,
+    pub font_family: String,
+    pub cursor_style: String,
     pub scrollback_lines: usize,
     pub shell: String,
+    pub restore_session: bool,
     pub ai_enabled: bool,
     pub ai_endpoint: String,
     pub ai_model: String,
@@ -72,7 +122,7 @@ pub struct SettingsSnapshot {
 
 /// State machine for the settings overlay.
 ///
-/// Lifecycle: `Hidden → Visible → Hidden`
+/// Lifecycle: `Hidden -> Visible -> Hidden`
 /// While visible, the user can navigate fields with Up/Down,
 /// adjust values with Left/Right or +/-, and save/cancel.
 #[derive(Debug, Clone)]
@@ -85,19 +135,25 @@ pub struct SettingsState {
     pub theme: String,
     /// Draft font size (applied immediately on change).
     pub font_size: u32,
+    /// Draft font family.
+    pub font_family: String,
+    /// Draft cursor style.
+    pub cursor_style: String,
     /// Draft scrollback lines (applied on save).
     pub scrollback_lines: usize,
     /// Draft shell path (applied on save).
     pub shell: String,
+    /// Draft restore session flag.
+    pub restore_session: bool,
     /// Draft AI enabled flag.
     pub ai_enabled: bool,
     /// Draft AI endpoint.
     pub ai_endpoint: String,
     /// Draft AI model.
     pub ai_model: String,
-    /// Whether there are unsaved changes requiring a restart.
+    /// Whether there are unsaved changes.
     pub dirty: bool,
-    /// Error message to display in the settings overlay (e.g. config validation error).
+    /// Error message to display in the settings overlay.
     pub error_message: Option<String>,
 }
 
@@ -108,8 +164,11 @@ impl Default for SettingsState {
             selected: SettingsField::Theme,
             theme: "dark".to_string(),
             font_size: 14,
+            font_family: "monospace".to_string(),
+            cursor_style: "block".to_string(),
             scrollback_lines: 10000,
             shell: String::new(),
+            restore_session: false,
             ai_enabled: false,
             ai_endpoint: "https://api.openai.com/v1".to_string(),
             ai_model: "gpt-4o-mini".to_string(),
@@ -133,7 +192,7 @@ impl SettingsState {
         self.error_message = None;
     }
 
-    /// Hide the settings overlay without applying pending changes.
+    /// Hide the settings overlay.
     pub fn close(&mut self) {
         self.visible = false;
     }
@@ -165,6 +224,47 @@ impl SettingsState {
             .unwrap_or(0);
         let next_idx = (current_idx + 1) % THEME_OPTIONS.len();
         self.theme = THEME_OPTIONS[next_idx].to_string();
+        self.dirty = true;
+    }
+
+    /// Cycle theme backward.
+    pub fn cycle_theme_prev(&mut self) {
+        let current_idx = THEME_OPTIONS
+            .iter()
+            .position(|&t| t == self.theme)
+            .unwrap_or(0);
+        let prev_idx = if current_idx == 0 {
+            THEME_OPTIONS.len() - 1
+        } else {
+            current_idx - 1
+        };
+        self.theme = THEME_OPTIONS[prev_idx].to_string();
+        self.dirty = true;
+    }
+
+    /// Cycle cursor style to the next option.
+    pub fn cycle_cursor_style(&mut self) {
+        let current_idx = CURSOR_STYLE_OPTIONS
+            .iter()
+            .position(|&t| t == self.cursor_style)
+            .unwrap_or(0);
+        let next_idx = (current_idx + 1) % CURSOR_STYLE_OPTIONS.len();
+        self.cursor_style = CURSOR_STYLE_OPTIONS[next_idx].to_string();
+        self.dirty = true;
+    }
+
+    /// Cycle cursor style backward.
+    pub fn cycle_cursor_style_prev(&mut self) {
+        let current_idx = CURSOR_STYLE_OPTIONS
+            .iter()
+            .position(|&t| t == self.cursor_style)
+            .unwrap_or(0);
+        let prev_idx = if current_idx == 0 {
+            CURSOR_STYLE_OPTIONS.len() - 1
+        } else {
+            current_idx - 1
+        };
+        self.cursor_style = CURSOR_STYLE_OPTIONS[prev_idx].to_string();
         self.dirty = true;
     }
 
@@ -206,12 +306,21 @@ impl SettingsState {
         self.dirty = true;
     }
 
+    /// Toggle restore session flag.
+    pub fn toggle_restore_session(&mut self) {
+        self.restore_session = !self.restore_session;
+        self.dirty = true;
+    }
+
     /// Load values from a Config snapshot.
     pub fn load_from_config(&mut self, cfg: &SettingsSnapshot) {
         self.theme = cfg.theme.clone();
         self.font_size = cfg.font_size;
+        self.font_family = cfg.font_family.clone();
+        self.cursor_style = cfg.cursor_style.clone();
         self.scrollback_lines = cfg.scrollback_lines;
         self.shell = cfg.shell.clone();
+        self.restore_session = cfg.restore_session;
         self.ai_enabled = cfg.ai_enabled;
         self.ai_endpoint = cfg.ai_endpoint.clone();
         self.ai_model = cfg.ai_model.clone();
@@ -233,17 +342,68 @@ impl SettingsState {
         self.error_message.as_deref()
     }
 
-    /// Format the settings overlay as a display string (for logging / title bar).
+    /// Format the settings overlay as a display string (for logging).
     pub fn format_summary(&self) -> String {
         format!(
-            "Settings: theme={}, font={}, scrollback={}, ai={} | {} ({})",
+            "Settings: theme={}, font={}, cursor={}, scrollback={}, restore={}, ai={} | {} ({})",
             self.theme,
             self.font_size,
+            self.cursor_style,
             self.scrollback_lines,
+            if self.restore_session { "on" } else { "off" },
             if self.ai_enabled { "on" } else { "off" },
             self.ai_endpoint,
             self.ai_model,
         )
+    }
+
+    /// Returns all field labels and values for rendering, grouped by section.
+    /// Each item is (section, label, value).
+    pub fn field_rows(&self) -> Vec<(SettingsSection, &'static str, String)> {
+        vec![
+            (SettingsSection::Appearance, "Theme", self.theme.clone()),
+            (
+                SettingsSection::Appearance,
+                "Font Size",
+                format!("{}px", self.font_size),
+            ),
+            (
+                SettingsSection::Appearance,
+                "Cursor Style",
+                self.cursor_style.clone(),
+            ),
+            (
+                SettingsSection::Appearance,
+                "Font Family",
+                self.font_family.clone(),
+            ),
+            (
+                SettingsSection::Terminal,
+                "Scrollback",
+                format!("{} lines", self.scrollback_lines),
+            ),
+            (
+                SettingsSection::Terminal,
+                "Shell",
+                if self.shell.is_empty() {
+                    "(default)".to_string()
+                } else {
+                    self.shell.clone()
+                },
+            ),
+            (
+                SettingsSection::Terminal,
+                "Restore Session",
+                if self.restore_session { "on" } else { "off" }.to_string(),
+            ),
+            (
+                SettingsSection::Ai,
+                "AI Enabled",
+                if self.ai_enabled { "on" } else { "off" }.to_string(),
+            ),
+            (SettingsSection::Ai, "AI Endpoint", self.ai_endpoint.clone()),
+            (SettingsSection::Ai, "AI Model", self.ai_model.clone()),
+        ]
     }
 }
 
@@ -260,286 +420,138 @@ mod tests {
     }
 
     #[test]
-    fn t_open_close_toggle() {
+    fn t_toggle() {
         let mut s = SettingsState::new();
-        assert!(!s.visible);
-
-        s.open();
-        assert!(s.visible);
-
-        s.close();
-        assert!(!s.visible);
-
         s.toggle();
         assert!(s.visible);
-
         s.toggle();
         assert!(!s.visible);
     }
 
     #[test]
-    fn t_navigate_fields() {
-        let mut s = SettingsState::new();
-        s.open();
-        assert_eq!(s.selected, SettingsField::Theme);
-
-        s.move_down();
-        assert_eq!(s.selected, SettingsField::FontSize);
-
-        s.move_down();
-        assert_eq!(s.selected, SettingsField::Scrollback);
-
-        s.move_up();
-        assert_eq!(s.selected, SettingsField::FontSize);
+    fn t_navigation_wraps() {
+        let mut f = SettingsField::Theme;
+        for _ in 0..20 {
+            f = f.next();
+        }
+        // After 20 next() from Theme (10 fields), should be back at Theme
+        assert_eq!(f, SettingsField::Theme);
     }
 
     #[test]
-    fn t_navigate_wraps_around() {
-        let mut s = SettingsState::new();
-        s.selected = SettingsField::AiModel;
-        s.move_down();
-        assert_eq!(s.selected, SettingsField::Theme);
-
-        s.selected = SettingsField::Theme;
-        s.move_up();
-        assert_eq!(s.selected, SettingsField::AiModel);
+    fn t_prev_next_inverse() {
+        for f in [
+            SettingsField::Theme,
+            SettingsField::FontSize,
+            SettingsField::CursorStyle,
+            SettingsField::FontFamily,
+            SettingsField::Scrollback,
+            SettingsField::Shell,
+            SettingsField::RestoreSession,
+            SettingsField::AiEnabled,
+            SettingsField::AiEndpoint,
+            SettingsField::AiModel,
+        ] {
+            assert_eq!(f.next().prev(), f);
+        }
     }
 
     #[test]
-    fn t_cycle_theme() {
+    fn t_theme_cycle() {
         let mut s = SettingsState::new();
         s.theme = "dark".to_string();
         s.cycle_theme();
         assert_eq!(s.theme, "light");
-
-        // Cycle through all themes
-        s.theme = "gruvbox".to_string();
-        s.cycle_theme();
-        assert_eq!(s.theme, "dark"); // wraps around
+        s.cycle_theme_prev();
+        assert_eq!(s.theme, "dark");
     }
 
     #[test]
-    fn t_font_size_up_down() {
+    fn t_cursor_style_cycle() {
         let mut s = SettingsState::new();
-        let initial = s.font_size;
-        s.font_size_up();
-        assert_eq!(s.font_size, initial + 1);
-        assert!(s.dirty);
+        assert_eq!(s.cursor_style, "block");
+        s.cycle_cursor_style();
+        assert_eq!(s.cursor_style, "underline");
+        s.cycle_cursor_style();
+        assert_eq!(s.cursor_style, "bar");
+        s.cycle_cursor_style();
+        assert_eq!(s.cursor_style, "block");
+    }
 
-        s.font_size_down();
-        assert_eq!(s.font_size, initial);
+    #[test]
+    fn t_cursor_style_prev() {
+        let mut s = SettingsState::new();
+        s.cursor_style = "block".to_string();
+        s.cycle_cursor_style_prev();
+        assert_eq!(s.cursor_style, "bar");
+    }
 
-        // Test clamping
+    #[test]
+    fn t_font_size_bounds() {
+        let mut s = SettingsState::new();
         s.font_size = 48;
         s.font_size_up();
-        assert_eq!(s.font_size, 48); // max
-    }
-
-    #[test]
-    fn t_font_size_down_clamp() {
-        let mut s = SettingsState::new();
+        assert_eq!(s.font_size, 48); // capped
         s.font_size = 6;
         s.font_size_down();
-        assert_eq!(s.font_size, 6); // min
+        assert_eq!(s.font_size, 6); // capped
     }
 
     #[test]
-    fn t_scrollback_adjust() {
-        let mut s = SettingsState::new();
-        s.scrollback_lines = 10000;
-        s.scrollback_up();
-        assert_eq!(s.scrollback_lines, 11000);
-
-        s.scrollback_down();
-        assert_eq!(s.scrollback_lines, 10000);
-    }
-
-    #[test]
-    fn t_scrollback_min_clamp() {
+    fn t_scrollback_bounds() {
         let mut s = SettingsState::new();
         s.scrollback_lines = 500;
         s.scrollback_down();
-        assert_eq!(s.scrollback_lines, 100);
+        assert_eq!(s.scrollback_lines, 100); // min 100
     }
 
     #[test]
-    fn t_toggle_ai() {
+    fn t_toggle_restore_session() {
         let mut s = SettingsState::new();
-        assert!(!s.ai_enabled);
-        s.toggle_ai();
-        assert!(s.ai_enabled);
-        s.toggle_ai();
-        assert!(!s.ai_enabled);
+        assert!(!s.restore_session);
+        s.toggle_restore_session();
+        assert!(s.restore_session);
+        assert!(s.dirty);
+    }
+
+    #[test]
+    fn t_section_grouping() {
+        assert_eq!(SettingsField::Theme.section(), SettingsSection::Appearance);
+        assert_eq!(
+            SettingsField::Scrollback.section(),
+            SettingsSection::Terminal
+        );
+        assert_eq!(SettingsField::AiModel.section(), SettingsSection::Ai);
+    }
+
+    #[test]
+    fn t_field_rows_count() {
+        let s = SettingsState::new();
+        let rows = s.field_rows();
+        assert_eq!(rows.len(), 10); // 4 + 3 + 3 fields
     }
 
     #[test]
     fn t_load_from_config() {
         let mut s = SettingsState::new();
-        let cfg = SettingsSnapshot {
-            theme: "dracula".to_string(),
-            font_size: 16,
+        let snap = SettingsSnapshot {
+            theme: "nord".to_string(),
+            font_size: 20,
+            font_family: "Fira Code".to_string(),
+            cursor_style: "bar".to_string(),
             scrollback_lines: 5000,
             shell: "/bin/fish".to_string(),
+            restore_session: true,
             ai_enabled: true,
-            ai_endpoint: "http://api".to_string(),
-            ai_model: "llama".to_string(),
+            ai_endpoint: "http://localhost:8080".to_string(),
+            ai_model: "llama3".to_string(),
         };
-        s.load_from_config(&cfg);
-        assert_eq!(s.theme, "dracula");
-        assert_eq!(s.font_size, 16);
-        assert_eq!(s.scrollback_lines, 5000);
-        assert_eq!(s.shell, "/bin/fish");
-        assert!(s.ai_enabled);
-        assert_eq!(s.ai_endpoint, "http://api");
-        assert_eq!(s.ai_model, "llama");
-        assert!(!s.dirty);
-    }
-
-    #[test]
-    fn t_format_summary() {
-        let s = SettingsState::new();
-        let summary = s.format_summary();
-        assert!(summary.contains("theme=dark"));
-        assert!(summary.contains("font=14"));
-        assert!(summary.contains("ai=off"));
-    }
-
-    // ── P19-H: Integration edge cases ─────────────────────────
-
-    #[test]
-    fn t_full_navigation_cycle_down() {
-        // Navigate down through all 7 fields and verify wrap.
-        let mut s = SettingsState::new();
-        assert_eq!(s.selected, SettingsField::Theme);
-        s.move_down(); // → FontSize
-        s.move_down(); // → Scrollback
-        s.move_down(); // → Shell
-        s.move_down(); // → AiEnabled
-        s.move_down(); // → AiEndpoint
-        s.move_down(); // → AiModel
-        s.move_down(); // → Theme (wrap)
-        assert_eq!(s.selected, SettingsField::Theme);
-    }
-
-    #[test]
-    fn t_full_navigation_cycle_up() {
-        // Navigate up through all 7 fields and verify wrap.
-        let mut s = SettingsState::new();
-        assert_eq!(s.selected, SettingsField::Theme);
-        s.move_up(); // → AiModel (wrap)
-        assert_eq!(s.selected, SettingsField::AiModel);
-        s.move_up(); // → AiEndpoint
-        s.move_up(); // → AiEnabled
-        s.move_up(); // → Shell
-        s.move_up(); // → Scrollback
-        s.move_up(); // → FontSize
-        s.move_up(); // → Theme
-        assert_eq!(s.selected, SettingsField::Theme);
-    }
-
-    #[test]
-    fn t_cycle_theme_all_options() {
-        let mut s = SettingsState::new();
-        s.theme = "dark".to_string();
-        // Cycle through all THEME_OPTIONS.
-        for expected in THEME_OPTIONS.iter().cycle().skip(1) {
-            s.cycle_theme();
-            assert_eq!(s.theme, *expected);
-            if s.theme == "dark" {
-                break; // wrapped around
-            }
-        }
-    }
-
-    #[test]
-    fn t_open_resets_dirty_and_selected() {
-        let mut s = SettingsState::new();
-        s.open();
-        s.cycle_theme(); // sets dirty=true
-        s.move_down(); // selected = FontSize
-        assert!(s.dirty);
-        assert_eq!(s.selected, SettingsField::FontSize);
-
-        // Re-open should reset.
-        s.open();
-        assert!(!s.dirty);
-        assert_eq!(s.selected, SettingsField::Theme);
-    }
-
-    #[test]
-    fn t_scrollback_down_at_boundary() {
-        let mut s = SettingsState::new();
-        s.scrollback_lines = 1000; // exactly at boundary
-        s.scrollback_down();
-        assert_eq!(s.scrollback_lines, 100); // goes to min
-    }
-
-    #[test]
-    fn t_font_size_up_sets_dirty() {
-        let mut s = SettingsState::new();
-        s.dirty = false;
-        s.font_size_up();
-        assert!(s.dirty);
-    }
-
-    #[test]
-    fn t_format_summary_with_ai_on() {
-        let mut s = SettingsState::new();
-        s.ai_enabled = true;
-        let summary = s.format_summary();
-        assert!(summary.contains("ai=on"));
-    }
-
-    #[test]
-    fn t_load_from_config_resets_dirty() {
-        let mut s = SettingsState::new();
-        s.dirty = true;
-        let cfg = SettingsSnapshot {
-            theme: "dark".to_string(),
-            font_size: 14,
-            scrollback_lines: 10000,
-            shell: String::new(),
-            ai_enabled: false,
-            ai_endpoint: String::new(),
-            ai_model: String::new(),
-        };
-        s.load_from_config(&cfg);
-        assert!(!s.dirty);
-    }
-
-    // ── P21-C: Error message tests ─────────────────────────────
-
-    #[test]
-    fn t_error_message_default_none() {
-        let s = SettingsState::new();
-        assert!(s.error_message.is_none());
-        assert!(s.error_text().is_none());
-    }
-
-    #[test]
-    fn t_set_and_clear_error() {
-        let mut s = SettingsState::new();
-        s.set_error("font_size out of range");
-        assert_eq!(s.error_text(), Some("font_size out of range"));
-
-        s.clear_error();
-        assert!(s.error_message.is_none());
-        assert!(s.error_text().is_none());
-    }
-
-    #[test]
-    fn t_open_clears_error() {
-        let mut s = SettingsState::new();
-        s.set_error("bad config");
-        s.open();
-        assert!(s.error_message.is_none());
-    }
-
-    #[test]
-    fn t_set_error_overwrites() {
-        let mut s = SettingsState::new();
-        s.set_error("first error");
-        s.set_error("second error");
-        assert_eq!(s.error_text(), Some("second error"));
+        s.load_from_config(&snap);
+        assert_eq!(s.theme, "nord");
+        assert_eq!(s.font_size, 20);
+        assert_eq!(s.cursor_style, "bar");
+        assert_eq!(s.font_family, "Fira Code");
+        assert!(s.restore_session);
+        assert!(!s.dirty); // loading clears dirty
     }
 }

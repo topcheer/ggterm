@@ -56,22 +56,19 @@ impl DesktopApp {
 
     pub(super) fn handle_settings_left(&mut self) {
         match self.settings.selected {
-            crate::settings_ui::SettingsField::Theme => {
-                // Cycle theme backward
-                let opts = crate::settings_ui::THEME_OPTIONS;
-                let idx = opts
-                    .iter()
-                    .position(|&t| t == self.settings.theme)
-                    .unwrap_or(0);
-                let prev = if idx == 0 { opts.len() - 1 } else { idx - 1 };
-                self.settings.theme = opts[prev].to_string();
-                self.settings.dirty = true;
-            }
+            crate::settings_ui::SettingsField::Theme => self.settings.cycle_theme_prev(),
             crate::settings_ui::SettingsField::FontSize => self.settings.font_size_down(),
+            crate::settings_ui::SettingsField::CursorStyle => {
+                self.settings.cycle_cursor_style_prev()
+            }
             crate::settings_ui::SettingsField::Scrollback => self.settings.scrollback_down(),
             crate::settings_ui::SettingsField::AiEnabled => self.settings.toggle_ai(),
+            crate::settings_ui::SettingsField::RestoreSession => {
+                self.settings.toggle_restore_session()
+            }
             _ => {}
         }
+        self.apply_settings_live();
     }
 
     /// Handle Right arrow in settings (increase/cycle forward).
@@ -79,10 +76,77 @@ impl DesktopApp {
         match self.settings.selected {
             crate::settings_ui::SettingsField::Theme => self.settings.cycle_theme(),
             crate::settings_ui::SettingsField::FontSize => self.settings.font_size_up(),
+            crate::settings_ui::SettingsField::CursorStyle => self.settings.cycle_cursor_style(),
             crate::settings_ui::SettingsField::Scrollback => self.settings.scrollback_up(),
             crate::settings_ui::SettingsField::AiEnabled => self.settings.toggle_ai(),
+            crate::settings_ui::SettingsField::RestoreSession => {
+                self.settings.toggle_restore_session()
+            }
             _ => {}
         }
+        self.apply_settings_live();
+    }
+
+    /// Apply appearance changes immediately for live visual feedback.
+    fn apply_settings_live(&mut self) {
+        // Theme
+        let theme = self.settings.theme.clone();
+        self.active_session_mut()
+            .app_mut()
+            .theme_manager()
+            .set_by_name(&theme);
+        self.apply_theme_to_renderer();
+        self.last_applied_theme = theme;
+
+        // Font size
+        let font_size = self.settings.font_size as f32;
+        if let Some(ref mut renderer) = self.renderer {
+            renderer.set_font_size(font_size);
+        }
+        self.last_applied_font_size = font_size;
+    }
+
+    /// Apply all settings to ConfigManager and save to disk.
+    /// Called when settings overlay is closed.
+    pub(super) fn apply_settings_on_close(&mut self) {
+        if !self.settings.dirty {
+            return;
+        }
+
+        if let Some(ref mut mgr) = self.config_mgr {
+            let cfg = mgr.config_mut();
+            cfg.appearance.theme = self.settings.theme.clone();
+            cfg.appearance.font_size = self.settings.font_size;
+            cfg.appearance.font_family = self.settings.font_family.clone();
+            cfg.appearance.cursor_style = self.settings.cursor_style.clone();
+            cfg.terminal.scrollback_lines = self.settings.scrollback_lines;
+            cfg.terminal.shell = self.settings.shell.clone();
+            cfg.terminal.restore_session = self.settings.restore_session;
+            cfg.ai.enabled = self.settings.ai_enabled;
+            cfg.ai.api_endpoint = self.settings.ai_endpoint.clone();
+            cfg.ai.model = self.settings.ai_model.clone();
+
+            // Save to disk.
+            if let Err(e) = mgr.save() {
+                log::error!("Failed to save config: {e}");
+                self.settings.set_error(format!("Save failed: {e}"));
+            } else {
+                self.show_toast("Settings saved");
+            }
+        }
+
+        // Apply scrollback to all sessions.
+        let scrollback = self.settings.scrollback_lines;
+        for session in &mut self.sessions {
+            let pane_ids: Vec<usize> = session.pane_ids();
+            for pane_id in pane_ids {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.terminal_mut().grid_mut().set_scrollback(scrollback);
+                }
+            }
+        }
+
+        self.settings.dirty = false;
     }
 
     // ── Tab management (P10-A) ──
