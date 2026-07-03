@@ -1,0 +1,6 @@
+#include "Generated.xcconfig"
+
+// Force load the Rust static library (symbols are looked up dynamically via dart:ffi)
+LIBRARY_SEARCH_PATHS = $(inherited) $(SRCROOT)/RustLib
+OTHER_LDFLAGS = $(inherited) -force_load $(SRCROOT)/RustLib/libggterm_ffi.a -lresolv
+HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT)/RustLib

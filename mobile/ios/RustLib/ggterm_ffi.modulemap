@@ -1,0 +1,5 @@
+module ggterm_ffi {
+    umbrella header "ggterm_ffi.h"
+    export *
+    module * { export * }
+}

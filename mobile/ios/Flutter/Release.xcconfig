@@ -1,0 +1,5 @@
+#include "Generated.xcconfig"
+
+LIBRARY_SEARCH_PATHS = $(inherited) $(SRCROOT)/RustLib
+OTHER_LDFLAGS = $(inherited) -force_load $(SRCROOT)/RustLib/libggterm_ffi.a -lresolv
+HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT)/RustLib

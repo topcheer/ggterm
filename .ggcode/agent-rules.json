@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "r-5da9ed4f",
+      "category": "convention",
+      "rule": "Always use read_file to get exact content including whitespace before calling edit_file, never reconstruct old_text from memory",
+      "match_pattern": "old_text not found.*whitespace differs|first line matches but whitespace",
+      "fix_hint": "Re-read the file with read_file and copy the exact text verbatim, preserving all indentation and spacing",
+      "hit_count": 9,
+      "last_seen": "2026-07-03T13:55:25.621916+08:00",
+      "created_at": "2026-07-02T17:21:48.375482+08:00"
+    },
+    {
+      "id": "r-a8d40c19",
+      "category": "convention",
+      "rule": "Run rustfmt or cargo fmt after writing Rust code to ensure formatting matches project conventions",
+      "match_pattern": "Diff in.*\\.rs:|if self\\..*\u0026\u0026.*\u0026\u0026|rustfmt|cargo fmt",
+      "fix_hint": "Run cargo fmt on the file or crate before verifying changes",
+      "hit_count": 2,
+      "last_seen": "2026-07-02T23:23:48.560584+08:00",
+      "created_at": "2026-07-02T18:34:04.689146+08:00"
+    },
+    {
+      "id": "r-6ddfc31b",
+      "category": "build",
+      "rule": "Run Flutter/Dart commands from the directory containing pubspec.yaml (the project root)",
+      "match_pattern": "No pubspec\\.yaml file found",
+      "tool_pattern": "flutter|dart pub|dart run",
+      "fix_hint": "cd to the project root directory containing pubspec.yaml before running Flutter/Dart commands",
+      "hit_count": 2,
+      "last_seen": "2026-07-02T21:33:21.628156+08:00",
+      "created_at": "2026-07-02T20:45:40.05378+08:00"
+    },
+    {
+      "id": "r-8693b36d",
+      "category": "test",
+      "rule": "Before running Flutter widget tests, verify that test files reference constructors that exist in the codebase (e.g., update MyApp references if the main app widget was renamed)",
+      "match_pattern": "Couldn't find constructor|Failed to load.*test.*\\.dart|Compilation failed.*test",
+      "tool_pattern": "flutter test|dart test",
+      "fix_hint": "Check the test file for constructor references (like MyApp) and update them to match the actual class/constructor names in lib/",
+      "hit_count": 1,
+      "last_seen": "2026-07-02T20:47:27.797383+08:00",
+      "created_at": "2026-07-02T20:47:27.797383+08:00"
+    },
+    {
+      "id": "r-0d34574f",
+      "category": "build",
+      "rule": "Before referencing a module in Rust code, ensure it is declared with `mod` in the crate root (lib.rs or main.rs) or properly gated behind the correct feature flag",
+      "match_pattern": "cannot find `\\w+` in `crate`|E0433",
+      "tool_pattern": "cargo build|cargo test|cargo check|cargo clippy",
+      "fix_hint": "Add `mod \u003cmodule_name\u003e;` to lib.rs/main.rs or check that the module path and feature flags are correct",
+      "hit_count": 1,
+      "last_seen": "2026-07-02T23:15:30.204365+08:00",
+      "created_at": "2026-07-02T23:15:30.204365+08:00"
+    },
+    {
+      "id": "r-c52e695f",
+      "category": "convention",
+      "rule": "When using edit_file, always use spaces (never tabs) in old_text to match file indentation, or read the file first to copy exact whitespace",
+      "match_pattern": "old_text not found.*space indentation|remove \\\\t from old_text",
+      "tool_pattern": "edit_file",
+      "fix_hint": "Replace all tab characters in old_text with the correct number of spaces before calling edit_file",
+      "hit_count": 1,
+      "last_seen": "2026-07-02T23:24:08.342124+08:00",
+      "created_at": "2026-07-02T23:24:08.342124+08:00"
+    },
+    {
+      "id": "r-a02f06b5",
+      "category": "convention",
+      "rule": "When using edit_file, include enough surrounding context lines (3+ lines or nearby unique identifiers) so old_text matches exactly one location in the file",
+      "match_pattern": "old_text found \\d+ times in file|must be unique.*Add.*context",
+      "tool_pattern": "edit_file",
+      "fix_hint": "Add 1-3 lines of surrounding context from read_file to disambiguate, or set replace_all=true if replacing every occurrence is intended",
+      "hit_count": 4,
+      "last_seen": "2026-07-03T12:08:28.877428+08:00",
+      "created_at": "2026-07-03T01:51:36.700307+08:00"
+    },
+    {
+      "id": "r-20ba0380",
+      "category": "build",
+      "rule": "Verify package feature names exist before referencing them in pubspec.yaml or build commands — check the package's documentation or source for available features",
+      "match_pattern": "the package '[\\w-]+' does not contain this feature:?",
+      "tool_pattern": "flutter pub|dart pub|flutter build|flutter run",
+      "fix_hint": "Check the package's pubspec.yaml or README for the correct feature names and remove or correct invalid feature references",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T06:04:32.890625+08:00",
+      "created_at": "2026-07-03T06:04:32.890625+08:00"
+    },
+    {
+      "id": "r-f602ba89",
+      "category": "convention",
+      "rule": "Always provide a valid non-empty file_path when calling edit_file; verify the path exists before editing",
+      "match_pattern": "cannot read file: open\\s*: no such file or directory",
+      "tool_pattern": "edit_file",
+      "fix_hint": "Ensure file_path is set to a valid, non-empty path that exists on disk before calling edit_file",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T10:08:14.519652+08:00",
+      "created_at": "2026-07-03T10:08:14.519652+08:00"
+    },
+    {
+      "id": "r-207b025d",
+      "category": "git",
+      "rule": "Never pass natural language text, UI element names, or descriptions as file path arguments to git commands — only use actual file paths",
+      "match_pattern": "pathspec '.*' did not match any file\\(s\\) known to git",
+      "tool_pattern": "git add|git checkout|git rm|git mv|git restore",
+      "fix_hint": "Check that all pathspec arguments are valid file paths, not natural language text or descriptions",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T10:25:23.399285+08:00",
+      "created_at": "2026-07-03T10:25:23.399285+08:00"
+    },
+    {
+      "id": "r-497d6ce9",
+      "category": "build",
+      "rule": "Never use `||` (logical OR) operators in Rust let chain conditions (e.g., `if let ... || ...`); only `\u0026\u0026` is supported — restructure with nested if-let, match, or separate conditions",
+      "match_pattern": "`\\|\\|` operators are not supported in let chain conditions",
+      "tool_pattern": "cargo build|cargo test|cargo check|cargo clippy",
+      "fix_hint": "Replace `if let X = y || cond` with nested `if let` blocks, a `match`, or extract the `||` condition into a separate bool variable checked before the let-chain",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T11:44:12.618623+08:00",
+      "created_at": "2026-07-03T11:44:12.618623+08:00"
+    },
+    {
+      "id": "r-5b077c79",
+      "category": "convention",
+      "rule": "Ensure all single quotes in shell commands are balanced and properly escaped before executing; an odd number of unescaped quotes will cause the shell to fail with a syntax error",
+      "match_pattern": "unexpected EOF while looking for matching|syntax error: unexpected end of file",
+      "fix_hint": "Count single quotes in the command string; if odd, wrap the problematic segment in double quotes or escape embedded single quotes with '\\''",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T13:29:23.629842+08:00",
+      "created_at": "2026-07-03T13:29:23.629842+08:00"
+    }
+  ]
+}

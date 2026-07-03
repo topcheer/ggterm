@@ -1142,12 +1142,23 @@ shell = "/usr/bin/fish"
 
     #[test]
     fn test_load_default_missing_file() {
-        // With a HOME pointing to a directory without config.toml,
-        // load_default should return defaults.
-        // This test relies on the real HOME not having a config.toml
-        // (which is the case in CI / dev environments).
+        // Use a temp directory as HOME so the test doesn't depend on
+        // the developer's actual ~/.ggterm/config.toml.
+        let temp = std::env::temp_dir().join("ggterm_test_default_home");
+        let _ = std::fs::create_dir_all(&temp);
+        let old_home = std::env::var_os("HOME");
+        // SAFETY: this is a single-threaded test; no other code reads HOME concurrently.
+        unsafe {
+            std::env::set_var("HOME", &temp);
+        }
         let config = Config::load_default().unwrap_or_default();
-        // Should be valid defaults
+        // Restore HOME.
+        if let Some(h) = old_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
+        // Should be valid defaults.
         assert_eq!(config.appearance.theme, "dark");
     }
 

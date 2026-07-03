@@ -391,7 +391,7 @@ impl SettingsWindowState {
         self.renderer.set_ui_rects(bg_rects);
         self.renderer.set_overlay_text(texts);
 
-        // Render: clear background + draw overlays.
+        // Render: single pass — clear background + draw overlays.
         {
             let bg_color = wgpu::Color {
                 r: 0.06,
@@ -399,35 +399,14 @@ impl SettingsWindowState {
                 b: 0.08,
                 a: 1.0,
             };
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("settings clear pass"),
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("settings render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(bg_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            // Pass dropped here — we just wanted the clear.
-        }
-
-        // Now render overlays (UI rects + text).
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("settings draw pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
