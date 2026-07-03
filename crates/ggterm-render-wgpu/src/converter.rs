@@ -93,7 +93,7 @@ pub fn row_to_runs(
             fg_rgb = bg_rgb;
         }
 
-        // OSC 8 hyperlink — tint foreground blue (like web links).
+        // OSC 8 hyperlink — tint foreground blue + force underline (like web links).
         if cell.hyperlink.is_some() {
             fg_rgb = (100, 160, 255);
         }
@@ -123,10 +123,11 @@ pub fn row_to_runs(
 
         let bold = cell.flags.contains(CellFlags::BOLD);
         let italic = cell.flags.contains(CellFlags::ITALIC);
-        let underline = cell.flags.contains(CellFlags::UNDERLINE);
+        let has_link = cell.hyperlink.is_some();
+        // OSC 8 hyperlinks render with underline even if cell doesn't have UNDERLINE flag.
+        let underline = cell.flags.contains(CellFlags::UNDERLINE) || has_link;
         let strikethrough = cell.flags.contains(CellFlags::STRIKETHROUGH);
         let blink = cell.flags.contains(CellFlags::BLINK);
-        let has_link = cell.hyperlink.is_some();
 
         let ch = cell.ch;
         let is_wide = cell.flags.contains(CellFlags::WIDE_CHAR);
