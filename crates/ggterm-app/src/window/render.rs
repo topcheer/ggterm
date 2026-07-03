@@ -437,7 +437,41 @@ impl DesktopApp {
 
         // ── P27-A: Text selection highlight ────────────────────────────
         // Draw semi-transparent blue rectangles over selected cells.
+        // Block (rectangular) selection draws per-row rectangles.
         if self.selection.is_active()
+            && self.selection.block_mode
+            && let Some((x0, y0, x1, y1)) = self.selection.block_rect()
+        {
+            let (x0, y0, x1, y1) = (x0 as u32, y0 as u32, x1 as u32, y1 as u32);
+            let pane_offset_x = content_bounds.x as f32;
+            let pane_offset_y = content_bounds.y as f32;
+
+            let (sr, sg, sb) = {
+                let theme = self.sessions[self.active].app().theme();
+                theme.resolve_bg(&theme.selection_bg)
+            };
+            let sel_color = (
+                sr as f32 / 255.0,
+                sg as f32 / 255.0,
+                sb as f32 / 255.0,
+                0.35,
+            );
+
+            for row in y0..=y1 {
+                let px = pane_offset_x + x0 as f32 * cell_w;
+                let py = pane_offset_y + row as f32 * cell_h;
+                let pw = (x1 - x0 + 1) as f32 * cell_w;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: px,
+                    y: py,
+                    w: pw,
+                    h: cell_h,
+                    color: sel_color,
+                    radius: 1.0,
+                    stroke_width: 0.0,
+                });
+            }
+        } else if self.selection.is_active()
             && let Some(((sx, sy), (ex, ey))) = self.selection.normalized()
         {
             let (sx, sy, ex, ey) = (sx as u32, sy as u32, ex as u32, ey as u32);

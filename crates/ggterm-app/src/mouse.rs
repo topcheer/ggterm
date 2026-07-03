@@ -171,6 +171,8 @@ pub struct MouseSelection {
     pub end: Option<(u16, u16)>,
     /// True while the user is actively dragging.
     pub dragging: bool,
+    /// True when Alt-dragging to select a rectangular block.
+    pub block_mode: bool,
 }
 
 impl MouseSelection {
@@ -179,6 +181,14 @@ impl MouseSelection {
         self.start = Some((x, y));
         self.end = Some((x, y));
         self.dragging = true;
+    }
+
+    /// Begin a new block (rectangular) selection at the given cell.
+    pub fn start_block(&mut self, x: u16, y: u16) {
+        self.start = Some((x, y));
+        self.end = Some((x, y));
+        self.dragging = true;
+        self.block_mode = true;
     }
 
     /// Extend the selection to a new end cell while dragging.
@@ -198,6 +208,7 @@ impl MouseSelection {
         self.start = None;
         self.end = None;
         self.dragging = false;
+        self.block_mode = false;
     }
 
     /// Select all cells in the grid (0,0) to (last_col, last_row).
@@ -207,6 +218,7 @@ impl MouseSelection {
         self.start = Some((0, 0));
         self.end = Some((last_col, last_row));
         self.dragging = false;
+        self.block_mode = false;
     }
 
     /// Return true if a non-empty selection exists.
@@ -227,6 +239,14 @@ impl MouseSelection {
         } else {
             Some(((ex, ey), (sx, sy)))
         }
+    }
+
+    /// Return the block selection as (col_min, row_min, col_max, row_max).
+    /// Only meaningful when `block_mode` is true.
+    pub fn block_rect(&self) -> Option<(u16, u16, u16, u16)> {
+        let (sx, sy) = self.start?;
+        let (ex, ey) = self.end?;
+        Some((sx.min(ex), sy.min(ey), sx.max(ex), sy.max(ey)))
     }
 }
 
@@ -868,5 +888,60 @@ mod tests {
         let line = "  at ./lib/parser.rs";
         let path = find_file_path(line, 8).unwrap(); // cursor on 'l' in lib
         assert_eq!(path, "./lib/parser.rs");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Block selection tests
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_block_selection_start_and_extend() {
+        let mut sel = MouseSelection::default();
+        sel.start_block(5, 2);
+        assert!(sel.block_mode);
+        assert!(sel.dragging);
+        assert_eq!(sel.start, Some((5, 2)));
+        assert_eq!(sel.end, Some((5, 2)));
+
+        sel.extend(10, 6);
+        assert_eq!(sel.end, Some((10, 6)));
+    }
+
+    #[test]
+    fn test_block_rect_normal() {
+        let mut sel = MouseSelection::default();
+        sel.start_block(3, 1);
+        sel.extend(8, 5);
+        let (x0, y0, x1, y1) = sel.block_rect().unwrap();
+        assert_eq!((x0, y0), (3, 1));
+        assert_eq!((x1, y1), (8, 5));
+    }
+
+    #[test]
+    fn test_block_rect_reversed_drag() {
+        // User drags from bottom-right to top-left.
+        let mut sel = MouseSelection::default();
+        sel.start_block(10, 8);
+        sel.extend(2, 1);
+        let (x0, y0, x1, y1) = sel.block_rect().unwrap();
+        assert_eq!((x0, y0), (2, 1));
+        assert_eq!((x1, y1), (10, 8));
+    }
+
+    #[test]
+    fn test_block_selection_clear_resets_mode() {
+        let mut sel = MouseSelection::default();
+        sel.start_block(5, 5);
+        assert!(sel.block_mode);
+        sel.clear();
+        assert!(!sel.block_mode);
+        assert!(!sel.is_active());
+    }
+
+    #[test]
+    fn test_normal_selection_does_not_set_block() {
+        let mut sel = MouseSelection::default();
+        sel.start(0, 0);
+        assert!(!sel.block_mode);
     }
 }

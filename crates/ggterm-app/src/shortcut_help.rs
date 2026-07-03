@@ -317,6 +317,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Edit,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Alt+Drag".into(),
+            description: "Block (rectangular) selection".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
         // View
         ShortcutEntry {
             keys: "Ctrl+=".into(),

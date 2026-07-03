@@ -735,6 +735,41 @@ impl DesktopApp {
     ///
     /// Extracts text from the grid between selection start and end.
     pub(super) fn copy_selection_to_clipboard(&mut self) {
+        // Block (rectangular) selection: copy column-by-column.
+        if self.selection.block_mode
+            && let Some((x0, y0, x1, y1)) = self.selection.block_rect()
+        {
+            let grid = self.active_session().app().grid();
+            let mut text = String::new();
+            for row in y0..=y1 {
+                for col in x0..=x1 {
+                    if let Some(cell) = grid.display_cell(col as usize, row as usize) {
+                        text.push(cell.ch);
+                        for &c in &cell.combining {
+                            text.push(c);
+                        }
+                    }
+                }
+                text.push('\n');
+            }
+            // Trim trailing newline and empty lines.
+            let mut lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
+            while lines.last().is_some_and(|l| l.is_empty()) {
+                lines.pop();
+            }
+            while lines.first().is_some_and(|l| l.is_empty()) {
+                lines.remove(0);
+            }
+            let text = lines.join("\n");
+
+            if !text.is_empty() {
+                log::debug!("Block copy: {} chars", text.len());
+                crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                self.show_toast(format!("Copied {} chars (block)", text.len()));
+            }
+            return;
+        }
+
         let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
             return;
         };

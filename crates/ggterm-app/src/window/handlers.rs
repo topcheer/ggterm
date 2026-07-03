@@ -1776,6 +1776,9 @@ impl DesktopApp {
                         if self.mods.shift && self.selection.start.is_some() {
                             // Shift+Click: extend existing selection to this point.
                             self.selection.extend(col, row);
+                        } else if self.mods.alt {
+                            // Alt+Click: start block (rectangular) selection.
+                            self.selection.start_block(col, row);
                         } else {
                             // Normal click: start new selection.
                             self.selection.start(col, row);

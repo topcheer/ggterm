@@ -1996,6 +1996,27 @@ impl Perform for Terminal {
                     self.grid_mut().clear_scrollback();
                 }
             }
+            // OSC 104 — reset color palette entries.
+            // OSC 104 ; index ST → reset specific entry
+            // OSC 104 ST          → reset ALL entries
+            // Since our palette is fixed, reset is effectively a no-op.
+            // We still consume it to prevent "unhandled OSC" noise.
+            Some(104) => {
+                // No-op: palette overrides not yet stored.
+            }
+            // OSC 110 / 111 / 112 — reset dynamic colors (fg/bg/cursor).
+            // OSC 110 ST → reset foreground (OSC 10)
+            // OSC 111 ST → reset background (OSC 11)
+            // OSC 112 ST → reset cursor (OSC 12)
+            Some(110) => {
+                self.dynamic_fg = None;
+            }
+            Some(111) => {
+                self.dynamic_bg = None;
+            }
+            Some(112) => {
+                self.dynamic_cursor = None;
+            }
             _ => {}
         }
     }
@@ -4716,5 +4737,52 @@ mod tests {
         // Clear scrollback
         feed(&mut t, b"\x1b]1337;ClearScrollback\x1b\\");
         assert_eq!(t.grid().scrollback_len(), 0);
+    }
+
+    // ================================================================
+    //  OSC 104 / 110 / 111 / 112 — Reset dynamic colors
+    // ================================================================
+
+    #[test]
+    fn t_osc110_reset_dynamic_fg() {
+        let mut t = Terminal::new(80, 24);
+        // Set dynamic fg via OSC 10
+        feed(&mut t, b"\x1b]10;rgb:ff/00/00\x1b\\");
+        assert!(t.dynamic_fg().is_some());
+        // Reset via OSC 110
+        feed(&mut t, b"\x1b]110\x1b\\");
+        assert!(t.dynamic_fg().is_none());
+    }
+
+    #[test]
+    fn t_osc111_reset_dynamic_bg() {
+        let mut t = Terminal::new(80, 24);
+        // Set dynamic bg via OSC 11
+        feed(&mut t, b"\x1b]11;rgb:00/ff/00\x1b\\");
+        assert!(t.dynamic_bg().is_some());
+        // Reset via OSC 111
+        feed(&mut t, b"\x1b]111\x1b\\");
+        assert!(t.dynamic_bg().is_none());
+    }
+
+    #[test]
+    fn t_osc112_reset_dynamic_cursor() {
+        let mut t = Terminal::new(80, 24);
+        // Set dynamic cursor via OSC 12
+        feed(&mut t, b"\x1b]12;rgb:00/00/ff\x1b\\");
+        assert!(t.dynamic_cursor().is_some());
+        // Reset via OSC 112
+        feed(&mut t, b"\x1b]112\x1b\\");
+        assert!(t.dynamic_cursor().is_none());
+    }
+
+    #[test]
+    fn t_osc104_reset_palette_consumed() {
+        // OSC 104 should be consumed without error or panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]104\x1b\\");
+        feed(&mut t, b"\x1b]104;0;1;2\x1b\\");
+        // No crash = success. Response buffer should be empty.
+        assert!(t.take_response().is_empty());
     }
 }
