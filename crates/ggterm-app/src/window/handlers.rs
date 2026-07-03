@@ -229,6 +229,16 @@ impl DesktopApp {
                 }
                 return;
             }
+            // Ctrl+Shift+Alt+] → increase background opacity
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "]" {
+                self.adjust_opacity(0.05);
+                return;
+            }
+            // Ctrl+Shift+Alt+[ → decrease background opacity
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "[" {
+                self.adjust_opacity(-0.05);
+                return;
+            }
             // F11 → fullscreen
             if self.check_keybinding(
                 "fullscreen",

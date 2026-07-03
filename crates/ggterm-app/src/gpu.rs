@@ -68,9 +68,15 @@ impl GpuContext {
             desired_maximum_frame_latency: 2,
             alpha_mode: caps
                 .alpha_modes
-                .first()
+                .iter()
+                .find(|&&mode| mode == wgpu::CompositeAlphaMode::PostMultiplied)
                 .copied()
-                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
+                .unwrap_or_else(|| {
+                    caps.alpha_modes
+                        .first()
+                        .copied()
+                        .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+                }),
             view_formats: vec![],
         };
 
@@ -120,7 +126,7 @@ impl GpuContext {
         renderer: &mut GlyphonRenderer,
         grid: &ggterm_core::Grid,
         cursor: &ggterm_render::CursorState,
-        bg_color: [f64; 3],
+        bg_color: [f64; 4],
     ) -> Result<(), RenderFrameError> {
         let frame = match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
@@ -158,7 +164,7 @@ impl GpuContext {
                             r: bg_color[0],
                             g: bg_color[1],
                             b: bg_color[2],
-                            a: 1.0,
+                            a: bg_color[3],
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -189,7 +195,7 @@ impl GpuContext {
         surface: &wgpu::Surface,
         renderer: &mut GlyphonRenderer,
         panes: &[PaneRenderSpec],
-        bg_color: [f64; 3],
+        bg_color: [f64; 4],
     ) -> Result<(), RenderFrameError> {
         if panes.is_empty() {
             return Ok(());
@@ -252,7 +258,7 @@ impl GpuContext {
                     r: bg_color[0],
                     g: bg_color[1],
                     b: bg_color[2],
-                    a: 1.0,
+                    a: bg_color[3],
                 })
             } else {
                 wgpu::LoadOp::Load

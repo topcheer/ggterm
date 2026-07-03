@@ -5,9 +5,9 @@
 //! the terminal without depending on Rust's type system.
 
 pub mod api;
-pub mod transport;
 #[cfg(target_os = "android")]
 pub mod local_shell;
+pub mod transport;
 
 use ggterm_core::{Cell, Color, Grid, Parser, Terminal};
 use std::ffi::c_int;

@@ -133,6 +133,10 @@ pub struct AppearanceConfig {
     pub cell_height: u32,
     /// Default cursor style: "block", "underline", or "bar".
     pub cursor_style: String,
+    /// Background opacity: 0.0 (fully transparent) to 1.0 (fully opaque).
+    /// Values below 1.0 allow the desktop wallpaper or windows behind the
+    /// terminal to show through. Default: 1.0 (opaque).
+    pub background_opacity: f32,
 }
 
 /// Terminal behaviour configuration.
@@ -167,6 +171,7 @@ impl Default for AppearanceConfig {
             cell_width: 8,
             cell_height: 16,
             cursor_style: "block".to_string(),
+            background_opacity: 1.0,
         }
     }
 }
@@ -252,6 +257,7 @@ mod raw {
         pub cell_width: Option<u32>,
         pub cell_height: Option<u32>,
         pub cursor_style: Option<String>,
+        pub background_opacity: Option<f32>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -341,6 +347,10 @@ impl Config {
                 log::warn!("Invalid cursor_style '{v}', expected: block, underline, bar");
             }
         }
+        if let Some(v) = raw.appearance.background_opacity {
+            // Clamp to valid range.
+            config.appearance.background_opacity = v.clamp(0.0, 1.0);
+        }
 
         if let Some(v) = raw.terminal.scrollback_lines {
             config.terminal.scrollback_lines = v;
@@ -414,6 +424,10 @@ impl Config {
         appearance.insert(
             "cell_height".into(),
             (self.appearance.cell_height as i64).into(),
+        );
+        appearance.insert(
+            "background_opacity".into(),
+            (self.appearance.background_opacity as f64).into(),
         );
         root.insert("appearance".into(), appearance.into());
 
@@ -1091,6 +1105,50 @@ font_size = 12
         // Unspecified fields keep defaults
         assert_eq!(config.appearance.font_family, "monospace");
         assert_eq!(config.terminal.scrollback_lines, 10_000);
+    }
+
+    #[test]
+    fn test_background_opacity_default() {
+        let config = Config::default();
+        assert_eq!(config.appearance.background_opacity, 1.0);
+    }
+
+    #[test]
+    fn test_background_opacity_parse() {
+        let toml = r#"
+[appearance]
+background_opacity = 0.75
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!((config.appearance.background_opacity - 0.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_background_opacity_clamped() {
+        let toml = r#"
+[appearance]
+background_opacity = -0.5
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!((config.appearance.background_opacity - 0.0).abs() < 0.001);
+
+        let toml = r#"
+[appearance]
+background_opacity = 2.0
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!((config.appearance.background_opacity - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_background_opacity_export() {
+        let mut config = Config::default();
+        config.appearance.background_opacity = 0.85;
+        let toml_str = config.export_to_toml().unwrap();
+        assert!(toml_str.contains("background_opacity"));
+        // Round-trip
+        let config2 = Config::from_toml_str(&toml_str).unwrap();
+        assert!((config2.appearance.background_opacity - 0.85).abs() < 0.001);
     }
 
     #[test]

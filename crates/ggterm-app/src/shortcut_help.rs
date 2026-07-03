@@ -325,6 +325,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+]".into(),
+            description: "Increase background opacity (+5%)".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+[".into(),
+            description: "Decrease background opacity (-5%)".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "F11".into(),
             description: "Toggle fullscreen".into(),
             category: ShortcutCategory::View,

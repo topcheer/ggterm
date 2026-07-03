@@ -219,12 +219,7 @@ unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellErro
     let mut termios_ptr: *mut libc::termios = std::ptr::null_mut();
 
     // forkpty is a glibc/Bionic convenience function.
-    let pid = libc::forkpty(
-        &mut master,
-        std::ptr::null_mut(),
-        termios_ptr,
-        &mut winsize,
-    );
+    let pid = libc::forkpty(&mut master, std::ptr::null_mut(), termios_ptr, &mut winsize);
 
     if pid < 0 {
         let errno = io::Error::last_os_error().raw_os_error().unwrap_or(-1);
@@ -239,10 +234,8 @@ unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellErro
         let home_c = CString::new(home.to_string_lossy().to_string()).unwrap();
         libc::setenv(b"HOME\0".as_ptr() as *const _, home_c.as_ptr(), 1);
 
-        let path = CString::new(
-            "/system/bin:/system/xbin:/data/data/com.ggterm.ggterm/files/bin",
-        )
-        .unwrap();
+        let path = CString::new("/system/bin:/system/xbin:/data/data/com.ggterm.ggterm/files/bin")
+            .unwrap();
         libc::setenv(b"PATH\0".as_ptr() as *const _, path.as_ptr(), 1);
 
         let term = CString::new("xterm-256color").unwrap();

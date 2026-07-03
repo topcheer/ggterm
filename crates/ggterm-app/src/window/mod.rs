@@ -660,6 +660,33 @@ impl DesktopApp {
         self.config.shell.as_deref().unwrap_or("/bin/sh")
     }
 
+    /// Get the current background opacity (0.0 = transparent, 1.0 = opaque).
+    /// Reads from config manager if available, otherwise returns 1.0.
+    fn background_opacity(&self) -> f64 {
+        #[cfg(feature = "config-watch")]
+        if let Some(ref mgr) = self.config_mgr {
+            return mgr.config().appearance.background_opacity as f64;
+        }
+        1.0
+    }
+
+    /// Adjust background opacity by a delta, clamped to [0.1, 1.0].
+    /// Shows a toast notification with the current value.
+    fn adjust_opacity(&mut self, delta: f32) {
+        #[cfg(feature = "config-watch")]
+        {
+            if let Some(ref mut mgr) = self.config_mgr {
+                let current = mgr.config().appearance.background_opacity;
+                let new_val = (current + delta).clamp(0.1, 1.0);
+                mgr.config_mut().appearance.background_opacity = new_val;
+                self.show_toast(format!("Opacity: {:.0}%", new_val * 100.0));
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+        }
+    }
+
     // ── Config-driven keybinding lookup (P14-D) ──
 
     /// Check whether the current key press matches the keybinding for `action`.
@@ -773,7 +800,8 @@ impl ApplicationHandler for DesktopApp {
             .unwrap_or((self.config.window_width(), self.config.window_height()));
         let mut attrs = Window::default_attributes()
             .with_title(&self.config.title)
-            .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64));
+            .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64))
+            .with_transparent(true);
 
         // macOS: keep decorations=true but make titlebar transparent via FFI
         // after window creation. This preserves traffic light buttons while

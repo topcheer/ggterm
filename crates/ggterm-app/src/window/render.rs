@@ -26,9 +26,15 @@ impl DesktopApp {
                 (br as f64 / 255.0) + flash * (1.0 - br as f64 / 255.0),
                 (bg as f64 / 255.0) + flash * (1.0 - bg as f64 / 255.0),
                 (bb as f64 / 255.0) + flash * (1.0 - bb as f64 / 255.0),
+                self.background_opacity(),
             ]
         } else {
-            [br as f64 / 255.0, bg as f64 / 255.0, bb as f64 / 255.0]
+            [
+                br as f64 / 255.0,
+                bg as f64 / 255.0,
+                bb as f64 / 255.0,
+                self.background_opacity(),
+            ]
         };
 
         // Decrement visual bell counter.

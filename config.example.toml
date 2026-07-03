@@ -19,6 +19,11 @@ cell_height = 16
 # Default cursor style: "block", "underline", or "bar"
 cursor_style = "block"
 
+# Background opacity: 0.0 (fully transparent) to 1.0 (fully opaque).
+# Values below 1.0 let the desktop show through the terminal window.
+# Adjust at runtime: Ctrl+Shift+Alt+[ (less opaque) / ] (more opaque)
+# background_opacity = 1.0
+
 [terminal]
 # Maximum scrollback history lines
 scrollback_lines = 10000
