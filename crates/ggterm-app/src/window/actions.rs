@@ -109,12 +109,22 @@ impl DesktopApp {
 
     /// Apply appearance changes immediately for live visual feedback.
     fn apply_settings_live(&mut self) {
-        // Theme
+        // Theme — apply to all sessions.
         let theme = self.settings.theme.clone();
-        self.active_session_mut()
-            .app_mut()
-            .theme_manager()
-            .set_by_name(&theme);
+        let cursor_style = match self.settings.cursor_style.as_str() {
+            "underline" => ggterm_core::CursorStyle::BlinkUnderline,
+            "bar" => ggterm_core::CursorStyle::BlinkBar,
+            _ => ggterm_core::CursorStyle::BlinkBlock,
+        };
+        for session in &mut self.sessions {
+            let pane_ids: Vec<usize> = session.pane_ids();
+            for pane_id in pane_ids {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.theme_manager().set_by_name(&theme);
+                    app.terminal_mut().set_cursor_style(cursor_style);
+                }
+            }
+        }
         self.apply_theme_to_renderer();
         self.last_applied_theme = theme;
 
