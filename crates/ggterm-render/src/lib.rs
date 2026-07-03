@@ -44,6 +44,8 @@ pub struct CursorState {
     /// P23-A: Blink alpha (0.0 = invisible, 1.0 = fully visible).
     /// When >0, modulates cursor cell opacity for smooth blink animation.
     pub blink_alpha: f32,
+    /// Optional dynamic cursor color (from OSC 12). When None, theme cursor color is used.
+    pub color: Option<(u8, u8, u8)>,
 }
 
 impl CursorState {
@@ -55,6 +57,7 @@ impl CursorState {
             visible: true,
             shape: CursorShape::Block,
             blink_alpha: 1.0,
+            color: None,
         }
     }
 
@@ -66,6 +69,7 @@ impl CursorState {
             visible: false,
             shape: CursorShape::Block,
             blink_alpha: 0.0,
+            color: None,
         }
     }
 }

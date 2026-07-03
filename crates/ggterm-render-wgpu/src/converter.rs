@@ -124,6 +124,7 @@ pub fn row_to_runs(
         }
 
         // Cursor: swap resulting RGB for visibility (handles Default color case).
+        // When a dynamic cursor color is set (OSC 12), use it as the cursor cell bg.
         // Highlight takes priority over cursor color swap.
         if !highlighted
             && let Some(c) = cursor
@@ -131,7 +132,11 @@ pub fn row_to_runs(
             && c.x == col
             && c.y == row
         {
-            std::mem::swap(&mut fg_rgb, &mut bg_rgb);
+            if let Some((cr, cg, cb)) = c.color {
+                bg_rgb = (cr, cg, cb);
+            } else {
+                std::mem::swap(&mut fg_rgb, &mut bg_rgb);
+            }
         }
 
         let bold = cell.flags.contains(CellFlags::BOLD);

@@ -429,12 +429,38 @@ pub fn cursor_state(app: &crate::App) -> ggterm_render::CursorState {
         }
         _ => ggterm_render::CursorShape::Block,
     };
+    let cursor_color = app.terminal().dynamic_cursor().map(|c| match c {
+        ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
+        ggterm_core::Color::Indexed(idx) => {
+            // Resolve 16-color palette index to RGB.
+            match idx {
+                0 => (0x00, 0x00, 0x00),
+                1 => (0xcc, 0x00, 0x00),
+                2 => (0x4e, 0x9a, 0x06),
+                3 => (0xc4, 0xa0, 0x00),
+                4 => (0x34, 0x65, 0xa4),
+                5 => (0x75, 0x50, 0x7b),
+                6 => (0x06, 0x98, 0x9a),
+                7 => (0xd3, 0xd7, 0xcf),
+                8 => (0x55, 0x57, 0x53),
+                9 => (0xef, 0x29, 0x29),
+                10 => (0x8a, 0xe2, 0x34),
+                11 => (0xfc, 0xe9, 0x4f),
+                12 => (0x73, 0x9f, 0xcf),
+                13 => (0xad, 0x7f, 0xa8),
+                14 => (0x34, 0xe2, 0xe2),
+                _ => (0xee, 0xee, 0xec),
+            }
+        }
+        ggterm_core::Color::Default => (200, 200, 200),
+    });
     ggterm_render::CursorState {
         x,
         y,
         visible: app.cursor_visible(),
         shape,
         blink_alpha: 1.0, // P23-A: set by DesktopApp before render
+        color: cursor_color,
     }
 }
 
