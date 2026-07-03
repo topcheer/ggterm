@@ -58,6 +58,10 @@ struct Cli {
     #[arg(long, default_value_t = 8.0)]
     cell_width: f32,
 
+    /// Working directory to start the shell in (default: current directory).
+    #[arg(short = 'w', long)]
+    working_directory: Option<String>,
+
     /// Verbosity: -v info, -vv debug, -vvv trace.
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -84,6 +88,16 @@ fn main() -> ExitCode {
         cli.shell,
         cli.theme
     );
+
+    // Apply working directory before launching.
+    if let Some(ref dir) = cli.working_directory {
+        if let Ok(abs) = std::fs::canonicalize(dir) {
+            std::env::set_current_dir(&abs)
+                .unwrap_or_else(|e| log::warn!("Failed to cd to {dir}: {e}"));
+        } else {
+            log::warn!("Working directory does not exist: {dir}");
+        }
+    }
 
     // Build desktop config from CLI args.
     let mut config = DesktopConfig::default()
