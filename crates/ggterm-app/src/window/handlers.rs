@@ -1502,15 +1502,25 @@ impl DesktopApp {
 
         // Check if mouse tracking is active.
         if term.mouse_tracking_enabled() {
+            let sgr = term.mouse_sgr_enabled() || term.mouse_sgr_pixel_enabled();
+            let sgr_pixel = term.mouse_sgr_pixel_enabled();
+            let urxvt = term.mouse_urxvt_enabled();
+
+            // For pixel mode, convert cell coords to pixel coords.
+            let (mx, my) = if sgr_pixel && let Some(ref renderer) = self.renderer {
+                (
+                    (col as u32 * renderer.cell_width()) as u16,
+                    (row as u32 * renderer.cell_height()) as u16,
+                )
+            } else {
+                (col, row)
+            };
             let mouse_ev = crate::mouse::MouseEvent {
                 button: mouse_button,
-                x: col,
-                y: row,
+                x: mx,
+                y: my,
                 mods,
             };
-
-            let sgr = term.mouse_sgr_enabled();
-            let urxvt = term.mouse_urxvt_enabled();
 
             match state {
                 ElementState::Pressed => {
@@ -1532,8 +1542,6 @@ impl DesktopApp {
             }
             return;
         }
-
-        // Mouse tracking is OFF — handle selection and paste locally.
         match (mouse_button, state) {
             (crate::mouse::MouseButton::Left, ElementState::Pressed) => {
                 // "+" dropdown menu dispatch.
@@ -1891,7 +1899,7 @@ impl DesktopApp {
 
                 let sgr = {
                     let term = self.active_session().app().terminal();
-                    term.mouse_sgr_enabled()
+                    term.mouse_sgr_enabled() || term.mouse_sgr_pixel_enabled()
                 };
                 if sgr {
                     let bytes = crate::mouse::encode_sgr_motion(&mouse_ev, held);
@@ -2057,15 +2065,23 @@ impl DesktopApp {
             return;
         };
 
-        // Character classification: group alphanumerics together,
-        // punctuation runs together, whitespace is a separator.
+        // Character classification for word boundary detection.
+        // Modern terminals (iTerm2, Alacritty, WezTerm) treat common path
+        // and URL characters as word characters so that double-clicking
+        // selects entire paths like /usr/local/bin or URLs like https://example.com
         let char_class = |c: char| -> u8 {
             if c.is_alphanumeric() || c == '_' {
-                0 // word chars
+                0 // word chars (letters, digits, underscore)
             } else if c.is_whitespace() {
                 2 // whitespace separator
+            } else if matches!(
+                c,
+                // Path and URL characters that should be part of words
+                '.' | '-' | '/' | ':' | '@' | '~' | '+' | '#' | '?' | '=' | '&' | '%' | '$'
+            ) {
+                0 // path/URL chars — treat as word chars
             } else {
-                1 // punctuation/symbols (grouped, but separate from words)
+                1 // other punctuation/symbols
             }
         };
 

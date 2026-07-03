@@ -277,6 +277,9 @@ pub struct Modes {
     pub mouse_utf8: bool,
     /// URXVT mouse formatting (DECSET 1015).
     pub mouse_urxvt: bool,
+    /// SGR pixel mouse formatting (DECSET 1016).
+    /// Like SGR (1006) but reports pixel coordinates instead of cell coords.
+    pub mouse_sgr_pixel: bool,
     /// Focus event reporting (DECSET 1004) — P12-D.
     pub focus_event: bool,
     /// Synchronized output mode (DECSET 2026) — P24-A.
@@ -317,6 +320,7 @@ impl Modes {
             mouse_sgr: false,
             mouse_utf8: false,
             mouse_urxvt: false,
+            mouse_sgr_pixel: false,
             focus_event: false,
             synchronized_output: false,
             reflow: true,
@@ -582,6 +586,11 @@ impl Terminal {
     /// Return true if URXVT mouse encoding is active (DECSET 1015).
     pub fn mouse_urxvt_enabled(&self) -> bool {
         self.modes.mouse_urxvt
+    }
+
+    /// Return true if SGR pixel mouse encoding is active (DECSET 1016).
+    pub fn mouse_sgr_pixel_enabled(&self) -> bool {
+        self.modes.mouse_sgr_pixel
     }
 
     /// Return true if any-event mouse tracking is active (DECSET 1003).
@@ -1004,6 +1013,7 @@ impl Terminal {
             1005 => self.modes.mouse_utf8 = enable,  // UTF-8 encoding
             1006 => self.modes.mouse_sgr = enable,   // SGR encoding
             1015 => self.modes.mouse_urxvt = enable, // URXVT encoding
+            1016 => self.modes.mouse_sgr_pixel = enable, // SGR pixel encoding
             1004 => self.modes.focus_event = enable, // Focus event reporting
             2026 => self.modes.synchronized_output = enable, // Synchronized output
             2027 => self.modes.reflow = enable,      // Text reflow on resize
@@ -1677,7 +1687,7 @@ impl Perform for Terminal {
                     1005 => self.modes.mouse_utf8,          // UTF-8 mouse
                     1006 => self.modes.mouse_sgr,           // SGR mouse
                     1015 => self.modes.mouse_urxvt,         // URXVT mouse
-                    1016 => false,                          // SGR-pixel mouse (not supported)
+                    1016 => self.modes.mouse_sgr_pixel,     // SGR-pixel mouse
                     1047 => self.modes.alt_screen,          // Alt screen (1047)
                     1049 => self.modes.alt_screen,          // Alt screen + cursor save (1049)
                     2004 => self.modes.bracketed_paste,     // Bracketed paste
@@ -3788,6 +3798,15 @@ mod tests {
     }
 
     #[test]
+    fn t_mouse_sgr_pixel_mode_1016() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1016h");
+        assert!(t.mouse_sgr_pixel_enabled());
+        feed(&mut t, b"\x1b[?1016l");
+        assert!(!t.mouse_sgr_pixel_enabled());
+    }
+
+    #[test]
     fn t_mouse_utf8_mode_1005() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[?1005h");
@@ -4453,6 +4472,19 @@ mod tests {
         let resp = t.take_response();
         let s = String::from_utf8_lossy(&resp);
         assert!(s.contains("1006;1$y"), "SGR mouse should be set, got: {s}");
+    }
+
+    #[test]
+    fn t_decrqm_mouse_sgr_pixel() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?1016h"); // Enable SGR pixel mouse
+        feed(&mut t, b"\x1b[?1016$p"); // Query mode 1016
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("1016;1$y"),
+            "SGR pixel mouse should be set, got: {s}"
+        );
     }
 
     #[test]

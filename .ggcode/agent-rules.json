@@ -140,6 +140,17 @@
       "hit_count": 1,
       "last_seen": "2026-07-03T17:33:10.298868+08:00",
       "created_at": "2026-07-03T17:33:10.298868+08:00"
+    },
+    {
+      "id": "r-a6c7adee",
+      "category": "build",
+      "rule": "When a Rust crate supports multiple targets (terminal and desktop), gate desktop-only dependencies and their usages behind the correct feature flag — do not reference desktop dependency APIs in files compiled without that feature",
+      "match_pattern": "uses desktop deps|desktop.*dep.*flag|desktop.*feature.*gate",
+      "tool_pattern": "cargo build|cargo test|cargo check|cargo clippy",
+      "fix_hint": "Wrap desktop-only imports/code in #[cfg(feature = \"desktop\")] (or the project's equivalent feature flag) and ensure the module is not compiled without it",
+      "hit_count": 1,
+      "last_seen": "2026-07-03T17:53:47.869459+08:00",
+      "created_at": "2026-07-03T17:53:47.869459+08:00"
     }
   ]
 }
