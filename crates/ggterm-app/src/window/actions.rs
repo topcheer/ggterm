@@ -596,6 +596,10 @@ impl DesktopApp {
         if let Some(ref mut recorder) = self.recorder {
             let _ = recorder.feed(bytes);
         }
+
+        // Reset cursor blink cycle so the cursor is visible immediately
+        // after the user types (standard terminal behavior).
+        self.cursor_blink.reset();
     }
 
     // ── P19-B: Split pane management ──
