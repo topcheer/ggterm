@@ -395,6 +395,8 @@ pub struct Terminal {
     /// Dynamic background color set via OSC 11 (P17-A).
     /// When set, overrides the theme default background.
     pub(crate) dynamic_bg: Option<Color>,
+    /// Dynamic cursor color set via OSC 12.
+    pub(crate) dynamic_cursor: Option<Color>,
     /// Current working directory set via OSC 7 (P22-D).
     /// Format: `OSC 7 ; file://hostname/path ST`
     pub(crate) cwd: Option<std::path::PathBuf>,
@@ -552,6 +554,7 @@ impl Terminal {
             alt_saved_cursor: Cursor::default(),
             dynamic_fg: None,
             dynamic_bg: None,
+            dynamic_cursor: None,
             cwd: None,
             protected_attr: false,
             pending_notification: None,
@@ -717,6 +720,11 @@ impl Terminal {
     /// Return the dynamic background color if set via OSC 11 (P17-A).
     pub fn dynamic_bg(&self) -> Option<&Color> {
         self.dynamic_bg.as_ref()
+    }
+
+    /// Return the dynamic cursor color if set via OSC 12.
+    pub fn dynamic_cursor(&self) -> Option<&Color> {
+        self.dynamic_cursor.as_ref()
     }
 
     /// Return the current working directory set via OSC 7 (P22-D).
@@ -1878,7 +1886,7 @@ impl Perform for Terminal {
                     let current = match cmd {
                         Some(10) => &self.fg,
                         Some(11) => &self.bg,
-                        _ => &self.fg, // OSC 12 cursor color not tracked separately
+                        _ => self.dynamic_cursor.as_ref().unwrap_or(&self.fg),
                     };
                     let resp = match current {
                         Color::Rgb(r, g, b) => {
@@ -1897,7 +1905,7 @@ impl Perform for Terminal {
                     match cmd {
                         Some(10) => self.dynamic_fg = Some(color),
                         Some(11) => self.dynamic_bg = Some(color),
-                        Some(12) => { /* cursor color tracked separately — future */ }
+                        Some(12) => self.dynamic_cursor = Some(color),
                         _ => {}
                     }
                 }
@@ -3885,6 +3893,28 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]11;rgb:1a/1a/2e\x1b\\");
         assert_eq!(t.dynamic_bg(), Some(&Color::Rgb(26, 26, 46)));
+    }
+
+    #[test]
+    fn t_osc12_set_dynamic_cursor() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]12;rgb:ff/00/ff\x1b\\");
+        assert_eq!(t.dynamic_cursor(), Some(&Color::Rgb(255, 0, 255)));
+    }
+
+    #[test]
+    fn t_osc12_query_response() {
+        let mut t = Terminal::new(80, 24);
+        // Set cursor color first
+        feed(&mut t, b"\x1b]12;rgb:aa/bb/cc\x1b\\");
+        t.take_response(); // clear
+        // Query cursor color
+        feed(&mut t, b"\x1b]12;?\x1b\\");
+        let resp = String::from_utf8_lossy(&t.response_buffer());
+        assert!(
+            resp.contains("12;rgb:aa/bb/cc"),
+            "OSC 12 query should return set cursor color, got: {resp}"
+        );
     }
 
     #[test]
