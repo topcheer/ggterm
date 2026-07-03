@@ -773,13 +773,10 @@ impl ApplicationHandler for DesktopApp {
             .with_title(&self.config.title)
             .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64));
 
-        // macOS: hide native titlebar but keep traffic light buttons.
-        // We draw our own unified titlebar (tab bar serves as drag area).
-        #[cfg(target_os = "macos")]
-        {
-            attrs = attrs.with_decorations(false);
-        }
-        // Linux/Windows: full custom titlebar with window control buttons.
+        // macOS: keep decorations=true but make titlebar transparent via FFI
+        // after window creation. This preserves traffic light buttons while
+        // giving us full control over the titlebar appearance.
+        // Linux/Windows: use decorations=false for full custom titlebar.
         #[cfg(not(target_os = "macos"))]
         {
             attrs = attrs.with_decorations(false);
