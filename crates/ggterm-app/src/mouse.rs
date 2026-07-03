@@ -290,7 +290,7 @@ pub fn detect_url_at_position(line: &str, col: usize) -> Option<(usize, usize, S
 pub fn find_urls(line: &str) -> Vec<(usize, String)> {
     let mut results = Vec::new();
     let chars: Vec<char> = line.chars().collect();
-    let schemes = ["https://", "http://", "ftp://", "www."];
+    let schemes = ["https://", "http://", "ftp://", "git://", "ssh://", "www."];
 
     let mut i = 0;
     while i < chars.len() {
@@ -838,6 +838,17 @@ mod tests {
         let urls = find_urls("Go to www.rust-lang.org now");
         assert_eq!(urls.len(), 1);
         assert_eq!(urls[0].1, "www.rust-lang.org");
+    }
+
+    #[test]
+    fn test_git_ssh_urls_detected() {
+        let urls = find_urls("Clone: git://github.com/rust-lang/rust.git");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].1, "git://github.com/rust-lang/rust.git");
+
+        let urls2 = find_urls("SSH: ssh://user@host:22/path");
+        assert_eq!(urls2.len(), 1);
+        assert_eq!(urls2[0].1, "ssh://user@host:22/path");
     }
 
     #[test]
