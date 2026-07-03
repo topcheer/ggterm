@@ -1208,6 +1208,9 @@ impl ApplicationHandler for DesktopApp {
         self.apply_pending_resize();
 
         // Poll config watcher for hot-reload.
+        let mut pending_cursor_style: Option<ggterm_core::CursorStyle> = None;
+        let mut pending_scrollback: Option<usize> = None;
+        let mut pending_theme: Option<String> = None;
         #[cfg(feature = "config-watch")]
         if let Some(ref mut mgr) = self.config_mgr {
             match mgr.poll_reload() {
@@ -1230,13 +1233,10 @@ impl ApplicationHandler for DesktopApp {
 
                     // P16-B: Apply theme change if different.
                     if new_theme != self.last_applied_theme {
-                        self.active_session_mut()
-                            .app_mut()
-                            .theme_manager()
-                            .set_by_name(&new_theme);
                         self.apply_theme_to_renderer();
                         self.last_applied_theme = new_theme.clone();
-                        log::info!("Theme changed → applied '{}'", new_theme);
+                        pending_theme = Some(new_theme);
+                        log::info!("Theme changed -> will apply to all sessions");
                     }
 
                     // P16-B: Apply font size change if different.
@@ -1244,27 +1244,39 @@ impl ApplicationHandler for DesktopApp {
                         self.font_zoom.set_base_size(new_font_size);
                         self.apply_font_size();
                         self.last_applied_font_size = new_font_size;
-                        log::info!("Font size changed → applied {new_font_size:.1}px");
+                        log::info!("Font size changed -> applied {new_font_size:.1}px");
                     }
 
-                    // P16-B: Update scrollback limit.
-                    self.active_session_mut()
-                        .app_mut()
-                        .terminal_mut()
-                        .grid_mut()
-                        .set_scrollback(new_scrollback);
-
-                    // Apply cursor style from config.
-                    self.active_session_mut()
-                        .app_mut()
-                        .terminal_mut()
-                        .set_cursor_style(new_cursor_style);
+                    // Defer scrollback + cursor style to apply to ALL sessions
+                    // after this borrow scope ends (can't iterate self.sessions here).
+                    pending_scrollback = Some(new_scrollback);
+                    pending_cursor_style = Some(new_cursor_style);
 
                     // Show toast feedback for successful reload.
                     self.show_toast("Config reloaded");
                 }
                 Ok(false) => {}
                 Err(e) => log::warn!("Config reload error: {e}"),
+            }
+        }
+
+        // Apply deferred changes to all sessions (all tabs, all panes).
+        if pending_theme.is_some() || pending_scrollback.is_some() || pending_cursor_style.is_some()
+        {
+            for session in &mut self.sessions {
+                for pane_id in session.pane_ids() {
+                    if let Some(app) = session.pane_app_mut(pane_id) {
+                        if let Some(ref theme) = pending_theme {
+                            app.theme_manager().set_by_name(theme);
+                        }
+                        if let Some(scrollback) = pending_scrollback {
+                            app.terminal_mut().grid_mut().set_scrollback(scrollback);
+                        }
+                        if let Some(cursor_style) = pending_cursor_style {
+                            app.terminal_mut().set_cursor_style(cursor_style);
+                        }
+                    }
+                }
             }
         }
 
