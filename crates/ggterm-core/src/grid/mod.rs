@@ -197,6 +197,11 @@ impl Grid {
         if n == 0 {
             return;
         }
+        // If the user is scrolled up in the scrollback, preserve their position
+        // by advancing display_offset by n. Only auto-scroll to bottom when
+        // the user is already viewing the latest output (offset == 0).
+        let was_scrolled = self.display_offset > 0;
+
         for _ in 0..n {
             let removed = self.rows.remove(self.scroll_top);
             if self.scroll_top == 0 {
@@ -205,8 +210,11 @@ impl Grid {
             self.rows
                 .insert(self.scroll_bottom - 1, Row::new(self.width));
         }
-        // Reset viewport when new content causes scrolling.
-        self.display_offset = 0;
+
+        if was_scrolled {
+            // Keep the user at the same scrollback position by advancing offset.
+            self.display_offset = self.display_offset.saturating_add(n);
+        }
         self.damage.mark_rows(self.scroll_top, region_height);
         self.content_dirty = true;
     }
@@ -1144,6 +1152,50 @@ mod tests {
         assert_eq!(g.display_offset(), 0);
     }
 
+    #[test]
+    fn scroll_up_preserves_user_scrollback_position() {
+        // When the user is scrolled up in scrollback and new output arrives
+        // (scroll_up), the display_offset should advance to keep the user
+        // viewing the same scrollback content. Only auto-scroll to bottom
+        // when the user is already at the bottom (offset == 0).
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        // Fill some content to create scrollback
+        for i in 0..5 {
+            g[(0, 0)] = Cell::with_char((b'A' + i as u8) as char);
+            g.scroll_up(1);
+        }
+        assert!(g.scrollback_len() >= 5);
+        // User scrolls up 3 lines to read history
+        g.scroll_up_viewport(3);
+        let offset_before = g.display_offset();
+        assert_eq!(offset_before, 3);
+        // New output arrives — scroll_up should preserve position
+        g[(0, 0)] = Cell::with_char('Z');
+        g.scroll_up(1);
+        // Offset should have advanced by 1, not reset to 0
+        assert_eq!(
+            g.display_offset(),
+            offset_before + 1,
+            "scroll position should advance when user is scrolled up"
+        );
+    }
+
+    #[test]
+    fn scroll_up_auto_scrolls_when_at_bottom() {
+        // When user is at the bottom (offset == 0), new output should NOT
+        // change the offset — it stays at 0 (showing latest content).
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        for i in 0..5 {
+            g[(0, 0)] = Cell::with_char((b'A' + i as u8) as char);
+            g.scroll_up(1);
+        }
+        assert_eq!(g.display_offset(), 0, "should be at bottom");
+        // New output arrives — should stay at bottom
+        g[(0, 0)] = Cell::with_char('Z');
+        g.scroll_up(1);
+        assert_eq!(g.display_offset(), 0, "should auto-scroll to bottom");
+    }
+
     // ================================================================
     //  Scrollback (2 tests)
     // ================================================================
@@ -1210,12 +1262,20 @@ mod tests {
     }
 
     #[test]
-    fn viewport_resets_on_new_scroll() {
+    fn viewport_preserves_position_on_new_scroll() {
+        // When the user is scrolled up, new terminal output should NOT
+        // reset the viewport — it should advance the offset to keep the
+        // user at the same scrollback position.
         let mut g = Grid::with_scrollback(3, 2, 100);
         g.scroll_up(1);
         g.scroll_up_viewport(1);
         assert_eq!(g.display_offset(), 1);
-        // New content scrolls — viewport resets.
+        // New content scrolls — viewport advances (preserving user position).
+        g.scroll_up(1);
+        assert_eq!(g.display_offset(), 2);
+        // When at bottom (offset 0), new output stays at bottom.
+        g.scroll_down_viewport(2);
+        assert_eq!(g.display_offset(), 0);
         g.scroll_up(1);
         assert_eq!(g.display_offset(), 0);
     }
