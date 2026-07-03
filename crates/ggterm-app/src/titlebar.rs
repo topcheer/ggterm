@@ -68,7 +68,8 @@ pub mod macos {
     }
 
     /// Width reserved for traffic light buttons on the left side.
-    pub const TRAFFIC_LIGHT_WIDTH: f32 = 78.0;
+    /// Modern macOS (Big Sur+) uses ~76px for buttons + ~12px padding gap.
+    pub const TRAFFIC_LIGHT_WIDTH: f32 = 88.0;
 }
 
 #[cfg(target_os = "macos")]
@@ -132,7 +133,7 @@ mod tests {
     #[test]
     fn test_traffic_light_width() {
         #[cfg(target_os = "macos")]
-        assert_eq!(super::TRAFFIC_LIGHT_WIDTH, 78.0);
+        assert_eq!(super::TRAFFIC_LIGHT_WIDTH, 88.0);
         #[cfg(not(target_os = "macos"))]
         assert_eq!(super::TRAFFIC_LIGHT_WIDTH, 0.0);
     }
