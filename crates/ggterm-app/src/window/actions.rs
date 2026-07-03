@@ -1183,6 +1183,40 @@ impl DesktopApp {
             "terminal.reset" => {
                 self.active_session_mut().app_mut().terminal_mut().ris();
             }
+            "settings.open" => {
+                if !self.settings.visible {
+                    self.load_settings_from_config();
+                }
+                self.settings.toggle();
+            }
+            "theme.cycle" => {
+                self.active_session_mut()
+                    .app_mut()
+                    .theme_manager()
+                    .cycle_next();
+                self.apply_theme_to_renderer();
+            }
+            "font.zoom_in" => {
+                self.font_zoom.zoom_in();
+                self.apply_font_size();
+            }
+            "font.zoom_out" => {
+                self.font_zoom.zoom_out();
+                self.apply_font_size();
+            }
+            "font.zoom_reset" => {
+                self.font_zoom.reset();
+                self.apply_font_size();
+            }
+            "view.fullscreen" => {
+                self.toggle_fullscreen();
+            }
+            "view.status_bar" => {
+                self.status_bar_visible = !self.status_bar_visible;
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
             _ => {
                 log::debug!("Unhandled command palette action: {}", id);
             }

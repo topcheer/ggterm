@@ -516,6 +516,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::System,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+,".into(),
+            description: "Open Settings panel".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
         // Effects / History
         ShortcutEntry {
             keys: "Ctrl+Shift+Y".into(),

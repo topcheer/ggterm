@@ -292,6 +292,50 @@ impl CommandRegistry {
             category: "Effects".into(),
             shortcut: None,
         });
+        // Settings
+        r.register(Command {
+            id: "settings.open".into(),
+            label: "Open Settings".into(),
+            category: "Settings".into(),
+            shortcut: Some("Ctrl+,".into()),
+        });
+        r.register(Command {
+            id: "theme.cycle".into(),
+            label: "Cycle Theme".into(),
+            category: "Settings".into(),
+            shortcut: Some("Ctrl+Shift+T".into()),
+        });
+        r.register(Command {
+            id: "font.zoom_in".into(),
+            label: "Zoom In (Font Size +)".into(),
+            category: "Settings".into(),
+            shortcut: Some("Ctrl+=".into()),
+        });
+        r.register(Command {
+            id: "font.zoom_out".into(),
+            label: "Zoom Out (Font Size -)".into(),
+            category: "Settings".into(),
+            shortcut: Some("Ctrl+-".into()),
+        });
+        r.register(Command {
+            id: "font.zoom_reset".into(),
+            label: "Reset Font Size".into(),
+            category: "Settings".into(),
+            shortcut: Some("Ctrl+0".into()),
+        });
+        // View
+        r.register(Command {
+            id: "view.fullscreen".into(),
+            label: "Toggle Fullscreen".into(),
+            category: "View".into(),
+            shortcut: Some("F11".into()),
+        });
+        r.register(Command {
+            id: "view.status_bar".into(),
+            label: "Toggle Status Bar".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+B".into()),
+        });
         r
     }
 }
