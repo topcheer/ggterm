@@ -897,6 +897,15 @@ impl DesktopApp {
             mgr.cycle_next();
             mgr.current_name().to_owned()
         };
+        // Apply to all sessions so every tab/pane gets the new theme.
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.theme_manager().set_by_name(&name);
+                }
+            }
+        }
+        self.last_applied_theme = name.clone();
         self.apply_theme_to_renderer();
         self.show_toast(format!("Theme: {name}"));
         log::info!("Theme: {name}");
@@ -930,27 +939,62 @@ impl DesktopApp {
 
     /// Cycle to the next config profile (if profiles are defined).
     pub(super) fn cycle_profile(&mut self) {
-        let Some(mgr) = self.config_mgr.as_mut() else {
-            self.show_toast("No config loaded");
-            return;
-        };
-        let current = self.status_bar.active_profile().unwrap_or("").to_string();
-        let next = mgr.config_mut().cycle_profile(&current);
-        match next {
-            Some(next) => {
-                log::info!("Switching profile: {} → {}", current, next);
-                if let Err(e) = mgr.config_mut().apply_profile(&next) {
-                    log::error!("Failed to apply profile '{next}': {e}");
-                    return;
+        let applied = if let Some(mgr) = self.config_mgr.as_mut() {
+            let current = self.status_bar.active_profile().unwrap_or("").to_string();
+            let next = mgr.config_mut().cycle_profile(&current);
+            match next {
+                Some(next) => {
+                    log::info!("Switching profile: {} -> {}", current, next);
+                    if let Err(e) = mgr.config_mut().apply_profile(&next) {
+                        log::error!("Failed to apply profile '{next}': {e}");
+                        None
+                    } else {
+                        Some(next)
+                    }
                 }
-                self.status_bar.set_profile(&next);
-                self.show_toast(format!("Profile: {}", next));
-                if let Some(ref window) = self.window {
-                    window.request_redraw();
+                None => {
+                    self.show_toast("No profiles configured");
+                    None
                 }
             }
-            None => {
-                self.show_toast("No profiles configured");
+        } else {
+            self.show_toast("No config loaded");
+            None
+        };
+
+        // If a profile was applied, push its settings to all sessions.
+        if let Some(ref profile_name) = applied {
+            self.status_bar.set_profile(profile_name);
+            self.show_toast(format!("Profile: {}", profile_name));
+
+            // Read the updated config values.
+            let (theme, font_size, scrollback) = if let Some(ref mgr) = self.config_mgr {
+                let cfg = mgr.config();
+                (
+                    cfg.appearance.theme.clone(),
+                    cfg.appearance.font_size as f32,
+                    cfg.terminal.scrollback_lines,
+                )
+            } else {
+                return;
+            };
+
+            // Apply theme + scrollback to all sessions.
+            for session in &mut self.sessions {
+                for pane_id in session.pane_ids() {
+                    if let Some(app) = session.pane_app_mut(pane_id) {
+                        app.theme_manager().set_by_name(&theme);
+                        app.terminal_mut().grid_mut().set_scrollback(scrollback);
+                    }
+                }
+            }
+            self.last_applied_theme = theme;
+            self.font_zoom.set_base_size(font_size);
+            self.apply_font_size();
+            self.apply_theme_to_renderer();
+
+            if let Some(ref window) = self.window {
+                window.request_redraw();
             }
         }
     }
