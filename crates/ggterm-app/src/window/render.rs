@@ -1048,26 +1048,39 @@ impl DesktopApp {
         // ── P27-G: Scroll-to-bottom indicator ──────────────────────────
         // Show a "↓" indicator when scrolled up in scrollback.
         {
-            let is_scrolled = self.sessions[active].app().terminal().grid().is_scrolled();
+            let grid = self.sessions[active].app().terminal().grid();
+            let is_scrolled = grid.is_scrolled();
             if is_scrolled {
+                let offset = grid.display_offset();
                 let indicator_y =
                     content_bounds.y as f32 + content_bounds.height as f32 - cell_h - 4.0;
+                // Wider pill if we show line count.
+                let pill_w = if offset < 100 {
+                    cell_w * 3.5
+                } else {
+                    cell_w * 4.5
+                };
                 let indicator_x =
-                    content_bounds.x as f32 + content_bounds.width as f32 - cell_w * 3.0;
+                    content_bounds.x as f32 + content_bounds.width as f32 - pill_w - 4.0;
                 // Pill background.
                 ui_rects.push(ggterm_render_wgpu::UiRect {
                     x: indicator_x,
                     y: indicator_y,
-                    w: cell_w * 2.5,
+                    w: pill_w,
                     h: cell_h + 4.0,
                     color: (0.2, 0.4, 0.8, 0.7),
                     radius: 4.0,
                     stroke_width: 0.0,
                 });
-                // Arrow text.
+                // Show "↓ N" where N is lines scrolled back.
+                let label = if offset < 100 {
+                    format!("\u{2193} {}", offset) // ↓ N
+                } else {
+                    "\u{2193}".to_string() // just ↓
+                };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: "\u{2193}".to_string(), // ↓
-                    left: indicator_x + cell_w * 0.5,
+                    text: label,
+                    left: indicator_x + cell_w * 0.3,
                     top: indicator_y + 2.0,
                     color: (255, 255, 255),
                 });
