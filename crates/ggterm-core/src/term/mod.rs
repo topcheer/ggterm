@@ -1697,6 +1697,12 @@ impl Perform for Terminal {
                         // xterm extension — programs query window visibility.
                         self.response_buffer.extend_from_slice(b"\x1b[1t");
                     }
+                    16 => {
+                        // Report character cell size in pixels.
+                        // Response: CSI 6 ; cell_height ; cell_width t
+                        // We use approximate standard cell dimensions.
+                        self.response_buffer.extend_from_slice(b"\x1b[6;20;10t");
+                    }
                     22 => {
                         // Push title onto stack (xterm windowops).
                         // Param 2 = icon title, param 1 = window title.
@@ -2889,6 +2895,19 @@ mod tests {
         // Response: CSI 4 ; height ; width t
         let resp = String::from_utf8_lossy(t.response_buffer());
         assert!(resp.starts_with("\x1b[4;"), "got: {resp}");
+        assert!(resp.ends_with('t'));
+    }
+
+    #[test]
+    fn t_csi_16t_cell_size_pixels() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[16t");
+        // Response: CSI 6 ; height ; width t
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.starts_with("\x1b[6;"),
+            "CSI 16t should respond with cell size, got: {resp}"
+        );
         assert!(resp.ends_with('t'));
     }
 
