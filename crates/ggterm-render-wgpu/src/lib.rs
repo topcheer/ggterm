@@ -706,8 +706,10 @@ impl GlyphonRenderer {
                     let x0 = px / screen_w * 2.0 - 1.0;
                     let x1 = (px + cell_w) / screen_w * 2.0 - 1.0;
 
-                    // Underline
-                    if cell.flags.contains(ggterm_core::CellFlags::UNDERLINE) {
+                    // Underline (SGR 4 or OSC 8 hyperlink)
+                    if cell.flags.contains(ggterm_core::CellFlags::UNDERLINE)
+                        || cell.hyperlink.is_some()
+                    {
                         let py = row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
                         let y0 = 1.0 - py / screen_h * 2.0;
                         let y1 = 1.0 - (py + thickness) / screen_h * 2.0;

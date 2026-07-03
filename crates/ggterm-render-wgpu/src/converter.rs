@@ -93,6 +93,11 @@ pub fn row_to_runs(
             fg_rgb = bg_rgb;
         }
 
+        // OSC 8 hyperlink — tint foreground blue (like web links).
+        if cell.hyperlink.is_some() {
+            fg_rgb = (100, 160, 255);
+        }
+
         // DECSCNM — reverse video: swap fg and bg globally.
         if reverse_video {
             std::mem::swap(&mut fg_rgb, &mut bg_rgb);
@@ -121,6 +126,7 @@ pub fn row_to_runs(
         let underline = cell.flags.contains(CellFlags::UNDERLINE);
         let strikethrough = cell.flags.contains(CellFlags::STRIKETHROUGH);
         let blink = cell.flags.contains(CellFlags::BLINK);
+        let has_link = cell.hyperlink.is_some();
 
         let ch = cell.ch;
         let is_wide = cell.flags.contains(CellFlags::WIDE_CHAR);
@@ -137,6 +143,7 @@ pub fn row_to_runs(
                     && c.underline == underline
                     && c.strikethrough == strikethrough
                     && c.blink == blink
+                    && !has_link // hyperlink cells always start new runs
             });
 
         if can_extend && let Some(ref mut c) = current {
