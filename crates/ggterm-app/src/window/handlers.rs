@@ -807,15 +807,12 @@ impl DesktopApp {
             return;
         }
 
-        // Ctrl+, (comma) → toggle settings overlay
+        // Ctrl+, (comma) → open settings window
         if self.mods.ctrl
             && !self.mods.shift
             && let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key
         {
-            if !self.settings.visible {
-                self.load_settings_from_config();
-            }
-            self.settings.toggle();
+            self.pending_open_settings = true;
             return;
         }
 
@@ -1590,15 +1587,9 @@ impl DesktopApp {
                             }
                             return;
                         }
-                        // Settings gear button → toggle settings overlay.
+                        // Settings gear button → open settings window.
                         if self.tab_bar.is_settings_button_at(&layout, px, py) {
-                            if !self.settings.visible {
-                                self.load_settings_from_config();
-                            }
-                            self.settings.toggle();
-                            if let Some(ref window) = self.window {
-                                window.request_redraw();
-                            }
+                            self.pending_open_settings = true;
                             return;
                         }
                         // Close button (x) on a tab.

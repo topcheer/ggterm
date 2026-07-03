@@ -289,6 +289,10 @@ pub struct DesktopApp {
     dragging_tab: Option<usize>,
     /// Pane zoom mode: when true, only the active pane is rendered at full size.
     pane_zoomed: bool,
+    /// Independent settings window (None when closed).
+    settings_window: Option<crate::settings_window::SettingsWindowState>,
+    /// Flag to open settings window on next about_to_wait (set from handlers).
+    pending_open_settings: bool,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -561,6 +565,8 @@ impl DesktopApp {
             saved_window_size: None,
             dragging_tab: None,
             pane_zoomed: false,
+            settings_window: None,
+            pending_open_settings: false,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -915,9 +921,18 @@ impl ApplicationHandler for DesktopApp {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
+        window_id: WindowId,
         event: WindowEvent,
     ) {
+        // ── Settings window routing ──
+        if let Some(ref mut sw) = self.settings_window
+            && sw.id() == window_id
+        {
+            sw.handle_event(&event);
+            sw.window.request_redraw();
+            return;
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 // P29-C: Show quit confirmation dialog.
@@ -1138,6 +1153,32 @@ impl ApplicationHandler for DesktopApp {
             self.save_session_on_exit();
             event_loop.exit();
             return;
+        }
+
+        // ── Settings window lifecycle ──
+        if self.pending_open_settings {
+            self.pending_open_settings = false;
+            if self.settings_window.is_none() {
+                self.open_settings_window(event_loop);
+            }
+        }
+        if let Some(sw) = self.settings_window.take() {
+            if sw.should_close() {
+                // Apply draft and close.
+                let draft = sw.draft.clone();
+                drop(sw);
+                self.apply_settings_draft(&draft);
+                log::info!("Settings window closed");
+            } else {
+                // Still open — render it.
+                sw.window.request_redraw();
+                self.settings_window = Some(sw);
+            }
+        }
+
+        // Render settings window if open.
+        if let Some(ref mut sw) = self.settings_window {
+            sw.render();
         }
 
         // Pump PTY events — active session first, then non-active.

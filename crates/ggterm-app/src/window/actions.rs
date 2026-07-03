@@ -88,6 +88,7 @@ impl DesktopApp {
     }
 
     /// Load current config values into the settings state before opening.
+    #[allow(dead_code)]
     pub(super) fn load_settings_from_config(&mut self) {
         if let Some(ref mgr) = self.config_mgr {
             let cfg = mgr.config();
@@ -105,6 +106,101 @@ impl DesktopApp {
                     ai_model: cfg.ai.model.clone(),
                 });
         }
+    }
+
+    /// Open the independent settings window.
+    /// If already open, focus it instead.
+    pub fn open_settings_window(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if self.settings_window.is_some() {
+            // Already open — just focus.
+            if let Some(ref sw) = self.settings_window {
+                sw.window.focus_window();
+            }
+            return;
+        }
+
+        // Build draft from current config.
+        let draft = if let Some(ref mgr) = self.config_mgr {
+            let cfg = mgr.config();
+            crate::settings_window::SettingsDraft {
+                theme: cfg.appearance.theme.clone(),
+                font_size: cfg.appearance.font_size,
+                font_family: cfg.appearance.font_family.clone(),
+                cursor_style: cfg.appearance.cursor_style.clone(),
+                scrollback_lines: cfg.terminal.scrollback_lines,
+                shell: cfg.terminal.shell.clone(),
+                restore_session: cfg.terminal.restore_session,
+                ai_enabled: cfg.ai.enabled,
+            }
+        } else {
+            crate::settings_window::SettingsDraft {
+                theme: "dark".to_string(),
+                font_size: 14,
+                font_family: "monospace".to_string(),
+                cursor_style: "block".to_string(),
+                scrollback_lines: 10000,
+                shell: String::new(),
+                restore_session: false,
+                ai_enabled: true,
+            }
+        };
+
+        match crate::settings_window::SettingsWindowState::open(event_loop, draft) {
+            Some(sw) => {
+                self.settings_window = Some(sw);
+                log::info!("Settings window opened");
+            }
+            None => {
+                self.show_toast("Failed to open settings window");
+            }
+        }
+    }
+
+    /// Apply draft from settings window to config and terminal sessions.
+    pub fn apply_settings_draft(&mut self, draft: &crate::settings_window::SettingsDraft) {
+        let cursor_style_val = match draft.cursor_style.as_str() {
+            "underline" => ggterm_core::CursorStyle::BlinkUnderline,
+            "bar" => ggterm_core::CursorStyle::BlinkBar,
+            _ => ggterm_core::CursorStyle::BlinkBlock,
+        };
+
+        // Apply theme + cursor to all sessions.
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.theme_manager().set_by_name(&draft.theme);
+                    app.terminal_mut().set_cursor_style(cursor_style_val);
+                    app.terminal_mut()
+                        .grid_mut()
+                        .set_scrollback(draft.scrollback_lines);
+                }
+            }
+        }
+
+        // Apply font size.
+        self.font_zoom.set_base_size(draft.font_size as f32);
+        self.apply_font_size();
+
+        // Apply theme to renderer.
+        self.apply_theme_to_renderer();
+        self.last_applied_theme = draft.theme.clone();
+
+        // Save to config manager.
+        if let Some(ref mut mgr) = self.config_mgr {
+            let cfg = mgr.config_mut();
+            cfg.appearance.theme = draft.theme.clone();
+            cfg.appearance.font_size = draft.font_size;
+            cfg.appearance.font_family = draft.font_family.clone();
+            cfg.appearance.cursor_style = draft.cursor_style.clone();
+            cfg.terminal.scrollback_lines = draft.scrollback_lines;
+            cfg.terminal.shell = draft.shell.clone();
+            cfg.terminal.restore_session = draft.restore_session;
+            cfg.ai.enabled = draft.ai_enabled;
+            let _ = mgr.save();
+        }
+
+        self.show_toast("Settings saved");
+        log::info!("Settings applied from settings window");
     }
 
     /// Apply appearance changes immediately for live visual feedback.
@@ -1245,10 +1341,7 @@ impl DesktopApp {
                 self.active_session_mut().app_mut().terminal_mut().ris();
             }
             "settings.open" => {
-                if !self.settings.visible {
-                    self.load_settings_from_config();
-                }
-                self.settings.toggle();
+                self.pending_open_settings = true;
             }
             "theme.cycle" => {
                 self.active_session_mut()

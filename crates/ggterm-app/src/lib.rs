@@ -56,6 +56,7 @@ pub mod new_tab_menu;
 pub mod search;
 pub mod session;
 pub mod settings_ui;
+pub mod settings_window;
 pub mod shell_integration;
 pub mod smooth_scroll;
 pub mod snippets;
