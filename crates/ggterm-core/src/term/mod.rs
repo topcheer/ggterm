@@ -1697,6 +1697,13 @@ impl Perform for Terminal {
                             self.title = popped;
                         }
                     }
+                    21 => {
+                        // Report window title: OSC l <title> ST
+                        // xterm windowops — tmux queries this to detect the
+                        // terminal's title for session naming.
+                        let resp = format!("\x1b]l{}\x1b\\", self.title);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
                     _ => {}
                 }
             }
@@ -4843,6 +4850,20 @@ mod tests {
         assert!(
             s.contains("\x1b[2;1;0;0;0;0x"),
             "DECREQTPARM response wrong, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_csi_21t_title_query() {
+        // CSI 21t — report window title (tmux uses this).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]2;My Title\x1b\\"); // Set title via OSC 2
+        feed(&mut t, b"\x1b[21t"); // Query title
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("\x1b]lMy Title\x1b\\"),
+            "title report wrong, got: {s}"
         );
     }
 
