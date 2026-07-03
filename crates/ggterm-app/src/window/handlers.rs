@@ -1264,6 +1264,14 @@ impl DesktopApp {
                 let grid2 = self.sessions[self.active].app().grid();
                 self.search.toggle_case(grid2);
             }
+            PhysicalKey::Code(KeyCode::ArrowUp) => {
+                let grid2 = self.sessions[self.active].app().grid();
+                self.search.history_prev(grid2);
+            }
+            PhysicalKey::Code(KeyCode::ArrowDown) => {
+                let grid2 = self.sessions[self.active].app().grid();
+                self.search.history_next(grid2);
+            }
             _ => {
                 if let Key::Character(s) = &event.logical_key
                     && let Some(c) = s.chars().next()

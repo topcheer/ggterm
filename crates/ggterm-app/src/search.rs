@@ -27,6 +27,12 @@ pub struct SearchState {
     current_match: Option<usize>,
     /// Whether the last search was case-insensitive.
     pub case_insensitive: bool,
+    /// History of past search queries (most recent first).
+    history: Vec<String>,
+    /// Current position in history navigation (None = editing new query).
+    history_idx: Option<usize>,
+    /// Query text saved before navigating history, for restoring.
+    saved_query: String,
 }
 
 /// A single search match location.
@@ -49,6 +55,9 @@ impl SearchState {
             matches: Vec::new(),
             current_match: None,
             case_insensitive: true,
+            history: Vec::new(),
+            history_idx: None,
+            saved_query: String::new(),
         }
     }
 
@@ -62,10 +71,13 @@ impl SearchState {
 
     /// Close the search bar and clear state.
     pub fn close(&mut self) {
+        // Save query to history before clearing.
+        self.save_to_history();
         self.visible = false;
         self.query.clear();
         self.matches.clear();
         self.current_match = None;
+        self.history_idx = None;
     }
 
     /// Toggle the search bar visibility.
@@ -252,6 +264,63 @@ impl SearchState {
         } else {
             // Scroll so that the match row is visible.
             scrollback_len.saturating_sub(m.abs_row)
+        }
+    }
+
+    /// Save current query to search history (deduplicated, max 20 entries).
+    fn save_to_history(&mut self) {
+        let q = self.query.trim().to_string();
+        if q.is_empty() {
+            return;
+        }
+        self.history.retain(|h| h != &q);
+        self.history.insert(0, q);
+        self.history.truncate(20);
+    }
+
+    /// Navigate to the previous (older) search query in history.
+    /// Returns true if history was navigated (query changed).
+    pub fn history_prev(&mut self, grid: &Grid) -> bool {
+        if self.history.is_empty() {
+            return false;
+        }
+        match self.history_idx {
+            None => {
+                // Save current query, go to most recent history entry.
+                self.saved_query = self.query.clone();
+                self.history_idx = Some(0);
+            }
+            Some(i) => {
+                if i + 1 < self.history.len() {
+                    self.history_idx = Some(i + 1);
+                } else {
+                    return false; // Already at oldest entry
+                }
+            }
+        }
+        self.query = self.history[self.history_idx.unwrap()].clone();
+        self.execute_search(grid);
+        true
+    }
+
+    /// Navigate to the next (newer) search query in history.
+    /// Returns true if history was navigated.
+    pub fn history_next(&mut self, grid: &Grid) -> bool {
+        match self.history_idx {
+            Some(i) if i > 0 => {
+                self.history_idx = Some(i - 1);
+                self.query = self.history[i - 1].clone();
+                self.execute_search(grid);
+                true
+            }
+            Some(0) => {
+                // Restore the query being typed before history navigation.
+                self.history_idx = None;
+                self.query = self.saved_query.clone();
+                self.execute_search(grid);
+                true
+            }
+            _ => false,
         }
     }
 }
@@ -563,5 +632,70 @@ mod tests {
         assert!(!s.visible);
         assert!(s.query.is_empty());
         assert_eq!(s.match_count(), 0);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Search history tests
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn t_history_saved_on_close() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.open();
+        s.set_query("hello", &g);
+        s.close();
+        // Internal history is not directly accessible, but we can verify
+        // by reopening and navigating history.
+        s.open();
+        assert!(s.history_prev(&g));
+        assert_eq!(s.query, "hello");
+    }
+
+    #[test]
+    fn t_history_deduplication() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.open();
+        s.set_query("foo", &g);
+        s.close();
+        s.open();
+        s.set_query("bar", &g);
+        s.close();
+        s.open();
+        s.set_query("foo", &g); // duplicate
+        s.close();
+        s.open();
+        // Navigate history: most recent should be "foo" (moved to front)
+        s.history_prev(&g);
+        assert_eq!(s.query, "foo");
+        s.history_prev(&g);
+        assert_eq!(s.query, "bar");
+    }
+
+    #[test]
+    fn t_history_next_restores_saved_query() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.open();
+        s.set_query("old_query", &g);
+        s.close();
+        s.open();
+        s.type_char('x', &g);
+        assert_eq!(s.query, "x");
+        // Go to history, then come back
+        s.history_prev(&g);
+        assert_eq!(s.query, "old_query");
+        s.history_next(&g);
+        assert_eq!(s.query, "x"); // restored
+    }
+
+    #[test]
+    fn t_history_empty_returns_false() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.open();
+        assert!(!s.history_prev(&g));
+        assert!(!s.history_next(&g));
     }
 }
