@@ -353,6 +353,37 @@ impl CommandRegistry {
             category: "Settings".into(),
             shortcut: Some("Ctrl+0".into()),
         });
+        // Additional terminal commands
+        r.register(Command {
+            id: "terminal.select_all".into(),
+            label: "Select All".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+A".into()),
+        });
+        r.register(Command {
+            id: "terminal.paste".into(),
+            label: "Paste".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+V".into()),
+        });
+        r.register(Command {
+            id: "tab.reopen_closed".into(),
+            label: "Reopen Closed Tab".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+T".into()),
+        });
+        r.register(Command {
+            id: "split.close".into(),
+            label: "Close Pane".into(),
+            category: "Split".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "terminal.search".into(),
+            label: "Search in Scrollback".into(),
+            category: "Search".into(),
+            shortcut: Some("Ctrl+Shift+F".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),

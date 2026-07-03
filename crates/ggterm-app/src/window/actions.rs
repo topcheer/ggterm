@@ -1516,6 +1516,36 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            "terminal.select_all" => {
+                let grid = self.active_session().app().grid();
+                let range = crate::terminal_actions::select_all_range(grid);
+                self.selection
+                    .start(range.start_col as u16, range.start_row as u16);
+                self.selection
+                    .extend(range.end_col as u16, range.end_row as u16);
+                self.selection.finish();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            "terminal.paste" => {
+                self.paste_from_clipboard();
+            }
+            "tab.reopen_closed" => {
+                self.reopen_closed_tab();
+            }
+            "split.close" => {
+                self.active_session_mut().remove_active_pane();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            "terminal.search" => {
+                self.search.toggle();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
             _ => {
                 log::debug!("Unhandled command palette action: {}", id);
             }
