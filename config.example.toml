@@ -3,7 +3,8 @@
 # All fields are optional — missing keys use built-in defaults.
 
 [appearance]
-# Theme: "dark", "light", "dracula", "solarized-dark", "solarized-light", "gruvbox"
+# Theme: dark, light, dracula, solarized-dark, solarized-light, gruvbox,
+#         nord, tokyo-night, catppuccin-mocha
 theme = "dark"
 
 # Font family name (resolved by glyphon text shaping)
@@ -95,6 +96,9 @@ fullscreen = "F11"
 # Terminal actions
 clear = "Ctrl+Shift+K"
 reset = "Ctrl+Shift+R"
+
+# Copy current working directory to clipboard
+copy_cwd = "Ctrl+Shift+P"
 
 # Theme cycling
 cycle_theme = "Ctrl+Shift+T"
