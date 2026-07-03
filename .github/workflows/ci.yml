@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  FEATURES: "desktop ai plugin plugin-lua config-watch"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────
@@ -47,8 +48,8 @@ jobs:
             libegl1-mesa-dev
       - name: Clippy (default features)
         run: cargo clippy --workspace -- -D warnings
-      - name: Clippy (desktop + ai)
-        run: cargo clippy --workspace --features "desktop ai" -- -D warnings
+      - name: Clippy (full features)
+        run: cargo clippy --workspace --features "${{ env.FEATURES }}" -- -D warnings
 
   # ─────────────────────────────────────────────────────────────────────
   # Test — stable on Linux + macOS
@@ -77,11 +78,28 @@ jobs:
             libegl1-mesa-dev
       - name: Test (default features)
         run: cargo test --workspace
-      - name: Test (desktop + ai)
-        run: cargo test --workspace --features "desktop ai"
+      - name: Test (full features)
+        run: cargo test --workspace --features "${{ env.FEATURES }}"
 
   # ─────────────────────────────────────────────────────────────────────
-  # Release build — verify clean release compilation
+  # FFI tests — verify mobile FFI bridge compiles and tests pass
+  # ─────────────────────────────────────────────────────────────────────
+  ffi-test:
+    name: ffi test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test FFI (with SSH)
+        run: cargo test -p ggterm-ffi --features ssh --lib
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Release build — verify clean release compilation on all platforms
   # ─────────────────────────────────────────────────────────────────────
   build-release:
     name: build release (${{ matrix.os }})
@@ -93,6 +111,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +134,24 @@ jobs:
             libxcb-dri3-dev \
             libegl1-mesa-dev
       - name: Build release
-        run: cargo build --release --features "desktop ai" --target ${{ matrix.target }}
+        run: cargo build --release --features "${{ env.FEATURES }}" --target ${{ matrix.target }}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Flutter analyze — check mobile Dart code
+  # ─────────────────────────────────────────────────────────────────────
+  flutter-analyze:
+    name: flutter analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Analyze
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
 
   # ─────────────────────────────────────────────────────────────────────
   # Coverage — non-blocking code coverage report
@@ -135,7 +174,7 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Generate coverage
-        run: cargo tarpaulin --workspace --features "desktop ai" --out xml --skip-clean
+        run: cargo tarpaulin --workspace --features "${{ env.FEATURES }}" --out xml --skip-clean
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:

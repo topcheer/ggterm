@@ -12,8 +12,43 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
-# Secrets
+# Secrets — NEVER commit credentials
 .env
+.env.*
 *.pem
 *.key
+*.p12
+*.pfx
+*.cer
+*.crt
 secrets/
+# Code signing identities (macOS/Windows)
+*.mobileprovision
+*.certSigningRequest
+# Android signing
+*.keystore
+*.jks
+key.properties
+# CI/CD service account keys
+service-account*.json
+*-sa-key*.json
+
+# Build artifacts (release packaging)
+/dist/
+/artifacts/
+*.dmg
+*.deb
+*.rpm
+*.AppImage
+*.msi
+*.apk
+*.aab
+*.ipa
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/ios/Pods/
+mobile/android/.gradle/
+mobile/android/app/release/
+mobile/android/app/debug/
+mobile/build/

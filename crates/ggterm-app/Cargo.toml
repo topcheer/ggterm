@@ -67,3 +67,24 @@ ggterm-plugin = { path = "../ggterm-plugin" }
 [[bin]]
 name = "ggterm"
 required-features = ["desktop"]
+
+# ── cargo-deb: Linux .deb packaging ───────────────────────────────────
+# Install cargo-deb: cargo install cargo-deb
+# Build .deb:       cargo deb --features "desktop ai plugin plugin-lua config-watch"
+[package.metadata.deb]
+maintainer = "GGTerm Contributors"
+copyright = "2024, GGTerm Contributors"
+license-file = ["../../LICENSE", "0"]
+depends = "libxkbcommon0, libwayland-client0, libegl1, libx11-6"
+section = "utils"
+priority = "optional"
+extended-description = """\
+GGTerm is a GPU-accelerated, AI-native terminal emulator built in Rust.
+Features include multi-tab sessions, multi-pane splits, AI assistant,
+scrollback search, 9 themes, configurable keybindings, and Lua/WASM plugins."""
+assets = [
+    ["target/release/ggterm", "usr/bin/", "755"],
+    ["../../assets/ggterm.desktop", "usr/share/applications/", "644"],
+    ["../../assets/logo-256.png", "usr/share/icons/hicolor/256x256/apps/ggterm.png", "644"],
+    ["../../assets/logo-512.png", "usr/share/icons/hicolor/512x512/apps/ggterm.png", "644"],
+]

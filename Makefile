@@ -3,11 +3,15 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test clippy fmt bundle macos linux windows clean install
+.PHONY: build release test clippy fmt bundle macos linux windows clean install run ci-ci
 
 # Debug build
 build:
 	cargo build --features "$(TAGS)" --bin ggterm
+
+# Run
+run:
+	cargo run --features "$(TAGS)" --bin ggterm
 
 # Release build (optimized + stripped)
 release:

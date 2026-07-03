@@ -1,0 +1,143 @@
+name: Release (Mobile)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Version label for manual packaging runs"
+        required: false
+        default: "v0.0.0"
+
+concurrency:
+  group: release-mobile-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Android — build Rust FFI + Flutter APK
+  # ─────────────────────────────────────────────────────────────────────
+  android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup_ndk
+        with:
+          ndk-version: r26b
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Build Rust FFI for Android
+        run: |
+          cargo ndk -t arm64-v8a build -p ggterm-ffi --release --features ssh
+
+      - name: Copy FFI library to Android project
+        run: |
+          mkdir -p mobile/android/app/src/main/jniLibs/arm64-v8a
+          cp target/aarch64-linux-android/release/libggterm_ffi.so \
+            mobile/android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Build Flutter APK
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: mobile/build/app/outputs/flutter-apk/*.apk
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in mobile/build/app/outputs/flutter-apk/*.apk; do
+            gh release upload "${GITHUB_REF_NAME}" "$f" --clobber
+          done
+
+  # ─────────────────────────────────────────────────────────────────────
+  # iOS — build Rust FFI + Flutter IPA (simulator only without Apple Developer acct)
+  # ─────────────────────────────────────────────────────────────────────
+  ios:
+    name: Build iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build Rust FFI for iOS simulator
+        run: |
+          cargo build -p ggterm-ffi \
+            --target aarch64-apple-ios-sim \
+            --release
+
+      - name: Copy FFI library to iOS project
+        run: |
+          mkdir -p mobile/ios/RustLib
+          cp target/aarch64-apple-ios-sim/release/libggterm_ffi.a \
+            mobile/ios/RustLib/
+
+      - name: Build Flutter iOS (no-codesign)
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign
+
+      - name: Package IPA
+        run: |
+          mkdir -p dist
+          # Build .app to .ipa payload
+          APP_PATH="mobile/build/ios/iphoneos/Runner.app"
+          if [ -d "$APP_PATH" ]; then
+            mkdir -p dist/Payload
+            cp -r "$APP_PATH" dist/Payload/
+            cd dist && zip -r ggterm-ios.ipa Payload
+            cd ..
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: dist/*.ipa
+          if-no-files-found: warn
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*.ipa; do
+            [ -f "$f" ] && gh release upload "${GITHUB_REF_NAME}" "$f" --clobber
+          done

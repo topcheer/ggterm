@@ -2,539 +2,332 @@
 
 A GPU-accelerated, AI-native, cross-platform terminal emulator built in Rust.
 
+[![CI](https://github.com/topcheer/ggterm/actions/workflows/ci.yml/badge.svg)](https://github.com/topcheer/ggterm/actions/workflows/ci.yml)
+[![Release (Desktop)](https://github.com/topcheer/ggterm/actions/workflows/release-desktop.yml/badge.svg)](https://github.com/topcheer/ggterm/actions/workflows/release-desktop.yml)
+[![Release (Mobile)](https://github.com/topcheer/ggterm/actions/workflows/release-mobile.yml/badge.svg)](https://github.com/topcheer/ggterm/actions/workflows/release-mobile.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20iOS%20%7C%20Android-lightgrey.svg)](#download)
+
+> **1816+ tests passing** | 8 crates | ~59,000 lines of Rust
+
+## Download
+
+Pre-built binaries are available on the [Releases page](https://github.com/topcheer/ggterm/releases).
+
+| Platform | Format | Architecture |
+|----------|--------|-------------|
+| macOS | `.dmg` (universal) | Apple Silicon + Intel |
+| Linux | `.deb` / `.AppImage` | x86_64 |
+| Windows | `.zip` / `.msi` | x86_64 |
+| Android | `.apk` | arm64-v8a |
+| iOS | `.ipa` | arm64 (Apple Silicon simulator) |
+
+## Quick Start
+
+### Build from source
+
+```bash
+git clone https://github.com/topcheer/ggterm.git
+cd ggterm
+
+# Desktop — build and run
+cargo run --features "desktop ai plugin plugin-lua config-watch"
+
+# Or use the Makefile
+make build    # debug build
+make release  # optimized build
+make run      # build + run
+```
+
+### Binary CLI
+
+```bash
+# Default terminal
+ggterm
+
+# Custom size, shell, theme
+ggterm --cols 120 --rows 40 --shell /bin/zsh --theme solarized-dark --font-size 15
+
+# Verbose logging
+ggterm -v
+```
+
 ## Goals
 
-- **Fast**: wgpu GPU rendering, damage-only updates, zero-copy parsing
+- **Fast**: wgpu GPU rendering, damage-only updates, zero-copy VTE parsing
 - **AI-native**: shell integration (OSC 133), command blocks, AI suggestions
-- **Cross-platform**: macOS, Linux, Windows (desktop) + iOS, Android (mobile)
-- **Configurable**: TOML config with hot-reload, plugin system (Lua + WASM)
-- **Extensible**: WASM + Lua plugin system, hook into all I/O
-- **Customizable**: Multiple themes (dark, light, dracula) + multi-tab support
-- **Runnable**: Standalone binary with CLI args, shell integration, mouse + keyboard
+- **Cross-platform**: macOS, Linux, Windows (desktop) + iOS, Android (mobile via SSH)
+- **Configurable**: TOML config with hot-reload, 9 built-in themes, custom keybindings
+- **Extensible**: Lua + WASM plugin system with I/O hooks
+- **Production-ready**: session persistence, profiles, multi-pane splits, clipboard, search
 
 ## Architecture
 
-Core-Shell design: terminal logic in pure Rust, rendering decoupled.
-
 ```
-Platform Shell (wgpu / Flutter)
-    ↓
-AI Engine (LLM, shell markers)
-    ↓
-App Layer (Events, Tabs, Themes, AI Bridge)
-    ↓
-Terminal Core (VTE, Grid, PTY)  ← ggterm-core crate
-    ↓
-Platform Abstraction (ConPTY / POSIX)
+Platform Shell (wgpu / Flutter Mobile)
+         |
+   App Layer (Events, Tabs, Splits, Themes, AI Bridge, Config)
+         |
+Terminal Core (VTE Parser, Grid, PTY, Input Encoding)
+         |
+Platform Abstraction (POSIX PTY / ConPTY / SSH Transport)
 ```
 
 ### Crate Structure
 
-| Crate | Description |
-|-------|-------------|
-| `ggterm-core` | VTE parser, Grid model, Terminal state machine, PTY, CommandBlock |
-| `ggterm-render` | Renderer trait, ConsoleRenderer (ANSI), Theme system |
-| `ggterm-render-wgpu` | GPU renderer using wgpu + glyphon |
-| `ggterm-ai` | AI engine: context extraction, prompt templates, LLM client |
-| `ggterm-app` | App event loop, input encoding, tabs, themes, AI bridge, window |
+| Crate | LOC | Description |
+|-------|-----|-------------|
+| `ggterm-core` | ~8,000 | VTE parser, Grid model, Terminal state machine, PTY, transport trait |
+| `ggterm-render` | ~1,500 | Renderer trait, ConsoleRenderer (ANSI), Theme system (9 themes) |
+| `ggterm-render-wgpu` | ~3,500 | GPU renderer using wgpu + glyphon, SDF UI shaders |
+| `ggterm-ai` | ~2,000 | AI engine: context extraction, prompt templates, LLM streaming client |
+| `ggterm-app` | ~35,000 | Desktop app: winit event loop, window/tabs/splits, overlays, mouse, config |
+| `ggterm-ffi` | ~1,500 | C-ABI FFI bindings for Flutter mobile integration |
+| `ggterm-ssh` | ~1,000 | SSH transport via russh (password + key auth) |
+| `ggterm-plugin` | ~3,000 | Lua 5.4 + WASM plugin runtime with hook dispatch |
+
+For detailed design docs, see:
+- [Architecture & Command Navigation](docs/command-nav.md)
+- [Configuration Reference](docs/config.md)
 
 ## Features
 
-### Phase 1-4: Core Terminal
-- Full VTE parser (keyboard, mouse, paste, escape sequences)
-- Grid model with scrollback, CJK/emoji support
-- GPU-accelerated text rendering (wgpu + glyphon)
-- PTY integration (portable-pty)
-- Shell integration (OSC 133 command markers)
-- AI engine (OpenAI-compatible streaming, explain/suggest/error-help/nl2cmd)
+### Terminal Core
+- Full VTE parser (CSI, OSC, DCS, escape sequences, charsets)
+- Grid model with scrollback, CJK/emoji wide chars, combining marks
+- Alt-screen support (DECSET 47/1047/1049) with grid swap + cursor save
+- SGR attributes: bold, dim, italic, underline, strikethrough, blink, hidden
+- OSC 8 hyperlinks with visual rendering (blue + underline)
+- Dynamic colors via OSC 10/11/12 (fg/bg/cursor)
+- DECSCA/DECSED selective erase with protected cells
+- Synchronized output (DECSET 2026) and text reflow (DECSET 2027)
+- SGR pixel mouse mode (DECSET 1016)
 
-### Phase 5: Modern UI
-- **Themes**: 3 built-in themes (Dark, Light, Dracula) with hot-swap
-- **Tabs**: Multi-session terminal management with dirty tracking
-- **AI Bridge**: Background AI requests without blocking the terminal
-- **Extended Events**: Tab/theme/AI events in the main event loop
+### Desktop UI
+- **GPU Rendering**: wgpu + glyphon with DPI-aware per-run grid alignment
+- **Multi-Tab**: Ctrl+T/W, Alt+1-9, Ctrl+Tab, drag-to-reorder, tab rename
+- **Multi-Pane Splits**: horizontal/vertical splits, drag-to-resize, pane zoom (Ctrl+Shift+Z)
+- **9 Themes**: dark, light, dracula, solarized-dark/light, gruvbox, nord, tokyo-night, catppuccin-mocha
+- **Search**: floating search bar with case toggle + match highlighting (Ctrl+Shift+F)
+- **Clipboard**: Ctrl+Shift+V paste, OSC 52 sync, middle-click paste, select-to-copy
+- **Font Zoom**: Ctrl+=/-/0 or Ctrl+Shift+Wheel (VS Code style)
+- **Background Opacity**: configurable transparency (Ctrl+Shift+Alt+[/])
+- **Settings Panel**: live config editing with validation (Ctrl+,)
+- **Command Palette**: fuzzy search 30+ commands (Ctrl+Shift+P)
+- **Status Bar**: cursor pos, cwd, profile, broadcast mode, bell indicator (Ctrl+Shift+B)
+- **Notifications**: OSC 9/777 desktop notifications + bell sound (Ctrl+Shift+M)
+- **Session Persistence**: save/restore tab+pane layout (opt-in via config)
 
-### Phase 6: Plugin System
-- **Lua Runtime**: Lua 5.4 plugins with hooks (input, output, render, command)
-- **WASM Runtime**: WebAssembly plugins via Wasmoth
-- **Plugin Manager**: Lifecycle, permissions, loading/unloading
+### AI Integration
+- Shell integration auto-injection (OSC 133) for bash/zsh/fish
+- AI assistant overlay: explain, suggest, error help, natural-language-to-command
+- OpenAI-compatible streaming LLM client
+- Command block navigation (Ctrl+Shift+Up/Down)
+- Command history sidebar (Ctrl+Shift+Y)
 
-### Phase 8: Production
-- **Config System**: TOML config (`~/.ggterm/config.toml`) with hot-reload
-- **Config Watch**: File-system watcher for live config changes
-- **Error Handling**: Unified error types via thiserror
-- **Command Navigation**: OSC 133 block navigation with status bar
+### Mobile (Flutter)
+- Cross-compiled Rust FFI (C-ABI) with dart:ffi bindings
+- SSH remote terminal (password + key authentication)
+- Local shell on Android (proot) and iOS (proot-distro)
+- Echo transport for testing without SSH server
+- 30fps render loop with RGB cell rendering + cursor block
+- Custom keyboard bar with Ctrl/Esc/Tab/Arrow keys
 
-### Phase 9: Desktop Terminal
-- **Binary CLI**: `ggterm` binary with clap (--cols, --rows, --shell, --theme, --font-size, -v)
-- **Shell Integration Auto-Injection**: OSC 133 hooks auto-injected for bash/zsh/fish
-- **Dynamic Window Title**: OSC 0/2 sequences set the window title
-- **Mouse Support**: SGR mouse (1006), wheel scroll, click-drag selection, clipboard copy
-- **Keyboard Refinement**: Full keymap (Ctrl/Alt/Shift/F-keys/nav keys, Ctrl+punctuation)
-- **PTY Enhancement**: Env vars (GGTERM=1), spawn args, shell integration wiring
-- **Config Startup Loading**: `~/.ggterm/config.toml` loaded on launch, CLI overrides config
-
-### Phase 10: Multi-Tab & Integration
-- **Multi-Tab Terminal**: `Vec<TabSession>` architecture, Ctrl+T/W (open/close), Alt+1-9 (switch), Ctrl+Tab (cycle)
-- **Clipboard Integration**: Ctrl+Shift+V (paste), OSC 52 clipboard sync, middle-click paste
-- **AI Assistant Overlay**: Ctrl+Shift+E/S/H/N (explain/suggest/help/nl2command), Esc dismiss
-- **Scrollback Search**: Ctrl+Shift+F (search bar), Enter/Shift+Enter (next/prev match)
-
-### Phase 11: Usability & Polish
-- **Font Zoom**: Ctrl+= / Ctrl+- / Ctrl+0 (increase/decrease/reset font size)
-- **Terminal Utilities**: Ctrl+Shift+C (copy), Ctrl+Shift+K (clear+scrollback), Ctrl+Shift+R (reset), Ctrl+Shift+A (select all)
-- **Fullscreen**: F11 toggle fullscreen, Ctrl+Shift+Enter toggle maximized
-- **Theme Rendering**: Active theme colors applied to GPU renderer, Ctrl+Shift+T (cycle themes)
-- **Bell Support**: BEL character detection with visual bell flash
-
-### Phase 12-15: Rendering Quality, Terminal Completeness, Config UX
-- **Alt-Screen**: DECSET 47/1047/1049 with grid swap + cursor save/restore
-- **SGR Advanced**: DIM, HIDDEN, STRIKETHROUGH rendering; OSC 8 hyperlinks
-- **Dynamic Colors**: OSC 10/11/12 fg/bg/cursor color overrides
-- **6 Themes**: dark, light, dracula, solarized-dark, solarized-light, gruvbox
-- **Config Hot-Reload**: theme/font/scrollback switching without restart
-- **DPI-Aware Rendering**: per-run grid alignment, multi-platform fonts (Menlo/DejaVu/Cascadia)
-- **Background Opacity**: configurable transparency (0-100%) with Ctrl+Shift+Alt+[/] adjustment
-- **Combining Characters**: zero-width marks for accented chars and emoji modifiers
-- **URL Detection**: Cmd+Click opens URLs, hover detection
-- **Custom Keybindings**: TOML [keybindings] with 13 configurable actions
-
-### Phase 16-19: Desktop Integration & Polish
-- **Overlay Rendering**: GPU-accelerated tab bar, settings panel, about dialog overlays
-- **Window Splits**: Ctrl+Shift+D (horizontal split), Ctrl+Shift+\ (vertical split), Ctrl+Shift+[/] (pane focus), Ctrl+Shift+Alt+arrows (adjust ratio)
-- **Application Menu**: MenuAction enum (16 variants) with thread-safe action queue
-- **Settings Panel**: 7 configurable fields (theme, font, scrollback, shell, AI settings), Ctrl+, toggle
-- **Tab Bar**: `1:zsh* | 2:vim | 3:logs!` format with dirty indicators
-- **About Dialog**: Version, git hash, build date, tech stack
-- **Native Menu Data**: action_to_tag/tag_to_action mapping, accelerator parsing (macOS)
-- **Platform Packaging**: Cargo.bundle.toml, Makefile (dist/install/run/package), Info.plist
-
-### Phase 20-21: Multi-Pane Rendering & Session Persistence
-- **Multi-Pane Viewport Rendering**: Each split pane renders to its own GPU viewport with scissor clipping and pixel-offset text positioning
-- **Pane Borders**: Active pane highlighted with bright border, inactive panes dimmed
-- **Mouse Pane Focus**: Click or scroll in any pane to switch focus automatically
-- **Drag-to-Resize**: Click and drag split separator lines to adjust pane ratios interactively
-- **Session Persistence**: Tab + pane layout auto-saved to `~/.ggterm/session.json` on exit, restored on startup
-- **Config Validation**: font_size, cell_width, cell_height, scrollback, and theme validated at startup with clear error messages
-- **Dirty Rect Optimization**: Panes with unchanged content skip glyphon text shaping for better performance
-
-## Status
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 1 | Terminal Core (VTE, Grid, PTY, Rendering) | Done |
-| 2 | VT Compatibility (alt screen, CSI, charsets, scroll) | Done |
-| 3 | Shell Integration (OSC 133, CommandBlock) | Done |
-| 4 | AI Engine (context, prompts, LLM client) | Done |
-| 5 | Modern UI (themes, tabs, AI bridge) | Done |
-| 6 | Plugin System (WASM + Lua) | Done |
-| 7 | Mobile (Flutter + SSH) | Planned |
-| 8 | Production (config, docs, thiserror) | Done |
-| 9 | Desktop Terminal (binary, mouse, keyboard, resize) | Done |
-| 10 | Multi-Tab & Integration (tabs, clipboard, AI overlay, search) | Done |
-| 11 | Usability & Polish (font zoom, utilities, fullscreen, themes, bell) | Done |
-| 12 | Rendering Quality & VT Compliance (theme bg, underline, focus events) | Done |
-| 13 | Terminal Completeness (SGR attrs, OSC 8 hyperlinks, keybindings, status bar) | Done |
-| 14 | Search Highlighting, Config Keybindings, Module Extraction | Done |
-| 15 | Alt-Screen Grid Swap, New Themes, Robustness | Done |
-| 16 | Hot-Reload, Search Highlights, Window Title Enhancement | Done |
-| 17 | Dynamic Colors, Combining Chars, URL Click, Status Bar Toggle | Done |
-| 18 | DPI-Aware Rendering, Per-Run Grid Alignment, Multi-Platform | Done |
-| 19 | Desktop UI: Splits, Overlay Rendering, Settings, Menu, About | Done |
-| 20 | Multi-Pane Rendering, Pane Borders, Mouse Pane Focus | Done |
-| 21 | Session Persistence, Config Validation, Drag-to-Resize, Dirty Rect | Done |
-| 22 | Session Lifecycle, Profiles, OSC 7 CWD, Window Extraction | Done |
-| 23 | Cursor Blink, Config Import/Export, Plugin Activation, Tab Reorder | Done |
-| 24 | Synchronized Output, Text Reflow, DECSCA/DECSED, Debug Overlay, Notifications | Done |
-
-## Usage
-
-### Headless (testing)
-```rust
-use ggterm_app::App;
-use ggterm_app::event::AppEvent;
-
-let (mut app, tx) = App::new(80, 24);
-tx.send(AppEvent::PtyBytes(b"Hello World".to_vec())).unwrap();
-app.pump();
-assert!(app.output().contains("Hello World"));
-```
-
-### Desktop (GPU rendering)
-```rust
-use ggterm_app::window::{DesktopApp, DesktopConfig};
-
-let config = DesktopConfig::default()
-    .with_title("GGTerm")
-    .with_size(120, 36);
-
-DesktopApp::run(config).expect("failed to run terminal");
-```
-
-### AI Integration (feature = "ai")
-```rust
-use ggterm_app::ai_bridge::{AIBridge, AIRequest};
-use ggterm_ai::{AIContext, Action};
-
-let mut bridge = AIBridge::with_mock("This command lists files.");
-let ctx = AIContext::from_terminal(&terminal);
-bridge.request(AIRequest::new(Action::Explain, ctx));
-
-// Poll for result in event loop
-if let Some(response) = bridge.poll_result() {
-    println!("AI: {:?}", response.result);
-}
-```
+### Plugin System
+- Lua 5.4 runtime with hooks (input, output, render, command)
+- WASM plugin runtime (via Wasmoth)
+- Plugin manager: lifecycle, permissions, loading/unloading
+- Config-driven activation (`[plugins]` in config.toml)
 
 ## Configuration
 
-GGTerm reads settings from `~/.ggterm/config.toml` with hot-reload support.
-See [`config.example.toml`](config.example.toml) for a complete example.
+GGTerm reads `~/.ggterm/config.toml` (or `%USERPROFILE%\.ggterm\config.toml` on Windows)
+with hot-reload support. See [`config.example.toml`](config.example.toml) for all options.
 
 ```toml
 [appearance]
-theme = "dark"
+theme = "dark"               # 9 built-in themes
 font_family = "monospace"
 font_size = 14
 cell_width = 8
 cell_height = 16
+background_opacity = 1.0     # 0.0 (transparent) to 1.0 (opaque)
+padding = 8                  # content padding in pixels
 
 [terminal]
 scrollback_lines = 10000
 shell = "/bin/zsh"
+bell_mode = "visual"         # none | visual | sound
+restore_session = false      # restore tabs/splits from last session
 
 [ai]
 enabled = false
 api_endpoint = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
 
+[plugins]
+enabled = false
+directory = "~/.ggterm/plugins"
+
 [keybindings]
+# All customizable — see "Custom Keybindings" below
 new_tab = "Ctrl+T"
 close_tab = "Ctrl+W"
 paste = "Ctrl+Shift+V"
-copy = "Ctrl+Shift+C"
-search = "Ctrl+Shift+F"
-zoom_in = "Ctrl+="
-zoom_out = "Ctrl+-"
-zoom_reset = "Ctrl+0"
-fullscreen = "F11"
-clear = "Ctrl+Shift+K"
-reset = "Ctrl+Shift+R"
-cycle_theme = "Ctrl+Shift+T"
+# ...
 ```
-
-> **Note:** The following shortcuts are **not** customizable:
-> `Ctrl+Shift+D` (split horizontal), `Ctrl+Shift+\` (split vertical),
-> `Ctrl+Shift+[` / `Ctrl+Shift+]` (pane focus), `Ctrl+Shift+Alt+Arrows` (adjust ratio),
-> `Ctrl+Shift+B` (status bar), `Ctrl+,` (settings), `Ctrl+Shift+Enter` (maximize),
-> `Alt+1-9` / `Ctrl+Tab` (tab navigation).
-
-CLI options (e.g. `--theme`, `--shell`) override config file values.
-
-### Custom Keybindings
-
-All keyboard shortcuts are customizable via the `[keybindings]` section in
-`~/.ggterm/config.toml`. Each key is optional — omit one to keep the default.
-
-**Format:** `"Modifier+Modifier+Key"`
-
-- **Modifiers**: `Ctrl`, `Shift`, `Alt` (case-insensitive, any order)
-- **Key**: Letter (`A`-`Z`), digit (`0`-`9`), punctuation (`=`, `-`), or function key (`F1`-`F24`)
-
-Examples:
-
-```toml
-[keybindings]
-# Remap paste to Ctrl+Shift+Insert
-paste = "Ctrl+Shift+Insert"
-
-# Remap new tab to Ctrl+N
-new_tab = "Ctrl+N"
-
-# Use F2 for fullscreen
-fullscreen = "F2"
-```
-
-**Available actions:**
-
-| Action | Default | Description |
-|--------|---------|-------------|
-| `new_tab` | Ctrl+T | Open a new tab |
-| `close_tab` | Ctrl+W | Close current tab |
-| `paste` | Ctrl+Shift+V | Paste from clipboard |
-| `copy` | Ctrl+Shift+C | Copy selection to clipboard |
-| `search` | Ctrl+Shift+F | Toggle scrollback search |
-| `zoom_in` | Ctrl+= | Increase font size |
-| `zoom_out` | Ctrl+- | Decrease font size |
-| `zoom_reset` | Ctrl+0 | Reset font size |
-| `fullscreen` | F11 | Toggle fullscreen |
-| `clear` | Ctrl+Shift+K | Clear screen + scrollback |
-| `reset` | Ctrl+Shift+R | Reset terminal (RIS) |
-| `cycle_theme` | Ctrl+Shift+T | Cycle through themes |
 
 ### Themes
 
-Six built-in themes are available. Set via config or cycle at runtime with
-Ctrl+Shift+T:
-
 | Theme | Description |
 |-------|-------------|
-| `dark` | Default dark theme (black background) |
-| `light` | Light theme (white background) |
+| `dark` | Default dark theme |
+| `light` | Light theme |
 | `dracula` | Dracula color scheme |
 | `solarized-dark` | Solarized dark palette |
 | `solarized-light` | Solarized light palette |
 | `gruvbox` | Gruvbox community theme |
-
-```toml
-[appearance]
-theme = "dracula"
-```
-
-### Config File Location
-
-GGTerm looks for the config file at:
-
-- **Linux/macOS**: `~/.ggterm/config.toml`
-- **Windows**: `%USERPROFILE%\.ggterm\config.toml`
-
-Changes are hot-reloaded automatically (no restart needed).
-
-### Session Persistence
-
-GGTerm automatically saves your tab and pane layout to
-`~/.ggterm/session.json` when the terminal closes, and restores it
-on the next launch. This includes:
-
-- Number of tabs and their titles
-- Split pane structure (orientation + ratio for each split)
-- Per-pane shell program and working directory
-- Active tab and active pane focus
-
-To start fresh, simply delete the file:
-
-```bash
-rm ~/.ggterm/session.json
-```
-
-## Command Navigation
-
-Jump between command blocks with keyboard shortcuts. GGTerm auto-injects
-OSC 133 shell integration hooks when spawning shells — no manual setup needed.
-
-For shells that need manual integration:
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+Up` | Previous command block |
-| `Ctrl+Shift+Down` | Next command block |
-
-See [`docs/command-nav.md`](docs/command-nav.md) for details.
-
-## Binary Usage
-
-```bash
-# Build the binary
-cargo build --features desktop
-
-# Default 80x24 terminal
-./target/debug/ggterm
-
-# Custom dimensions and shell
-./target/debug/ggterm --cols 120 --rows 40 --shell /bin/zsh
-
-# Custom theme and font size
-./target/debug/ggterm --theme solarized --font-size 15
-
-# Show help
-./target/debug/ggterm --help
-
-# Verbose logging
-./target/debug/ggterm -v
-```
-
-### CLI Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--cols <N>` | 80 | Initial terminal column count |
-| `--rows <N>` | 24 | Initial terminal row count |
-| `--shell <PATH>` | `$SHELL` | Shell program to execute |
-| `--title <TITLE>` | "GGTerm" | Initial window title |
-| `--theme <NAME>` | dark | Theme: dark, light, solarized |
-| `--font-size <N>` | 14 | Font size in pixels |
-| `-v` | — | Verbose logging (env_logger) |
-
-CLI options override `~/.ggterm/config.toml` values.
+| `nord` | Nord color palette |
+| `tokyo-night` | Tokyo Night theme |
+| `catppuccin-mocha` | Catppuccin Mocha flavor |
 
 ## Keyboard Shortcuts
 
-> All shortcuts marked with (*) are customizable via `[keybindings]` in `~/.ggterm/config.toml`.
-> See [Custom Keybindings](#custom-keybindings) below.
+> Shortcuts marked (*) are customizable via `[keybindings]` in config.toml.
 
-### Tab Management
+### Tab & Pane Management
+
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+T` | New tab (*) |
-| `Ctrl+W` | Close tab (*) |
+| `Ctrl+W` | Close tab |
 | `Alt+1-9` | Switch to tab N |
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle tabs |
+| `Ctrl+Shift+PageUp/Down` | Reorder tab left/right |
+| `Ctrl+Shift+D` | Split horizontal |
+| `Ctrl+Shift+\` | Split vertical |
+| `Ctrl+Shift+[` / `]` | Focus prev/next pane |
+| `Ctrl+Shift+Z` | Toggle pane zoom |
+| `Ctrl+Shift+Alt+Arrows` | Adjust split ratio |
+| `Drag separator` | Resize split |
 
-### Terminal Utilities
+### Terminal & Clipboard
+
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+C` | Copy selection to clipboard (*) |
+| `Ctrl+Shift+C` | Copy selection (*) |
 | `Ctrl+Shift+V` | Paste from clipboard (*) |
 | `Ctrl+Shift+K` | Clear screen + scrollback (*) |
 | `Ctrl+Shift+R` | Reset terminal (RIS) (*) |
-| `Ctrl+Shift+A` | Select all text |
+| `Ctrl+Shift+U` | Open URL at cursor |
+| `Ctrl+Click` | Open file path / URL |
 
 ### Font & Display
+
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+=` | Zoom in (increase font size) (*) |
-| `Ctrl+-` | Zoom out (decrease font size) (*) |
-| `Ctrl+0` | Reset font size (*) |
-| `Ctrl+Shift+Wheel` | Zoom in/out with mouse wheel |
-| `Ctrl+Shift+Alt+[` | Decrease background opacity |
-| `Ctrl+Shift+Alt+]` | Increase background opacity |
-| `Ctrl+Shift+T` | Cycle through themes (*) |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset (*) |
+| `Ctrl+Shift+Wheel` | Mouse wheel font zoom |
+| `Ctrl+Shift+Alt+[` / `]` | Opacity down / up |
+| `Ctrl+Shift+T` | Cycle themes (*) |
 | `F11` | Toggle fullscreen (*) |
 | `Ctrl+Shift+Enter` | Toggle maximized |
 
-### AI Assistant
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+E` | Explain current command |
-| `Ctrl+Shift+S` | Suggest improvements |
-| `Ctrl+Shift+H` | Help with error |
-| `Ctrl+Shift+N` | Natural language to command |
-| `Esc` | Dismiss AI overlay |
-
 ### Search & Navigation
+
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+F` | Toggle scrollback search (*) |
-| `Enter` | Next search match |
-| `Shift+Enter` | Previous search match |
-| `Esc` | Close search bar |
+| `Ctrl+Shift+F` | Toggle search bar (*) |
 | `Ctrl+Shift+Up/Down` | Navigate command blocks |
 
-### Window Splits & Panels
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+D` | Split horizontal (left \| right) |
-| `Ctrl+Shift+\` | Split vertical (top / bottom) |
-| `Ctrl+Shift+]` | Focus next pane |
-| `Ctrl+Shift+[` | Focus previous pane |
-| `Ctrl+Shift+Alt+Arrow Keys` | Adjust split ratio |
-| `Drag Separator` | Drag split line to resize panes |
-| `Click in Pane` | Focus pane under cursor |
-| `Scroll in Pane` | Scroll pane under cursor |
-| `Ctrl+Shift+B` | Toggle status bar |
-| `Ctrl+,` | Toggle settings overlay |
-| `Esc` | Close settings / about dialog |
+### AI & Productivity
 
-### System & Effects
 | Shortcut | Action |
 |----------|--------|
+| `Ctrl+Shift+E/S/H/N` | AI explain / suggest / help / nl2cmd |
 | `Ctrl+Shift+P` | Command palette |
-| `Ctrl+Shift+/` | Keyboard shortcut help overlay |
+| `Ctrl+Shift+/` | Keyboard shortcut help |
 | `Ctrl+Shift+G` | Toggle perf monitor |
 | `Ctrl+Shift+M` | Toggle sound |
-| `Ctrl+Shift+L` | Quick shell switcher |
-| `Ctrl+Shift+Y` | Toggle command history sidebar |
-| `Ctrl+Shift+Alt+B` | Cycle broadcast mode (off/panes/tabs) |
-| `Ctrl+Shift+Alt+W` | Cycle workspaces |
-| `Shift+Wheel` | Synchronized scroll across all panes |
-| `Right-click Tab` | Tab context menu (close/duplicate/next/prev) |
-| `Double-click Tab` | Rename tab |
-| `Click Tab` | Switch to tab |
-| `Drag Scrollbar` | Jump to scroll position |
+| `Ctrl+Shift+B` | Toggle status bar |
+| `Ctrl+Shift+Y` | Toggle command history |
+| `Ctrl+,` | Toggle settings panel |
+| `Ctrl+Shift+Alt+B` | Cycle broadcast mode |
+| `Ctrl+Shift+Alt+N` | Reset to single pane |
+| `Ctrl+Shift+Alt+P` | Cycle profiles |
+| `Ctrl+Shift+Alt+E` | Export config to clipboard |
+
+### Custom Keybindings
+
+```toml
+[keybindings]
+paste = "Ctrl+Shift+Insert"    # Remap paste
+new_tab = "Ctrl+N"             # Remap new tab
+fullscreen = "F2"              # Use F2 for fullscreen
+```
+
+**Format:** `"Modifier+Key"` (modifiers: Ctrl, Shift, Alt; key: A-Z, 0-9, punctuation, F1-F24)
 
 ## Building
 
 ```bash
-# Headless (no GPU required)
-cargo build
+# Quick build (debug)
+make build
 
-# Desktop (wgpu GPU rendering)
-cargo build --features desktop
+# Optimized release
+make release
 
-# With AI + plugins
-cargo build --features "desktop ai plugin plugin-lua"
+# Run tests
+make test
 
-# All features
-cargo build --features "desktop ai plugin plugin-lua plugin-wasm"
+# Lint
+make clippy
+make fmt
 
-# Run the terminal!
-cargo run --features desktop
-
-# With CLI options
-cargo run --features desktop -- --cols 120 --rows 40 --shell /bin/zsh
-
-# Run tests with all features
-cargo test --features "desktop ai plugin plugin-lua config-watch" --workspace
+# Platform packaging
+make macos       # .app bundle
+make linux       # .deb package
+make appimage    # AppImage
+make windows     # .msi installer
 ```
 
-## Status
+## Development
 
-**1740+ tests passing** (7 ignored integration tests).
+### Project Structure
 
-| Feature | Status | Tests |
-|---------|--------|-------|
-| VTE Parser | Done | 58 |
-| Grid Model | Done | 116 |
-| Terminal State Machine | Done | 141 |
-| PTY Integration | Done | 16 |
-| Renderer (Console + GPU) | Done | 49 |
-| App + Events + Input | Done | 295 |
-| Plugin System (Lua + WASM) | Done | 132 |
-| Shell Integration (OSC 133) | Done | 12 |
-| Command Navigation | Done | 32 |
-| Config System (TOML + Hot-reload) | Done | 15 |
-| Config File Watch | Done | 10 |
-| Error Handling (thiserror) | Done | — |
-| Binary CLI (clap) | Done | — |
-| Shell Integration Auto-Injection | Done | 11 |
-| Mouse Support (SGR + Selection) | Done | 23 |
-| Keyboard Refinement | Done | 63 |
-| PTY Enhancement (env + args) | Done | 4 |
-| Config Startup Loading | Done | 7 |
-| Resize Enhancement (debounce) | Done | 26 |
-| Multi-Tab (TabSession) | Done | 21 |
-| Clipboard (OSC 52 + Paste) | Done | 15 |
-| AI Overlay | Done | 26 |
-| Scrollback Search | Done | 23 |
-| Terminal Utility Actions | Done | 12 |
-| Font Zoom | Done | 14 |
-| Bell Support | Done | 5 |
-| Status Bar | Done | 8 |
-| Config-Driven Keybindings | Done | 8 |
-| Alt-Screen Grid Swap | Done | — |
-| Dynamic Colors (OSC 10/11) | Done | 8 |
-| Combining Characters | Done | 5 |
-| URL Click & Hover | Done | — |
-| DPI-Aware Rendering | Done | 3 |
-| Splits (SplitTree + PaneSession) | Done | 52 |
-| Tab Bar Overlay | Done | 16 |
-| Settings UI | Done | 21 |
-| About Dialog | Done | 17 |
-| Overlay Rendering | Done | 6 |
-| Native Menu Data Layer | Done | 13 |
-| Multi-Pane Rendering | Done | 3 |
-| Pane Border Overlays | Done | — |
-| Mouse Pane Focus | Done | — |
-| Session Persistence | Done | 27 |
-| Config Validation | Done | — |
-| Drag-to-Resize Splits | Done | — |
-| Dirty Rect Partial Repaint | Done | — |
-| Status Bar Error Indicator | Done | 7 |
-| Tab Close Button + Middle-click | Done | — |
-| CWD in Status Bar | Done | — |
-| CPU Idle Optimization | Done | — |
-| Configurable Session Restore | Done | — |
+```
+ggterm/
+  crates/
+    ggterm-core/         # Terminal engine (VTE, Grid, PTY)
+    ggterm-render/       # Rendering trait + theme system
+    ggterm-render-wgpu/  # GPU renderer (wgpu + glyphon)
+    ggterm-ai/           # AI engine + LLM client
+    ggterm-app/          # Desktop app (winit + window + tabs + splits)
+    ggterm-ffi/          # Mobile FFI (C-ABI for Flutter)
+    ggterm-ssh/          # SSH transport (russh)
+    ggterm-plugin/       # Lua + WASM plugins
+  mobile/                # Flutter mobile app (iOS + Android)
+  assets/                # Icons, .desktop, Info.plist
+  shell/                 # Shell integration scripts (bash/zsh/fish)
+  docs/                  # Design docs
+  scripts/               # Release build scripts
+```
+
+### CI/CD
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| [`ci.yml`](.github/workflows/ci.yml) | push/PR | fmt, clippy, test, build (3 platforms), FFI test, Flutter analyze |
+| [`release-desktop.yml`](.github/workflows/release-desktop.yml) | tag `v*` | Build macOS/Linux/Windows binaries + GitHub Release |
+| [`release-mobile.yml`](.github/workflows/release-mobile.yml) | tag `v*` | Build Android APK + iOS IPA with Rust FFI cross-compile |
+
+### Conventions
+
+- No `unwrap()` in production code — use `expect()` with context or proper error handling
+- Run `cargo fmt --all` before every commit
+- Commit messages: `feat:` / `fix:` / `refactor:` / `docs:` / `test:` / `chore:`
+- Always include `Co-Authored-By: ggcode <noreply@ggcode.dev>` trailer
 
 ## License
 
