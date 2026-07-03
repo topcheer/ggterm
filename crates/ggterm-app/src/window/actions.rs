@@ -744,9 +744,12 @@ impl DesktopApp {
             for row in y0..=y1 {
                 for col in x0..=x1 {
                     if let Some(cell) = grid.display_cell(col as usize, row as usize) {
-                        text.push(cell.ch);
-                        for &c in &cell.combining {
-                            text.push(c);
+                        // Skip wide-character spacer cells.
+                        if !cell.is_wide_spacer() {
+                            text.push(cell.ch);
+                            for &c in &cell.combining {
+                                text.push(c);
+                            }
                         }
                     }
                 }
@@ -778,6 +781,11 @@ impl DesktopApp {
         // Uses display_cell to correctly handle scrollback scroll position.
         let cell_text = |x: u16, y: u16, grid: &ggterm_core::Grid| -> String {
             if let Some(cell) = grid.display_cell(x as usize, y as usize) {
+                // Skip wide-character spacer cells (continuation of a 2-cell-wide char).
+                // The lead cell already contains the full character; the spacer is empty.
+                if cell.is_wide_spacer() {
+                    return String::new();
+                }
                 let mut s = String::new();
                 s.push(cell.ch);
                 for &c in &cell.combining {
