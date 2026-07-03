@@ -1592,6 +1592,37 @@ impl DesktopApp {
                             self.pending_open_settings = true;
                             return;
                         }
+                        // Linux/Windows: window control buttons (minimize/maximize/close).
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            let ctrl_layout = crate::titlebar::x11::compute_layout(
+                                self.tab_layout_width(),
+                                self.tab_font_size(),
+                            );
+                            if let Some(btn) = crate::titlebar::x11::hit_test(&ctrl_layout, px, py)
+                            {
+                                use crate::titlebar::WindowControlButton;
+                                match btn {
+                                    WindowControlButton::Close => {
+                                        if let Some(ref window) = self.window {
+                                            window.close();
+                                        }
+                                    }
+                                    WindowControlButton::Minimize => {
+                                        if let Some(ref window) = self.window {
+                                            window.set_minimized(true);
+                                        }
+                                    }
+                                    WindowControlButton::Maximize => {
+                                        self.maximized = !self.maximized;
+                                        if let Some(ref window) = self.window {
+                                            window.set_maximized(self.maximized);
+                                        }
+                                    }
+                                }
+                                return;
+                            }
+                        }
                         // Close button (x) on a tab.
                         if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
                             if tab_idx < layout.tabs.len() {

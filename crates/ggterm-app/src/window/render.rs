@@ -370,6 +370,63 @@ impl DesktopApp {
                     (180, 185, 200)
                 },
             });
+
+            // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
+            #[cfg(not(target_os = "macos"))]
+            {
+                let layout = crate::titlebar::x11::compute_layout(screen_w, bar_h);
+                let px = self.cursor_pos.0 as f32;
+                let py = self.cursor_pos.1 as f32;
+
+                for (glyph, &(bx, by, bsize), hover_color, normal_color) in [
+                    (
+                        "\u{2014}",
+                        &layout.minimize,
+                        (255, 200, 80u8),
+                        (180, 180, 180u8),
+                    ), // ─ minimize
+                    (
+                        "\u{25A1}",
+                        &layout.maximize,
+                        (100, 200, 100u8),
+                        (180, 180, 180u8),
+                    ), // □ maximize
+                    (
+                        "\u{2715}",
+                        &layout.close,
+                        (255, 100, 100u8),
+                        (180, 180, 180u8),
+                    ), // ✕ close
+                ] {
+                    let hovered = px >= bx && px <= bx + bsize && py >= by && py <= by + bsize;
+
+                    // Button background on hover.
+                    if hovered {
+                        let bg = match glyph {
+                            "\u{2715}" => (0.8, 0.15, 0.15, 0.8), // close → red
+                            "\u{25A1}" => (0.15, 0.5, 0.15, 0.5), // maximize → green
+                            _ => (0.3, 0.3, 0.3, 0.5),            // minimize → gray
+                        };
+                        ui_rects.push(ggterm_render_wgpu::UiRect {
+                            x: bx - 4.0,
+                            y: by - 4.0,
+                            w: bsize + 8.0,
+                            h: bsize + 8.0,
+                            color: bg,
+                            radius: 4.0,
+                            stroke_width: 0.0,
+                        });
+                    }
+
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: glyph.to_string(),
+                        left: bx,
+                        top: by,
+                        color: if hovered { hover_color } else { normal_color },
+                    });
+                }
+            }
+            // Close of `if self.tab_bar.visible` block.
         }
 
         // ── P27-A: Text selection highlight ────────────────────────────

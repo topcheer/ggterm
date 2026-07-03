@@ -244,10 +244,16 @@ impl TabBarState {
         #[cfg(not(target_os = "macos"))]
         let left_margin = TAB_BAR_PADDING_H;
 
-        // Available width = surface - left margin - right padding - both buttons area
+        // Linux/Windows: reserve space on the right for window control buttons.
+        #[cfg(not(target_os = "macos"))]
+        let right_margin = TAB_BAR_PADDING_H + 14.0 * 3.0 + 8.0 * 2.0 + 12.0; // 3 buttons + gaps + padding
+        #[cfg(target_os = "macos")]
+        let right_margin = TAB_BAR_PADDING_H;
+
+        // Available width = surface - left margin - right area - buttons
         let buttons_width = NEW_TAB_BUTTON_SIZE * 2.0   // + button + gear button
-            + TAB_GAP * 3.0; // gap before +, between + and gear, after gear
-        let available_width = surface_width - left_margin - TAB_BAR_PADDING_H - buttons_width;
+            + TAB_GAP * 3.0;
+        let available_width = surface_width - left_margin - right_margin - buttons_width;
         let tab_count = self.tabs.len() as f32;
 
         // Each tab gets an equal share of the full available width.
