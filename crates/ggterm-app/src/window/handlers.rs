@@ -1753,9 +1753,22 @@ impl DesktopApp {
                 // P17-C: Cmd+Click (macOS) or Ctrl+Click (other) opens hovered URL.
                 let open_link = (cfg!(target_os = "macos") && self.mods.super_key)
                     || (!cfg!(target_os = "macos") && self.mods.ctrl);
-                if open_link && let Some((url, _, _, _)) = self.hovered_link.take() {
-                    crate::mouse::open_url(&url);
-                    return;
+                if open_link {
+                    // First try OSC 8 hyperlink or detected URL.
+                    if let Some((url, _, _, _)) = self.hovered_link.take() {
+                        crate::mouse::open_url(&url);
+                        return;
+                    }
+                    // Then try file path detection (compiler error lines).
+                    let grid = self.sessions[self.active].app().grid();
+                    if let Some(display_row) = grid.display_row(row as usize) {
+                        let line_text: String = display_row.cells.iter().map(|c| c.ch).collect();
+                        if let Some(path) = crate::mouse::find_file_path(&line_text, col as usize) {
+                            crate::mouse::open_file_path(&path);
+                            self.show_toast(format!("Opening: {}", path));
+                            return;
+                        }
+                    }
                 }
 
                 self.button_held = None;

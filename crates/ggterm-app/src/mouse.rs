@@ -361,6 +361,146 @@ pub fn open_url(url: &str) {
     }
 }
 
+/// Detect a file path at the given position in a line.
+///
+/// Returns the path string and its start column if a file path pattern
+/// is found. Supports:
+/// - Relative paths: `src/main.rs`, `./lib/utils.ts`
+/// - Absolute paths: `/usr/local/bin/foo`
+/// - Paths with line numbers: `src/main.rs:42`, `file.go:10:5`
+/// - Home-relative paths: `~/projects/foo/src/lib.rs:100`
+///
+/// The path must contain at least one `/` or start with `~` to avoid
+/// false positives on plain filenames.
+pub fn find_file_path(line: &str, col: usize) -> Option<String> {
+    let chars: Vec<char> = line.chars().collect();
+    if col >= chars.len() {
+        return None;
+    }
+
+    // File path characters: letters, digits, path separators, dots, dashes, etc.
+    let is_path_char = |c: char| {
+        c.is_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | '~' | '+' | ':' | '\\')
+    };
+
+    // If cursor is on whitespace, nothing to detect.
+    if !is_path_char(chars[col]) {
+        return None;
+    }
+
+    // Scan left for the start of the token.
+    let mut start = col;
+    while start > 0 && is_path_char(chars[start - 1]) {
+        start -= 1;
+    }
+
+    // Scan right for the end.
+    let mut end = col;
+    while end + 1 < chars.len() && is_path_char(chars[end + 1]) {
+        end += 1;
+    }
+
+    let token: String = chars[start..=end].iter().collect();
+
+    // Must contain '/' or start with '~' to be a plausible path.
+    // Bare filenames like "main.rs" are too ambiguous.
+    if !token.contains('/') && !token.starts_with('~') {
+        return None;
+    }
+
+    // Must have a plausible file extension or be a directory path.
+    // Strip line:col suffix for validation.
+    let path_part = token.split(':').next().unwrap_or(&token);
+    if path_part.is_empty() {
+        return None;
+    }
+
+    Some(token)
+}
+
+/// Open a file path in the user's editor.
+///
+/// Parses `path:line:col` format and opens the file using `$VISUAL`,
+/// `$EDITOR`, or a platform default.
+pub fn open_file_path(path_spec: &str) {
+    // Split path:line:col
+    let parts: Vec<&str> = path_spec.splitn(3, ':').collect();
+    let file_path = parts[0];
+    let line = parts.get(1).and_then(|s| s.parse::<u32>().ok());
+    let col = parts.get(2).and_then(|s| s.parse::<u32>().ok());
+
+    // Expand ~ to home directory.
+    let expanded = if file_path.starts_with('~') {
+        if let Some(home) = std::env::var_os("HOME") {
+            format!(
+                "{}{}",
+                home.to_string_lossy(),
+                file_path.strip_prefix('~').unwrap_or(file_path)
+            )
+        } else {
+            file_path.to_string()
+        }
+    } else {
+        file_path.to_string()
+    };
+
+    // Determine editor command.
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| {
+            if cfg!(target_os = "macos") {
+                "nano".to_string()
+            } else {
+                "vi".to_string()
+            }
+        });
+
+    // Split editor command (may contain args like "code --wait").
+    let mut cmd_parts = editor.split_whitespace();
+    let cmd = cmd_parts.next().unwrap_or("vi");
+    let extra_args: Vec<&str> = cmd_parts.collect();
+
+    // Build the command.
+    let mut command = std::process::Command::new(cmd);
+    command.args(&extra_args);
+
+    // Add +line:col argument for editors that support it (vim, nano, etc.)
+    if let Some(ln) = line {
+        let arg = if let Some(cn) = col {
+            format!("+{}:{}", ln, cn)
+        } else {
+            format!("+{}", ln)
+        };
+        command.arg(arg);
+    }
+
+    command.arg(&expanded);
+
+    // Run in a new terminal window on macOS so it doesn't block.
+    #[cfg(target_os = "macos")]
+    {
+        // Try opening in a new Terminal.app window.
+        let script = format!(
+            "tell application \"Terminal\" to do script \"{} {}\"",
+            editor, expanded
+        );
+        let _ = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = command.spawn();
+    }
+
+    log::info!(
+        "Opening file: {} (editor: {}, line: {:?})",
+        expanded,
+        cmd,
+        line
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,5 +824,49 @@ mod tests {
     fn test_pixel_to_cell_negative() {
         // Negative coords clamp to 0
         assert_eq!(pixel_to_cell(-5.0, -5.0, 8.0, 16.0), (0, 0));
+    }
+
+    // ── File path detection ──────────────────────────────────────────
+
+    #[test]
+    fn test_find_file_path_relative() {
+        let line = "error in src/main.rs:42:10";
+        let path = find_file_path(line, 14).unwrap(); // cursor on 'm' in main.rs
+        assert_eq!(path, "src/main.rs:42:10");
+    }
+
+    #[test]
+    fn test_find_file_path_absolute() {
+        let line = "Error: /usr/local/bin/foo.go:10";
+        let path = find_file_path(line, 10).unwrap(); // cursor in path
+        assert_eq!(path, "/usr/local/bin/foo.go:10");
+    }
+
+    #[test]
+    fn test_find_file_path_home() {
+        let line = "See ~/projects/ggterm/src/lib.rs:100";
+        let path = find_file_path(line, 10).unwrap(); // cursor on 'p'
+        assert!(path.starts_with("~/projects/"));
+        assert!(path.contains("lib.rs:100"));
+    }
+
+    #[test]
+    fn test_find_file_path_no_slash_rejected() {
+        // Bare filename without directory should not be detected.
+        let line = "error in main.rs:42";
+        assert!(find_file_path(line, 10).is_none());
+    }
+
+    #[test]
+    fn test_find_file_path_whitespace_rejected() {
+        let line = "some text with spaces";
+        assert!(find_file_path(line, 5).is_none());
+    }
+
+    #[test]
+    fn test_find_file_path_line_only() {
+        let line = "  at ./lib/parser.rs";
+        let path = find_file_path(line, 8).unwrap(); // cursor on 'l' in lib
+        assert_eq!(path, "./lib/parser.rs");
     }
 }

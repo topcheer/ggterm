@@ -7,8 +7,8 @@
       "rule": "Always use read_file to get exact content including whitespace before calling edit_file, never reconstruct old_text from memory",
       "match_pattern": "old_text not found.*whitespace differs|first line matches but whitespace",
       "fix_hint": "Re-read the file with read_file and copy the exact text verbatim, preserving all indentation and spacing",
-      "hit_count": 9,
-      "last_seen": "2026-07-03T13:55:25.621916+08:00",
+      "hit_count": 10,
+      "last_seen": "2026-07-03T18:26:11.115487+08:00",
       "created_at": "2026-07-02T17:21:48.375482+08:00"
     },
     {
