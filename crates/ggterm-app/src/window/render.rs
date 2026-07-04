@@ -2584,11 +2584,40 @@ impl DesktopApp {
 
                 let max_lines = ((panel_h - 14.0 - cell_h * 2.0) / cell_h).floor() as usize;
                 for (i, line) in lines.iter().enumerate().take(max_lines.max(3)) {
+                    // Markdown-aware coloring: code blocks and inline code get distinct colors.
+                    let is_error_line = line.starts_with("Error:");
+                    let is_code_block_delim = line.trim_start().starts_with("```");
+                    let is_command_line = line.starts_with("$ ");
+                    let is_header = line.starts_with("# ") || line.starts_with("## ");
+
+                    let color = if is_error_line {
+                        (248, 113, 113) // red
+                    } else if is_code_block_delim {
+                        (80, 85, 95) // dim grey for fence markers
+                    } else if is_command_line {
+                        (130, 200, 255) // cyan for commands
+                    } else if is_header {
+                        (180, 190, 210) // bright for headers
+                    } else if text_color == (200, 205, 220) {
+                        // Normal text — check for inline code markers.
+                        (200, 205, 220)
+                    } else {
+                        text_color
+                    };
+
+                    // Strip markdown artifacts for display.
+                    let display = if is_code_block_delim {
+                        // Don't show ``` markers, show a separator line instead.
+                        "─".repeat(((panel_w - 32.0) / cell_w) as usize)
+                    } else {
+                        line.clone()
+                    };
+
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                        text: line.clone(),
+                        text: display,
                         left: panel_x + 16.0,
                         top: content_y + cell_h * i as f32,
-                        color: text_color,
+                        color,
                     });
                 }
             }
