@@ -133,12 +133,21 @@ impl GpuContext {
             wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Timeout => {
                 // Surface needs reconfiguration; skip this frame.
+                surface.configure(&self.device, &self.config);
                 return Ok(());
             }
-            wgpu::CurrentSurfaceTexture::Lost
-            | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => {
-                return Err(RenderFrameError::Surface("surface lost or invalid".into()));
+            wgpu::CurrentSurfaceTexture::Lost => {
+                // Surface was lost — reconfigure and skip this frame.
+                // Next frame should succeed with the fresh surface.
+                surface.configure(&self.device, &self.config);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                // Window is not visible (minimized/covered) — skip frame silently.
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(RenderFrameError::Surface("surface validation error".into()));
             }
         };
 
@@ -213,12 +222,18 @@ impl GpuContext {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
             wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Timeout => {
+                surface.configure(&self.device, &self.config);
                 return Ok(());
             }
-            wgpu::CurrentSurfaceTexture::Lost
-            | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => {
-                return Err(RenderFrameError::Surface("surface lost or invalid".into()));
+            wgpu::CurrentSurfaceTexture::Lost => {
+                surface.configure(&self.device, &self.config);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(RenderFrameError::Surface("surface validation error".into()));
             }
         };
 
