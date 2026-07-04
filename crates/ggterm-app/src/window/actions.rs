@@ -1684,6 +1684,12 @@ impl DesktopApp {
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
+            "terminal.export_html" => {
+                self.export_html();
+            }
+            "terminal.import_ssh" => {
+                self.import_ssh_hosts();
+            }
             "settings.open" => {
                 self.pending_open_settings = true;
             }

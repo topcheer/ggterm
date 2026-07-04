@@ -215,6 +215,18 @@ impl CommandRegistry {
             category: "Terminal".into(),
             shortcut: Some("Ctrl+Shift+Alt+S".into()),
         });
+        r.register(Command {
+            id: "terminal.export_html".into(),
+            label: "Export Terminal as HTML".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+E".into()),
+        });
+        r.register(Command {
+            id: "terminal.import_ssh".into(),
+            label: "Import SSH Hosts from ~/.ssh/config".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+H".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),
