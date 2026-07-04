@@ -421,6 +421,9 @@ pub struct Terminal {
     /// Pending OSC 52 clipboard set request (base64-decoded bytes).
     /// The app layer reads this and writes to the system clipboard.
     pub(crate) pending_clipboard_set: Option<Vec<u8>>,
+    /// True when a program queried the clipboard via OSC 52 (?).
+    /// The window layer should respond with the clipboard contents.
+    pub(crate) pending_clipboard_query: bool,
     /// Current OSC 8 hyperlink URI (applied to new cells in put_printable_char).
     pub(crate) current_hyperlink: Option<String>,
     /// Bell flag — set when BEL (0x07) is received (P11-E).
@@ -602,6 +605,7 @@ impl Terminal {
             cursor_style: CursorStyle::default(),
             response_buffer: Vec::new(),
             pending_clipboard_set: None,
+            pending_clipboard_query: false,
             current_hyperlink: None,
             bell: false,
             alt_saved_grid: None,
@@ -1281,6 +1285,14 @@ impl Terminal {
     /// to the system clipboard.
     pub fn take_pending_clipboard_set(&mut self) -> Option<Vec<u8>> {
         self.pending_clipboard_set.take()
+    }
+
+    /// Check and clear the OSC 52 clipboard query flag.
+    ///
+    /// Returns true if a program queried the clipboard via `OSC 52;?c`.
+    /// The window layer should respond with `OSC 52;c;<base64> ST`.
+    pub fn take_pending_clipboard_query(&mut self) -> bool {
+        std::mem::take(&mut self.pending_clipboard_query)
     }
 
     /// Take the bell flag (P11-E).
@@ -2267,19 +2279,40 @@ impl Perform for Terminal {
             }
             Some(52) => {
                 // OSC 52 — Clipboard manipulation.
-                // Format: OSC 52 ; <selector> ; <base64-data> ST
+                // Format: OSC 52 ; <selector>[;<base64-data>] ST
                 // <selector>: 'c' = clipboard, 'p' = primary selection.
                 // With data: set clipboard.  Without data (empty): clear clipboard.
+                // With '?' as data (e.g. "c;?"): query clipboard.
                 let payload = parts.next().unwrap_or("");
-                let base64_data = if let Some(idx) = payload.find(';') {
-                    &payload[idx + 1..]
+                // Check for query: '?' prefix on selector (e.g. "?c")
+                if payload.starts_with('?') {
+                    self.pending_clipboard_query = true;
+                } else if payload.contains(';') {
+                    let parts2: Vec<&str> = payload.splitn(2, ';').collect();
+                    if parts2.len() == 2 && parts2[1] == "?" {
+                        // Alternative query format: selector;?
+                        self.pending_clipboard_query = true;
+                    } else {
+                        // Normal set/clear with selector;data
+                        let base64_data = parts2.get(1).copied().unwrap_or("");
+                        if base64_data.is_empty() {
+                            self.pending_clipboard_set = Some(Vec::new());
+                        } else if let Some(decoded) = Self::decode_base64(base64_data) {
+                            self.pending_clipboard_set = Some(decoded);
+                        }
+                    }
                 } else {
-                    payload
-                };
-                if base64_data.is_empty() {
-                    self.pending_clipboard_set = Some(Vec::new());
-                } else if let Some(decoded) = Self::decode_base64(base64_data) {
-                    self.pending_clipboard_set = Some(decoded);
+                    // Normal set/clear without selector prefix
+                    let base64_data = if let Some(idx) = payload.find(';') {
+                        &payload[idx + 1..]
+                    } else {
+                        payload
+                    };
+                    if base64_data.is_empty() {
+                        self.pending_clipboard_set = Some(Vec::new());
+                    } else if let Some(decoded) = Self::decode_base64(base64_data) {
+                        self.pending_clipboard_set = Some(decoded);
+                    }
                 }
             }
             Some(133) => {
@@ -3106,6 +3139,21 @@ mod tests {
         feed(&mut t, b"\x1b]52;c;aGVsbG8=\x07");
         assert!(t.take_pending_clipboard_set().is_some());
         // Second take should return None
+        assert!(t.take_pending_clipboard_set().is_none());
+    }
+
+    #[test]
+    fn t_osc_52_query() {
+        let mut t = Terminal::new(80, 24);
+        // OSC 52 clipboard query: OSC 52;c;? ST
+        feed(&mut t, b"\x1b]52;c;?\x07");
+        assert!(t.take_pending_clipboard_query(), "query flag should be set");
+        // Second take clears it
+        assert!(
+            !t.take_pending_clipboard_query(),
+            "query flag should be cleared"
+        );
+        // Should NOT trigger clipboard set
         assert!(t.take_pending_clipboard_set().is_none());
     }
 
