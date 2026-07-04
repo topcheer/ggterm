@@ -5782,6 +5782,41 @@ mod tests {
     }
 
     #[test]
+    fn t_decrqm_ansi_auto_repeat() {
+        // ANSI mode 8 (ARM) — auto-repeat, should be permanently set (3)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[8$p");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("8;3$y"),
+            "Auto-repeat should be permanently set, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_decrqm_x10_mouse() {
+        // Private mode 9 (X10 mouse)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?9$p");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("?9;2$y"),
+            "X10 mouse should be reset by default, got: {s}"
+        );
+        // Enable it
+        feed(&mut t, b"\x1b[?9h");
+        feed(&mut t, b"\x1b[?9$p");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("?9;1$y"),
+            "X10 mouse should be set after enable, got: {s}"
+        );
+    }
+
+    #[test]
     fn t_title_push_pop() {
         // Set title → push → change → pop → restore
         let mut t = Terminal::new(80, 24);
