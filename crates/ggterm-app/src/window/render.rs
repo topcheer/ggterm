@@ -2057,12 +2057,21 @@ impl DesktopApp {
                 let thumb_y = bar_track_y + scroll_from_top * (bar_track_h - thumb_h);
 
                 // Track (faint background).
+                // Theme-aware: use white on dark themes, dark on light themes.
+                let theme_ref = self.sessions[self.active].app().theme();
+                let is_light_theme =
+                    matches!(theme_ref.default_bg, ggterm_core::Color::Rgb(r, _, _) if r > 180);
+                let (track_rgb, thumb_rgb) = if is_light_theme {
+                    ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+                } else {
+                    ((1.0, 1.0, 1.0), (1.0, 1.0, 1.0))
+                };
                 ui_rects.push(ggterm_render_wgpu::UiRect {
                     x: bar_x,
                     y: bar_track_y,
                     w: bar_w,
                     h: bar_track_h,
-                    color: (1.0, 1.0, 1.0, 0.04),
+                    color: (track_rgb.0, track_rgb.1, track_rgb.2, 0.04),
                     radius: 3.0,
                     stroke_width: 0.0,
                 });
@@ -2080,7 +2089,7 @@ impl DesktopApp {
                     y: thumb_y,
                     w: bar_w,
                     h: thumb_h,
-                    color: (1.0, 1.0, 1.0, thumb_alpha),
+                    color: (thumb_rgb.0, thumb_rgb.1, thumb_rgb.2, thumb_alpha),
                     radius: 3.0,
                     stroke_width: 0.0,
                 });
