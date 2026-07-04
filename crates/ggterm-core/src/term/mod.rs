@@ -6060,4 +6060,88 @@ mod tests {
         feed(&mut t, b"\x1b8");
         assert_eq!((t.cursor().0, t.cursor().1), (0, 0));
     }
+
+    // ===== Robustness / edge case tests =====
+
+    #[test]
+    fn t_empty_terminal_feed() {
+        // Feeding zero bytes should not panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"");
+        assert_eq!(t.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn t_partial_escape_sequence() {
+        // Partial ESC sequence at end of input should not panic.
+        // The VTE parser maintains state across feed() calls.
+        let mut t = Terminal::new(80, 24);
+        let mut p = crate::vte::Parser::new();
+        p.feed(b"hello\x1b[3", &mut t);
+        p.feed(b"1m", &mut t);
+        // Should have processed the SGR 31 (red foreground)
+        assert_eq!(t.fg, Color::Indexed(1));
+    }
+
+    #[test]
+    fn t_nul_byte_ignored() {
+        // NUL bytes should be silently ignored.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"AB\x00CD");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_resize_to_minimum() {
+        // Resizing to 1x1 should not panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello World");
+        t.resize(1, 1);
+        assert_eq!(t.grid().width(), 1);
+        assert_eq!(t.grid().height(), 1);
+    }
+
+    #[test]
+    fn t_grow_terminal() {
+        // Growing terminal should not lose content.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC");
+        t.resize(20, 5);
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn test_osc_with_invalid_utf8() {
+        // OSC with invalid UTF-8 should not panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]0;\xff\xfe\x1b\\");
+        // Should not crash; title may contain replacement chars
+    }
+
+    #[test]
+    fn t_multiple_reset() {
+        // Multiple RIS resets should be safe.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[31mHELLO\x1b[2J\x1b[H");
+        t.ris();
+        t.ris();
+        t.ris();
+        assert_eq!(t.cursor(), (0, 0));
+        assert_eq!(t.fg, Color::Default);
+    }
+
+    #[test]
+    fn test_csi_with_many_params() {
+        // CSI with many parameters should not panic.
+        let mut t = Terminal::new(80, 24);
+        let params: String = (0..50).map(|i| format!("{};", i)).collect();
+        let seq = format!("\x1b[{}m", params); // SGR with 50 params
+        feed(&mut t, seq.as_bytes());
+        // Should not crash
+    }
 }
