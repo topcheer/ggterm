@@ -301,6 +301,15 @@ impl TabSession {
         }
     }
 
+    /// Clear content_dirty on all panes' grids after a successful render.
+    /// Without this, `any_pane_dirty()` always returns true, causing
+    /// continuous redraws and 100% CPU usage when idle.
+    pub fn clear_content_dirty(&mut self) {
+        for pane in self.panes.iter_mut().flatten() {
+            pane.app.grid_mut().clear_dirty();
+        }
+    }
+
     /// Write bytes to the active pane's PTY.
     pub fn write_to_pty(&mut self, bytes: &[u8]) {
         if let Some(ref mut pty) = self.active_pane_mut().pty

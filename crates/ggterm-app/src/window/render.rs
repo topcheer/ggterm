@@ -2329,6 +2329,10 @@ impl DesktopApp {
 
             // P21-D: Clear prepare flags after render.
             self.sessions[active].clear_prepare_flags();
+            // Clear content_dirty to prevent 100% CPU on idle.
+            // Without this, any_pane_dirty() always returns true and
+            // the idle sleep in about_to_wait is dead code.
+            self.sessions[active].clear_content_dirty();
         }
 
         // P19-C: Update tab bar display data.

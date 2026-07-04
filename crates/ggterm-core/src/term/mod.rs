@@ -1514,10 +1514,11 @@ impl Perform for Terminal {
             b'H' | b'f' => {
                 let row = Self::param(params, 0, 1) as usize;
                 let col = Self::param(params, 1, 1) as usize;
-                // Origin mode: CUP is relative to scroll region top
+                // Origin mode: CUP is relative to scroll region top,
+                // and cursor is clamped to the scroll region.
                 let actual_row = if self.modes.origin {
-                    let (top, _) = self.grid.scroll_region();
-                    top + row.saturating_sub(1)
+                    let (top, bottom) = self.grid.scroll_region();
+                    (top + row.saturating_sub(1)).min(bottom.saturating_sub(1))
                 } else {
                     row.saturating_sub(1)
                 };
@@ -1562,6 +1563,47 @@ impl Perform for Terminal {
                     }
                     _ => {}
                 }
+            }
+            // DECSEL — selective erase in line (CSI ? Ps K)
+            // Must come BEFORE regular EL to take priority when `?` prefix is present.
+            b'K' if is_private => {
+                let mode = params.first().copied().unwrap_or(0);
+                let width = self.grid.width();
+                let (cx, cy) = (self.cursor.x, self.cursor.y);
+                match mode {
+                    0 => {
+                        // Erase from cursor to end of line (non-protected only)
+                        for c in cx..width {
+                            if let Some(cell) = self.grid.cell_mut(c, cy)
+                                && !cell.flags.contains(CellFlags::PROTECTED)
+                            {
+                                *cell = Cell::blank();
+                            }
+                        }
+                    }
+                    1 => {
+                        // Erase from start of line to cursor (non-protected only)
+                        for c in 0..=cx.min(width.saturating_sub(1)) {
+                            if let Some(cell) = self.grid.cell_mut(c, cy)
+                                && !cell.flags.contains(CellFlags::PROTECTED)
+                            {
+                                *cell = Cell::blank();
+                            }
+                        }
+                    }
+                    2 => {
+                        // Erase entire line (non-protected only)
+                        for c in 0..width {
+                            if let Some(cell) = self.grid.cell_mut(c, cy)
+                                && !cell.flags.contains(CellFlags::PROTECTED)
+                            {
+                                *cell = Cell::blank();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                self.grid_mut().mark_row_dirty(cy);
             }
             b'K' => {
                 let mode = params.first().copied().unwrap_or(0);
@@ -4116,6 +4158,21 @@ mod tests {
     }
 
     #[test]
+    fn t_origin_mode_cup_clamps_to_scroll_region() {
+        let mut t = Terminal::new(80, 24);
+        // Set scroll region to rows 5-15 (0-based: 4-14)
+        feed(&mut t, b"\x1b[5;15r");
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        // CUP to row 100 — should clamp to scroll bottom (row 14)
+        feed(&mut t, b"\x1b[100;1H");
+        assert_eq!(
+            t.cursor().1,
+            14,
+            "Origin mode CUP should clamp to scroll region bottom"
+        );
+    }
+
+    #[test]
     fn t_ed_mode3_clear_scrollback() {
         let mut t = Terminal::new(80, 4);
         // Fill visible screen, then scroll to create scrollback
@@ -4802,6 +4859,41 @@ mod tests {
                 .flags
                 .contains(CellFlags::PROTECTED)
         );
+    }
+
+    #[test]
+    fn t_decsel_preserves_protected() {
+        let mut t = Terminal::new(10, 3);
+        // Set protected, print "AB", then unprotected, print "CD"
+        feed(&mut t, b"\x1b[1\"qAB\x1b[0\"qCD");
+        // DECSEL mode 2: erase entire line (non-protected only)
+        feed(&mut t, b"\x1b[?2K");
+        // Protected cells "AB" should survive
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        // Non-protected "CD" should be erased
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_decsel_from_cursor() {
+        let mut t = Terminal::new(10, 3);
+        // Print "ABCDE" at cols 0-4
+        feed(&mut t, b"ABCDE");
+        // Overwrite col 2 with protected "X"
+        feed(&mut t, b"\x1b[1;3H"); // move to col 2 (0-based)
+        feed(&mut t, b"\x1b[1\"qX\x1b[0\"q"); // protected X
+        // Move cursor to col 3 (0-based)
+        feed(&mut t, b"\x1b[1;4H");
+        // DECSEL mode 0: erase from cursor to end of line
+        feed(&mut t, b"\x1b[?0K");
+        // Cols 0-2 should survive (before cursor)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X'); // protected survived
+        // Cols 3-4 should be erased
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ');
     }
 
     // ===== P24-E: OSC 9 / OSC 777 notification tests =====
