@@ -17,7 +17,8 @@ thiserror.workspace = true
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
 
 [features]
-default = []
+default = ["http"]
 http = ["dep:reqwest"]
+ai = ["http"]
 
 [dev-dependencies]
