@@ -21,6 +21,7 @@ libc = "0.2"
 default = []
 ssh = ["dep:ggterm-ssh"]
 ai = ["dep:ggterm-ai"]
+p2p = ["dep:ggterm-p2p"]
 
 [dependencies.ggterm-ssh]
 path = "../ggterm-ssh"
@@ -28,4 +29,8 @@ optional = true
 
 [dependencies.ggterm-ai]
 path = "../ggterm-ai"
+optional = true
+
+[dependencies.ggterm-p2p]
+path = "../ggterm-p2p"
 optional = true

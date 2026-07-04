@@ -7,6 +7,11 @@
 pub mod api;
 #[cfg(target_os = "android")]
 pub mod local_shell;
+#[cfg(feature = "p2p")]
+pub mod p2p;
+#[cfg(not(feature = "p2p"))]
+#[path = "p2p_stubs.rs"]
+pub mod p2p;
 pub mod transport;
 
 use ggterm_core::{Cell, Color, Grid, Parser, Terminal};

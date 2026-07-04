@@ -32,11 +32,31 @@ static SESSIONS: OnceLock<Mutex<HashMap<u32, MobileSession>>> = OnceLock::new();
 static NEXT_ID: OnceLock<Mutex<u32>> = OnceLock::new();
 static LAST_ERROR: OnceLock<Mutex<String>> = OnceLock::new();
 
-fn sessions() -> &'static Mutex<HashMap<u32, MobileSession>> {
+/// Create a new session and return its ID (used by p2p module).
+pub(crate) fn create_session(cols: usize, rows: usize) -> u32 {
+    let id = next_id();
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    map.insert(
+        id,
+        MobileSession {
+            handle: TerminalHandle::new(cols.max(1), rows.max(1)),
+            transport: None,
+        },
+    );
+    id
+}
+
+/// Access the last error storage (for p2p module).
+#[allow(dead_code)]
+pub(crate) fn last_error_storage() -> &'static Mutex<String> {
+    LAST_ERROR.get_or_init(|| Mutex::new(String::new()))
+}
+
+pub(crate) fn sessions() -> &'static Mutex<HashMap<u32, MobileSession>> {
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn next_id() -> u32 {
+pub(crate) fn next_id() -> u32 {
     let counter = NEXT_ID.get_or_init(|| Mutex::new(1));
     let mut id = counter.lock().unwrap_or_else(|e| e.into_inner());
     let val = *id;
@@ -44,7 +64,7 @@ fn next_id() -> u32 {
     val
 }
 
-fn set_error(msg: impl Into<String>) {
+pub(crate) fn set_error(msg: impl Into<String>) {
     let storage = LAST_ERROR.get_or_init(|| Mutex::new(String::new()));
     *storage.lock().unwrap_or_else(|e| e.into_inner()) = msg.into();
 }
