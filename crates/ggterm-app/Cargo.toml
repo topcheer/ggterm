@@ -34,6 +34,8 @@ plugin-lua = ["plugin", "ggterm-plugin?/lua"]
 plugin-wasm = ["plugin", "ggterm-plugin?/wasm"]
 # Config hot-reload via file system watching
 config-watch = ["dep:notify"]
+# P2P terminal sharing (desktop shares to mobile via iroh/QUIC)
+p2p = ["dep:ggterm-p2p", "dep:qrcode"]
 
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
@@ -61,6 +63,10 @@ notify = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 
+# P2P sharing (optional — enabled by `p2p` feature)
+ggterm-p2p = { path = "../ggterm-p2p", optional = true }
+qrcode = { version = "0.14", optional = true }
+
 [dev-dependencies]
 ggterm-plugin = { path = "../ggterm-plugin" }
 
@@ -78,7 +84,7 @@ license-file = ["../../LICENSE", "0"]
 depends = "libxkbcommon0, libwayland-client0, libegl1, libx11-6"
 section = "utils"
 priority = "optional"
-extended-description = """\
+extended-description = """
 GGTerm is a GPU-accelerated, AI-native terminal emulator built in Rust.
 Features include multi-tab sessions, multi-pane splits, AI assistant,
 scrollback search, 9 themes, configurable keybindings, and Lua/WASM plugins."""

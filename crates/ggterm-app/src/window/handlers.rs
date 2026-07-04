@@ -141,6 +141,15 @@ impl DesktopApp {
             return;
         }
 
+        // Close P2P share overlay on Escape.
+        #[cfg(feature = "p2p")]
+        if self.p2p_share.visible
+            && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
+        {
+            self.toggle_p2p_share();
+            return;
+        }
+
         // ── P14-D: Config-driven keybinding dispatch ──
         // All configurable actions are resolved through check_keybinding().
         // The resolved_keybindings map is populated from ConfigManager at
@@ -178,6 +187,12 @@ impl DesktopApp {
             // Ctrl+Shift+Alt+W → close all other tabs
             if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "w" {
                 self.close_other_tabs();
+                return;
+            }
+            // Ctrl+Shift+Alt+Q → toggle P2P terminal sharing
+            #[cfg(feature = "p2p")]
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "q" {
+                self.toggle_p2p_share();
                 return;
             }
             // Ctrl+W → close tab (also Cmd+W on macOS)

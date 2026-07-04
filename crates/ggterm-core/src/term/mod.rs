@@ -457,6 +457,9 @@ pub struct Terminal {
     /// Maps color index → (R, G, B). Programs like base16-shell use this
     /// to change the terminal's color scheme.
     pub(crate) palette_overrides: HashMap<u8, (u8, u8, u8)>,
+    /// Real cell dimensions in physical pixels (width, height).
+    /// Set by the renderer after font measurement.
+    pub(crate) cell_dimensions: Option<(u32, u32)>,
 }
 
 /// Parse an OSC 7 working directory URI.
@@ -612,6 +615,7 @@ impl Terminal {
             remote_host: None,
             mark_row: None,
             palette_overrides: HashMap::new(),
+            cell_dimensions: None,
         }
     }
 
@@ -812,6 +816,22 @@ impl Terminal {
     /// Return the scrollback mark row (from OSC 1337 SetMark).
     pub fn mark_row(&self) -> Option<usize> {
         self.mark_row
+    }
+
+    /// Set the real cell dimensions in physical pixels (width, height).
+    /// Called by the window layer after font measurement.
+    /// Enables accurate CSI 14t/15t/16t pixel-size reports for tmux/nvim.
+    pub fn set_cell_dimensions(&mut self, width: u32, height: u32) {
+        self.cell_dimensions = Some((width.max(1), height.max(1)));
+    }
+
+    /// Return cell dimensions as (width, height) in pixels.
+    /// Falls back to (10, 20) when the renderer hasn't provided values.
+    fn cell_dims(&self) -> (usize, usize) {
+        match self.cell_dimensions {
+            Some((w, h)) => (w as usize, h as usize),
+            None => (10, 20),
+        }
     }
 
     /// Return the custom palette overrides (OSC 4).
@@ -1812,8 +1832,7 @@ impl Perform for Terminal {
                         // Report text area size in pixels: CSI 4 ; height ; width t
                         // We don't know the actual pixel size from the terminal model,
                         // so estimate based on a standard cell size.
-                        let cw: usize = 10;
-                        let ch: usize = 20;
+                        let (cw, ch) = self.cell_dims();
                         let h = self.grid.height() * ch;
                         let w = self.grid.width() * cw;
                         let resp = format!("\x1b[4;{};{}t", h, w);
@@ -1832,8 +1851,7 @@ impl Perform for Terminal {
                     15 => {
                         // Report screen size in pixels: CSI 5 ; height ; width t
                         // Estimate from grid + standard cell size.
-                        let cw: usize = 10;
-                        let ch: usize = 20;
+                        let (cw, ch) = self.cell_dims();
                         let h = self.grid.height() * ch;
                         let w = self.grid.width() * cw;
                         let resp = format!("\x1b[5;{};{}t", h, w);
@@ -1843,7 +1861,9 @@ impl Perform for Terminal {
                         // Report character cell size in pixels.
                         // Response: CSI 6 ; cell_height ; cell_width t
                         // We use approximate standard cell dimensions.
-                        self.response_buffer.extend_from_slice(b"\x1b[6;20;10t");
+                        let (cw, ch) = self.cell_dims();
+                        let resp = format!("\x1b[6;{};{}t", ch, cw);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
                     }
                     22 => {
                         // Push title onto stack (xterm windowops).

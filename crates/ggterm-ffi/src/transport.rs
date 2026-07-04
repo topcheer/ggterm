@@ -33,6 +33,7 @@ static NEXT_ID: OnceLock<Mutex<u32>> = OnceLock::new();
 static LAST_ERROR: OnceLock<Mutex<String>> = OnceLock::new();
 
 /// Create a new session and return its ID (used by p2p module).
+#[allow(dead_code)]
 pub(crate) fn create_session(cols: usize, rows: usize) -> u32 {
     let id = next_id();
     let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
