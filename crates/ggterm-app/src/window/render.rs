@@ -2710,6 +2710,8 @@ impl DesktopApp {
                         if app.terminal().grid().is_scrolled() {
                             cs.visible = false;
                         }
+                        // Dim cursor when window is unfocused (hollow outline).
+                        cs.focused = self.window_focused;
                         // Apply blink from DesktopApp's cursor_blink state.
                         if cs.visible {
                             cs.blink_alpha = blink_alpha;

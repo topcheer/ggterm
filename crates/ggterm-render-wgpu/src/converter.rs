@@ -126,24 +126,29 @@ pub fn row_to_runs(
         // Cursor: swap resulting RGB for visibility (handles Default color case).
         // When a dynamic cursor color is set (OSC 12), use it as the cursor cell bg.
         // Highlight takes priority over cursor color swap.
-        if !highlighted
-            && let Some(c) = cursor
-            && c.visible
-            && c.x == col
-            && c.y == row
-        {
-            if let Some((cr, cg, cb)) = c.color {
-                bg_rgb = (cr, cg, cb);
-            } else {
-                std::mem::swap(&mut fg_rgb, &mut bg_rgb);
+        let is_cursor =
+            !highlighted && cursor.is_some_and(|c| c.visible && c.x == col && c.y == row);
+
+        if is_cursor {
+            let c = cursor.unwrap();
+            if c.focused {
+                if let Some((cr, cg, cb)) = c.color {
+                    bg_rgb = (cr, cg, cb);
+                } else {
+                    std::mem::swap(&mut fg_rgb, &mut bg_rgb);
+                }
             }
+            // When !c.focused, cursor renders as underline (hollow outline)
         }
 
         let bold = cell.flags.contains(CellFlags::BOLD);
         let italic = cell.flags.contains(CellFlags::ITALIC);
         let has_link = cell.hyperlink.is_some();
         // OSC 8 hyperlinks render with underline even if cell doesn't have UNDERLINE flag.
-        let underline = cell.flags.contains(CellFlags::UNDERLINE) || has_link;
+        // Unfocused cursor also renders as underline (hollow outline indicator).
+        let underline = cell.flags.contains(CellFlags::UNDERLINE)
+            || has_link
+            || (is_cursor && cursor.is_some_and(|c| !c.focused));
         let strikethrough = cell.flags.contains(CellFlags::STRIKETHROUGH);
         let blink = cell.flags.contains(CellFlags::BLINK);
 

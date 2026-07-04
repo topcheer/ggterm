@@ -476,6 +476,7 @@ pub fn cursor_state(app: &crate::App) -> ggterm_render::CursorState {
         shape,
         blink_alpha: 1.0, // P23-A: set by DesktopApp before render
         color: cursor_color,
+        focused: true, // Set by DesktopApp render_frame from window_focused
     }
 }
 

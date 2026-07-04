@@ -46,6 +46,9 @@ pub struct CursorState {
     pub blink_alpha: f32,
     /// Optional dynamic cursor color (from OSC 12). When None, theme cursor color is used.
     pub color: Option<(u8, u8, u8)>,
+    /// Whether the window is focused. When false, cursor renders as a
+    /// hollow outline instead of solid fill (standard terminal behavior).
+    pub focused: bool,
 }
 
 impl CursorState {
@@ -58,6 +61,7 @@ impl CursorState {
             shape: CursorShape::Block,
             blink_alpha: 1.0,
             color: None,
+            focused: true,
         }
     }
 
@@ -70,6 +74,7 @@ impl CursorState {
             shape: CursorShape::Block,
             blink_alpha: 0.0,
             color: None,
+            focused: true,
         }
     }
 }
