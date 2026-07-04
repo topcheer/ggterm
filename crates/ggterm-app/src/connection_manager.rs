@@ -254,6 +254,129 @@ impl ConnectionStore {
     pub fn is_empty(&self) -> bool {
         self.hosts.is_empty()
     }
+
+    /// Import hosts from `~/.ssh/config`.
+    ///
+    /// Parses the standard OpenSSH client config format and creates a
+    /// `HostEntry` for each `Host` entry (excluding wildcards like `Host *`).
+    /// If `merge` is true, existing entries with the same name are kept
+    /// (new entries are appended). If false, the store is replaced.
+    pub fn import_ssh_config(&mut self, merge: bool) -> usize {
+        let home = match std::env::var("HOME") {
+            Ok(h) => h,
+            Err(_) => return 0,
+        };
+        let ssh_config = PathBuf::from(home).join(".ssh").join("config");
+        let content = match std::fs::read_to_string(&ssh_config) {
+            Ok(c) => c,
+            Err(_) => return 0,
+        };
+
+        let entries = parse_ssh_config(&content);
+        if !merge {
+            self.hosts.clear();
+        }
+
+        // Only add entries that don't already exist by name.
+        let existing: std::collections::HashSet<String> =
+            self.hosts.iter().map(|h| h.name.clone()).collect();
+        let to_add: Vec<HostEntry> = entries
+            .into_iter()
+            .filter(|e| !existing.contains(&e.name))
+            .collect();
+        let added = to_add.len();
+        self.hosts.extend(to_add);
+        added
+    }
+}
+
+/// Parse an OpenSSH `~/.ssh/config` file into a list of `HostEntry` values.
+///
+/// Supports the most common directives: `Host`, `HostName`, `Port`, `User`,
+/// `IdentityFile`. Wildcard host patterns (`*`, `?`) are skipped.
+pub fn parse_ssh_config(content: &str) -> Vec<HostEntry> {
+    let mut entries = Vec::new();
+    let mut current: Option<HostEntry> = None;
+
+    for line in content.lines() {
+        let line = line.trim();
+
+        // Skip comments and empty lines.
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let (key, value) = match line.split_once(char::is_whitespace) {
+            Some((k, v)) => (k.trim(), v.trim()),
+            None => continue,
+        };
+
+        // Strip inline comments (e.g. "HostName foo.com  # comment").
+        let value = value.split_once("  #").map_or(value, |(v, _)| v.trim());
+        let value = value.split_once(" #").map_or(value, |(v, _)| v.trim());
+
+        match key.to_lowercase().as_str() {
+            "host" => {
+                // Push the previous entry.
+                if let Some(entry) = current.take() {
+                    entries.push(entry);
+                }
+
+                // Skip wildcard patterns like `*` or `*.example.com`.
+                if value.contains('*') || value.contains('?') {
+                    continue;
+                }
+
+                // Use the host alias as the name and initial hostname.
+                current = Some(HostEntry::new(value, value, ""));
+            }
+            "hostname" => {
+                if let Some(ref mut entry) = current {
+                    entry.host = value.to_string();
+                }
+            }
+            "port" => {
+                if let Some(ref mut entry) = current {
+                    if let Ok(port) = value.parse::<u16>() {
+                        entry.port = port;
+                    }
+                }
+            }
+            "user" => {
+                if let Some(ref mut entry) = current {
+                    entry.user = value.to_string();
+                }
+            }
+            "identityfile" => {
+                if let Some(ref mut entry) = current {
+                    let path = expand_tilde(value);
+                    entry.auth_method = AuthMethod::Key;
+                    entry.key_path = Some(path);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Push the last entry.
+    if let Some(entry) = current.take() {
+        // Only add entries that have a hostname and user.
+        if !entry.host.is_empty() && !entry.user.is_empty() {
+            entries.push(entry);
+        }
+    }
+
+    entries
+}
+
+/// Expand `~` to the home directory in a path.
+fn expand_tilde(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{home}/{rest}");
+        }
+    }
+    path.to_string()
 }
 
 #[cfg(test)]
@@ -467,5 +590,118 @@ mod tests {
 
         let parsed: HostEntry = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.auth_method, AuthMethod::Key);
+    }
+
+    #[test]
+    fn t_parse_ssh_config_basic() {
+        let config = r#"
+Host github.com
+    HostName github.com
+    User git
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+
+Host dev-server
+    HostName 10.0.0.50
+    User root
+    Port 2222
+"#;
+        let entries = parse_ssh_config(config);
+        assert_eq!(entries.len(), 2);
+
+        let gh = &entries[0];
+        assert_eq!(gh.name, "github.com");
+        assert_eq!(gh.host, "github.com");
+        assert_eq!(gh.user, "git");
+        assert_eq!(gh.port, 22);
+        assert_eq!(gh.auth_method, AuthMethod::Key);
+
+        let dev = &entries[1];
+        assert_eq!(dev.name, "dev-server");
+        assert_eq!(dev.host, "10.0.0.50");
+        assert_eq!(dev.user, "root");
+        assert_eq!(dev.port, 2222);
+    }
+
+    #[test]
+    fn t_parse_ssh_config_skips_wildcards() {
+        let config = r#"
+Host *
+    ServerAliveInterval 60
+
+Host *.internal
+    User admin
+
+Host prod-web
+    HostName prod.example.com
+    User deploy
+"#;
+        let entries = parse_ssh_config(config);
+        // Only `prod-web` should be parsed; `*` and `*.internal` are skipped.
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "prod-web");
+    }
+
+    #[test]
+    fn t_parse_ssh_config_comments() {
+        let config = r#"
+# This is a comment
+Host my-server  # inline comment
+    HostName my.server.com  # another comment
+    User admin
+    # Port is default
+"#;
+        let entries = parse_ssh_config(config);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].host, "my.server.com");
+        assert_eq!(entries[0].user, "admin");
+        assert_eq!(entries[0].port, 22); // default
+    }
+
+    #[test]
+    fn t_parse_ssh_config_empty() {
+        let entries = parse_ssh_config("");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn t_parse_ssh_config_no_user_skipped() {
+        let config = r#"
+Host incomplete
+    HostName example.com
+    # no User line
+"#;
+        let entries = parse_ssh_config(config);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn t_import_ssh_config_merge() {
+        let mut store = ConnectionStore::new();
+        store.add(HostEntry::new("existing", "old.host", "user"));
+
+        // import_ssh_config without ~/.ssh/config just returns 0.
+        let added = store.import_ssh_config(true);
+        // May or may not find ~/.ssh/config — but existing entry is kept.
+        assert_eq!(store.len(), 1 + added);
+        assert_eq!(store.hosts[0].name, "existing");
+    }
+
+    #[test]
+    fn t_parse_ssh_config_identityfile_expand() {
+        let config = r#"
+Host my-key
+    HostName server.com
+    User me
+    IdentityFile ~/.ssh/custom_key
+"#;
+        // SAFETY: single-threaded test, no other code accessing HOME.
+        unsafe { std::env::set_var("HOME", "/test/home"); }
+        let entries = parse_ssh_config(config);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].key_path.as_deref(),
+            Some("/test/home/.ssh/custom_key")
+        );
     }
 }
