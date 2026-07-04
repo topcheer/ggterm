@@ -2505,9 +2505,9 @@ impl DesktopApp {
                 stroke_width: 0.0,
             });
 
-            // Header: AI label + action name.
+            // Header: AI label + action name + tool indicator.
             let header_text = match ai.action() {
-                Some(action) => format!("AI · {}", action.label()),
+                Some(action) => format!("AI · {} · tools on", action.label()),
                 None => "AI".to_string(),
             };
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {

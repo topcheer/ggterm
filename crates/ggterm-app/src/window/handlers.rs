@@ -1455,6 +1455,7 @@ impl DesktopApp {
             action: ggterm_ai::Action::NL2Command,
             context: ctx,
             natural_language: Some(query.to_string()),
+            enable_tools: false,
         };
         if let Some(ref mut bridge) = self.ai_bridge {
             if !bridge.request(req) {

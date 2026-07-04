@@ -33,6 +33,8 @@ pub struct AIRequest {
     pub context: AIContext,
     /// For NL2Command, the natural language input.
     pub natural_language: Option<String>,
+    /// Whether to enable tool calling (run_command, read_file, etc.).
+    pub enable_tools: bool,
 }
 
 impl AIRequest {
@@ -42,6 +44,7 @@ impl AIRequest {
             action,
             context,
             natural_language: None,
+            enable_tools: true,
         }
     }
 
@@ -51,6 +54,7 @@ impl AIRequest {
             action: Action::NL2Command,
             context,
             natural_language: Some(natural_language.into()),
+            enable_tools: false,
         }
     }
 }
@@ -124,10 +128,11 @@ impl AIBridge {
         self.busy = true;
 
         thread::spawn(move || {
-            // Execute the request. For NL2Command with natural_language, use nl2cmd.
-            // Otherwise, use execute with the action.
+            // Execute the request with or without tool calling.
             let result = if let Some(ref nl) = req.natural_language {
                 engine.nl2cmd(nl, &req.context)
+            } else if req.enable_tools {
+                engine.execute_with_tools(req.action, &req.context, true)
             } else {
                 engine.execute(req.action, &req.context)
             };
