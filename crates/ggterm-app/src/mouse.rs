@@ -489,7 +489,17 @@ pub fn find_file_path(line: &str, col: usize) -> Option<String> {
 
     // Must contain '/' or start with '~' to be a plausible path.
     // Bare filenames like "main.rs" are too ambiguous.
-    if !token.contains('/') && !token.starts_with('~') {
+    // Exception: paths with `:line:col` suffix that look like compiler output
+    // (e.g., "main.rs:42:10" or "lib.rs:15") — these are common in build output.
+    let has_slash = token.contains('/');
+    let has_tilde = token.starts_with('~');
+    let has_line_suffix = token.matches(':').count() >= 1
+        && token
+            .split(':')
+            .nth(1)
+            .is_some_and(|s| s.parse::<u32>().is_ok());
+
+    if !has_slash && !has_tilde && !has_line_suffix {
         return None;
     }
 
@@ -550,28 +560,63 @@ pub fn open_file_path(path_spec: &str) {
     command.args(&extra_args);
 
     // Add +line:col argument for editors that support it (vim, nano, etc.)
-    if let Some(ln) = line {
-        let arg = if let Some(cn) = col {
-            format!("+{}:{}", ln, cn)
+    // For GUI editors (code, subl, zed), use -g line:col or --goto format.
+    let is_gui_editor = matches!(
+        cmd,
+        "code" | "code-insiders" | "cursor" | "subl" | "zed" | "mate" | "atom"
+    );
+
+    if is_gui_editor {
+        // GUI editors: VS Code uses `file:line:col` with --goto.
+        if let Some(ln) = line {
+            let goto_arg = if let Some(cn) = col {
+                format!("{}:{}:{}", expanded, ln, cn)
+            } else {
+                format!("{}:{}", expanded, ln)
+            };
+            if cmd == "code" || cmd == "code-insiders" || cmd == "cursor" {
+                command.arg("--goto").arg(goto_arg);
+            } else if cmd == "subl" {
+                command.arg(format!("{}:{}:{}", expanded, ln, col.unwrap_or(1)));
+            } else {
+                command.arg(&expanded);
+            }
         } else {
-            format!("+{}", ln)
-        };
-        command.arg(arg);
+            command.arg(&expanded);
+        }
+    } else {
+        // CLI editors: vim, nano, etc. use +line format.
+        if let Some(ln) = line {
+            let arg = if let Some(cn) = col {
+                format!("+{}:{}", ln, cn)
+            } else {
+                format!("+{}", ln)
+            };
+            command.arg(arg);
+        }
+        command.arg(&expanded);
     }
 
-    command.arg(&expanded);
-
-    // Run in a new terminal window on macOS so it doesn't block.
+    // On macOS: GUI editors launch directly; CLI editors open in Terminal.app.
     #[cfg(target_os = "macos")]
     {
-        // Try opening in a new Terminal.app window.
-        let script = format!(
-            "tell application \"Terminal\" to do script \"{} {}\"",
-            editor, expanded
-        );
-        let _ = std::process::Command::new("osascript")
-            .args(["-e", &script])
-            .spawn();
+        if is_gui_editor {
+            let _ = command.spawn();
+        } else {
+            // Open CLI editor in a new Terminal.app window.
+            let mut full_cmd = editor.clone();
+            if let Some(ln) = line {
+                full_cmd.push_str(&format!(" +{}", ln));
+            }
+            full_cmd.push_str(&format!(" \"{}\"", expanded));
+            let script = format!(
+                "tell application \"Terminal\" to do script \"{}\"",
+                full_cmd.replace('\\', "\\\\").replace('"', "\\\"")
+            );
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn();
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -971,9 +1016,9 @@ mod tests {
     }
 
     #[test]
-    fn test_find_file_path_no_slash_rejected() {
-        // Bare filename without directory should not be detected.
-        let line = "error in main.rs:42";
+    fn test_find_file_path_no_slash_no_line_rejected() {
+        // Bare filename without directory or line number should not be detected.
+        let line = "error in main.rs here";
         assert!(find_file_path(line, 10).is_none());
     }
 
@@ -1043,5 +1088,16 @@ mod tests {
         let mut sel = MouseSelection::default();
         sel.start(0, 0);
         assert!(!sel.block_mode);
+    }
+
+    #[test]
+    fn test_find_file_path_rust_compiler_format() {
+        // Rust compiler format: --> src/main.rs:15:5
+        let line = "  --> src/main.rs:15:5";
+        let col = line.find("main").unwrap();
+        assert_eq!(
+            find_file_path(line, col),
+            Some("src/main.rs:15:5".to_string())
+        );
     }
 }
