@@ -293,6 +293,9 @@ pub struct DesktopApp {
     settings_window: Option<crate::settings_window::SettingsWindowState>,
     /// Flag to open settings window on next about_to_wait (set from handlers).
     pending_open_settings: bool,
+    /// P2P terminal sharing state (feature-gated).
+    #[cfg(feature = "p2p")]
+    p2p_share: crate::p2p_share::P2pShareState,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -569,6 +572,8 @@ impl DesktopApp {
             pane_zoomed: false,
             settings_window: None,
             pending_open_settings: false,
+            #[cfg(feature = "p2p")]
+            p2p_share: crate::p2p_share::P2pShareState::new(),
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -940,10 +945,40 @@ impl ApplicationHandler for DesktopApp {
         }
         self.renderer = Some(renderer);
 
+        // Set real cell dimensions on all terminal sessions so CSI 14t/15t/16t
+        // report accurate pixel sizes to tmux/nvim.
+        if let Some(ref r) = self.renderer {
+            let cw = r.cell_width();
+            let ch = r.cell_height();
+            for session in &mut self.sessions {
+                for pane_id in session.pane_ids() {
+                    if let Some(app) = session.pane_app_mut(pane_id) {
+                        app.terminal_mut().set_cell_dimensions(cw, ch);
+                    }
+                }
+            }
+            log::info!("Cell dimensions set to {}x{} px", cw, ch);
+        }
+
         // P18-C: CRITICAL — resize terminal sessions to match renderer.
         // Without this the PTY/grid think 80x24 while the window shows different.
         let actual_cols = self.config.cols;
         let actual_rows = self.config.rows;
+
+        // Feed real cell dimensions to all terminal sessions so CSI 14t/15t/16t
+        // can report accurate pixel sizes to tmux/nvim.
+        let (cell_w, cell_h) = {
+            let r = self.renderer.as_ref().expect("renderer just set");
+            (r.cell_width(), r.cell_height())
+        };
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.terminal_mut().set_cell_dimensions(cell_w, cell_h);
+                }
+            }
+        }
+
         for session in &mut self.sessions {
             session.resize(actual_cols, actual_rows);
         }
@@ -952,6 +987,19 @@ impl ApplicationHandler for DesktopApp {
             actual_cols,
             actual_rows
         );
+
+        // Wire real cell dimensions from renderer to terminal for accurate CSI 16t/14t/15t.
+        if let Some(ref r) = self.renderer {
+            let cw = r.cell_width();
+            let ch = r.cell_height();
+            for session in &mut self.sessions {
+                for pane_id in session.pane_ids() {
+                    if let Some(app) = session.pane_app_mut(pane_id) {
+                        app.terminal_mut().set_cell_dimensions(cw, ch);
+                    }
+                }
+            }
+        }
 
         // P11-D: Apply active theme to renderer on startup.
         self.apply_theme_to_renderer();
@@ -1295,6 +1343,22 @@ impl ApplicationHandler for DesktopApp {
 
         // P24-E: Poll for desktop notifications.
         self.poll_notification();
+
+        // P2P: Poll for connections and forward mobile input/output.
+        #[cfg(feature = "p2p")]
+        if self.p2p_share.is_active() {
+            // Tee PTY output to connected mobile device.
+            if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
+                let tee = self.active_session_mut().app_mut().take_pty_tee();
+                if !tee.is_empty() {
+                    self.p2p_share.tee_output(&tee);
+                }
+            } else {
+                // Drain tee buffer even when not connected to prevent unbounded growth.
+                self.active_session_mut().app_mut().take_pty_tee();
+            }
+            self.poll_p2p();
+        }
 
         // P28-C: Sync command history sidebar from OSC 133 marks.
         self.poll_command_history();

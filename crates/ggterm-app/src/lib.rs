@@ -53,6 +53,8 @@ pub mod font;
 pub mod input;
 pub mod mouse;
 pub mod new_tab_menu;
+#[cfg(feature = "p2p")]
+pub mod p2p_share;
 pub mod search;
 pub mod session;
 pub mod settings_ui;

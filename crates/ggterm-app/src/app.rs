@@ -50,6 +50,8 @@ pub struct App {
     config: Option<ConfigManager>,
     /// Phase 8-D: command navigation overlay state
     command_nav: CommandNavState,
+    /// PTY output tee buffer — captures PTY bytes for P2P forwarding.
+    pty_tee: Vec<u8>,
 }
 
 impl App {
@@ -73,6 +75,7 @@ impl App {
             plugins: None,
             config: None,
             command_nav: CommandNavState::new(),
+            pty_tee: Vec::new(),
         };
 
         (app, tx)
@@ -150,6 +153,9 @@ impl App {
     pub fn handle_event(&mut self, event: AppEvent) -> bool {
         match event {
             AppEvent::PtyBytes(bytes) => {
+                // Capture bytes for P2P tee.
+                self.pty_tee.extend_from_slice(&bytes);
+
                 #[cfg(feature = "plugin")]
                 let marks_before = self.terminal.command_marks().len();
 
@@ -371,6 +377,11 @@ impl App {
     /// Useful for tests: feed events and check state without blocking.
     ///
     /// Returns `true` if any events were processed (P21-D: dirty rect).
+    /// Take and clear the PTY tee buffer (for P2P output forwarding).
+    pub fn take_pty_tee(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.pty_tee)
+    }
+
     pub fn pump(&mut self) -> bool {
         let mut had_data = false;
         while let Ok(event) = self.event_rx.try_recv() {

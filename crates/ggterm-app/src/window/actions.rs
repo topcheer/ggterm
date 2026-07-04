@@ -3,6 +3,32 @@
 use super::*;
 
 impl DesktopApp {
+    /// Base64-encode bytes (for OSC 52 clipboard query response).
+    fn base64_encode(data: &[u8]) -> String {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
+        for chunk in data.chunks(3) {
+            let b0 = chunk[0] as u32;
+            let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+            let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            result.push(TABLE[((triple >> 18) & 0x3F) as usize] as char);
+            result.push(TABLE[((triple >> 12) & 0x3F) as usize] as char);
+            if chunk.len() > 1 {
+                result.push(TABLE[((triple >> 6) & 0x3F) as usize] as char);
+            } else {
+                result.push('=');
+            }
+            if chunk.len() > 2 {
+                result.push(TABLE[(triple & 0x3F) as usize] as char);
+            } else {
+                result.push('=');
+            }
+        }
+        result
+    }
+
     /// Handle the active pane's shell exit.
     ///
     /// Returns `true` if the app should exit (last pane in last tab).
@@ -999,6 +1025,7 @@ impl DesktopApp {
     /// Called from `about_to_wait` to apply any OSC 52 clipboard changes
     /// that programs have requested.
     pub(super) fn poll_osc52_clipboard(&mut self) {
+        // Handle OSC 52 clipboard SET.
         if let Some(data) = self
             .active_session_mut()
             .app_mut()
@@ -1007,6 +1034,24 @@ impl DesktopApp {
         {
             log::debug!("OSC 52 clipboard set: {} bytes", data.len());
             crate::clipboard::set_clipboard_bytes(&data);
+        }
+
+        // Handle OSC 52 clipboard QUERY: respond with current clipboard contents.
+        if self
+            .active_session_mut()
+            .app_mut()
+            .terminal_mut()
+            .take_pending_clipboard_query()
+            && let Some(text) = crate::clipboard::read_clipboard()
+        {
+            // Base64-encode the clipboard text and send the OSC 52 response.
+            let b64 = Self::base64_encode(text.as_bytes());
+            let resp = format!("\x1b]52;c;{b64}\x07");
+            self.write_to_pty(resp.as_bytes());
+            log::debug!(
+                "OSC 52 clipboard query: responded with {} chars",
+                text.len()
+            );
         }
     }
 
@@ -1700,6 +1745,59 @@ impl DesktopApp {
         match result {
             Ok(_) => self.show_toast(format!("Opened {}", path.display())),
             Err(_) => self.show_toast("Failed to open editor"),
+        }
+    }
+
+    /// P2P: Toggle terminal sharing overlay.
+    ///
+    /// When enabled, generates an iroh NodeTicket and displays a QR code
+    /// overlay. Mobile devices can scan the QR to connect and interact
+    /// with this terminal via QUIC (P2P with relay fallback).
+    #[cfg(feature = "p2p")]
+    pub(super) fn toggle_p2p_share(&mut self) {
+        self.p2p_share.toggle();
+        if self.p2p_share.is_active() {
+            match self.p2p_share.status {
+                crate::p2p_share::P2pShareStatus::Error => {
+                    self.show_toast("P2P: Failed to start sharing");
+                }
+                _ => {
+                    self.show_toast("P2P: Sharing started — scan QR to connect");
+                }
+            }
+        } else {
+            self.show_toast("P2P: Sharing stopped");
+        }
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
+    /// P2P: Poll for incoming connections and tee PTY output.
+    ///
+    /// Called from `about_to_wait()` when P2P sharing is active.
+    #[cfg(feature = "p2p")]
+    pub(super) fn poll_p2p(&mut self) {
+        // Check for new connections.
+        let new_connection = self.p2p_share.poll_connection();
+        if new_connection {
+            self.show_toast("P2P: Device connected");
+            // Forward current terminal dimensions.
+            let (cols, rows) = {
+                let session = self.active_session();
+                let app = session.app();
+                let grid = app.grid();
+                (grid.width() as u16, grid.height() as u16)
+            };
+            self.p2p_share.resize(cols, rows);
+        }
+
+        // Read mobile input and forward to PTY.
+        if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
+            let input = self.p2p_share.read_input();
+            if !input.is_empty() {
+                self.active_session_mut().write_to_pty(&input);
+            }
         }
     }
 }

@@ -906,6 +906,173 @@ impl DesktopApp {
             }
         }
 
+        // P2P share overlay — QR code + connection status.
+        #[cfg(feature = "p2p")]
+        if self.p2p_share.visible {
+            let p2p = &self.p2p_share;
+
+            // Dark mask background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: 0.0,
+                y: 0.0,
+                w: screen_w,
+                h: screen_h,
+                color: (0.02, 0.02, 0.04, 0.85),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // Panel dimensions.
+            let pw = (screen_w * 0.55).min(520.0);
+            let ph = (screen_h * 0.7).min(640.0);
+            let px = (screen_w - pw) * 0.5;
+            let py = (screen_h - ph) * 0.5;
+
+            // Panel background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: ph,
+                color: (theme_bg.0 * 1.4, theme_bg.1 * 1.4, theme_bg.2 * 1.4, 0.98),
+                radius: 12.0,
+                stroke_width: 0.0,
+            });
+            // Panel border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: ph,
+                color: (0.45, 0.52, 0.68, 0.6),
+                radius: 12.0,
+                stroke_width: 1.0,
+            });
+            // Header accent bar.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: px,
+                y: py,
+                w: pw,
+                h: 3.0,
+                color: (0.26, 0.63, 0.95, 0.8),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // Title.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "P2P Terminal Sharing".to_string(),
+                left: px + 24.0,
+                top: py + 20.0,
+                color: (122, 162, 247),
+            });
+
+            // Status text.
+            let status_text = match p2p.status {
+                crate::p2p_share::P2pShareStatus::Generating => "Generating ticket...",
+                crate::p2p_share::P2pShareStatus::Waiting => "Waiting for device to connect...",
+                crate::p2p_share::P2pShareStatus::Connected => "Device connected!",
+                crate::p2p_share::P2pShareStatus::Error => "Error",
+            };
+            let status_color = match p2p.status {
+                crate::p2p_share::P2pShareStatus::Generating => (200, 200, 210),
+                crate::p2p_share::P2pShareStatus::Waiting => (103, 232, 249),
+                crate::p2p_share::P2pShareStatus::Connected => (134, 239, 172),
+                crate::p2p_share::P2pShareStatus::Error => (248, 113, 113),
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: status_text.to_string(),
+                left: px + 24.0,
+                top: py + 20.0 + cell_h,
+                color: status_color,
+            });
+
+            // Error message (if any).
+            if let Some(ref err) = p2p.error {
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: err.clone(),
+                    left: px + 24.0,
+                    top: py + 20.0 + cell_h * 2.0,
+                    color: (248, 113, 113),
+                });
+            }
+
+            // QR code rendering: map QR modules to UiRects.
+            if let Some(qr) = p2p.qr() {
+                let qr_size = qr.len();
+                let max_qr_px = (pw - 48.0).min(ph * 0.45);
+                let module_size = (max_qr_px / qr_size as f32).max(2.0);
+                let qr_px = module_size * qr_size as f32;
+                let qr_x = px + (pw - qr_px) * 0.5;
+                let qr_y = py + cell_h * 4.0 + 10.0;
+
+                // White background for QR code.
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: qr_x - 8.0,
+                    y: qr_y - 8.0,
+                    w: qr_px + 16.0,
+                    h: qr_px + 16.0,
+                    color: (0.95, 0.95, 0.95, 1.0),
+                    radius: 8.0,
+                    stroke_width: 0.0,
+                });
+
+                // Render dark modules.
+                for (row_idx, row) in qr.iter().enumerate() {
+                    for (col_idx, &is_dark) in row.iter().enumerate() {
+                        if is_dark {
+                            ui_rects.push(ggterm_render_wgpu::UiRect {
+                                x: qr_x + col_idx as f32 * module_size,
+                                y: qr_y + row_idx as f32 * module_size,
+                                w: module_size,
+                                h: module_size,
+                                color: (0.0, 0.0, 0.0, 1.0),
+                                radius: 0.0,
+                                stroke_width: 0.0,
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Instructions.
+            let inst_y = py + ph - cell_h * 5.0;
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Scan QR code with GGTerm mobile app".to_string(),
+                left: px + 24.0,
+                top: inst_y,
+                color: (180, 180, 190),
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "or copy ticket manually:".to_string(),
+                left: px + 24.0,
+                top: inst_y + cell_h,
+                color: (180, 180, 190),
+            });
+
+            // Ticket string (truncated for display).
+            let ticket = p2p.ticket();
+            let display_ticket = if ticket.len() > 48 {
+                format!("{}...{}", &ticket[..24], &ticket[ticket.len() - 20..])
+            } else {
+                ticket.to_string()
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: display_ticket,
+                left: px + 24.0,
+                top: inst_y + cell_h * 2.0,
+                color: (140, 160, 200),
+            });
+
+            // Close hint.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Press Esc or Ctrl+Shift+Alt+Q to close".to_string(),
+                left: px + 24.0,
+                top: inst_y + cell_h * 3.5,
+                color: (120, 120, 130),
+            });
+        }
+
         // P26: Status bar overlay — modern rounded bottom bar with UiRect.
         if self.status_bar_visible {
             let bar_h = cell_h + 8.0;
