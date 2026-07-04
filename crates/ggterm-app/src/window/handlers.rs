@@ -2627,12 +2627,46 @@ fn extract_ai_command(text: &str) -> String {
             || trimmed.starts_with("cat ")
             || trimmed.starts_with("find ")
             || trimmed.starts_with("grep ")
+            || trimmed.starts_with("rg ")
             || trimmed.starts_with("curl ")
+            || trimmed.starts_with("wget ")
             || trimmed.starts_with("ssh ")
+            || trimmed.starts_with("scp ")
             || trimmed.starts_with("npm ")
+            || trimmed.starts_with("npx ")
+            || trimmed.starts_with("yarn ")
+            || trimmed.starts_with("pnpm ")
             || trimmed.starts_with("cargo ")
+            || trimmed.starts_with("rustup ")
+            || trimmed.starts_with("go ")
             || trimmed.starts_with("python ")
+            || trimmed.starts_with("python3 ")
+            || trimmed.starts_with("pip ")
             || trimmed.starts_with("make ")
+            || trimmed.starts_with("kubectl ")
+            || trimmed.starts_with("helm ")
+            || trimmed.starts_with("systemctl ")
+            || trimmed.starts_with("brew ")
+            || trimmed.starts_with("apt ")
+            || trimmed.starts_with("apt-get ")
+            || trimmed.starts_with("tar ")
+            || trimmed.starts_with("chmod ")
+            || trimmed.starts_with("mkdir ")
+            || trimmed.starts_with("cp ")
+            || trimmed.starts_with("mv ")
+            || trimmed.starts_with("echo ")
+            || trimmed.starts_with("sed ")
+            || trimmed.starts_with("awk ")
+            || trimmed.starts_with("head ")
+            || trimmed.starts_with("tail ")
+            || trimmed.starts_with("diff ")
+            || trimmed.starts_with("du ")
+            || trimmed.starts_with("df ")
+            || trimmed.starts_with("ps ")
+            || trimmed.starts_with("kill ")
+            || trimmed.starts_with("which ")
+            || trimmed.starts_with("man ")
+            || trimmed.starts_with("openssl ")
         {
             return trimmed.to_string();
         }
@@ -2684,6 +2718,22 @@ mod tests {
     fn test_extract_ai_command_known_prefix() {
         let text = "The solution is:\ngit push origin main\nDone.";
         assert_eq!(extract_ai_command(text), "git push origin main");
+    }
+
+    #[test]
+    fn test_extract_ai_command_expanded_prefixes() {
+        assert_eq!(
+            extract_ai_command("Run: kubectl get pods"),
+            "kubectl get pods"
+        );
+        assert_eq!(
+            extract_ai_command("Try: brew install ripgrep"),
+            "brew install ripgrep"
+        );
+        assert_eq!(
+            extract_ai_command("Use: rg 'pattern' src/"),
+            "rg 'pattern' src/"
+        );
     }
 
     #[test]
