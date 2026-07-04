@@ -1,0 +1,16 @@
+[package]
+name = "ggterm-p2p"
+description = "P2P terminal sharing via QUIC + NAT traversal (iroh)"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+ggterm-core.workspace = true
+iroh.workspace = true
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "io-util"] }
+log.workspace = true
+data-encoding = "2"
+postcard = { version = "1", features = ["alloc"] }
