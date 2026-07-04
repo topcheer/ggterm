@@ -1281,11 +1281,41 @@ impl DesktopApp {
 
         // P10-C: Esc dismisses AI overlay if visible.
         #[cfg(feature = "ai")]
-        if self.ai_overlay.is_visible()
-            && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
-        {
-            self.ai_overlay.hide();
-            return;
+        if self.ai_overlay.is_visible() && !self.ai_overlay.is_nl2cmd_typing() {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.ai_overlay.hide();
+                    return;
+                }
+                // Tab: insert AI response into terminal (for Suggest/NL2Cmd)
+                PhysicalKey::Code(KeyCode::Tab) => {
+                    if let Some(content) = self.ai_overlay.content() {
+                        // Try to extract just the command (first code block or line)
+                        let cmd = extract_ai_command(content);
+                        if !cmd.is_empty() {
+                            self.write_to_pty(cmd.as_bytes());
+                            self.ai_overlay.hide();
+                            self.show_toast(format!("Inserted: {}", truncate_str(&cmd, 40)));
+                        }
+                    }
+                    return;
+                }
+                // Ctrl+Enter: insert AND execute the command
+                PhysicalKey::Code(KeyCode::Enter) if self.mods.ctrl => {
+                    if let Some(content) = self.ai_overlay.content() {
+                        let cmd = extract_ai_command(content);
+                        if !cmd.is_empty() {
+                            let mut to_send = cmd.into_bytes();
+                            to_send.push(b'\n');
+                            self.write_to_pty(&to_send);
+                            self.ai_overlay.hide();
+                            self.show_toast("Command executed");
+                        }
+                    }
+                    return;
+                }
+                _ => {}
+            }
         }
 
         // Extract logical text for printable character support.
@@ -2539,5 +2569,68 @@ impl DesktopApp {
         if let Some(ref window) = self.window {
             window.request_redraw();
         }
+    }
+}
+
+/// Extract a shell command from AI response text.
+///
+/// Looks for code blocks (```...```) first, then falls back to lines
+/// that look like commands (start with $ or contain common command patterns).
+#[cfg(feature = "ai")]
+fn extract_ai_command(text: &str) -> String {
+    // Try to find a fenced code block.
+    if let Some(start) = text.find("```") {
+        let after = &text[start + 3..];
+        // Skip optional language tag on first line
+        let code_start = after.find('\n').map_or(0, |p| p + 1);
+        let code = &after[code_start..];
+        if let Some(close) = code.find("```") {
+            return code[..close].trim().to_string();
+        }
+        // No closing fence — take the rest
+        return code.trim().to_string();
+    }
+
+    // Try to find a line starting with $ (common command format)
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(cmd) = trimmed.strip_prefix("$ ") {
+            return cmd.to_string();
+        }
+        if trimmed.starts_with("sudo ")
+            || trimmed.starts_with("docker ")
+            || trimmed.starts_with("git ")
+            || trimmed.starts_with("cd ")
+            || trimmed.starts_with("ls ")
+            || trimmed.starts_with("cat ")
+            || trimmed.starts_with("find ")
+            || trimmed.starts_with("grep ")
+            || trimmed.starts_with("curl ")
+            || trimmed.starts_with("ssh ")
+            || trimmed.starts_with("npm ")
+            || trimmed.starts_with("cargo ")
+            || trimmed.starts_with("python ")
+            || trimmed.starts_with("make ")
+        {
+            return trimmed.to_string();
+        }
+    }
+
+    // If the entire response is a single line, treat it as a command
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() == 1 {
+        return lines[0].trim().to_string();
+    }
+
+    String::new()
+}
+
+/// Truncate a string to `max` chars, appending "..." if truncated.
+#[cfg(feature = "ai")]
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max.min(s.len())])
     }
 }

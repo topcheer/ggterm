@@ -809,8 +809,11 @@ impl DesktopApp {
                 self.ai_overlay.set_error("AI is busy, please wait...");
             }
         } else {
-            self.ai_overlay
-                .set_error("AI not configured (set ai.api_endpoint in config)");
+            self.ai_overlay.set_error(
+                "AI not configured.\n\
+                 Set [ai] enabled=true and api_key in ~/.ggterm/config.toml,\n\
+                 or set GGTERM_AI_API_KEY env var.",
+            );
         }
     }
 

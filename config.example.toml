@@ -57,14 +57,27 @@ restore_session = false
 # copy_on_select = false
 
 [ai]
-# Enable AI features at startup
+# Enable AI features at startup.
+# Also requires api_key (below) or GGTERM_AI_API_KEY env var.
+# Default: false
 enabled = false
 
-# LLM API endpoint URL
-api_endpoint = "https://api.openai.com/v1"
+# API key for authentication.
+# Can also be set via GGTERM_AI_API_KEY or OPENAI_API_KEY env var.
+# Get a key at: https://open.bigmodel.cn/ (GLM) or https://platform.openai.com/
+# api_key = "your-api-key-here"
 
-# Model identifier
-model = "gpt-4o-mini"
+# LLM API endpoint URL.
+# Default: GLM (智谱清言) — free tier available
+# Also supports: "https://api.openai.com/v1", "https://api.deepseek.com/v1"
+# Or any OpenAI-compatible endpoint.
+api_endpoint = "https://open.bigmodel.cn/api/paas/v4"
+
+# Model identifier.
+# GLM: "glm-4-flash" (free), "glm-4" (paid)
+# OpenAI: "gpt-4o-mini", "gpt-4o"
+# DeepSeek: "deepseek-chat"
+model = "glm-4-flash"
 
 # ──────────────────────────────────────────────────────────────────────
 # Keyboard Shortcuts (P14-D)
