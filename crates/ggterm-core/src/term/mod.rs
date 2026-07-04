@@ -903,7 +903,11 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, width: usize, height: usize) {
-        self.grid.resize(width, height);
+        if self.modes.reflow {
+            self.grid.reflow_resize(width, height);
+        } else {
+            self.grid.resize(width, height);
+        }
         self.tab_stops = vec![false; width.max(1)];
         let mut col = 0;
         while col < width {

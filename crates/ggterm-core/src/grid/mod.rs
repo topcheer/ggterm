@@ -116,6 +116,55 @@ impl Grid {
         self.content_dirty = true;
     }
 
+    /// Resize the grid with reflow support (DECSET 2027).
+    ///
+    /// When reflowing, growing the height pulls rows from scrollback back
+    /// into the visible area (if available), so the user sees more history
+    /// after making the window taller. Shrinking behaves like normal resize.
+    pub fn reflow_resize(&mut self, width: usize, height: usize) {
+        let old_height = self.rows.len();
+        let saved_offset = self.display_offset;
+
+        // Resize each existing row to new width
+        for row in &mut self.rows {
+            row.resize(width);
+        }
+
+        if height > old_height {
+            // Growing: pull rows back from scrollback to fill new space
+            let needed = height - old_height;
+            let pulled = self.scrollback.len().min(needed);
+            for _ in 0..pulled {
+                if let Some(sr) = self.scrollback.pop_front() {
+                    // Resize scrollback row to new width
+                    let mut row = sr;
+                    row.resize(width);
+                    self.rows.insert(0, row);
+                }
+            }
+            // Add blank rows if still short
+            while self.rows.len() < height {
+                self.rows.push(Row::new(width));
+            }
+        } else if height < old_height {
+            // Shrinking: push excess rows to scrollback
+            let excess = old_height - height;
+            for _ in 0..excess {
+                let row = self.rows.remove(0);
+                self.push_scrollback(row);
+            }
+        }
+
+        self.width = width;
+        self.height = height;
+        self.scroll_top = 0;
+        self.scroll_bottom = height;
+        self.display_offset = saved_offset.min(self.scrollback.len());
+        self.damage = DamageTracker::new(width);
+        self.damage.mark_all(height);
+        self.content_dirty = true;
+    }
+
     // ------------------------------------------------------------------
     //  Cell & row access
     // ------------------------------------------------------------------
@@ -1432,5 +1481,58 @@ mod tests {
 
         let text = g.export_text();
         assert_eq!(text, "X");
+    }
+
+    // ================================================================
+    //  Reflow resize (DECSET 2027)
+    // ================================================================
+
+    #[test]
+    fn reflow_grow_pulls_from_scrollback() {
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        // Fill content to create scrollback
+        for i in 0..5 {
+            g[(0, 0)] = Cell::with_char((b'A' + i as u8) as char);
+            g.scroll_up(1);
+        }
+        assert!(g.scrollback_len() >= 5);
+
+        let sb_before = g.scrollback_len();
+        // Reflow resize: grow height from 3 to 6
+        g.reflow_resize(10, 6);
+        assert_eq!(g.height(), 6);
+        // Scrollback should be smaller (rows pulled back)
+        assert!(g.scrollback_len() < sb_before);
+    }
+
+    #[test]
+    fn reflow_grow_empty_scrollback_adds_blank() {
+        let mut g = Grid::new(10, 3);
+        g[(0, 0)] = Cell::with_char('X');
+        // No scrollback — reflow grow should just add blank rows
+        g.reflow_resize(10, 6);
+        assert_eq!(g.height(), 6);
+        assert_eq!(g[(0, 0)].ch, 'X');
+        assert_eq!(g.scrollback_len(), 0);
+    }
+
+    #[test]
+    fn reflow_shrink_pushes_to_scrollback() {
+        let mut g = Grid::new(10, 5);
+        g[(0, 0)] = Cell::with_char('A');
+        g[(0, 1)] = Cell::with_char('B');
+        // Shrink
+        g.reflow_resize(10, 3);
+        assert_eq!(g.height(), 3);
+        assert_eq!(g.scrollback_len(), 2);
+    }
+
+    #[test]
+    fn reflow_width_change_resizes_rows() {
+        let mut g = Grid::new(10, 3);
+        g[(0, 0)] = Cell::with_char('X');
+        g.reflow_resize(15, 3);
+        assert_eq!(g.width(), 15);
+        assert_eq!(g[(0, 0)].ch, 'X');
     }
 }
