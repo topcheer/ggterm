@@ -133,6 +133,8 @@ pub struct TabSession {
     /// True when this tab received a bell (BEL) while not active.
     /// Cleared when the user switches to this tab.
     has_bell: bool,
+    /// When this tab was created (for uptime display).
+    created_at: std::time::Instant,
 }
 
 impl TabSession {
@@ -158,6 +160,7 @@ impl TabSession {
             title,
             has_unread_output: false,
             has_bell: false,
+            created_at: std::time::Instant::now(),
         })
     }
 
@@ -171,6 +174,7 @@ impl TabSession {
             title: "test".to_string(),
             has_unread_output: false,
             has_bell: false,
+            created_at: std::time::Instant::now(),
         }
     }
 
@@ -284,6 +288,11 @@ impl TabSession {
     /// Check if this tab has unread output.
     pub fn has_unread_output(&self) -> bool {
         self.has_unread_output
+    }
+
+    /// Returns how long this tab has been alive.
+    pub fn uptime(&self) -> std::time::Duration {
+        self.created_at.elapsed()
     }
 
     /// P21-D: Check if a pane needs grid re-prepare.

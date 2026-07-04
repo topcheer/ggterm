@@ -1209,6 +1209,21 @@ impl ApplicationHandler for DesktopApp {
                 // Terminal lock state.
                 self.status_bar.locked = self.locked;
 
+                // Session uptime (only show after 1 minute).
+                let uptime = self.active_session().uptime();
+                self.status_bar.uptime = if uptime.as_secs() >= 60 {
+                    let total_secs = uptime.as_secs();
+                    let h = total_secs / 3600;
+                    let m = (total_secs % 3600) / 60;
+                    if h > 0 {
+                        format!("{}h{}m", h, m)
+                    } else {
+                        format!("{}m", m)
+                    }
+                } else {
+                    String::new()
+                };
+
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();

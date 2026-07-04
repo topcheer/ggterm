@@ -86,6 +86,8 @@ pub struct StatusBar {
     pub selection_count: usize,
     /// True when terminal input is locked (read-only mode).
     pub locked: bool,
+    /// Session uptime as a formatted string (e.g., "5m", "1h23m").
+    pub uptime: String,
 }
 
 impl Default for StatusBar {
@@ -123,6 +125,7 @@ impl StatusBar {
             spinner_frame: 0,
             selection_count: 0,
             locked: false,
+            uptime: String::new(),
         }
     }
 
@@ -252,6 +255,11 @@ impl StatusBar {
             parts.push("LOCK".to_string());
         }
 
+        // Session uptime.
+        if !self.uptime.is_empty() {
+            parts.push(self.uptime.clone());
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -362,6 +370,11 @@ impl StatusBar {
         // Terminal lock indicator.
         if self.locked {
             seg!("LOCK".to_string(), err_color);
+        }
+
+        // Session uptime.
+        if !self.uptime.is_empty() {
+            seg!(self.uptime.clone(), dim_color);
         }
 
         // Mode indicators.
@@ -873,6 +886,35 @@ mod tests {
         assert!(
             !formatted.contains("SEL:"),
             "should not show SEL when 0: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_uptime_shown() {
+        let mut sb = StatusBar::new();
+        sb.uptime = "5m".into();
+        let formatted = sb.format();
+        assert!(formatted.contains("5m"), "should show uptime: {formatted}");
+    }
+
+    #[test]
+    fn t_status_bar_uptime_empty_omitted() {
+        let sb = StatusBar::new();
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("0m"),
+            "should not show uptime when empty: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_lock_shown() {
+        let mut sb = StatusBar::new();
+        sb.locked = true;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("LOCK"),
+            "should show LOCK indicator: {formatted}"
         );
     }
 }
