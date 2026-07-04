@@ -239,6 +239,12 @@ impl CommandRegistry {
             category: "Terminal".into(),
             shortcut: Some("Ctrl+Shift+Alt+O".into()),
         });
+        r.register(Command {
+            id: "terminal.toggle_lock".into(),
+            label: "Toggle Terminal Lock".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+L".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),

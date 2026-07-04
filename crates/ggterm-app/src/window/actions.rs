@@ -672,7 +672,21 @@ impl DesktopApp {
     ///
     /// When broadcast mode is active (P25-D), bytes are also written to all
     /// panes in the current tab (AllPanes) or all tabs (AllTabs).
+    /// Toggle terminal input lock (read-only mode).
+    pub(super) fn toggle_lock(&mut self) {
+        self.locked = !self.locked;
+        if self.locked {
+            self.toast = Some(("Terminal locked".into(), 120));
+        } else {
+            self.toast = Some(("Terminal unlocked".into(), 120));
+        }
+    }
+
     pub(super) fn write_to_pty(&mut self, bytes: &[u8]) {
+        // Terminal locked: block all input.
+        if self.locked {
+            return;
+        }
         use crate::broadcast_input::BroadcastMode;
 
         // Auto-scroll to bottom on user input (standard terminal UX).
@@ -1785,6 +1799,9 @@ impl DesktopApp {
             }
             "terminal.copy_last_output" => {
                 self.copy_last_command_output();
+            }
+            "terminal.toggle_lock" => {
+                self.toggle_lock();
             }
             "settings.open" => {
                 self.pending_open_settings = true;

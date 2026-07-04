@@ -91,6 +91,9 @@ pub struct DesktopApp {
     last_active_tab: Option<usize>,
     /// Last closed tab's cwd (for "reopen closed tab" feature).
     last_closed_cwd: Option<std::path::PathBuf>,
+    /// Terminal input lock (read-only mode). When true, keyboard input
+    /// is not forwarded to the PTY.
+    locked: bool,
     /// Configuration.
     config: DesktopConfig,
     /// Current key modifiers state.
@@ -490,6 +493,7 @@ impl DesktopApp {
             active: 0,
             last_active_tab: None,
             last_closed_cwd: None,
+            locked: false,
             config: desktop_config,
             mods: ModsState::default(),
             window: None,
@@ -1201,6 +1205,9 @@ impl ApplicationHandler for DesktopApp {
                 } else {
                     0
                 };
+
+                // Terminal lock state.
+                self.status_bar.locked = self.locked;
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();

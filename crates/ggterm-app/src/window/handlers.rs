@@ -750,6 +750,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+L → toggle terminal input lock
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyL) = &event.physical_key
+        {
+            self.toggle_lock();
+            return;
+        }
+
         // Ctrl+Shift+Alt+S → save scrollback to file
         if self.mods.ctrl
             && self.mods.shift

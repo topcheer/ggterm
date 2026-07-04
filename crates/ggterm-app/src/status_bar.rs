@@ -84,6 +84,8 @@ pub struct StatusBar {
     pub spinner_frame: u32,
     /// Character count of current text selection (0 = no selection).
     pub selection_count: usize,
+    /// True when terminal input is locked (read-only mode).
+    pub locked: bool,
 }
 
 impl Default for StatusBar {
@@ -120,6 +122,7 @@ impl StatusBar {
             command_running: false,
             spinner_frame: 0,
             selection_count: 0,
+            locked: false,
         }
     }
 
@@ -244,6 +247,11 @@ impl StatusBar {
             parts.push(format!("SEL:{}", self.selection_count));
         }
 
+        // Terminal lock indicator.
+        if self.locked {
+            parts.push("LOCK".to_string());
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -349,6 +357,11 @@ impl StatusBar {
         // Selection character count.
         if self.selection_count > 0 {
             seg!(format!("SEL:{}", self.selection_count), warn_color);
+        }
+
+        // Terminal lock indicator.
+        if self.locked {
+            seg!("LOCK".to_string(), err_color);
         }
 
         // Mode indicators.

@@ -294,6 +294,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+L".into(),
+            description: "Toggle terminal lock (read-only)".into(),
+            category: ShortcutCategory::Terminal,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+P".into(),
             description: "Copy current directory path".into(),
             category: ShortcutCategory::Edit,

@@ -2391,13 +2391,18 @@ impl DesktopApp {
                 color: regex_color,
             });
 
-            // Search query text with cursor.
+            // Search query text with cursor (red if no matches).
             let query_display = format!("{}_", self.search.query);
+            let query_color = if !self.search.query.is_empty() && self.search.match_count() == 0 {
+                (220u8, 100, 100) // Red when no matches.
+            } else {
+                (230u8, 230, 240) // Normal.
+            };
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: query_display,
                 left: bar_x + 72.0,
                 top: bar_y + 10.0,
-                color: (230, 230, 240),
+                color: query_color,
             });
 
             // Match count — right-aligned.
