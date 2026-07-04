@@ -9,6 +9,7 @@
 
 use crate::context::AIContext;
 use crate::prompt::{self, Action, ChatMessage};
+use crate::tools::{Tool, ToolCall, builtin_tools, execute_tool};
 
 use thiserror::Error;
 
@@ -33,6 +34,32 @@ pub enum AIError {
 pub trait LLMProvider: Send + Sync {
     /// Send messages and get a completion.
     fn complete(&self, messages: &[ChatMessage]) -> AIResult<String>;
+
+    /// Send messages with tool definitions.
+    /// Returns either text content or a list of tool calls.
+    fn complete_with_tools(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[Tool],
+    ) -> AIResult<CompletionResponse> {
+        // Default implementation ignores tools and falls back to plain complete.
+        let _ = tools;
+        Ok(CompletionResponse::Text(self.complete(messages)?))
+    }
+}
+
+/// The response from a completion with tools.
+#[derive(Debug, Clone)]
+pub enum CompletionResponse {
+    /// Plain text response.
+    Text(String),
+    /// The LLM wants to call tools.
+    ToolCalls {
+        /// Text content alongside the tool calls (may be empty).
+        content: String,
+        /// The requested tool calls.
+        tool_calls: Vec<ToolCall>,
+    },
 }
 
 /// A mock LLM provider for testing.
@@ -130,6 +157,63 @@ impl AIEngine {
             return Err(AIError::EmptyResponse);
         }
         Ok(trimmed.to_string())
+    }
+
+    /// Execute an AI action with tool calling support.
+    ///
+    /// This sends the prompt + tool definitions to the LLM. If the LLM
+    /// requests tool calls, they are executed locally and results are
+    /// sent back for a final response. Maximum 3 tool-call rounds.
+    pub fn execute_with_tools(
+        &self,
+        action: Action,
+        ctx: &AIContext,
+        enable_tools: bool,
+    ) -> AIResult<String> {
+        if !enable_tools {
+            return self.execute(action, ctx);
+        }
+
+        let mut messages = prompt::build_messages(action, ctx);
+        let tools = builtin_tools();
+
+        for round in 0..3 {
+            let response = self.provider.complete_with_tools(&messages, &tools)?;
+
+            match response {
+                CompletionResponse::Text(text) => {
+                    if text.trim().is_empty() {
+                        return Err(AIError::EmptyResponse);
+                    }
+                    return Ok(text);
+                }
+                CompletionResponse::ToolCalls {
+                    content,
+                    tool_calls,
+                } => {
+                    // Add assistant message with tool call context.
+                    if !content.is_empty() {
+                        messages.push(ChatMessage::assistant(&content));
+                    }
+
+                    // Execute each tool call and add results.
+                    for call in &tool_calls {
+                        let result = execute_tool(call);
+                        messages.push(ChatMessage::tool_result(&result.content, &call.id));
+                    }
+
+                    log::info!(
+                        "AI tool round {}: {} tool calls executed",
+                        round + 1,
+                        tool_calls.len()
+                    );
+                }
+            }
+        }
+
+        // After max rounds, do a final call without tools to force text response.
+        log::warn!("AI tool calling hit max rounds (3), forcing final response");
+        self.provider.complete(&messages)
     }
 
     /// Return the raw messages for an action without calling the LLM.

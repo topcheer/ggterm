@@ -14,6 +14,7 @@ use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::prompt::ChatMessage;
+use crate::tools::Tool;
 
 // Re-export ChatMessage/Role for convenience
 pub use crate::prompt::{ChatMessage as PromptMessage, Role as MsgRole};
@@ -125,6 +126,8 @@ struct ApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
     stream: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Tool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -141,6 +144,8 @@ struct ApiResponse {
 #[derive(Debug, Deserialize)]
 struct ApiChoice {
     message: Option<ApiMessage>,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -182,6 +187,19 @@ impl LLMClient {
 
     /// Send a chat completion request and return the full response.
     pub fn chat(&self, messages: &[ChatMessage]) -> Result<String, String> {
+        self.chat_with_tools(messages, &[])
+    }
+
+    /// Send a chat completion with tool definitions.
+    ///
+    /// Returns the text content. If the LLM requests tool calls,
+    /// the `tool_calls` JSON is embedded in the response prefixed with
+    /// `__TOOL_CALLS__:`.
+    pub fn chat_with_tools(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[Tool],
+    ) -> Result<String, String> {
         if !self.config.has_api_key() {
             return Err("no API key configured".to_string());
         }
@@ -200,13 +218,15 @@ impl LLMClient {
             temperature: self.config.temperature,
             max_tokens: self.config.max_tokens,
             stream: false,
+            tools: tools.to_vec(),
         };
 
         let url = self.config.chat_url();
         debug!(
-            "LLM request to {url} (model: {}, key: {})",
+            "LLM request to {url} (model: {}, key: {}, tools: {})",
             self.config.model,
-            self.config.masked_api_key()
+            self.config.masked_api_key(),
+            tools.len()
         );
 
         let resp = self
@@ -227,11 +247,25 @@ impl LLMClient {
 
         let api_resp: ApiResponse = resp.json().map_err(|e| format!("JSON parse error: {e}"))?;
 
-        api_resp
+        let choice = api_resp
             .choices
             .into_iter()
             .next()
-            .and_then(|c| c.message)
+            .ok_or_else(|| "empty response from API".to_string())?;
+
+        // Check for tool calls
+        if let Some(reason) = &choice.finish_reason
+            && reason == "tool_calls"
+        {
+            // Return marker so caller knows to handle tool calls
+            return Ok(format!(
+                "__TOOL_CALLS__:{}",
+                choice.message.map(|m| m.content).unwrap_or_default()
+            ));
+        }
+
+        choice
+            .message
             .map(|m| m.content)
             .ok_or_else(|| "empty response from API".to_string())
     }
@@ -265,6 +299,7 @@ impl LLMClient {
             temperature: self.config.temperature,
             max_tokens: self.config.max_tokens,
             stream: true,
+            tools: vec![],
         };
 
         let url = self.config.chat_url();
@@ -317,6 +352,28 @@ impl crate::engine::LLMProvider for LLMClient {
     fn complete(&self, messages: &[ChatMessage]) -> crate::engine::AIResult<String> {
         self.chat(messages)
             .map_err(crate::engine::AIError::RequestFailed)
+    }
+
+    fn complete_with_tools(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[Tool],
+    ) -> crate::engine::AIResult<crate::engine::CompletionResponse> {
+        let response = self
+            .chat_with_tools(messages, tools)
+            .map_err(crate::engine::AIError::RequestFailed)?;
+
+        // Check for tool calls marker.
+        if let Some(json) = response.strip_prefix("__TOOL_CALLS__:") {
+            let tool_calls: Vec<crate::tools::ToolCall> =
+                serde_json::from_str(json).unwrap_or_default();
+            return Ok(crate::engine::CompletionResponse::ToolCalls {
+                content: String::new(),
+                tool_calls,
+            });
+        }
+
+        Ok(crate::engine::CompletionResponse::Text(response))
     }
 }
 
@@ -605,6 +662,7 @@ mod tests {
             temperature: 0.5,
             max_tokens: Some(100),
             stream: false,
+            tools: vec![],
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"gpt-4\""));
@@ -621,6 +679,7 @@ mod tests {
             temperature: 0.5,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(!json.contains("max_tokens"));

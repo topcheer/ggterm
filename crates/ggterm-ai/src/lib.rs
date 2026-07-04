@@ -22,6 +22,7 @@
 
 pub mod context;
 pub mod prompt;
+pub mod tools;
 
 #[cfg(feature = "http")]
 pub mod client;
@@ -32,6 +33,7 @@ pub mod engine;
 pub use context::AIContext;
 pub use engine::{AIEngine, AIError, AIResult, LLMProvider};
 pub use prompt::{Action, ChatMessage, Role, build_messages};
+pub use tools::{Tool, ToolCall, ToolResult, builtin_tools, execute_tool};
 
 #[cfg(feature = "http")]
 pub use client::{AIConfig, LLMClient};
