@@ -7,8 +7,11 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import 'ffi/session_manager.dart';
+import 'ffi/p2p_bindings.dart';
 import 'connection_screen.dart';
 import 'terminal_screen.dart';
+import 'screens/qr_scan_screen.dart';
+import 'screens/share_screen.dart';
 import 'theme.dart';
 
 void main() {
@@ -42,6 +45,13 @@ class _ConnectionEntry extends StatefulWidget {
 
 class _ConnectionEntryState extends State<_ConnectionEntry> {
   final _sessionManager = SessionManager();
+  late final P2pBindings _p2p;
+
+  @override
+  void initState() {
+    super.initState();
+    _p2p = P2pBindings.autoload();
+  }
 
   @override
   void dispose() {
@@ -100,6 +110,27 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
     }
   }
 
+  void _onScanQr() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => QrScanScreen(
+          p2p: _p2p,
+          sessionManager: _sessionManager,
+        ),
+      ),
+    );
+  }
+
+  void _onShare() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ShareScreen(
+          p2p: _p2p,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ConnectionScreen(
@@ -114,6 +145,8 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
               host: '', username: 'local',
             ), localShell: true)
           : null,
+      onScanQr: _p2p.isAvailable ? _onScanQr : null,
+      onShare: _p2p.isAvailable ? _onShare : null,
     );
   }
 }

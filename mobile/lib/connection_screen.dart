@@ -31,11 +31,19 @@ class ConnectionScreen extends StatefulWidget {
   /// Called when the user taps Local Shell (Android only).
   final VoidCallback? onLocalShell;
 
+  /// Called when the user wants to scan a P2P QR code.
+  final VoidCallback? onScanQr;
+
+  /// Called when the user wants to host a P2P session.
+  final VoidCallback? onShare;
+
   const ConnectionScreen({
     super.key,
     required this.onConnect,
     this.onEchoTest,
     this.onLocalShell,
+    this.onScanQr,
+    this.onShare,
   });
 
   @override
@@ -223,6 +231,30 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   onPressed: () => widget.onLocalShell!(),
                   icon: const Icon(Icons.phone_android),
                   label: const Text('Local Shell'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+
+              // ── P2P: Scan QR ──
+              if (widget.onScanQr != null)
+                OutlinedButton.icon(
+                  onPressed: () => widget.onScanQr!(),
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Scan QR (P2P)'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                ),
+
+              // ── P2P: Share Terminal ──
+              if (widget.onShare != null)
+                OutlinedButton.icon(
+                  onPressed: () => widget.onShare!(),
+                  icon: const Icon(Icons.qr_code),
+                  label: const Text('Share Terminal (P2P)'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(44),
                   ),

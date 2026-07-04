@@ -8,6 +8,7 @@ members = [
     "crates/ggterm-app",
     "crates/ggterm-plugin",
     "crates/ggterm-ssh",
+    "crates/ggterm-p2p",
 ]
 resolver = "2"
 
@@ -40,6 +41,10 @@ ggterm-core = { path = "crates/ggterm-core" }
 ggterm-render = { path = "crates/ggterm-render" }
 ggterm-render-wgpu = { path = "crates/ggterm-render-wgpu" }
 ggterm-ssh = { path = "crates/ggterm-ssh" }
+ggterm-p2p = { path = "crates/ggterm-p2p" }
+
+# P2P networking
+iroh = "1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
