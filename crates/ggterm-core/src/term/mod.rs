@@ -2563,6 +2563,26 @@ impl Perform for Terminal {
                     let (top, bottom) = self.grid.scroll_region();
                     format!("\x1bP1$r{};{}r\x1b\\", top + 1, bottom)
                 }
+                // DECSCA — select character protection attribute
+                // Response: 1$r Ps " q where Ps = 1 (protected) or 0 (unprotected)
+                "\"q" => {
+                    let val = if self.protected_attr { 1 } else { 0 };
+                    format!("\x1bP1$r{val}\"q\x1b\\")
+                }
+                // DECSCUSR — cursor style
+                // Response: 1$r Ps SP q where Ps = current style number
+                " q" => {
+                    let style_num = match self.cursor_style {
+                        CursorStyle::Default => 0,
+                        CursorStyle::BlinkBlock => 1,
+                        CursorStyle::SteadyBlock => 2,
+                        CursorStyle::BlinkUnderline => 3,
+                        CursorStyle::SteadyUnderline => 4,
+                        CursorStyle::BlinkBar => 5,
+                        CursorStyle::SteadyBar => 6,
+                    };
+                    format!("\x1bP1$r{style_num} q\x1b\\")
+                }
                 _ => "\x1bP0$r\x1b\\".to_string(),
             };
             self.response_buffer.extend_from_slice(response.as_bytes());
@@ -5209,6 +5229,40 @@ mod tests {
             s.contains("1$r5;20r"),
             "DECRQSS DECSTBM should return 5;20r, got: {s}"
         );
+    }
+
+    #[test]
+    fn t_decrqss_decsca() {
+        let mut t = Terminal::new(80, 24);
+        // Default unprotected → 0
+        feed(&mut t, b"\x1bP$q\"q\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("1$r0\"q"), "DECRQSS DECSCA default: {s}");
+
+        // Set protected
+        feed(&mut t, b"\x1b[1\"q");
+        feed(&mut t, b"\x1bP$q\"q\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("1$r1\"q"), "DECRQSS DECSCA protected: {s}");
+    }
+
+    #[test]
+    fn t_decrqss_decscusr() {
+        let mut t = Terminal::new(80, 24);
+        // Default cursor style
+        feed(&mut t, b"\x1bP$q q\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("1$r0 q"), "DECRQSS DECSCUSR default: {s}");
+
+        // Set to steady block (2)
+        feed(&mut t, b"\x1b[2 q");
+        feed(&mut t, b"\x1bP$q q\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(s.contains("1$r2 q"), "DECRQSS DECSCUSR steady block: {s}");
     }
 
     #[test]

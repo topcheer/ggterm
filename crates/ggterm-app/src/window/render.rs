@@ -1987,7 +1987,17 @@ impl DesktopApp {
         // ── P32: Scroll-to-bottom indicator ──────────────────────────
         {
             if is_scrolled {
-                let indicator_w = 60.0;
+                let display_offset = self.sessions[active]
+                    .app()
+                    .terminal()
+                    .grid()
+                    .display_offset();
+                let indicator_text = if display_offset > 99 {
+                    format!("↓ {} lines", display_offset)
+                } else {
+                    "↓ Bottom".to_string()
+                };
+                let indicator_w = (indicator_text.len() as f32 * 7.0 + 24.0).max(60.0);
                 let indicator_h = 24.0;
                 let ix = screen_w - indicator_w - 20.0;
                 let iy = screen_h - indicator_h - 40.0;
@@ -2002,7 +2012,7 @@ impl DesktopApp {
                     stroke_width: 0.0,
                 });
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: "↓ Bottom".to_string(),
+                    text: indicator_text,
                     left: ix + 12.0,
                     top: iy + 4.0,
                     color: (200, 220, 255),
