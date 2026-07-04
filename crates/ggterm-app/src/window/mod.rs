@@ -1074,6 +1074,8 @@ impl ApplicationHandler for DesktopApp {
                     .remote_host()
                     .unwrap_or("")
                     .to_string();
+                // Progress from OSC 9;4
+                self.status_bar.progress = self.active_session().app().terminal().progress();
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).

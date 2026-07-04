@@ -54,6 +54,8 @@ pub struct StatusBar {
     pub remote_host: String,
     /// Whether pane zoom mode is active.
     pub pane_zoomed: bool,
+    /// Task progress (0.0–1.0) from OSC 9;4. None = no active progress.
+    pub progress: Option<f32>,
 }
 
 impl Default for StatusBar {
@@ -84,6 +86,7 @@ impl StatusBar {
             cwd: String::new(),
             remote_host: String::new(),
             pane_zoomed: false,
+            progress: None,
         }
     }
 
@@ -222,6 +225,11 @@ impl StatusBar {
             parts.push("ZOOM".to_string());
         }
 
+        // Progress indicator (OSC 9;4).
+        if let Some(pct) = self.progress {
+            parts.push(format!("{:.0}%", pct * 100.0));
+        }
+
         parts.join(" | ")
     }
 
@@ -340,6 +348,11 @@ impl StatusBar {
                 display.to_string()
             };
             seg!(display, dim_color);
+        }
+
+        // Progress indicator (OSC 9;4).
+        if let Some(pct) = self.progress {
+            seg!(format!("{:.0}%", pct * 100.0), ok_color);
         }
 
         segs
