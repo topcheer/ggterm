@@ -292,6 +292,12 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
     let chars: Vec<char> = line.chars().collect();
     let schemes = ["https://", "http://", "ftp://", "git://", "ssh://", "www."];
 
+    // Common TLDs for bare hostname detection (e.g. github.com/user/repo)
+    let tlds = [
+        ".com", ".org", ".net", ".io", ".dev", ".app", ".xyz", ".ru", ".de", ".uk", ".jp", ".cn",
+        ".fr", ".nl", ".edu", ".gov", ".mil", ".info", ".me", ".tv", ".cc", ".eu",
+    ];
+
     let mut i = 0;
     while i < chars.len() {
         // Check if a known scheme starts at this position.
@@ -322,6 +328,47 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
             }
             i = j;
         } else {
+            // Try bare hostname detection: hostname + TLD + path/port
+            // Must be at word boundary (preceded by space/punct/start)
+            let at_word_boundary = i == 0 || !chars[i - 1].is_alphanumeric() && chars[i - 1] != '.';
+            if at_word_boundary && chars[i].is_alphanumeric() {
+                // Scan forward reading hostname chars (alnum, dot, hyphen)
+                let mut host_end = i;
+                while host_end < chars.len()
+                    && (chars[host_end].is_alphanumeric()
+                        || chars[host_end] == '.'
+                        || chars[host_end] == '-')
+                {
+                    host_end += 1;
+                }
+                // Check if the hostname part ends with a known TLD
+                let host: String = chars[i..host_end].iter().collect();
+                let host_lower = host.to_ascii_lowercase();
+                let has_tld = tlds
+                    .iter()
+                    .any(|t| host_lower.ends_with(t) && host_lower.len() > t.len());
+                if has_tld {
+                    // Continue scanning for path/query/port after hostname
+                    let mut j = host_end;
+                    while j < chars.len() && is_url_char(chars[j]) {
+                        j += 1;
+                    }
+                    // Trim trailing punctuation
+                    while j > host_end
+                        && matches!(chars[j - 1], '.' | ',' | ';' | ')' | ']' | '}' | '\'')
+                    {
+                        j -= 1;
+                    }
+                    // Require path/port after hostname (avoid linking bare "example.com")
+                    let after_host: String = chars[host_end..j].iter().collect();
+                    if after_host.starts_with('/') || after_host.starts_with(':') {
+                        let url: String = chars[i..j].iter().collect();
+                        results.push((i, url));
+                        i = j;
+                        continue;
+                    }
+                }
+            }
             i += 1;
         }
     }
@@ -838,6 +885,30 @@ mod tests {
         let urls = find_urls("Go to www.rust-lang.org now");
         assert_eq!(urls.len(), 1);
         assert_eq!(urls[0].1, "www.rust-lang.org");
+    }
+
+    #[test]
+    fn test_bare_hostname_with_path() {
+        let urls = find_urls("Clone from github.com/user/repo");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].1, "github.com/user/repo");
+    }
+
+    #[test]
+    fn test_bare_hostname_with_port() {
+        let urls = find_urls("Connect to example.com:8080/api");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].1, "example.com:8080/api");
+    }
+
+    #[test]
+    fn test_bare_hostname_no_path_not_linked() {
+        // Bare hostname without path or port should NOT be detected as URL
+        let urls = find_urls("Welcome to example.com today");
+        assert!(
+            urls.is_empty(),
+            "bare hostname without path should not be URL: {urls:?}"
+        );
     }
 
     #[test]

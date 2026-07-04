@@ -395,6 +395,8 @@ pub struct Terminal {
     pub(crate) title_stack: Vec<String>,
     /// Kitty keyboard protocol flag stack (for push/pop via CSI > u / CSI < u).
     pub(crate) kitty_kb_stack: Vec<u32>,
+    /// User variables from OSC 1337 SetUserVar (tmux integration).
+    pub(crate) user_vars: std::collections::HashMap<String, String>,
     /// UTF-8 reassembly buffer for multi-byte sequences.
     pub(crate) utf8_buf: Vec<u8>,
     /// G0 character set designation.
@@ -580,6 +582,7 @@ impl Terminal {
             title: String::new(),
             title_stack: Vec::new(),
             kitty_kb_stack: Vec::new(),
+            user_vars: std::collections::HashMap::new(),
             utf8_buf: Vec::with_capacity(4),
             g0_charset: Charset::default(),
             g1_charset: Charset::default(),
@@ -725,6 +728,11 @@ impl Terminal {
     /// Return the active kitty keyboard protocol flags (0 = disabled).
     pub fn kitty_keyboard_flags(&self) -> u32 {
         self.modes.kitty_keyboard
+    }
+
+    /// Get a user variable set via OSC 1337 SetUserVar.
+    pub fn user_var(&self, name: &str) -> Option<&str> {
+        self.user_vars.get(name).map(|s| s.as_str())
     }
 
     /// Return true if cursor blink is enabled (DECSET 12).
@@ -2231,6 +2239,7 @@ impl Perform for Terminal {
             //   OSC 1337 ; RemoteHost=user@host — track remote SSH host
             //   OSC 1337 ; SetMark              — set a scrollback mark
             //   OSC 1337 ; ClearScrollback      — clear scrollback history
+            //   OSC 1337 ; SetUserVar=var=value — store user variable (tmux)
             // Other 1337 extensions (inline images, profile switching) are ignored.
             Some(1337) => {
                 let payload = parts.next().unwrap_or("");
@@ -2246,6 +2255,13 @@ impl Perform for Terminal {
                     self.mark_row = Some(self.cursor().1);
                 } else if payload == "ClearScrollback" {
                     self.grid_mut().clear_scrollback();
+                } else if let Some(rest) = payload.strip_prefix("SetUserVar=") {
+                    // SetUserVar=name=value — store user variable
+                    if let Some(eq_pos) = rest.find('=') {
+                        let (name, value) = rest.split_at(eq_pos);
+                        self.user_vars
+                            .insert(name.to_string(), value[1..].to_string());
+                    }
                 }
             }
             // OSC 104 — reset color palette entries.
@@ -5499,6 +5515,23 @@ mod tests {
         // Clear scrollback
         feed(&mut t, b"\x1b]1337;ClearScrollback\x1b\\");
         assert_eq!(t.grid().scrollback_len(), 0);
+    }
+
+    #[test]
+    fn t_osc1337_set_user_var() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]1337;SetUserVar=git_branch=main\x1b\\");
+        assert_eq!(t.user_var("git_branch"), Some("main"));
+        // Overwrite
+        feed(
+            &mut t,
+            b"\x1b]1337;SetUserVar=git_branch=feature/test\x1b\\",
+        );
+        assert_eq!(t.user_var("git_branch"), Some("feature/test"));
+        // Multiple vars
+        feed(&mut t, b"\x1b]1337;SetUserVar=project_name=ggterm\x1b\\");
+        assert_eq!(t.user_var("project_name"), Some("ggterm"));
+        assert_eq!(t.user_var("git_branch"), Some("feature/test"));
     }
 
     // ================================================================
