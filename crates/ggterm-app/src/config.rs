@@ -162,6 +162,11 @@ pub struct TerminalConfig {
     /// the system clipboard on mouse release (xterm/iTerm2 behaviour).
     /// Default: true.
     pub copy_on_select: bool,
+
+    /// Extra characters treated as part of a word for double-click selection.
+    /// Default: ".-/:@~+#?=&%$" (path and URL characters).
+    /// Set to empty string to only select alphanumeric + underscore.
+    pub word_chars: String,
 }
 
 /// AI engine configuration.
@@ -199,6 +204,7 @@ impl Default for TerminalConfig {
             restore_session: false,
             bell_mode: "visual".to_string(),
             copy_on_select: true,
+            word_chars: ".-/:@~+#?=&%$".to_string(),
         }
     }
 }
@@ -287,6 +293,7 @@ mod raw {
         pub restore_session: Option<bool>,
         pub bell_mode: Option<String>,
         pub copy_on_select: Option<bool>,
+        pub word_chars: Option<String>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -397,6 +404,9 @@ impl Config {
         if let Some(v) = raw.terminal.copy_on_select {
             config.terminal.copy_on_select = v;
         }
+        if let Some(v) = raw.terminal.word_chars {
+            config.terminal.word_chars = v;
+        }
 
         if let Some(v) = raw.ai.enabled {
             config.ai.enabled = v;
@@ -478,6 +488,7 @@ impl Config {
         terminal.insert("shell".into(), self.terminal.shell.clone().into());
         terminal.insert("bell_mode".into(), self.terminal.bell_mode.clone().into());
         terminal.insert("copy_on_select".into(), self.terminal.copy_on_select.into());
+        terminal.insert("word_chars".into(), self.terminal.word_chars.clone().into());
         root.insert("terminal".into(), terminal.into());
 
         // [ai]
@@ -2165,5 +2176,56 @@ cursor_style = "fancy"
 "#;
         let config_bad = Config::from_toml_str(toml_bad).unwrap();
         assert_eq!(config_bad.appearance.cursor_style, "block");
+    }
+
+    #[test]
+    fn test_cursor_blink_parse() {
+        let toml = r#"
+[appearance]
+cursor_blink = false
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(!config.appearance.cursor_blink);
+
+        // Default is true
+        assert!(Config::default().appearance.cursor_blink);
+    }
+
+    #[test]
+    fn test_copy_on_select_parse() {
+        let toml = r#"
+[terminal]
+copy_on_select = false
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(!config.terminal.copy_on_select);
+
+        // Default is true
+        assert!(Config::default().terminal.copy_on_select);
+    }
+
+    #[test]
+    fn test_word_chars_parse() {
+        let toml = r#"
+[terminal]
+word_chars = "-._/"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.terminal.word_chars, "-._/");
+
+        // Default includes path/URL chars
+        let default = Config::default();
+        assert!(default.terminal.word_chars.contains('/'));
+        assert!(default.terminal.word_chars.contains('.'));
+        assert!(default.terminal.word_chars.contains('@'));
+    }
+
+    #[test]
+    fn test_export_includes_new_fields() {
+        let config = Config::default();
+        let toml = config.export_to_toml().unwrap();
+        assert!(toml.contains("cursor_blink"));
+        assert!(toml.contains("copy_on_select"));
+        assert!(toml.contains("word_chars"));
     }
 }

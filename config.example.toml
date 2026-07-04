@@ -29,6 +29,10 @@ cursor_style = "block"
 # Default: 8. Set to 0 for edge-to-edge text, or larger for more breathing room.
 # padding = 8
 
+# Whether the cursor blinks. Set to false for a steady cursor.
+# Default: true (blinks when window is focused)
+# cursor_blink = true
+
 [terminal]
 # Maximum scrollback history lines
 scrollback_lines = 10000
@@ -46,6 +50,11 @@ restore_session = false
 # "sound"  = play a system sound
 # "none"   = silently ignore
 # bell_mode = "visual"
+
+# Copy-on-select: automatically copy text to clipboard when you release
+# the mouse button after dragging to select.
+# Default: true (xterm/iTerm2 behavior)
+# copy_on_select = false
 
 [ai]
 # Enable AI features at startup

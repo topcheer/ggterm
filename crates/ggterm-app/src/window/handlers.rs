@@ -2231,20 +2231,20 @@ impl DesktopApp {
         };
 
         // Character classification for word boundary detection.
-        // Modern terminals (iTerm2, Alacritty, WezTerm) treat common path
-        // and URL characters as word characters so that double-clicking
-        // selects entire paths like /usr/local/bin or URLs like https://example.com
+        // Configurable: word_chars from config defines which non-alphanumeric
+        // characters are treated as word characters (for paths, URLs, etc.)
+        let word_chars: String = self
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.word_chars.clone())
+            .unwrap_or_else(|| ".-/:@~+#?=&%$".to_string());
         let char_class = |c: char| -> u8 {
             if c.is_alphanumeric() || c == '_' {
                 0 // word chars (letters, digits, underscore)
             } else if c.is_whitespace() {
                 2 // whitespace separator
-            } else if matches!(
-                c,
-                // Path and URL characters that should be part of words
-                '.' | '-' | '/' | ':' | '@' | '~' | '+' | '#' | '?' | '=' | '&' | '%' | '$'
-            ) {
-                0 // path/URL chars — treat as word chars
+            } else if word_chars.contains(c) {
+                0 // configured path/URL chars — treat as word chars
             } else {
                 1 // other punctuation/symbols
             }
