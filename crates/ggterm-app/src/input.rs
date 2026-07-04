@@ -77,6 +77,8 @@ pub struct InputEncoder {
     cursor_app_mode: bool,
     /// Whether keypad keys should send application-mode sequences (DECPAM).
     keypad_app_mode: bool,
+    /// modifyOtherKeys mode (0=off, 1=mode1, 2=mode2).
+    modify_other_keys: u8,
 }
 
 impl InputEncoder {
@@ -93,6 +95,14 @@ impl InputEncoder {
     /// Set keypad application mode (DECPAM/DECPNM).
     pub fn set_keypad_app_mode(&mut self, on: bool) {
         self.keypad_app_mode = on;
+    }
+
+    /// Set modifyOtherKeys mode (0=off, 1=mode1, 2=mode2).
+    ///
+    /// When active, modified special keys (Ctrl+Arrow, Shift+Tab, etc.)
+    /// are encoded with explicit modifier parameters per xterm spec.
+    pub fn set_modify_other_keys(&mut self, mode: u8) {
+        self.modify_other_keys = mode;
     }
 
     /// Encode a key press into bytes to write to the PTY.
@@ -215,8 +225,13 @@ impl InputEncoder {
     }
 
     fn cursor_key(&self, suffix: char, mods: &KeyModifiers) -> Vec<u8> {
+        // modifyOtherKeys mode 2: always send CSI with explicit params,
+        // even without modifiers. Mode 1: only for modified keys.
+        if self.modify_other_keys == 2 {
+            return csi_modified_with_mode("1", suffix, mods, 2);
+        }
         if has_mod(mods) {
-            return csi_modified("1", suffix, mods);
+            return csi_modified_with_mode("1", suffix, mods, self.modify_other_keys);
         }
         if self.cursor_app_mode {
             return format!("\x1bO{}", suffix).into_bytes();
@@ -271,6 +286,21 @@ fn mod_code(mods: &KeyModifiers) -> u8 {
 
 fn csi_modified(param: &str, suffix: char, mods: &KeyModifiers) -> Vec<u8> {
     format!("\x1b[{};{}{}", param, mod_code(mods), suffix).into_bytes()
+}
+
+/// Encode a modified cursor key with modifyOtherKeys mode awareness.
+///
+/// - mode 0: standard `\x1b[1;{mod}{suffix}` (only when modifiers present)
+/// - mode 1: standard `\x1b[1;{mod}{suffix}` (only when modifiers present)
+/// - mode 2: `\x1b[1;{mod};1{suffix}` with trailing `;1` per xterm spec
+fn csi_modified_with_mode(param: &str, suffix: char, mods: &KeyModifiers, mode: u8) -> Vec<u8> {
+    let m = mod_code(mods);
+    if mode >= 2 {
+        // Mode 2: append ;1 after the modifier code.
+        format!("\x1b[{param};{m};1{suffix}").into_bytes()
+    } else {
+        format!("\x1b[{param};{m}{suffix}").into_bytes()
+    }
 }
 
 fn csi_tilde(num: &str, mods: &KeyModifiers) -> Vec<u8> {
@@ -1287,5 +1317,64 @@ mod tests {
             },
         );
         assert_eq!(enc.encode(&key), b"\r");
+    }
+
+    // ── modifyOtherKeys ─────────────────────────────────────────
+
+    #[test]
+    fn test_modify_other_keys_mode1_ctrl_arrow() {
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(1);
+        let key = InputKey::Special(
+            SpecialKey::Right,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        // Ctrl modifier = 5, so: ESC[1;5C
+        assert_eq!(enc.encode(&key), b"\x1b[1;5C");
+    }
+
+    #[test]
+    fn test_modify_other_keys_mode2_unmodified_arrow() {
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(2);
+        let key = InputKey::Special(SpecialKey::Up, KeyModifiers::default());
+        // Mode 2: even unmodified keys get explicit modifier code + trailing ;1
+        // modifier code 1 (no mods), so: ESC[1;1;1A
+        assert_eq!(enc.encode(&key), b"\x1b[1;1;1A");
+    }
+
+    #[test]
+    fn test_modify_other_keys_mode2_shift_arrow() {
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(2);
+        let key = InputKey::Special(
+            SpecialKey::Left,
+            KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
+        );
+        // Shift = 2, so: ESC[1;2;1D
+        assert_eq!(enc.encode(&key), b"\x1b[1;2;1D");
+    }
+
+    #[test]
+    fn test_modify_other_keys_off_normal_arrow() {
+        let enc = InputEncoder::new();
+        // modifyOtherKeys = 0 (off), unmodified arrow → normal sequence
+        let key = InputKey::Special(SpecialKey::Down, KeyModifiers::default());
+        assert_eq!(enc.encode(&key), b"\x1b[B");
+    }
+
+    #[test]
+    fn test_modify_other_keys_mode1_unmodified_arrow() {
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(1);
+        // Mode 1: unmodified keys are NOT affected, only modified ones
+        let key = InputKey::Special(SpecialKey::Down, KeyModifiers::default());
+        assert_eq!(enc.encode(&key), b"\x1b[B");
     }
 }

@@ -741,6 +741,11 @@ impl Terminal {
         self.modes.keypad_app
     }
 
+    /// Return the modifyOtherKeys mode (0=off, 1=mode1, 2=mode2).
+    pub fn modify_other_keys(&self) -> u8 {
+        self.modes.modify_other_keys
+    }
+
     /// Return the active kitty keyboard protocol flags (0 = disabled).
     pub fn kitty_keyboard_flags(&self) -> u32 {
         self.modes.kitty_keyboard

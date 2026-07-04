@@ -1350,6 +1350,7 @@ impl DesktopApp {
         let term = self.sessions[self.active].app().terminal();
         self.encoder.set_cursor_app_mode(term.cursor_keys_app());
         self.encoder.set_keypad_app_mode(term.keypad_app());
+        self.encoder.set_modify_other_keys(term.modify_other_keys());
         if let Some(input_key) = map_winit_key(&event.physical_key, logical_text, &mods) {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {
