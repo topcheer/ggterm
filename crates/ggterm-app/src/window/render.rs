@@ -1992,8 +1992,19 @@ impl DesktopApp {
                     .terminal()
                     .grid()
                     .display_offset();
-                let indicator_text = if display_offset > 99 {
-                    format!("↓ {} lines", display_offset)
+                let scrollback_total = self.sessions[active]
+                    .app()
+                    .terminal()
+                    .grid()
+                    .scrollback_len();
+                // Show "↓ NN%" when scrolled, or "↓ N lines" for large scrollback
+                let indicator_text = if scrollback_total > 0 {
+                    let pct = (display_offset * 100 / (scrollback_total + 1)).min(100);
+                    if pct > 0 {
+                        format!("↓ {}%", pct)
+                    } else {
+                        "↓ Bottom".to_string()
+                    }
                 } else {
                     "↓ Bottom".to_string()
                 };

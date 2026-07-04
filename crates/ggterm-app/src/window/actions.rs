@@ -518,6 +518,30 @@ impl DesktopApp {
         }
     }
 
+    /// Send terminal mode reset sequences to all active PTYs before exit.
+    ///
+    /// This ensures the shell doesn't get stuck in modes like bracketed paste,
+    /// mouse tracking, or application cursor keys after the terminal closes.
+    /// Without this, the user's shell session may behave unexpectedly.
+    pub(super) fn send_terminal_reset(&mut self) {
+        // Reset sequences:
+        // \x1b[?2004l  — bracketed paste off
+        // \x1b[?1000l  — mouse tracking off
+        // \x1b[?1002l  — mouse button event off
+        // \x1b[?1003l  — mouse any event off
+        // \x1b[?1006l  — SGR mouse off
+        // \x1b[?1015l  — URXVT mouse off
+        // \x1b[?1l     — cursor keys normal
+        // \x1b[?25h    — show cursor
+        // \x1b[?12l    — cursor blink off
+        // \x1b>        — keypad numeric
+        // \x1b[!p      — soft reset
+        let reset = b"\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1l\x1b[?25h\x1b[?12l\x1b>\x1b[!p";
+        for session in &mut self.sessions {
+            session.write_to_all_panes(reset);
+        }
+    }
+
     /// Restore tabs/panes/splits from a saved session plan.
     ///
     /// Replaces all existing sessions with the restored ones.

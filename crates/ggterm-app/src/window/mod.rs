@@ -996,7 +996,8 @@ impl ApplicationHandler for DesktopApp {
             WindowEvent::CloseRequested => {
                 // P29-C: Show quit confirmation dialog.
                 if self.quit_confirm {
-                    log::info!("Quit confirmed — saving session and exiting");
+                    log::info!("Quit confirmed — resetting terminal modes and exiting");
+                    self.send_terminal_reset();
                     self.save_session_on_exit();
                     event_loop.exit();
                 } else {
