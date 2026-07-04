@@ -1032,6 +1032,43 @@ impl DesktopApp {
         }
     }
 
+    /// Import SSH hosts from ~/.ssh/config and save to GGTerm's connection store.
+    ///
+    /// Reads the user's OpenSSH config file and imports host entries.
+    /// Shows a toast with the number of imported hosts.
+    pub(super) fn import_ssh_hosts(&mut self) {
+        let mut store = crate::connection_manager::ConnectionStore::new();
+
+        // Try loading existing store first.
+        let store_path = std::env::var("HOME").ok().map(|h| {
+            std::path::PathBuf::from(h)
+                .join(".ggterm")
+                .join("hosts.toml")
+        });
+
+        if let Some(ref path) = store_path
+            && path.exists()
+        {
+            store = crate::connection_manager::ConnectionStore::load(path);
+        }
+
+        let added = store.import_ssh_config(true);
+
+        if added > 0 {
+            // Save updated store.
+            if let Some(ref path) = store_path
+                && let Err(e) = store.save(path)
+            {
+                log::error!("Failed to save hosts.toml: {e}");
+            }
+            self.show_toast(format!("Imported {added} SSH hosts from ~/.ssh/config"));
+            log::info!("SSH config import: {added} hosts added");
+        } else {
+            self.show_toast("No new SSH hosts found in ~/.ssh/config");
+            log::info!("SSH config import: no new hosts");
+        }
+    }
+
     /// Poll for pending OSC 52 clipboard set operations.
     ///
     /// Called from `about_to_wait` to apply any OSC 52 clipboard changes

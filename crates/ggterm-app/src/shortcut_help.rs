@@ -300,6 +300,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+H".into(),
+            description: "Import SSH hosts from ~/.ssh/config".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Alt+H/J/K/L".into(),
             description: "Vim-style pane navigation".into(),
             category: ShortcutCategory::Terminal,

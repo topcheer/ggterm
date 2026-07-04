@@ -753,6 +753,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+H → import SSH hosts from ~/.ssh/config
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyH) = &event.physical_key
+        {
+            self.import_ssh_hosts();
+            return;
+        }
+
         // Ctrl+Shift+, → open config file in editor (like VS Code)
         // Cmd+, on macOS (standard "Preferences" shortcut)
         if let PhysicalKey::Code(KeyCode::Comma) = &event.physical_key {
