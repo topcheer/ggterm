@@ -369,6 +369,50 @@ impl DesktopApp {
         }
     }
 
+    /// Duplicate the active tab: creates a new tab with the same shell and cwd.
+    pub(super) fn duplicate_tab(&mut self) {
+        let cwd = self.active_session().cwd().map(|p| p.to_path_buf());
+        match TabSession::new_with_cwd(
+            self.config.cols,
+            self.config.rows,
+            self.shell(),
+            cwd.as_deref(),
+        ) {
+            Ok(session) => {
+                self.sessions.push(session);
+                self.active = self.sessions.len() - 1;
+                self.selection.clear();
+                log::info!("Duplicated tab {}", self.active);
+                self.show_toast("Tab duplicated");
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to duplicate tab: {e}");
+                self.show_toast("Failed to duplicate tab");
+            }
+        }
+    }
+
+    /// Close all tabs except the active one.
+    pub(super) fn close_other_tabs(&mut self) {
+        if self.sessions.len() <= 1 {
+            return;
+        }
+        let active = self.active;
+        self.sessions.swap_remove(active);
+        self.sessions.truncate(1);
+        self.active = 0;
+        self.selection.clear();
+        log::info!("Closed all other tabs");
+        self.show_toast("Closed other tabs");
+        self.save_session_on_exit();
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     /// Switch to the next tab (wraps).
     pub(super) fn next_tab(&mut self) {
         self.selection.clear();
@@ -1444,6 +1488,12 @@ impl DesktopApp {
                 if self.active < self.sessions.len() - 1 {
                     self.move_tab(self.active, self.active + 1);
                 }
+            }
+            "tab.duplicate" => {
+                self.duplicate_tab();
+            }
+            "tab.close_others" => {
+                self.close_other_tabs();
             }
             "tab.rename" => {
                 self.renaming_tab = Some(self.active);

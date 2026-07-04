@@ -218,6 +218,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Tab,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+D".into(),
+            description: "Duplicate current tab".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+W".into(),
+            description: "Close all other tabs".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
         // Splits
         ShortcutEntry {
             keys: "Ctrl+Shift+D".into(),

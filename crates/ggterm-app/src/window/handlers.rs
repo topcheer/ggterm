@@ -170,6 +170,16 @@ impl DesktopApp {
                 self.reopen_closed_tab();
                 return;
             }
+            // Ctrl+Shift+Alt+D → duplicate active tab
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "d" {
+                self.duplicate_tab();
+                return;
+            }
+            // Ctrl+Shift+Alt+W → close all other tabs
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "w" {
+                self.close_other_tabs();
+                return;
+            }
             // Ctrl+W → close tab (also Cmd+W on macOS)
             if self.check_keybinding(
                 "close_tab",

@@ -322,6 +322,12 @@ pub struct Modes {
     /// modifyOtherKeys — xterm enhanced keyboard protocol.
     /// 0 = disabled, 1 = mode 1, 2 = mode 2.
     pub modify_other_keys: u8,
+    /// Kitty keyboard protocol active flags.
+    /// Bit 0 = disambiguate escape keys
+    /// Bit 1 = report event types
+    /// Bit 2 = report alternate keys
+    /// Bit 3 = report all keys as escapes
+    pub kitty_keyboard: u32,
 }
 
 impl Modes {
@@ -349,6 +355,7 @@ impl Modes {
             cursor_blink: true,
             reverse_video: false,
             modify_other_keys: 0,
+            kitty_keyboard: 0,
         }
     }
 }
@@ -386,6 +393,8 @@ pub struct Terminal {
     pub(crate) title: String,
     /// Title stack for CSI 22t/23t (push/pop title).
     pub(crate) title_stack: Vec<String>,
+    /// Kitty keyboard protocol flag stack (for push/pop via CSI > u / CSI < u).
+    pub(crate) kitty_kb_stack: Vec<u32>,
     /// UTF-8 reassembly buffer for multi-byte sequences.
     pub(crate) utf8_buf: Vec<u8>,
     /// G0 character set designation.
@@ -570,6 +579,7 @@ impl Terminal {
             command_marks: Vec::new(),
             title: String::new(),
             title_stack: Vec::new(),
+            kitty_kb_stack: Vec::new(),
             utf8_buf: Vec::with_capacity(4),
             g0_charset: Charset::default(),
             g1_charset: Charset::default(),
@@ -710,6 +720,11 @@ impl Terminal {
     /// Return true if keypad is in application mode (DECPAM).
     pub fn keypad_app(&self) -> bool {
         self.modes.keypad_app
+    }
+
+    /// Return the active kitty keyboard protocol flags (0 = disabled).
+    pub fn kitty_keyboard_flags(&self) -> u32 {
+        self.modes.kitty_keyboard
     }
 
     /// Return true if cursor blink is enabled (DECSET 12).
@@ -1336,6 +1351,24 @@ fn utf8_expected_len(lead: u8) -> usize {
     } // invalid leading byte
 }
 
+/// Hex-encode bytes as lowercase hex string (for XTGETTCAP).
+fn hex_encode(data: &[u8]) -> String {
+    data.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Hex-decode a hex string to bytes (for XTGETTCAP).
+fn hex_decode(data: &[u8]) -> Option<String> {
+    let s = std::str::from_utf8(data).ok()?;
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    let bytes: Result<Vec<u8>, _> = (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+        .collect();
+    String::from_utf8(bytes.ok()?).ok()
+}
+
 impl Perform for Terminal {
     fn print(&mut self, byte: u8) {
         // ASCII: flush any pending UTF-8 buffer, then write directly
@@ -1734,6 +1767,42 @@ impl Perform for Terminal {
             // SCP — save cursor position (legacy ANSI.SYS)
             b's' => {
                 self.saved_cursor = self.cursor;
+            }
+            // Kitty keyboard protocol: push flags (CSI > Ps u)
+            // Saves current flags onto an internal stack and ORs the new flags.
+            b'u' if intermediates.contains(&b'>') => {
+                let new_flags = params.first().copied().unwrap_or(0) as u32;
+                self.kitty_kb_stack.push(self.modes.kitty_keyboard);
+                self.modes.kitty_keyboard |= new_flags;
+            }
+            // Kitty keyboard protocol: pop flags (CSI < Ps u)
+            // Restores the previous flags from the stack (N times).
+            b'u' if intermediates.contains(&b'<') => {
+                let count = params.first().copied().unwrap_or(1) as usize;
+                for _ in 0..count {
+                    if let Some(prev) = self.kitty_kb_stack.pop() {
+                        self.modes.kitty_keyboard = prev;
+                    } else {
+                        self.modes.kitty_keyboard = 0;
+                        break;
+                    }
+                }
+            }
+            // Kitty keyboard protocol: set/report flags (CSI = Ps ; Pu u)
+            // Ps = 1: set flags to Pu. Ps = 2: query current flags.
+            b'u' if intermediates.contains(&b'=') => {
+                let action = params.first().copied().unwrap_or(0);
+                match action {
+                    1 => {
+                        self.modes.kitty_keyboard = params.get(1).copied().unwrap_or(0) as u32;
+                    }
+                    2 => {
+                        // Report current flags: CSI ? flags u
+                        let resp = format!("\x1b[?{}u", self.modes.kitty_keyboard);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    _ => {}
+                }
             }
             // RCP — restore cursor position (legacy ANSI.SYS)
             b'u' => {
@@ -2214,6 +2283,47 @@ impl Perform for Terminal {
             }
             _ => {}
         }
+    }
+
+    fn dcs(&mut self, intermediates: &[u8], _params: &[u16], final_byte: u8, data: &[u8]) {
+        // XTGETTCAP — request terminal capability (DCS + q <hex-name> ST)
+        // Response: DCS + r <hex-name> = <hex-value> ST
+        // Programs (tmux, nvim) query capabilities like "TN" (terminal name),
+        // "Co" (number of colors), "RGB" (truecolor support).
+        if final_byte == b'q' && intermediates.contains(&b'+') {
+            // Decode hex-encoded capability name
+            if let Some(cap_name) = hex_decode(data) {
+                let cap_upper = cap_name.to_ascii_uppercase();
+                let value = match cap_upper.as_str() {
+                    // Terminal name
+                    "TN" => Some("ggterm".to_string()),
+                    // Number of colors — report 256 (xterm-256color compatible)
+                    "CO" | "COLORS" => Some("256".to_string()),
+                    // Truecolor support
+                    "RGB" => Some("8".to_string()),
+                    // Background color (xterm extension)
+                    "BG" => Some("rgb:0000/0000/0000".to_string()),
+                    // Foreground color
+                    "FG" => Some("rgb:cccc/cccc/cccc".to_string()),
+                    _ => None,
+                };
+                match value {
+                    Some(v) => {
+                        // Encode response: DCS + r <hex-name> = <hex-value> ST
+                        let hex_name = hex_encode(cap_upper.as_bytes());
+                        let hex_val = hex_encode(v.as_bytes());
+                        let resp = format!("\x1bP1+r{hex_name}={hex_val}\x1b\\");
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
+                    None => {
+                        // Unknown capability: DCS 0 + r ST
+                        self.response_buffer.extend_from_slice(b"\x1bP0+r\x1b\\");
+                    }
+                }
+            }
+        }
+        // Sixel graphics (DCS ... q) — acknowledged but not rendered
+        // tmux passthrough (DCS tmux ;) — ignored
     }
 }
 
@@ -4551,6 +4661,129 @@ mod tests {
             !t.modes.insert,
             "insert should NOT be set by modifyOtherKeys"
         );
+    }
+
+    #[test]
+    fn t_kitty_keyboard_push_or_flags() {
+        let mut t = Terminal::new(80, 24);
+        assert_eq!(t.kitty_keyboard_flags(), 0);
+        // Push flags: CSI > 1 u sets bit 0
+        feed(&mut t, b"\x1b[>1u");
+        assert_eq!(t.kitty_keyboard_flags(), 1);
+        // Push more flags: CSI > 2 u sets bit 1
+        feed(&mut t, b"\x1b[>2u");
+        assert_eq!(t.kitty_keyboard_flags(), 3);
+    }
+
+    #[test]
+    fn t_kitty_keyboard_pop_restores() {
+        let mut t = Terminal::new(80, 24);
+        // Push flag 1, then push flag 2
+        feed(&mut t, b"\x1b[>1u");
+        feed(&mut t, b"\x1b[>2u");
+        assert_eq!(t.kitty_keyboard_flags(), 3);
+        // Pop once: restores to 1
+        feed(&mut t, b"\x1b[<1u");
+        assert_eq!(t.kitty_keyboard_flags(), 1);
+        // Pop again: restores to 0
+        feed(&mut t, b"\x1b[<1u");
+        assert_eq!(t.kitty_keyboard_flags(), 0);
+    }
+
+    #[test]
+    fn t_kitty_keyboard_set_and_query() {
+        let mut t = Terminal::new(80, 24);
+        // Set flags directly: CSI = 1 ; 5 u
+        feed(&mut t, b"\x1b[=1;5u");
+        assert_eq!(t.kitty_keyboard_flags(), 5);
+        // Query flags: CSI = 2 u
+        feed(&mut t, b"\x1b[=2u");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("\x1b[?5u"),
+            "kitty keyboard query should report flags 5, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_kitty_keyboard_rcp_still_works() {
+        // Plain CSI u (RCP) should still restore cursor position
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;3H"); // move to row 5, col 3
+        feed(&mut t, b"\x1b[s"); // save cursor
+        feed(&mut t, b"\x1b[10;10H"); // move elsewhere
+        feed(&mut t, b"\x1b[u"); // restore cursor
+        assert_eq!(t.cursor().0, 2, "col should be restored to 2 (0-based)");
+        assert_eq!(t.cursor().1, 4, "row should be restored to 4 (0-based)");
+    }
+
+    #[test]
+    fn t_xtgettcap_terminal_name() {
+        // XTGETTCAP for "TN" (terminal name)
+        // DCS + q 544e ST → "TN" in hex
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1bP+q544e\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Response should be DCS 1+r 544e=67677465726d ST
+        // (TN=ggterm in hex encoding)
+        assert!(
+            s.contains("1+r544e="),
+            "XTGETTCAP TN should start with 1+r544e=, got: {s}"
+        );
+        assert!(
+            s.contains("67677465726d"),
+            "XTGETTCAP TN response should contain hex 'ggterm' (67677465726d), got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_xtgettcap_colors() {
+        // XTGETTCAP for "Co" (number of colors)
+        // "Co" in hex = 436f
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1bP+q436f\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Response should contain hex "256" = 323536
+        assert!(
+            s.contains("1+r") && s.contains("323536"),
+            "XTGETTCAP Co should return hex 256 (323536), got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_xtgettcap_rgb() {
+        // XTGETTCAP for "RGB" (truecolor support)
+        // "RGB" in hex = 524742
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1bP+q524742\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("1+r"),
+            "XTGETTCAP RGB should return success, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_dcs_passthrough_ignored() {
+        // tmux DCS passthrough should not crash or produce garbage
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1bPtmux;\x1b\x1b[?1000h\x1b\\");
+        // Should not crash — grid should still be at default state
+        assert_eq!(t.cursor().0, 0);
+    }
+
+    #[test]
+    fn t_hex_encode_decode() {
+        assert_eq!(hex_encode(b"TN"), "544e");
+        assert_eq!(hex_encode(b"ggterm"), "67677465726d");
+        assert_eq!(hex_decode(b"544e").as_deref(), Some("TN"));
+        assert_eq!(hex_decode(b"67677465726d").as_deref(), Some("ggterm"));
+        assert!(hex_decode(b"xyz").is_none()); // odd length
+        assert!(hex_decode(b"zz").is_none()); // invalid hex
     }
 
     #[test]

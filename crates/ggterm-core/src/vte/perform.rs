@@ -50,6 +50,16 @@ pub trait Perform {
     /// OSC sequence: `ESC ]` data `BEL` or `ESC \`.
     /// `data` is the raw OSC payload (may contain semicolons).
     fn osc(&mut self, _data: &[u8]) {}
+
+    /// DCS sequence: `ESC P` params intermediates final `data` `ST`.
+    ///
+    /// - `params`: semicolon-separated numeric parameters before the final byte
+    /// - `intermediates`: bytes 0x20-0x2F between params and the final byte
+    /// - `final_byte`: the final byte 0x40-0x7E that identifies the DCS command
+    /// - `data`: the string payload after the final byte (before ST)
+    ///
+    /// Used by XTGETTCAP, Sixel, tmux passthrough, etc.
+    fn dcs(&mut self, _intermediates: &[u8], _params: &[u16], _final_byte: u8, _data: &[u8]) {}
 }
 
 /// A no-op implementation of [`Perform`] for testing.

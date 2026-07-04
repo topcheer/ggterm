@@ -123,6 +123,18 @@ impl CommandRegistry {
             category: "Tab".into(),
             shortcut: Some("Ctrl+Shift+PageDown".into()),
         });
+        r.register(Command {
+            id: "tab.duplicate".into(),
+            label: "Duplicate Tab".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+Alt+D".into()),
+        });
+        r.register(Command {
+            id: "tab.close_others".into(),
+            label: "Close Other Tabs".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+Alt+W".into()),
+        });
         // Theme
         r.register(Command {
             id: "theme.cycle".into(),

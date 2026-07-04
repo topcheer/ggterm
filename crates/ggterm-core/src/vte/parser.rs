@@ -40,6 +40,8 @@ pub struct Parser {
     in_sub_param: bool,
     /// Accumulator for OSC string data.
     string_buffer: Vec<u8>,
+    /// DCS final byte (set when entering DcsString).
+    dcs_final: u8,
     /// UTF-8 decoding state.
     utf8_buf: [u8; 4],
     utf8_len: usize,
@@ -58,6 +60,7 @@ impl Parser {
             param_set: false,
             in_sub_param: false,
             string_buffer: Vec::with_capacity(256),
+            dcs_final: 0,
             utf8_buf: [0; 4],
             utf8_len: 0,
             utf8_expected: 0,
@@ -90,15 +93,10 @@ impl Parser {
                 self.state = State::Ground;
             }
             State::Utf8Sequence => self.utf8_continue(byte, perform),
-            State::DcsString => {
-                if byte == 0x1b {
-                    self.state = State::DcsEsc;
-                } else if byte == 0x07 {
-                    // BEL can also terminate DCS (some implementations)
-                    self.state = State::Ground;
-                }
-                // Discard all other bytes
-            }
+            State::DcsEntry => self.dcs_entry(byte, perform),
+            State::DcsParam => self.dcs_param(byte, perform),
+            State::DcsIntermediate => self.dcs_intermediate(byte, perform),
+            State::DcsString => self.dcs_string(byte, perform),
             State::DcsEsc => {
                 // After ESC in DCS context: ST = ESC \
                 if byte != b'\\' {
@@ -111,6 +109,7 @@ impl Parser {
                     }
                 } else {
                     // ST received — end of DCS sequence
+                    self.dispatch_dcs(perform);
                     self.state = State::Ground;
                 }
             }
@@ -148,8 +147,10 @@ impl Parser {
             }
             b'P' => {
                 // DCS — Device Control String (ESC P ... ST)
-                // Consume and discard everything until ST (ESC \).
-                self.state = State::DcsString;
+                // Collect params/intermediates then string data until ST.
+                self.reset_seq();
+                self.state = State::DcsEntry;
+                self.dcs_final = 0;
             }
             b'X' | b'^' | b'_' => {
                 // SOS (ESC X), PM (ESC ^), APC (ESC _) — string sequences
@@ -325,6 +326,137 @@ impl Parser {
 
     // -- Helpers -------------------------------------------------------------
 
+    // -- DCS state handlers -------------------------------------------------
+
+    fn dcs_entry<P: Perform>(&mut self, byte: u8, _perform: &mut P) {
+        match byte {
+            b'0'..=b'9' => {
+                self.state = State::DcsParam;
+                self.param_set = true;
+                if self.param_count < self.params.len() {
+                    self.params[self.param_count] = (byte - b'0') as u16;
+                }
+            }
+            b';' => {
+                self.state = State::DcsParam;
+                self.param_count = self
+                    .param_count
+                    .saturating_add(1)
+                    .min(self.params.len() - 1);
+                self.param_set = false;
+            }
+            // Intermediate bytes (0x20-0x2F)
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+                self.state = State::DcsIntermediate;
+            }
+            // Final byte (0x40-0x7E) → enter string passthrough
+            0x40..=0x7e => {
+                self.dcs_final = byte;
+                self.string_buffer.clear();
+                self.state = State::DcsString;
+            }
+            0x1b => {
+                // Empty DCS: ESC P ST — dispatch with empty data
+                self.dcs_final = 0;
+                self.string_buffer.clear();
+                self.state = State::DcsEsc;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn dcs_param<P: Perform>(&mut self, byte: u8, _perform: &mut P) {
+        match byte {
+            b'0'..=b'9' => {
+                let idx = self.param_count.min(self.params.len() - 1);
+                self.params[idx] = self.params[idx]
+                    .saturating_mul(10)
+                    .saturating_add((byte - b'0') as u16);
+                self.param_set = true;
+            }
+            b';' => {
+                if self.param_count < self.params.len() - 1 {
+                    self.param_count += 1;
+                }
+                self.param_set = false;
+            }
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+                self.state = State::DcsIntermediate;
+            }
+            0x40..=0x7e => {
+                self.dcs_final = byte;
+                self.string_buffer.clear();
+                self.state = State::DcsString;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn dcs_intermediate<P: Perform>(&mut self, byte: u8, _perform: &mut P) {
+        match byte {
+            0x20..=0x2f => {
+                if self.intermediate_count < self.intermediates.len() {
+                    self.intermediates[self.intermediate_count] = byte;
+                    self.intermediate_count += 1;
+                }
+            }
+            0x40..=0x7e => {
+                self.dcs_final = byte;
+                self.string_buffer.clear();
+                self.state = State::DcsString;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
+        }
+    }
+
+    fn dcs_string<P: Perform>(&mut self, byte: u8, perform: &mut P) {
+        match byte {
+            0x1b => {
+                self.state = State::DcsEsc;
+            }
+            0x07 => {
+                // BEL can also terminate DCS
+                self.dispatch_dcs(perform);
+                self.state = State::Ground;
+            }
+            c if c >= 0x20 => {
+                self.string_buffer.push(byte);
+            }
+            _ => {}
+        }
+    }
+
+    /// Dispatch a completed DCS sequence to the Perform callback.
+    fn dispatch_dcs<P: Perform>(&mut self, perform: &mut P) {
+        let inter = unsafe { self.intermediates.get_unchecked(..self.intermediate_count) };
+        let count = if self.param_set {
+            self.param_count + 1
+        } else {
+            self.param_count
+        };
+        let n = count.min(self.params.len());
+        let params = unsafe { self.params.get_unchecked(..n) };
+        let final_byte = self.dcs_final;
+        let data = self.string_buffer.as_slice();
+        perform.dcs(inter, params, final_byte, data);
+    }
+
+    // -- CSI dispatch -------------------------------------------------------
+
     /// Dispatch a CSI sequence to the Perform callback.
     fn dispatch_csi<P: Perform>(&mut self, final_byte: u8, perform: &mut P) {
         let count = if self.param_set {
@@ -419,7 +551,13 @@ enum State {
     OscEsc,
     /// Accumulating a multi-byte UTF-8 character.
     Utf8Sequence,
-    /// Inside a DCS (Device Control String) — consume until ST.
+    /// DCS entry: after ESC P, collecting params/intermediates.
+    DcsEntry,
+    /// DCS param collection.
+    DcsParam,
+    /// DCS intermediate collection.
+    DcsIntermediate,
+    /// Inside DCS string payload — collect data until ST.
     DcsString,
     /// After ESC inside a DCS — checking for ST (ESC \).
     DcsEsc,
