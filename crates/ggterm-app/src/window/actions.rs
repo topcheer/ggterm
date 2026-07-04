@@ -802,7 +802,14 @@ impl DesktopApp {
 
         // Build context from terminal.
         let ctx = ggterm_ai::AIContext::from_terminal(self.active_session().app().terminal());
-        let req = crate::ai_bridge::AIRequest::new(action, ctx);
+        #[allow(unused_mut)]
+        let mut req = crate::ai_bridge::AIRequest::new(action, ctx);
+
+        // Read enable_tools from config.
+        #[cfg(feature = "config-watch")]
+        if let Some(ref mgr) = self.config_mgr {
+            req.enable_tools = mgr.config().ai.enable_tools;
+        }
 
         if let Some(ref mut bridge) = self.ai_bridge {
             if !bridge.request(req) {

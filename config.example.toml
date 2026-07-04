@@ -79,6 +79,12 @@ api_endpoint = "https://open.bigmodel.cn/api/paas/v4"
 # DeepSeek: "deepseek-chat"
 model = "glm-4-flash"
 
+# Enable AI tool calling (default: true).
+# When enabled, AI can execute commands (run_command, read_file, list_files)
+# to gather context before responding.
+# Disable if you prefer pure text-only AI responses.
+# enable_tools = true
+
 # ──────────────────────────────────────────────────────────────────────
 # Keyboard Shortcuts (P14-D)
 # ──────────────────────────────────────────────────────────────────────

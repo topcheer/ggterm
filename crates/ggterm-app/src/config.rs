@@ -180,6 +180,9 @@ pub struct AiConfig {
     pub model: String,
     /// API key for authentication. Can also be set via GGTERM_AI_API_KEY env var.
     pub api_key: String,
+    /// Enable tool calling (run_command, read_file, list_files).
+    /// Allows the AI to execute commands to gather context.
+    pub enable_tools: bool,
 }
 
 impl Default for AppearanceConfig {
@@ -253,6 +256,7 @@ impl Default for AiConfig {
             api_endpoint: "https://open.bigmodel.cn/api/paas/v4".to_string(),
             model: "glm-4-flash".to_string(),
             api_key: String::new(),
+            enable_tools: true,
         }
     }
 }
@@ -306,6 +310,7 @@ mod raw {
         pub api_endpoint: Option<String>,
         pub model: Option<String>,
         pub api_key: Option<String>,
+        pub enable_tools: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -424,6 +429,9 @@ impl Config {
         if let Some(v) = raw.ai.api_key {
             config.ai.api_key = v;
         }
+        if let Some(v) = raw.ai.enable_tools {
+            config.ai.enable_tools = v;
+        }
 
         let kb = raw.keybindings;
         config.keybindings.new_tab = kb.new_tab;
@@ -504,6 +512,7 @@ impl Config {
         ai.insert("api_endpoint".into(), self.ai.api_endpoint.clone().into());
         ai.insert("model".into(), self.ai.model.clone().into());
         ai.insert("api_key".into(), self.ai.api_key.clone().into());
+        ai.insert("enable_tools".into(), self.ai.enable_tools.into());
         root.insert("ai".into(), ai.into());
 
         // [keybindings] — only non-None entries
