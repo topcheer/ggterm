@@ -186,6 +186,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+K".into()),
         });
         r.register(Command {
+            id: "terminal.clear_all".into(),
+            label: "Clear All Tabs".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.reset".into(),
             label: "Reset Terminal".into(),
             category: "Terminal".into(),

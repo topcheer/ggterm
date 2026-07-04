@@ -1659,6 +1659,21 @@ impl DesktopApp {
         }
     }
 
+    /// Clear the screen of all tabs (sends ESC[H ESC[2J to each tab's active pane).
+    pub(super) fn clear_all_tabs(&mut self) {
+        let count = self.sessions.len();
+        for i in 0..count {
+            let prev = self.active;
+            self.active = i;
+            self.write_to_pty(b"\x1b[H\x1b[2J");
+            self.active = prev;
+        }
+        self.show_toast(format!("Cleared {} tabs", count));
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     // ── P30-A: Scrollbar scroll-to-position ────────────────────────
 
     /// Scroll the active session's grid so the scrollbar thumb aligns with
@@ -1801,6 +1816,9 @@ impl DesktopApp {
             "terminal.clear" => {
                 // Clear visible screen by sending Ctrl+L equivalent.
                 self.write_to_pty(b"\x1b[H\x1b[2J");
+            }
+            "terminal.clear_all" => {
+                self.clear_all_tabs();
             }
             "terminal.reset" => {
                 self.active_session_mut().app_mut().terminal_mut().ris();
