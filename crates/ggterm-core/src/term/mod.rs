@@ -1884,10 +1884,51 @@ impl Perform for Terminal {
                 };
             }
             // DECSTR — soft terminal reset (CSI ! p)
+            // Resets SGR attributes, cursor position, scroll region, and modes
+            // but preserves scrollback, grid content, and terminal size.
             b'p' if intermediates.contains(&b'!') => {
-                let w = self.grid.width();
-                let h = self.grid.height();
-                *self = Terminal::new(w, h);
+                // Reset cursor
+                self.cursor = Cursor::default();
+                // Reset SGR attributes
+                self.fg = Color::Default;
+                self.bg = Color::Default;
+                self.underline_color = Color::Default;
+                self.flags = CellFlags::empty();
+                self.protected_attr = false;
+                // Reset character set
+                self.g0_charset = Charset::Ascii;
+                self.g1_charset = Charset::Ascii;
+                self.active_g1 = false;
+                // Reset scroll region to full screen
+                self.grid_mut().reset_scroll_region();
+                // Reset modes (but preserve alt_screen, mouse modes)
+                self.modes.auto_wrap = true;
+                self.modes.cursor_visible = true;
+                self.modes.origin = false;
+                self.modes.cursor_keys_app = false;
+                self.modes.insert = false;
+                self.modes.bracketed_paste = false;
+                self.modes.new_line_mode = false;
+                self.modes.keypad_app = false;
+                self.modes.synchronized_output = false;
+                self.modes.reflow = true;
+                self.modes.focus_event = false;
+                // Reset tab stops
+                let width = self.grid.width();
+                self.tab_stops = vec![false; width.max(1)];
+                let mut col = 0;
+                while col < width {
+                    self.tab_stops[col] = true;
+                    col += 8;
+                }
+                // Reset hyperlinks
+                self.current_hyperlink = None;
+                // Reset dynamic colors
+                self.dynamic_fg = None;
+                self.dynamic_bg = None;
+                self.dynamic_cursor = None;
+                self.palette_overrides.clear();
+                self.grid_mut().mark_all_dirty();
             }
             // DECSCA — select character protection attribute (CSI " Ps q)
             // 0 = unprotected (default), 1 = protected, 2 = unprotected (same as 0)
@@ -3987,6 +4028,43 @@ mod tests {
         feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
         assert_eq!(t.cursor(), (0, 0));
         assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_decstr_preserves_scrollback() {
+        // DECSTR should NOT destroy scrollback — only hard reset (RIS, ESC c) does.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AAAA\nBBBB\nCCCC\nDDDD"); // creates scrollback
+        let sb = t.grid().scrollback_len();
+        assert!(sb > 0);
+        feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
+        assert_eq!(
+            t.grid().scrollback_len(),
+            sb,
+            "DECSTR should preserve scrollback"
+        );
+    }
+
+    #[test]
+    fn t_decstr_resets_modes() {
+        let mut t = Terminal::new(80, 24);
+        // Set various modes
+        feed(&mut t, b"\x1b[?2004h"); // bracketed paste
+        feed(&mut t, b"\x1b[?1h"); // cursor keys app mode
+        feed(&mut t, b"\x1b[20h"); // LNM
+        feed(&mut t, b"\x1b[4h"); // insert mode
+        // Soft reset
+        feed(&mut t, b"\x1b[!p");
+        assert!(!t.bracketed_paste(), "DECSTR should reset bracketed paste");
+        assert!(!t.cursor_keys_app(), "DECSTR should reset cursor keys app");
+        assert!(!t.new_line_mode(), "DECSTR should reset LNM");
+        assert!(!t.modes.insert, "DECSTR should reset insert mode");
+        // Auto-wrap and cursor visible should be restored to defaults
+        assert!(t.modes.auto_wrap, "DECSTR should restore auto_wrap=true");
+        assert!(
+            t.modes.cursor_visible,
+            "DECSTR should restore cursor_visible=true"
+        );
     }
 
     #[test]
