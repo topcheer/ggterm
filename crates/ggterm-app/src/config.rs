@@ -880,6 +880,10 @@ impl ConfigManager {
     ///
     /// Requires the `config-watch` feature.
     #[cfg(feature = "config-watch")]
+    /// Start watching the config file for changes.
+    ///
+    /// Requires the `config-watch` feature.
+    #[cfg(feature = "config-watch")]
     pub fn watch(&mut self) -> Result<(), ConfigError> {
         use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -945,8 +949,11 @@ impl ConfigManager {
     /// Requires the `config-watch` feature.
     #[cfg(feature = "config-watch")]
     pub fn poll_reload(&mut self) -> Result<bool, ConfigError> {
-        if self.reload_pending.swap(false, Ordering::SeqCst) {
-            return self.reload();
+        #[cfg(feature = "config-watch")]
+        {
+            if self.reload_pending.swap(false, Ordering::SeqCst) {
+                return self.reload();
+            }
         }
         Ok(false)
     }

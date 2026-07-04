@@ -111,7 +111,6 @@ pub struct DesktopApp {
 
     // ── Config hot-reload (config-watch feature) ──
     /// Config manager with optional file-system watcher.
-    #[cfg(feature = "config-watch")]
     config_mgr: Option<ConfigManager>,
 
     // ── Dynamic window title (OSC 0/2) ──
@@ -495,7 +494,6 @@ impl DesktopApp {
             gpu: None,
             renderer: None,
             encoder: InputEncoder::new(),
-            #[cfg(feature = "config-watch")]
             config_mgr: None,
             last_title: String::new(),
             selection: crate::mouse::MouseSelection::default(),
@@ -687,7 +685,7 @@ impl DesktopApp {
 
     /// Adjust background opacity by a delta, clamped to [0.1, 1.0].
     /// Shows a toast notification with the current value.
-    fn adjust_opacity(&mut self, delta: f32) {
+    fn adjust_opacity(&mut self, #[allow(unused_variables)] delta: f32) {
         #[cfg(feature = "config-watch")]
         {
             if let Some(ref mut mgr) = self.config_mgr {
@@ -1125,6 +1123,10 @@ impl ApplicationHandler for DesktopApp {
                     .to_string();
                 // Progress from OSC 9;4
                 self.status_bar.progress = self.active_session().app().terminal().progress();
+                #[cfg(feature = "p2p")]
+                {
+                    self.status_bar.p2p_active = self.p2p_share.visible;
+                }
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).
@@ -1383,8 +1385,11 @@ impl ApplicationHandler for DesktopApp {
         self.apply_pending_resize();
 
         // Poll config watcher for hot-reload.
+        #[cfg(feature = "config-watch")]
         let mut pending_cursor_style: Option<ggterm_core::CursorStyle> = None;
+        #[cfg(feature = "config-watch")]
         let mut pending_scrollback: Option<usize> = None;
+        #[cfg(feature = "config-watch")]
         let mut pending_theme: Option<String> = None;
         #[cfg(feature = "config-watch")]
         if let Some(ref mut mgr) = self.config_mgr {
@@ -1436,6 +1441,7 @@ impl ApplicationHandler for DesktopApp {
         }
 
         // Apply deferred changes to all sessions (all tabs, all panes).
+        #[cfg(feature = "config-watch")]
         if pending_theme.is_some() || pending_scrollback.is_some() || pending_cursor_style.is_some()
         {
             for session in &mut self.sessions {
