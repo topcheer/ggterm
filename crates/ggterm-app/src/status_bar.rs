@@ -7,6 +7,23 @@
 
 // ── StatusBar ───────────────────────────────────────────────────────────
 
+/// Format a duration for display in the status bar.
+/// Shows sub-second timing for fast commands, human-readable for long ones.
+pub fn format_duration(d: std::time::Duration) -> String {
+    let secs = d.as_secs_f64();
+    if secs < 0.001 {
+        format!("{:.0}μs", d.as_micros())
+    } else if secs < 1.0 {
+        format!("{:.0}ms", d.as_millis())
+    } else if secs < 60.0 {
+        format!("{:.1}s", secs)
+    } else {
+        let m = d.as_secs() / 60;
+        let s = d.as_secs() % 60;
+        format!("{}m{}s", m, s)
+    }
+}
+
 /// Aggregated terminal status for display in the window title or status line.
 ///
 /// Updated every redraw from the active session's terminal state and the
@@ -56,6 +73,11 @@ pub struct StatusBar {
     pub pane_zoomed: bool,
     /// Task progress (0.0–1.0) from OSC 9;4. None = no active progress.
     pub progress: Option<f32>,
+    /// Whether P2P terminal sharing is active.
+    pub p2p_active: bool,
+    /// Duration of the last completed command (e.g., "1.2s").
+    /// Empty = no command has completed or shell integration inactive.
+    pub command_duration: String,
 }
 
 impl Default for StatusBar {
@@ -87,6 +109,8 @@ impl StatusBar {
             remote_host: String::new(),
             pane_zoomed: false,
             progress: None,
+            p2p_active: false,
+            command_duration: String::new(),
         }
     }
 
@@ -194,6 +218,11 @@ impl StatusBar {
             }
         }
 
+        // Command execution duration.
+        if !self.command_duration.is_empty() {
+            parts.push(format!("⏱{}", self.command_duration));
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -284,6 +313,11 @@ impl StatusBar {
             seg!(format!("exit:{}", code), color);
         }
 
+        // Command execution duration.
+        if !self.command_duration.is_empty() {
+            seg!(self.command_duration.clone(), dim_color);
+        }
+
         // Mode indicators.
         if self.bell_active {
             seg!("BELL".to_string(), warn_color);
@@ -353,6 +387,11 @@ impl StatusBar {
         // Progress indicator (OSC 9;4).
         if let Some(pct) = self.progress {
             seg!(format!("{:.0}%", pct * 100.0), ok_color);
+        }
+
+        // P2P sharing indicator.
+        if self.p2p_active {
+            seg!("SHARE".to_string(), accent_color);
         }
 
         segs
@@ -693,6 +732,52 @@ mod tests {
         assert!(
             texts.contains(&"SSH:root@server.com"),
             "should contain SSH host indicator, got: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn t_format_duration_microseconds() {
+        let d = std::time::Duration::from_micros(500);
+        assert_eq!(format_duration(d), "500μs");
+    }
+
+    #[test]
+    fn t_format_duration_milliseconds() {
+        let d = std::time::Duration::from_millis(250);
+        assert_eq!(format_duration(d), "250ms");
+    }
+
+    #[test]
+    fn t_format_duration_seconds() {
+        let d = std::time::Duration::from_millis(1500);
+        assert_eq!(format_duration(d), "1.5s");
+    }
+
+    #[test]
+    fn t_format_duration_minutes() {
+        let d = std::time::Duration::from_secs(125);
+        assert_eq!(format_duration(d), "2m5s");
+    }
+
+    #[test]
+    fn t_status_bar_command_duration_shown() {
+        let mut sb = StatusBar::new();
+        sb.command_duration = "1.2s".into();
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("1.2s"),
+            "should show duration: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_command_duration_empty_omitted() {
+        let mut sb = StatusBar::new();
+        sb.exit_code = Some(0);
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("⏱"),
+            "should not show clock when empty: {formatted}"
         );
     }
 }

@@ -463,6 +463,12 @@ pub struct Terminal {
     /// Real cell dimensions in physical pixels (width, height).
     /// Set by the renderer after font measurement.
     pub(crate) cell_dimensions: Option<(u32, u32)>,
+    /// Instant when the current command started (OSC 133;B received).
+    /// `None` when no command is running or shell integration is inactive.
+    pub(crate) command_start_time: Option<std::time::Instant>,
+    /// Duration of the most recently completed command.
+    /// `None` when no command has completed yet.
+    pub(crate) last_command_duration: Option<std::time::Duration>,
 }
 
 /// Parse an OSC 7 working directory URI.
@@ -620,6 +626,8 @@ impl Terminal {
             mark_row: None,
             palette_overrides: HashMap::new(),
             cell_dimensions: None,
+            command_start_time: None,
+            last_command_duration: None,
         }
     }
 
@@ -909,6 +917,23 @@ impl Terminal {
     /// Return true if the most recent completed command succeeded (exit code 0).
     pub fn last_command_succeeded(&self) -> bool {
         self.last_exit_code() == Some(0)
+    }
+
+    /// Returns the duration of the most recently completed command.
+    /// `None` if no command has completed or shell integration is inactive.
+    pub fn last_command_duration(&self) -> Option<std::time::Duration> {
+        self.last_command_duration
+    }
+
+    /// Returns true if a command is currently running (CommandStart received, no CommandEnd yet).
+    pub fn is_command_running(&self) -> bool {
+        self.command_start_time.is_some()
+    }
+
+    /// Returns elapsed time of the currently running command.
+    /// `None` if no command is running.
+    pub fn running_command_elapsed(&self) -> Option<std::time::Duration> {
+        self.command_start_time.map(|t| t.elapsed())
     }
 
     /// Extract the text content of a grid row, trimming trailing spaces.
@@ -2337,6 +2362,19 @@ impl Perform for Terminal {
                     row: self.cursor.y,
                     exit_code: if has_exit { exit_code } else { None },
                 });
+                // Track command execution time.
+                match kind {
+                    CommandMarkKind::CommandStart => {
+                        self.command_start_time = Some(std::time::Instant::now());
+                        self.last_command_duration = None;
+                    }
+                    CommandMarkKind::CommandEnd => {
+                        if let Some(start) = self.command_start_time.take() {
+                            self.last_command_duration = Some(start.elapsed());
+                        }
+                    }
+                    _ => {}
+                }
             }
             // OSC 10/11/12 — dynamic colors (P17-A)
             Some(cmd_num @ 10..=12) => {
@@ -4010,6 +4048,29 @@ mod tests {
         assert_eq!(marks[2].kind, CommandMarkKind::OutputStart);
         assert_eq!(marks[3].kind, CommandMarkKind::CommandEnd);
         assert_eq!(marks[3].exit_code, Some(0));
+    }
+
+    #[test]
+    fn t_osc133_command_duration_tracked() {
+        let mut t = Terminal::new(80, 24);
+        // Before any command: no duration.
+        assert!(t.last_command_duration().is_none());
+        assert!(!t.is_command_running());
+
+        // Command starts.
+        feed(&mut t, b"\x1b]133;B\x07");
+        assert!(t.is_command_running());
+        assert!(t.last_command_duration().is_none());
+
+        // Command ends.
+        feed(&mut t, b"\x1b]133;D;0\x07");
+        assert!(!t.is_command_running());
+        let dur = t.last_command_duration();
+        assert!(
+            dur.is_some(),
+            "duration should be tracked after command end"
+        );
+        assert!(dur.unwrap().as_nanos() < 1_000_000_000, "should be fast");
     }
 
     #[test]

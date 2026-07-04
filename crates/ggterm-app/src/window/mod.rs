@@ -1177,6 +1177,14 @@ impl ApplicationHandler for DesktopApp {
                 // P17-E: Update exit code from terminal's last command.
                 self.status_bar
                     .set_exit_code(self.active_session().app().terminal().last_exit_code());
+                // Command execution duration.
+                self.status_bar.command_duration = self
+                    .active_session()
+                    .app()
+                    .terminal()
+                    .last_command_duration()
+                    .map(crate::status_bar::format_duration)
+                    .unwrap_or_default();
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
