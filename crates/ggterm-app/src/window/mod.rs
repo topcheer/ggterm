@@ -1195,6 +1195,13 @@ impl ApplicationHandler for DesktopApp {
                     self.status_bar.spinner_frame = self.status_bar.spinner_frame.wrapping_add(1);
                 }
 
+                // Selection character count (live feedback while selecting).
+                self.status_bar.selection_count = if self.selection.is_active() {
+                    self.count_selection_chars()
+                } else {
+                    0
+                };
+
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();

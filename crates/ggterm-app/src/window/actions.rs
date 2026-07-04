@@ -869,6 +869,35 @@ impl DesktopApp {
     /// Copy the current text selection to the clipboard.
     ///
     /// Extracts text from the grid between selection start and end.
+    /// Count characters in the current selection for status bar display.
+    pub(super) fn count_selection_chars(&self) -> usize {
+        let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
+            return 0;
+        };
+        let grid = self.active_session().app().grid();
+        let mut count = 0usize;
+        for row in sy..=ey {
+            let (row_start, row_end) = if sy == ey {
+                (sx as usize, ex as usize)
+            } else if row == sy {
+                (sx as usize, grid.width())
+            } else if row == ey {
+                (0, ex as usize)
+            } else {
+                (0, grid.width())
+            };
+            for col in row_start..row_end {
+                if let Some(cell) = grid.display_cell(col, row as usize)
+                    && !cell.is_wide_spacer()
+                    && cell.ch != ' '
+                {
+                    count += 1 + cell.combining.len();
+                }
+            }
+        }
+        count
+    }
+
     pub(super) fn copy_selection_to_clipboard(&mut self) {
         // Block (rectangular) selection: copy column-by-column.
         if self.selection.block_mode

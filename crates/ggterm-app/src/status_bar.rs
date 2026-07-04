@@ -82,6 +82,8 @@ pub struct StatusBar {
     pub command_running: bool,
     /// Spinner frame counter (incremented externally for animation).
     pub spinner_frame: u32,
+    /// Character count of current text selection (0 = no selection).
+    pub selection_count: usize,
 }
 
 impl Default for StatusBar {
@@ -117,6 +119,7 @@ impl StatusBar {
             command_duration: String::new(),
             command_running: false,
             spinner_frame: 0,
+            selection_count: 0,
         }
     }
 
@@ -236,6 +239,11 @@ impl StatusBar {
             parts.push(frame.to_string());
         }
 
+        // Selection character count.
+        if self.selection_count > 0 {
+            parts.push(format!("SEL:{}", self.selection_count));
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -336,6 +344,11 @@ impl StatusBar {
             let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frame = frames[(self.spinner_frame as usize) % frames.len()];
             seg!(frame.to_string(), accent_color);
+        }
+
+        // Selection character count.
+        if self.selection_count > 0 {
+            seg!(format!("SEL:{}", self.selection_count), warn_color);
         }
 
         // Mode indicators.
@@ -826,6 +839,27 @@ mod tests {
         assert!(
             !formatted.contains("⠋") && !formatted.contains("⠙"),
             "should not show spinner when idle: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_selection_count_shown() {
+        let mut sb = StatusBar::new();
+        sb.selection_count = 42;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("SEL:42"),
+            "should show selection count: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_selection_count_zero_omitted() {
+        let sb = StatusBar::new();
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("SEL:"),
+            "should not show SEL when 0: {formatted}"
         );
     }
 }
