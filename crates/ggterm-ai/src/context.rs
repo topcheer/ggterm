@@ -119,6 +119,7 @@ impl AIContext {
     pub fn to_prompt_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "Terminal Context:");
+        let _ = writeln!(out, "- OS: {}", std::env::consts::OS);
 
         if let Some(ref shell) = self.shell {
             let _ = writeln!(out, "- Shell: {shell}");
@@ -355,6 +356,7 @@ mod tests {
         };
 
         let prompt = ctx.to_prompt_string();
+        assert!(prompt.contains("OS:"));
         assert!(prompt.contains("Shell: zsh"));
         assert!(prompt.contains("Working directory: /home/user/project"));
         assert!(prompt.contains("Last command: git status"));

@@ -97,7 +97,11 @@ const BASE_SYSTEM_PROMPT: &str = concat!(
     "1. NEVER suggest destructive commands (rm -rf, dd, mkfs, fork bombs) without an explicit warning.\n",
     "2. If a command might cause data loss, prefix your suggestion with 'WARNING:'.\n",
     "3. Always prefer safe, non-destructive alternatives.\n",
-    "4. Be concise — terminal users value brevity.",
+    "4. Be concise — terminal users value brevity.\n\n",
+    "TOOL CALLING:\n",
+    "When tools are available, use them to gather information before responding. ",
+    "For example, call run_command to check system state, read_file to inspect configs, ",
+    "or list_files to explore directories. This helps you give more accurate answers.\n",
 );
 
 /// Build the message list for a given action and context.
@@ -258,6 +262,13 @@ mod tests {
         assert!(prompt.contains("SECURITY RULES"));
         assert!(prompt.contains("rm -rf"));
         assert!(prompt.contains("WARNING"));
+    }
+
+    #[test]
+    fn t_system_prompt_contains_tool_guidance() {
+        let prompt = build_system_prompt(Action::Suggest);
+        assert!(prompt.contains("TOOL CALLING"));
+        assert!(prompt.contains("run_command"));
     }
 
     #[test]
