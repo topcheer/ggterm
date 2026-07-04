@@ -770,6 +770,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+B → balance split panes
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyB) = &event.physical_key
+        {
+            self.balance_panes();
+            return;
+        }
+
         // Ctrl+Shift+Alt+E → export terminal as HTML
         if self.mods.ctrl
             && self.mods.shift

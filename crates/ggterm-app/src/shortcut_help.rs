@@ -267,6 +267,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Split,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+B".into(),
+            description: "Balance split panes (even spacing)".into(),
+            category: ShortcutCategory::Split,
+            configurable: false,
+        },
         // View
         ShortcutEntry {
             keys: "Ctrl+Shift+U".into(),

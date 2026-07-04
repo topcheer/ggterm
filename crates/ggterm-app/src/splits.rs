@@ -144,6 +144,23 @@ impl SplitNode {
         }
     }
 
+    /// Reset all split ratios in this subtree to 0.5 (even split).
+    pub fn balance(&mut self) {
+        match self {
+            SplitNode::Pane(_) => {}
+            SplitNode::Horizontal { left, right, ratio } => {
+                *ratio = 0.5;
+                left.balance();
+                right.balance();
+            }
+            SplitNode::Vertical { top, bottom, ratio } => {
+                *ratio = 0.5;
+                top.balance();
+                bottom.balance();
+            }
+        }
+    }
+
     /// Check whether this subtree contains the given pane ID.
     pub fn contains(&self, id: PaneId) -> bool {
         match self {
@@ -511,6 +528,11 @@ impl SplitTree {
     /// Number of panes in the tree.
     pub fn pane_count(&self) -> usize {
         self.root.pane_count()
+    }
+
+    /// Reset all split ratios to 0.5 (even spacing).
+    pub fn balance(&mut self) {
+        self.root.balance();
     }
 
     /// Collect all pane IDs in visual order (left→right, top→bottom).
@@ -1291,5 +1313,24 @@ mod tests {
         let (left, right) = r.split_h(0.5);
         // 3px total, no gutter → left=1, right=2 (floor(1.5)=1, rest=2)
         assert_eq!(left.width + right.width, 3);
+    }
+
+    #[test]
+    fn t_balance_resets_ratios() {
+        let mut tree = SplitTree::new(0);
+        tree.split_horizontal(0.7); // Uneven split.
+        tree.split_vertical(0.3); // Another uneven split.
+        tree.balance();
+        // All splits should now be 0.5.
+        let areas = tree.areas(Rect::new(0, 0, 200, 100));
+        assert_eq!(areas.len(), 3);
+    }
+
+    #[test]
+    fn t_balance_single_pane_noop() {
+        let mut tree = SplitTree::new(0);
+        tree.balance(); // Should not panic.
+        let areas = tree.areas(Rect::new(0, 0, 100, 50));
+        assert_eq!(areas.len(), 1);
     }
 }

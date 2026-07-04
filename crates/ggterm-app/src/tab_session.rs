@@ -444,6 +444,11 @@ impl TabSession {
         self.split_tree.pane_count()
     }
 
+    /// Reset all split ratios to 0.5 (even spacing).
+    pub fn balance_splits(&mut self) {
+        self.split_tree.balance();
+    }
+
     /// Collect all active pane IDs in visual order.
     pub fn pane_ids(&self) -> Vec<PaneId> {
         self.split_tree.pane_ids()

@@ -1645,6 +1645,20 @@ impl DesktopApp {
         self.show_toast("Layout reset to single pane");
     }
 
+    /// Evenly distribute all split panes (reset ratios to 50/50).
+    pub(super) fn balance_panes(&mut self) {
+        let session = self.active_session_mut();
+        if session.pane_count() > 1 {
+            session.balance_splits();
+            self.show_toast("Panes balanced");
+        } else {
+            self.show_toast("Nothing to balance");
+        }
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     // ── P30-A: Scrollbar scroll-to-position ────────────────────────
 
     /// Scroll the active session's grid so the scrollbar thumb aligns with
@@ -1766,6 +1780,9 @@ impl DesktopApp {
             }
             "split.zoom" => {
                 self.toggle_pane_zoom();
+            }
+            "split.balance" => {
+                self.balance_panes();
             }
             "terminal.open_url" => {
                 self.open_url_at_cursor();

@@ -245,6 +245,12 @@ impl CommandRegistry {
             category: "Terminal".into(),
             shortcut: Some("Ctrl+Shift+Alt+L".into()),
         });
+        r.register(Command {
+            id: "split.balance".into(),
+            label: "Balance Split Panes".into(),
+            category: "Split".into(),
+            shortcut: Some("Ctrl+Shift+Alt+B".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),
