@@ -1722,6 +1722,12 @@ impl Perform for Terminal {
                         let resp = format!("\x1b[8;{};{}t", self.grid.height(), self.grid.width());
                         self.response_buffer.extend_from_slice(resp.as_bytes());
                     }
+                    19 => {
+                        // Report screen size in characters: CSI 9 ; rows ; cols t
+                        // We don't know actual screen size, report terminal size.
+                        let resp = format!("\x1b[9;{};{}t", self.grid.height(), self.grid.width());
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
+                    }
                     14 => {
                         // Report text area size in pixels: CSI 4 ; height ; width t
                         // We don't know the actual pixel size from the terminal model,
@@ -1737,6 +1743,21 @@ impl Perform for Terminal {
                         // Report window iconified state: CSI 1 t (not iconified).
                         // xterm extension — programs query window visibility.
                         self.response_buffer.extend_from_slice(b"\x1b[1t");
+                    }
+                    13 => {
+                        // Report window position: CSI 3 ; x ; y t
+                        // We don't track real position, report (0,0).
+                        self.response_buffer.extend_from_slice(b"\x1b[3;0;0t");
+                    }
+                    15 => {
+                        // Report screen size in pixels: CSI 5 ; height ; width t
+                        // Estimate from grid + standard cell size.
+                        let cw: usize = 10;
+                        let ch: usize = 20;
+                        let h = self.grid.height() * ch;
+                        let w = self.grid.width() * cw;
+                        let resp = format!("\x1b[5;{};{}t", h, w);
+                        self.response_buffer.extend_from_slice(resp.as_bytes());
                     }
                     16 => {
                         // Report character cell size in pixels.
