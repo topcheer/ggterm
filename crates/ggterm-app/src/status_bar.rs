@@ -78,6 +78,10 @@ pub struct StatusBar {
     /// Duration of the last completed command (e.g., "1.2s").
     /// Empty = no command has completed or shell integration inactive.
     pub command_duration: String,
+    /// True when a command is currently executing (between OSC 133;B and 133;D).
+    pub command_running: bool,
+    /// Spinner frame counter (incremented externally for animation).
+    pub spinner_frame: u32,
 }
 
 impl Default for StatusBar {
@@ -111,6 +115,8 @@ impl StatusBar {
             progress: None,
             p2p_active: false,
             command_duration: String::new(),
+            command_running: false,
+            spinner_frame: 0,
         }
     }
 
@@ -223,6 +229,13 @@ impl StatusBar {
             parts.push(format!("⏱{}", self.command_duration));
         }
 
+        // Running command spinner.
+        if self.command_running {
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let frame = frames[(self.spinner_frame as usize) % frames.len()];
+            parts.push(frame.to_string());
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -316,6 +329,13 @@ impl StatusBar {
         // Command execution duration.
         if !self.command_duration.is_empty() {
             seg!(self.command_duration.clone(), dim_color);
+        }
+
+        // Running command spinner.
+        if self.command_running {
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let frame = frames[(self.spinner_frame as usize) % frames.len()];
+            seg!(frame.to_string(), accent_color);
         }
 
         // Mode indicators.
@@ -778,6 +798,34 @@ mod tests {
         assert!(
             !formatted.contains("⏱"),
             "should not show clock when empty: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_running_spinner_shown() {
+        let mut sb = StatusBar::new();
+        sb.command_running = true;
+        sb.spinner_frame = 0;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("⠋"),
+            "should show spinner frame 0: {formatted}"
+        );
+        sb.spinner_frame = 3;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("⠸"),
+            "should show spinner frame 3: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_running_spinner_omitted_when_idle() {
+        let sb = StatusBar::new();
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("⠋") && !formatted.contains("⠙"),
+            "should not show spinner when idle: {formatted}"
         );
     }
 }

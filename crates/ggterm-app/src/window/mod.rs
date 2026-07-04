@@ -1185,6 +1185,12 @@ impl ApplicationHandler for DesktopApp {
                     .last_command_duration()
                     .map(crate::status_bar::format_duration)
                     .unwrap_or_default();
+                // Running command indicator.
+                self.status_bar.command_running =
+                    self.active_session().app().terminal().is_command_running();
+                if self.status_bar.command_running {
+                    self.status_bar.spinner_frame = self.status_bar.spinner_frame.wrapping_add(1);
+                }
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
