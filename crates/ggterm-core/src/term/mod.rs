@@ -322,6 +322,9 @@ pub struct Modes {
     /// modifyOtherKeys — xterm enhanced keyboard protocol.
     /// 0 = disabled, 1 = mode 1, 2 = mode 2.
     pub modify_other_keys: u8,
+    /// LNM — Line Feed/New Line Mode (ANSI mode 20).
+    /// When enabled, LF/VT/FF also produce a carriage return (CR+LF behavior).
+    pub new_line_mode: bool,
     /// Kitty keyboard protocol active flags.
     /// Bit 0 = disambiguate escape keys
     /// Bit 1 = report event types
@@ -356,6 +359,7 @@ impl Modes {
             reverse_video: false,
             modify_other_keys: 0,
             kitty_keyboard: 0,
+            new_line_mode: false,
         }
     }
 }
@@ -397,6 +401,9 @@ pub struct Terminal {
     pub(crate) kitty_kb_stack: Vec<u32>,
     /// User variables from OSC 1337 SetUserVar (tmux integration).
     pub(crate) user_vars: std::collections::HashMap<String, String>,
+    /// Progress report from OSC 9;4 (iTerm2 / xterm extension).
+    /// Value 0.0–1.0 represents task progress; None = no progress bar.
+    pub(crate) progress: Option<f32>,
     /// UTF-8 reassembly buffer for multi-byte sequences.
     pub(crate) utf8_buf: Vec<u8>,
     /// G0 character set designation.
@@ -583,6 +590,7 @@ impl Terminal {
             title_stack: Vec::new(),
             kitty_kb_stack: Vec::new(),
             user_vars: std::collections::HashMap::new(),
+            progress: None,
             utf8_buf: Vec::with_capacity(4),
             g0_charset: Charset::default(),
             g1_charset: Charset::default(),
@@ -730,9 +738,19 @@ impl Terminal {
         self.modes.kitty_keyboard
     }
 
+    /// Return true if LNM (Line Feed/New Line Mode) is enabled.
+    pub fn new_line_mode(&self) -> bool {
+        self.modes.new_line_mode
+    }
+
     /// Get a user variable set via OSC 1337 SetUserVar.
     pub fn user_var(&self, name: &str) -> Option<&str> {
         self.user_vars.get(name).map(|s| s.as_str())
+    }
+
+    /// Return the current progress report (0.0–1.0) from OSC 9;4, or None.
+    pub fn progress(&self) -> Option<f32> {
+        self.progress
     }
 
     /// Return true if cursor blink is enabled (DECSET 12).
@@ -1029,6 +1047,11 @@ impl Terminal {
             self.grid.scroll_up(1);
         } else {
             self.cursor.y += 1;
+        }
+        // LNM (mode 20): LF also performs a carriage return.
+        if self.modes.new_line_mode {
+            self.cursor.x = 0;
+            self.cursor.pending_wrap = false;
         }
     }
 
@@ -1660,12 +1683,16 @@ impl Perform for Terminal {
                 let m = params.first().copied().unwrap_or(0);
                 if m == 4 {
                     self.modes.insert = true;
+                } else if m == 20 {
+                    self.modes.new_line_mode = true;
                 }
             }
             b'l' => {
                 let m = params.first().copied().unwrap_or(0);
                 if m == 4 {
                     self.modes.insert = false;
+                } else if m == 20 {
+                    self.modes.new_line_mode = false;
                 }
             }
             // REP — repeat preceding printable character N times
@@ -1907,10 +1934,10 @@ impl Perform for Terminal {
             b'p' if intermediates.contains(&b'$') && !is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 let is_set = match mode {
-                    4 => self.modes.insert,        // IRM — insert mode
-                    7 => self.modes.auto_wrap,     // DECAWM — autowrap
-                    12 => self.modes.cursor_blink, // Cursor blink
-                    20 => false,                   // LNM — line feed/new line mode
+                    4 => self.modes.insert,         // IRM — insert mode
+                    7 => self.modes.auto_wrap,      // DECAWM — autowrap
+                    12 => self.modes.cursor_blink,  // Cursor blink
+                    20 => self.modes.new_line_mode, // LNM — line feed/new line mode
                     _ => false,
                 };
                 let status = if is_set { 1 } else { 2 };
@@ -2190,12 +2217,41 @@ impl Perform for Terminal {
                     self.cwd = Some(path);
                 }
             }
-            // OSC 9 — iTerm2-style desktop notification (P24-E)
-            // Format: `OSC 9 ; message ST`
+            // OSC 9 — iTerm2-style extensions
+            // OSC 9 ; message ST          → desktop notification
+            // OSC 9 ; 4 ; state ; progress ST → progress report (iTerm2)
             Some(9) => {
-                let msg = parts.next().unwrap_or("").to_string();
-                if !msg.is_empty() {
-                    self.pending_notification = Some(("Terminal".to_string(), msg));
+                let payload = parts.next().unwrap_or("");
+                if payload.starts_with("4;") {
+                    // Progress report: "4;state;progress" or "4;state"
+                    let sub_fields: Vec<&str> = payload.splitn(3, ';').collect();
+                    let state = sub_fields.get(1).copied().unwrap_or("0");
+                    match state {
+                        "0" => {
+                            // Start/progress update (value range: 0–100)
+                            let pct = sub_fields
+                                .get(2)
+                                .and_then(|s| s.parse::<f32>().ok())
+                                .unwrap_or(0.0)
+                                / 100.0;
+                            self.progress = Some(pct.clamp(0.0, 1.0));
+                        }
+                        "1" => {
+                            // Hide / completed
+                            self.progress = None;
+                        }
+                        "2" => {
+                            // Error state (red badge in some terminals)
+                            self.progress = None;
+                        }
+                        _ => {}
+                    }
+                } else {
+                    // Desktop notification
+                    if !payload.is_empty() {
+                        self.pending_notification =
+                            Some(("Terminal".to_string(), payload.to_string()));
+                    }
                 }
             }
             // OSC 777 — urxvt desktop notification (P24-E)
@@ -4662,6 +4718,42 @@ mod tests {
     }
 
     #[test]
+    fn t_osc9_progress_start() {
+        let mut t = Terminal::new(80, 24);
+        // OSC 9;4;0;50.0 — start progress at 50%
+        feed(&mut t, b"\x1b]9;4;0;50.0\x1b\\");
+        assert_eq!(t.progress(), Some(0.5));
+    }
+
+    #[test]
+    fn t_osc9_progress_update() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;4;0;25.0\x1b\\");
+        assert_eq!(t.progress(), Some(0.25));
+        feed(&mut t, b"\x1b]9;4;0;75.0\x1b\\");
+        assert_eq!(t.progress(), Some(0.75));
+    }
+
+    #[test]
+    fn t_osc9_progress_hide() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;4;0;50.0\x1b\\");
+        assert!(t.progress().is_some());
+        // State 1 = hide/completed
+        feed(&mut t, b"\x1b]9;4;1\x1b\\");
+        assert!(t.progress().is_none());
+    }
+
+    #[test]
+    fn t_osc9_progress_clamp() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;4;0;200.0\x1b\\");
+        assert_eq!(t.progress(), Some(1.0));
+        feed(&mut t, b"\x1b]9;4;0;-50.0\x1b\\");
+        assert_eq!(t.progress(), Some(0.0));
+    }
+
+    #[test]
     fn t_osc777_notification() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]777;notify;Test Title;Body text\x1b\\");
@@ -4915,6 +5007,59 @@ mod tests {
         assert!(
             s.contains("1$r5;20r"),
             "DECRQSS DECSTBM should return 5;20r, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_lnm_default_off() {
+        let t = Terminal::new(80, 24);
+        assert!(!t.new_line_mode(), "LNM should be off by default");
+    }
+
+    #[test]
+    fn t_lnm_set_and_reset() {
+        let mut t = Terminal::new(80, 24);
+        // CSI 20 h — set LNM
+        feed(&mut t, b"\x1b[20h");
+        assert!(t.new_line_mode(), "LNM should be on after CSI 20 h");
+        // CSI 20 l — reset LNM
+        feed(&mut t, b"\x1b[20l");
+        assert!(!t.new_line_mode(), "LNM should be off after CSI 20 l");
+    }
+
+    #[test]
+    fn t_lnm_lf_produces_crlf() {
+        let mut t = Terminal::new(10, 5);
+        // Enable LNM, print text, then LF should move to col 0
+        feed(&mut t, b"\x1b[20h");
+        feed(&mut t, b"ABC");
+        assert_eq!(t.cursor().0, 3); // at col 3
+        feed(&mut t, b"\n"); // LF
+        assert_eq!(t.cursor().0, 0, "LNM: LF should reset column to 0");
+        assert_eq!(t.cursor().1, 1, "LNM: LF should move to next row");
+    }
+
+    #[test]
+    fn t_lnm_off_lf_preserves_column() {
+        let mut t = Terminal::new(10, 5);
+        // LNM is off by default
+        feed(&mut t, b"ABC");
+        assert_eq!(t.cursor().0, 3);
+        feed(&mut t, b"\n"); // LF
+        assert_eq!(t.cursor().0, 3, "LNM off: LF should preserve column");
+        assert_eq!(t.cursor().1, 1, "LF should move to next row");
+    }
+
+    #[test]
+    fn t_decrm_mode_20_reports_lnm() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[20h"); // set LNM
+        feed(&mut t, b"\x1b[20$p"); // DECRQM for mode 20
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("20;1$y"),
+            "DECRQM should report LNM as set (1), got: {s}"
         );
     }
 
