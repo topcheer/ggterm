@@ -2465,6 +2465,120 @@ impl DesktopApp {
             });
         }
 
+        // AI overlay panel — bottom of screen, shows AI responses.
+        #[cfg(feature = "ai")]
+        if self.ai_overlay.is_visible() {
+            let ai = &self.ai_overlay;
+            let panel_h = (screen_h * 0.35).clamp(120.0, 300.0);
+            let panel_y = screen_h - panel_h - cell_h; // above status bar
+            let panel_w = (screen_w * 0.85).min(800.0);
+            let panel_x = (screen_w - panel_w) * 0.5;
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: panel_x,
+                y: panel_y,
+                w: panel_w,
+                h: panel_h,
+                color: (0.06, 0.08, 0.12, 0.95),
+                radius: 10.0,
+                stroke_width: 0.0,
+            });
+            // Border — accent blue.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: panel_x,
+                y: panel_y,
+                w: panel_w,
+                h: panel_h,
+                color: (0.30, 0.58, 0.95, 0.5),
+                radius: 10.0,
+                stroke_width: 1.0,
+            });
+            // Header accent bar.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: panel_x,
+                y: panel_y,
+                w: panel_w,
+                h: 3.0,
+                color: (0.26, 0.63, 0.95, 0.8),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // Header: AI label + action name.
+            let header_text = match ai.action() {
+                Some(action) => format!("AI · {}", action.label()),
+                None => "AI".to_string(),
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: header_text,
+                left: panel_x + 16.0,
+                top: panel_y + 12.0,
+                color: (122, 162, 247),
+            });
+
+            // Close hint on the right.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Esc".to_string(),
+                left: panel_x + panel_w - 40.0,
+                top: panel_y + 12.0,
+                color: (100, 100, 110),
+            });
+
+            // Content area.
+            let content_y = panel_y + 14.0 + cell_h;
+            let content_w = panel_w - 32.0;
+            let max_chars = (content_w / cell_w).floor() as usize;
+
+            if ai.is_busy() && ai.content().is_none() {
+                // Show "Thinking..." with animated dots.
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: "Thinking...".to_string(),
+                    left: panel_x + 16.0,
+                    top: content_y,
+                    color: (130, 130, 140),
+                });
+            } else if let Some(content) = ai.content() {
+                // Display content, wrapped to fit panel width.
+                let is_error = content.starts_with("Error:");
+                let text_color = if is_error {
+                    (248, 113, 113)
+                } else {
+                    (200, 205, 220)
+                };
+
+                #[cfg(feature = "p2p")]
+                let lines = wrap_text(content, max_chars.max(20));
+                #[cfg(not(feature = "p2p"))]
+                let lines: Vec<String> = {
+                    let mut result = Vec::new();
+                    for line in content.lines() {
+                        let chars: Vec<char> = line.chars().collect();
+                        let mut start = 0;
+                        while start < chars.len() {
+                            let end = (start + max_chars.max(20)).min(chars.len());
+                            result.push(chars[start..end].iter().collect());
+                            start = end;
+                        }
+                    }
+                    if result.is_empty() {
+                        result.push(String::new());
+                    }
+                    result
+                };
+
+                let max_lines = ((panel_h - 14.0 - cell_h * 2.0) / cell_h).floor() as usize;
+                for (i, line) in lines.iter().enumerate().take(max_lines.max(3)) {
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: line.clone(),
+                        left: panel_x + 16.0,
+                        top: content_y + cell_h * i as f32,
+                        color: text_color,
+                    });
+                }
+            }
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
