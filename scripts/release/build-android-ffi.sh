@@ -25,7 +25,7 @@ case "$ARCH" in
 esac
 
 echo "Building ggterm-ffi for $ARCH ($NDK_TARGET)..."
-cargo ndk -t "$NDK_TARGET" build -p ggterm-ffi --release --features ssh
+cargo ndk -t "$NDK_TARGET" build -p ggterm-ffi --release --features ssh,p2p
 
 # Copy to JniLibs directory structure
 JNILIB_DIR="$REPO_ROOT/mobile/android/app/src/main/jniLibs/$ARCH"
