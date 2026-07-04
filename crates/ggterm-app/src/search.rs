@@ -27,6 +27,8 @@ pub struct SearchState {
     current_match: Option<usize>,
     /// Whether the last search was case-insensitive.
     pub case_insensitive: bool,
+    /// Whether regex search mode is active.
+    pub regex_mode: bool,
     /// History of past search queries (most recent first).
     history: Vec<String>,
     /// Current position in history navigation (None = editing new query).
@@ -55,6 +57,7 @@ impl SearchState {
             matches: Vec::new(),
             current_match: None,
             case_insensitive: true,
+            regex_mode: false,
             history: Vec::new(),
             history_idx: None,
             saved_query: String::new(),
@@ -103,6 +106,14 @@ impl SearchState {
         }
     }
 
+    /// Toggle regex search mode and re-execute the search.
+    pub fn toggle_regex(&mut self, grid: &Grid) {
+        self.regex_mode = !self.regex_mode;
+        if !self.query.is_empty() {
+            self.execute_search(grid);
+        }
+    }
+
     /// Remove the last character from the query and re-search.
     pub fn backspace(&mut self, grid: &Grid) {
         self.query.pop();
@@ -129,6 +140,22 @@ impl SearchState {
             return;
         }
 
+        if self.regex_mode {
+            self.execute_regex_search(grid);
+        } else {
+            self.execute_literal_search(grid);
+        }
+
+        // Set current match to the first one.
+        self.current_match = if self.matches.is_empty() {
+            None
+        } else {
+            Some(0)
+        };
+    }
+
+    /// Literal substring search.
+    fn execute_literal_search(&mut self, grid: &Grid) {
         let scrollback_len = grid.scrollback_len();
         let query_lower = if self.case_insensitive {
             self.query.to_lowercase()
@@ -151,13 +178,44 @@ impl SearchState {
                 self.find_in_row(&row_text, abs_row, &query_lower);
             }
         }
+    }
 
-        // Set current match to the first one.
-        self.current_match = if self.matches.is_empty() {
-            None
-        } else {
-            Some(0)
+    /// Regex search using simple pattern matching (no external dependency).
+    /// Supports: . * + ? | ( ) [ ] ^ $ and character classes.
+    fn execute_regex_search(&mut self, grid: &Grid) {
+        let re = match SimpleRegex::compile(&self.query, self.case_insensitive) {
+            Some(r) => r,
+            None => return, // Invalid regex — no matches.
         };
+
+        let scrollback_len = grid.scrollback_len();
+
+        // Search scrollback rows.
+        for i in 0..scrollback_len {
+            if let Some(text) = grid.scrollback_row_text(i) {
+                for m in re.find_iter(&text) {
+                    self.matches.push(SearchMatch {
+                        abs_row: i,
+                        col: m.0,
+                        len: m.1,
+                    });
+                }
+            }
+        }
+
+        // Search visible rows.
+        for row in 0..grid.height() {
+            if let Some(row_text) = grid.row_text(row) {
+                let abs_row = scrollback_len + row;
+                for m in re.find_iter(&row_text) {
+                    self.matches.push(SearchMatch {
+                        abs_row,
+                        col: m.0,
+                        len: m.1,
+                    });
+                }
+            }
+        }
     }
 
     /// Find all occurrences of the query in a single row's text.
@@ -328,6 +386,425 @@ impl SearchState {
 impl Default for SearchState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ── SimpleRegex ──────────────────────────────────────────────────────────
+// A minimal regex engine for terminal scrollback search.
+// Supports: . * + ? | ( ) [a-z] [^a-z] ^ $ \d \w \s
+// Designed to be dependency-free and sufficient for terminal search use cases.
+
+struct SimpleRegex {
+    /// Compiled AST of the pattern.
+    pattern: RegexNode,
+    /// Case-insensitive matching (stored for future use, currently handled in char_eq).
+    #[allow(dead_code)]
+    case_insensitive: bool,
+}
+
+/// Regex AST node.
+#[derive(Debug, Clone)]
+enum RegexNode {
+    /// Literal character match.
+    Char(char),
+    /// Any character (.)
+    Any,
+    /// Character class ([a-z], [^0-9])
+    Class { chars: Vec<char>, negated: bool },
+    /// Digit (\d)
+    Digit,
+    /// Word character (\w)
+    Word,
+    /// Whitespace (\s)
+    Space,
+    /// Alternation (a|b|c)
+    Alternation(Vec<Vec<RegexNode>>),
+    /// Zero or more (x*)
+    Star(Box<RegexNode>),
+    /// One or more (x+)
+    Plus(Box<RegexNode>),
+    /// Zero or one (x?)
+    Optional(Box<RegexNode>),
+    /// Group (...)
+    Group(Vec<RegexNode>),
+    /// Start of line (^)
+    StartAnchor,
+    /// End of line ($)
+    EndAnchor,
+}
+
+impl SimpleRegex {
+    /// Compile a regex pattern. Returns None if the pattern is invalid.
+    fn compile(pattern: &str, case_insensitive: bool) -> Option<Self> {
+        let chars: Vec<char> = pattern.chars().collect();
+        let mut parser = RegexParser {
+            chars,
+            pos: 0,
+            case_insensitive,
+        };
+        let nodes = parser.parse_alternation()?;
+        if parser.pos != parser.chars.len() {
+            return None; // Unexpected trailing characters.
+        }
+        Some(Self {
+            pattern: RegexNode::Alternation(nodes),
+            case_insensitive,
+        })
+    }
+
+    /// Find all matches in text. Returns (start_col, length) pairs.
+    fn find_iter<'a>(&'a self, text: &'a str) -> Vec<(usize, usize)> {
+        let chars: Vec<char> = text.chars().collect();
+        let mut results = Vec::new();
+        let mut start = 0;
+
+        while start <= chars.len() {
+            if let Some(len) = self.match_at(&chars, start)
+                && len > 0
+            {
+                let byte_start = chars[..start].iter().map(|c| c.len_utf8()).sum();
+                let byte_len = chars[start..start + len].iter().map(|c| c.len_utf8()).sum();
+                results.push((byte_start, byte_len));
+                start += len; // Skip past this match.
+                continue;
+            }
+            start += 1;
+        }
+
+        results
+    }
+
+    /// Try to match the pattern at the given position. Returns match length in chars.
+    fn match_at(&self, chars: &[char], start: usize) -> Option<usize> {
+        if let RegexNode::Alternation(branches) = &self.pattern {
+            for branch in branches {
+                if let Some(len) = self.match_nodes(branch, chars, start) {
+                    return Some(len);
+                }
+            }
+        }
+        None
+    }
+
+    /// Match a sequence of nodes against chars starting at pos.
+    fn match_nodes(&self, nodes: &[RegexNode], chars: &[char], pos: usize) -> Option<usize> {
+        self.match_nodes_impl(nodes, 0, chars, pos)
+    }
+
+    fn match_nodes_impl(
+        &self,
+        nodes: &[RegexNode],
+        ni: usize,
+        chars: &[char],
+        pos: usize,
+    ) -> Option<usize> {
+        if ni >= nodes.len() {
+            return Some(0);
+        }
+
+        let node = &nodes[ni];
+
+        match node {
+            RegexNode::Star(inner) => {
+                let max = self.max_repeats(inner, chars, pos);
+                for count in (0..=max).rev() {
+                    let mut p = pos;
+                    let mut ok = true;
+                    for _ in 0..count {
+                        if let Some(len) = self.match_single(inner, chars, p) {
+                            p += len;
+                        } else {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if ok && let Some(rest) = self.match_nodes_impl(nodes, ni + 1, chars, p) {
+                        return Some(p - pos + rest);
+                    }
+                }
+                None
+            }
+            RegexNode::Plus(inner) => {
+                let max = self.max_repeats(inner, chars, pos);
+                for count in (1..=max).rev() {
+                    let mut p = pos;
+                    let mut ok = true;
+                    for _ in 0..count {
+                        if let Some(len) = self.match_single(inner, chars, p) {
+                            p += len;
+                        } else {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if ok && let Some(rest) = self.match_nodes_impl(nodes, ni + 1, chars, p) {
+                        return Some(p - pos + rest);
+                    }
+                }
+                None
+            }
+            RegexNode::Optional(inner) => {
+                if let Some(len) = self.match_single(inner, chars, pos)
+                    && let Some(rest) = self.match_nodes_impl(nodes, ni + 1, chars, pos + len)
+                {
+                    return Some(len + rest);
+                }
+                self.match_nodes_impl(nodes, ni + 1, chars, pos)
+            }
+            _ => match node {
+                RegexNode::StartAnchor => {
+                    if pos != 0 {
+                        return None;
+                    }
+                    self.match_nodes_impl(nodes, ni + 1, chars, pos)
+                }
+                RegexNode::EndAnchor => {
+                    if pos != chars.len() {
+                        return None;
+                    }
+                    self.match_nodes_impl(nodes, ni + 1, chars, pos)
+                }
+                _ => {
+                    if let Some(len) = self.match_single(node, chars, pos)
+                        && let Some(rest) = self.match_nodes_impl(nodes, ni + 1, chars, pos + len)
+                    {
+                        return Some(len + rest);
+                    }
+                    None
+                }
+            },
+        }
+    }
+
+    /// Match a single node (non-quantified) at pos. Returns match length.
+    fn match_single(&self, node: &RegexNode, chars: &[char], pos: usize) -> Option<usize> {
+        if pos >= chars.len() {
+            return None;
+        }
+        let c = chars[pos];
+        match node {
+            RegexNode::Char(expected) => {
+                if self.char_eq(*expected, c) {
+                    Some(1)
+                } else {
+                    None
+                }
+            }
+            RegexNode::Any => Some(1),
+            RegexNode::Class {
+                chars: class,
+                negated,
+            } => {
+                let matched = class.iter().any(|&cc| self.char_eq(cc, c));
+                if matched != *negated { Some(1) } else { None }
+            }
+            RegexNode::Digit => {
+                if c.is_ascii_digit() {
+                    Some(1)
+                } else {
+                    None
+                }
+            }
+            RegexNode::Word => {
+                if c.is_alphanumeric() || c == '_' {
+                    Some(1)
+                } else {
+                    None
+                }
+            }
+            RegexNode::Space => {
+                if c.is_whitespace() {
+                    Some(1)
+                } else {
+                    None
+                }
+            }
+            RegexNode::Group(inner) => self.match_nodes(inner, chars, pos),
+            _ => None,
+        }
+    }
+
+    /// Maximum number of repetitions a quantified node can match.
+    fn max_repeats(&self, node: &RegexNode, chars: &[char], start: usize) -> usize {
+        let mut count = 0;
+        let mut pos = start;
+        while pos < chars.len() {
+            if let Some(len) = self.match_single(node, chars, pos) {
+                pos += len;
+                count += 1;
+                if count > chars.len() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        count
+    }
+
+    fn char_eq(&self, a: char, b: char) -> bool {
+        if a == b {
+            true
+        } else if self.case_insensitive {
+            a.eq_ignore_ascii_case(&b)
+        } else {
+            false
+        }
+    }
+}
+
+/// Simple recursive descent regex parser.
+struct RegexParser {
+    chars: Vec<char>,
+    pos: usize,
+    #[allow(dead_code)]
+    case_insensitive: bool,
+}
+
+impl RegexParser {
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.pos).copied()
+    }
+
+    fn next(&mut self) -> Option<char> {
+        let c = self.chars.get(self.pos).copied();
+        if c.is_some() {
+            self.pos += 1;
+        }
+        c
+    }
+
+    /// Parse alternation: expr ('|' expr)*
+    fn parse_alternation(&mut self) -> Option<Vec<Vec<RegexNode>>> {
+        let mut branches = Vec::new();
+        let first = self.parse_sequence()?;
+        branches.push(first);
+
+        while self.peek() == Some('|') {
+            self.next();
+            let branch = self.parse_sequence()?;
+            branches.push(branch);
+        }
+
+        Some(branches)
+    }
+
+    /// Parse a sequence of atoms with optional quantifiers.
+    fn parse_sequence(&mut self) -> Option<Vec<RegexNode>> {
+        let mut nodes = Vec::new();
+
+        loop {
+            match self.peek() {
+                None | Some(')') | Some('|') => break,
+                _ => {}
+            }
+
+            let atom = self.parse_atom()?;
+            let atom = self.parse_quantifier(atom)?;
+            nodes.push(atom);
+        }
+
+        Some(nodes)
+    }
+
+    /// Parse a quantifier (*, +, ?) after an atom.
+    fn parse_quantifier(&mut self, node: RegexNode) -> Option<RegexNode> {
+        match self.peek() {
+            Some('*') => {
+                self.next();
+                Some(RegexNode::Star(Box::new(node)))
+            }
+            Some('+') => {
+                self.next();
+                Some(RegexNode::Plus(Box::new(node)))
+            }
+            Some('?') => {
+                self.next();
+                Some(RegexNode::Optional(Box::new(node)))
+            }
+            _ => Some(node),
+        }
+    }
+
+    /// Parse a single atom (char, escape, class, group, anchor).
+    fn parse_atom(&mut self) -> Option<RegexNode> {
+        let c = self.next()?;
+
+        match c {
+            '.' => Some(RegexNode::Any),
+            '^' => Some(RegexNode::StartAnchor),
+            '$' => Some(RegexNode::EndAnchor),
+            '(' => {
+                let branches = self.parse_alternation()?;
+                if self.next() != Some(')') {
+                    return None;
+                }
+                if branches.len() == 1 {
+                    Some(RegexNode::Group(branches.into_iter().next().unwrap()))
+                } else {
+                    Some(RegexNode::Group(vec![RegexNode::Alternation(branches)]))
+                }
+            }
+            '[' => self.parse_class(),
+            '\\' => self.parse_escape(),
+            _ => Some(RegexNode::Char(c)),
+        }
+    }
+
+    /// Parse character class [a-z] or [^a-z].
+    fn parse_class(&mut self) -> Option<RegexNode> {
+        let mut negated = false;
+        let mut chars = Vec::new();
+
+        if self.peek() == Some('^') {
+            self.next();
+            negated = true;
+        }
+
+        while let Some(c) = self.peek() {
+            if c == ']' {
+                self.next();
+                return Some(RegexNode::Class { chars, negated });
+            }
+            self.next();
+            // Handle ranges like a-z.
+            if self.peek() == Some('-') {
+                let save = self.pos;
+                self.next(); // consume '-'
+                if let Some(end) = self.peek()
+                    && end != ']'
+                {
+                    self.next();
+                    let start = c as u32;
+                    let end = end as u32;
+                    for code in start..=end {
+                        if let Some(ch) = char::from_u32(code) {
+                            chars.push(ch);
+                        }
+                    }
+                    continue;
+                }
+                self.pos = save; // Not a range, restore.
+            }
+            chars.push(c);
+        }
+
+        None // Unterminated class.
+    }
+
+    /// Parse escape sequence (\d, \w, \s, \n, \t, \.).
+    fn parse_escape(&mut self) -> Option<RegexNode> {
+        let c = self.next()?;
+        match c {
+            'd' => Some(RegexNode::Digit),
+            'w' => Some(RegexNode::Word),
+            's' => Some(RegexNode::Space),
+            'n' => Some(RegexNode::Char('\n')),
+            't' => Some(RegexNode::Char('\t')),
+            'r' => Some(RegexNode::Char('\r')),
+            // Escaped special chars: \. \* \+ \? \\ \( \) \[ \] \^ \$ \|
+            _ => Some(RegexNode::Char(c)),
+        }
     }
 }
 
@@ -697,5 +1174,151 @@ mod tests {
         s.open();
         assert!(!s.history_prev(&g));
         assert!(!s.history_next(&g));
+    }
+
+    // ── Regex search tests ──────────────────────────────────────────────
+
+    #[test]
+    fn t_regex_simple_literal() {
+        let re = SimpleRegex::compile("abc", false).unwrap();
+        let text = "xxabcyy";
+        let matches: Vec<_> = re.find_iter(text);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].0, 2); // byte offset
+        assert_eq!(matches[0].1, 3); // byte length
+    }
+
+    #[test]
+    fn t_regex_dot_matches_any() {
+        let re = SimpleRegex::compile("a.c", true).unwrap();
+        assert_eq!(re.find_iter("abc").len(), 1);
+        assert_eq!(re.find_iter("aXc").len(), 1);
+        assert_eq!(re.find_iter("ac").len(), 0);
+    }
+
+    #[test]
+    fn t_regex_star_quantifier() {
+        let re = SimpleRegex::compile("ab*c", true).unwrap();
+        assert_eq!(re.find_iter("ac").len(), 1);
+        assert_eq!(re.find_iter("abc").len(), 1);
+        assert_eq!(re.find_iter("abbbc").len(), 1);
+    }
+
+    #[test]
+    fn t_regex_plus_quantifier() {
+        let re = SimpleRegex::compile("ab+c", true).unwrap();
+        assert_eq!(re.find_iter("ac").len(), 0);
+        assert_eq!(re.find_iter("abc").len(), 1);
+        assert_eq!(re.find_iter("abbbc").len(), 1);
+    }
+
+    #[test]
+    fn t_regex_optional_quantifier() {
+        let re = SimpleRegex::compile("colou?r", true).unwrap();
+        assert_eq!(re.find_iter("color").len(), 1);
+        assert_eq!(re.find_iter("colour").len(), 1);
+    }
+
+    #[test]
+    fn t_regex_char_class() {
+        let re = SimpleRegex::compile("[0-9]+", true).unwrap();
+        let matches = re.find_iter("abc123def456");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn t_regex_negated_class() {
+        let re = SimpleRegex::compile("[^0-9]+", true).unwrap();
+        let matches = re.find_iter("abc123def");
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].1, 3); // "abc"
+        assert_eq!(matches[1].1, 3); // "def"
+    }
+
+    #[test]
+    fn t_regex_digit_class() {
+        let re = SimpleRegex::compile(r"\d+", true).unwrap();
+        let matches = re.find_iter("port 8080 and 443");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn t_regex_word_class() {
+        let re = SimpleRegex::compile(r"\w+", true).unwrap();
+        let matches = re.find_iter("foo bar_baz");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn t_regex_whitespace_class() {
+        let re = SimpleRegex::compile(r"\s+", true).unwrap();
+        let matches = re.find_iter("a b  c");
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn t_regex_case_insensitive() {
+        let re = SimpleRegex::compile("error", true).unwrap();
+        assert_eq!(re.find_iter("ERROR here").len(), 1);
+        assert_eq!(re.find_iter("Error msg").len(), 1);
+    }
+
+    #[test]
+    fn t_regex_case_sensitive_no_match() {
+        let re = SimpleRegex::compile("error", false).unwrap();
+        assert_eq!(re.find_iter("ERROR").len(), 0);
+    }
+
+    #[test]
+    fn t_regex_alternation() {
+        let re = SimpleRegex::compile("cat|dog", true).unwrap();
+        assert_eq!(re.find_iter("I have a cat and a dog").len(), 2);
+    }
+
+    #[test]
+    fn t_regex_invalid_returns_none() {
+        assert!(SimpleRegex::compile("[", true).is_none());
+        assert!(SimpleRegex::compile("(", true).is_none());
+    }
+
+    #[test]
+    fn t_regex_escaped_special() {
+        let re = SimpleRegex::compile(r"a\.b", true).unwrap();
+        assert_eq!(re.find_iter("a.b").len(), 1);
+        assert_eq!(re.find_iter("axb").len(), 0);
+    }
+
+    #[test]
+    fn t_search_state_regex_mode_toggle() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        assert!(!s.regex_mode);
+        s.toggle_regex(&g);
+        assert!(s.regex_mode);
+        s.toggle_regex(&g);
+        assert!(!s.regex_mode);
+    }
+
+    #[test]
+    fn t_search_state_regex_search_finds() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.open();
+        s.regex_mode = true;
+        s.set_query("hel.o", &g);
+        // "hello" on lines 0 and 2 should match "hel.o"
+        assert!(s.match_count() >= 2);
+    }
+
+    #[test]
+    fn t_search_state_regex_digit_search() {
+        let g = make_grid_with_scrollback();
+        let mut s = SearchState::new();
+        s.open();
+        s.regex_mode = true;
+        // Make_grid_with_scrollback has "back 1" and "back 2" etc
+        // Search for any word with regex \w+
+        s.set_query(r"\w+", &g);
+        assert!(s.match_count() >= 1);
     }
 }
