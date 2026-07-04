@@ -659,11 +659,24 @@ impl Config {
             "solarized-light",
             "solarized_dark",
             "gruvbox",
+            "nord",
+            "tokyo-night",
+            "tokyo_night",
+            "catppuccin-mocha",
+            "catppuccin_mocha",
         ];
         if !valid_themes.contains(&ap.theme.as_str()) {
             return Err(ConfigError::Validation(format!(
-                "theme '{}' is not a known built-in theme (allowed: dark, light, dracula, solarized-dark, solarized-light, gruvbox)",
+                "theme '{}' is not a known built-in theme (allowed: dark, light, dracula, solarized-dark, solarized-light, gruvbox, nord, tokyo-night, catppuccin-mocha)",
                 ap.theme
+            )));
+        }
+
+        // Validate background_opacity range.
+        if !(0.0..=1.0).contains(&ap.background_opacity) {
+            return Err(ConfigError::Validation(format!(
+                "background_opacity {} is out of range (allowed 0.0–1.0)",
+                ap.background_opacity
             )));
         }
 
@@ -1802,6 +1815,9 @@ mod watch_tests {
             "solarized-dark",
             "solarized-light",
             "gruvbox",
+            "nord",
+            "tokyo-night",
+            "catppuccin-mocha",
         ] {
             config.appearance.theme = theme.to_string();
             assert!(config.validate().is_ok(), "theme {} should be valid", theme);
@@ -1813,6 +1829,26 @@ mod watch_tests {
         let mut config = Config::default();
         config.appearance.theme = "solarized_dark".to_string();
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_opacity_range() {
+        let mut config = Config::default();
+        config.appearance.background_opacity = 0.0;
+        assert!(config.validate().is_ok(), "opacity 0.0 should be valid");
+        config.appearance.background_opacity = 1.0;
+        assert!(config.validate().is_ok(), "opacity 1.0 should be valid");
+        config.appearance.background_opacity = 0.85;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_opacity_out_of_range() {
+        let mut config = Config::default();
+        config.appearance.background_opacity = 1.5;
+        assert!(config.validate().is_err());
+        config.appearance.background_opacity = -0.1;
+        assert!(config.validate().is_err());
     }
 
     #[test]

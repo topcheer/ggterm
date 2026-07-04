@@ -146,7 +146,14 @@ impl DesktopApp {
         if self.p2p_share.visible
             && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
         {
-            self.toggle_p2p_share();
+            // If connected, just hide the overlay but keep the connection.
+            if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
+                self.p2p_share.visible = false;
+                self.show_toast("P2P: Sharing active in background (Esc to hide)");
+            } else {
+                // Not connected — stop sharing entirely.
+                self.toggle_p2p_share();
+            }
             return;
         }
 
@@ -1628,9 +1635,16 @@ impl DesktopApp {
             if state == ElementState::Pressed {
                 // Check P2P Share button click (right side of status bar).
                 #[cfg(feature = "p2p")]
-                if self.status_bar_visible && self.is_in_share_button() {
-                    self.toggle_p2p_share();
-                    return;
+                if self.status_bar_visible {
+                    let in_btn = self.is_in_share_button();
+                    crate::p2p_share::log_to_file(&format!(
+                        "mouse click: status_bar_visible={}, in_share_button={}",
+                        self.status_bar_visible, in_btn
+                    ));
+                    if in_btn {
+                        self.toggle_p2p_share();
+                        return;
+                    }
                 }
                 // Check if we're clicking on a separator.
                 if self.try_start_separator_drag() {
