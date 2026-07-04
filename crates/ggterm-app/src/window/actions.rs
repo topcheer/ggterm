@@ -814,12 +814,21 @@ impl DesktopApp {
         }
     }
 
-    /// Poll the AIBridge for a completed result and update the overlay.
+    /// Poll the AIBridge for streaming deltas and final result.
     #[cfg(feature = "ai")]
     pub(super) fn poll_ai_bridge(&mut self) {
-        if let Some(ref mut bridge) = self.ai_bridge
-            && let Some(response) = bridge.poll_result()
-        {
+        let Some(ref mut bridge) = self.ai_bridge else {
+            return;
+        };
+
+        // Drain streaming deltas and append to overlay.
+        let deltas = bridge.poll_deltas();
+        for delta in deltas {
+            self.ai_overlay.append_streaming(&delta);
+        }
+
+        // Check for final result.
+        if let Some(response) = bridge.take_result() {
             match response.result {
                 Ok(text) => self.ai_overlay.set_response(text),
                 Err(e) => self.ai_overlay.set_error(e),
@@ -1748,11 +1757,45 @@ impl DesktopApp {
         }
     }
 
+    /// P2P: Check if mouse position is over the Share button in the status bar.
+    #[cfg(feature = "p2p")]
+    pub(super) fn is_in_share_button(&self) -> bool {
+        let (mx, my) = self.cursor_pos;
+        if let Some(ref renderer) = self.renderer {
+            let cell_h = renderer.cell_height() as f32;
+            let cell_w = renderer.cell_width() as f32;
+            let screen_w = renderer.resolution_width() as f32;
+            let screen_h = renderer.resolution_height() as f32;
+            let bar_h = cell_h + 8.0;
+            let bar_y = screen_h - bar_h;
+            let pad_x = 12.0_f32;
+
+            // Share button text and width must match render.rs exactly.
+            let label = if self.p2p_share.visible {
+                "Stop Share"
+            } else {
+                "Share"
+            };
+            let share_w = label.chars().count() as f32 * cell_w + 24.0;
+            let share_x = screen_w - pad_x - share_w - 8.0;
+            let share_top = bar_y + 3.0;
+            let share_bot = bar_y + bar_h - 3.0;
+
+            log::debug!(
+                "share_button: mx={mx}, my={my}, x=[{share_x:.0}, {:.0}], y=[{share_top:.0}, {share_bot:.0}]",
+                share_x + share_w
+            );
+
+            mx >= share_x as f64
+                && mx <= (share_x + share_w) as f64
+                && my >= share_top as f64
+                && my <= share_bot as f64
+        } else {
+            false
+        }
+    }
+
     /// P2P: Toggle terminal sharing overlay.
-    ///
-    /// When enabled, generates an iroh NodeTicket and displays a QR code
-    /// overlay. Mobile devices can scan the QR to connect and interact
-    /// with this terminal via QUIC (P2P with relay fallback).
     #[cfg(feature = "p2p")]
     pub(super) fn toggle_p2p_share(&mut self) {
         self.p2p_share.toggle();

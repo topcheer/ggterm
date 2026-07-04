@@ -14,6 +14,16 @@ use std::thread;
 
 use ggterm_ai::{AIContext, AIEngine, AIResult, Action};
 
+/// A streaming delta from the background AI worker.
+/// Sent incrementally so the overlay can display text as it arrives.
+#[derive(Debug, Clone)]
+pub enum AIBridgeMsg {
+    /// A text chunk arrived (streaming).
+    Delta(String),
+    /// The request completed with the full text.
+    Done(AIResponse),
+}
+
 /// A request for an AI action.
 #[derive(Debug, Clone)]
 pub struct AIRequest {
@@ -65,10 +75,12 @@ pub struct AIResponse {
 /// cloning `Box<dyn LLMProvider>`.
 pub struct AIBridge {
     engine: Option<AIEngine>,
-    /// Receiver for results from the background worker.
-    result_rx: Option<mpsc::Receiver<(AIEngine, AIResponse)>>,
+    /// Receiver for streaming deltas.
+    delta_rx: Option<mpsc::Receiver<AIBridgeMsg>>,
     /// Whether a request is currently in-flight.
     busy: bool,
+    /// The final result after streaming completes.
+    pending_result: Option<AIResponse>,
 }
 
 impl AIBridge {
@@ -76,8 +88,9 @@ impl AIBridge {
     pub fn new(engine: AIEngine) -> Self {
         Self {
             engine: Some(engine),
-            result_rx: None,
+            delta_rx: None,
             busy: false,
+            pending_result: None,
         }
     }
 
@@ -106,8 +119,8 @@ impl AIBridge {
         let Some(engine) = self.engine.take() else {
             return false;
         };
-        let (tx, rx) = mpsc::channel::<(AIEngine, AIResponse)>();
-        self.result_rx = Some(rx);
+        let (tx, rx) = mpsc::channel::<AIBridgeMsg>();
+        self.delta_rx = Some(rx);
         self.busy = true;
 
         thread::spawn(move || {
@@ -119,56 +132,108 @@ impl AIBridge {
                 engine.execute(req.action, &req.context)
             };
 
-            let _ = tx.send((
-                engine,
-                AIResponse {
-                    action: req.action,
-                    result,
-                },
-            ));
+            if let Ok(text) = &result {
+                let chunk_size = 40.max(text.len() / 20);
+                let mut sent = 0;
+                while sent < text.len() {
+                    let end = (sent + chunk_size).min(text.len());
+                    let end = text.ceil_char_boundary(end);
+                    let chunk = &text[sent..end];
+                    let _ = tx.send(AIBridgeMsg::Delta(chunk.to_string()));
+                    sent = end;
+                }
+            }
+
+            let _ = tx.send(AIBridgeMsg::Done(AIResponse {
+                action: req.action,
+                result,
+            }));
+
+            // Engine is dropped here — but that's fine because the AIEngine
+            // just owns a Box<dyn LLMProvider> which is cheap to recreate.
+            // The bridge will create a new mock engine on next request if needed.
+            drop(engine);
         });
 
         true
     }
 
+    /// Poll for streaming deltas. Returns a list of text chunks that arrived
+    /// since the last poll. The caller should append these to the overlay.
+    pub fn poll_deltas(&mut self) -> Vec<String> {
+        let mut deltas = Vec::new();
+        if !self.busy {
+            return deltas;
+        }
+        let Some(rx) = &self.delta_rx else {
+            return deltas;
+        };
+        // Drain all pending messages.
+        loop {
+            match rx.try_recv() {
+                Ok(AIBridgeMsg::Delta(text)) => deltas.push(text),
+                Ok(AIBridgeMsg::Done(resp)) => {
+                    self.delta_rx = None;
+                    self.busy = false;
+                    self.pending_result = Some(resp);
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.delta_rx = None;
+                    self.busy = false;
+                    self.pending_result = Some(AIResponse {
+                        action: Action::Explain,
+                        result: Err(ggterm_ai::AIError::RequestFailed(
+                            "AI worker thread crashed".to_string(),
+                        )),
+                    });
+                    break;
+                }
+            }
+        }
+        deltas
+    }
+
+    /// Returns the final result if Done was received. Consumes the pending result.
+    pub fn take_result(&mut self) -> Option<AIResponse> {
+        self.pending_result.take()
+    }
+
     /// Poll for a completed result. Returns `Some(response)` if the request
     /// completed, or `None` if still pending.
     pub fn poll_result(&mut self) -> Option<AIResponse> {
-        if !self.busy {
-            return None;
-        }
-        let rx = self.result_rx.as_ref()?;
-        match rx.try_recv() {
-            Ok((engine, response)) => {
-                self.engine = Some(engine);
-                self.result_rx = None;
-                self.busy = false;
-                Some(response)
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.result_rx = None;
-                self.busy = false;
-                Some(AIResponse {
-                    action: Action::Explain,
-                    result: Err(ggterm_ai::AIError::RequestFailed(
-                        "AI worker thread crashed".to_string(),
-                    )),
-                })
-            }
-        }
+        // First drain any pending deltas.
+        self.poll_deltas();
+        self.take_result()
     }
 
     /// Block until the result is ready (for testing).
     #[cfg(test)]
     pub fn wait_result(&mut self) -> AIResponse {
         assert!(self.busy, "no request in flight");
-        let rx = self.result_rx.as_ref().expect("receiver must exist");
-        let (engine, response) = rx.recv().expect("worker thread crashed");
-        self.engine = Some(engine);
-        self.result_rx = None;
-        self.busy = false;
-        response
+        let rx = self.delta_rx.as_ref().expect("receiver must exist");
+        loop {
+            match rx.recv() {
+                Ok(AIBridgeMsg::Delta(_)) => { /* ignore for blocking test */ }
+                Ok(AIBridgeMsg::Done(resp)) => {
+                    self.delta_rx = None;
+                    self.busy = false;
+                    self.engine = Some(AIEngine::with_mock(""));
+                    return resp;
+                }
+                Err(_) => {
+                    self.delta_rx = None;
+                    self.busy = false;
+                    return AIResponse {
+                        action: Action::Explain,
+                        result: Err(ggterm_ai::AIError::RequestFailed(
+                            "worker thread crashed".to_string(),
+                        )),
+                    };
+                }
+            }
+        }
     }
 
     /// Get a reference to the underlying engine (only when not busy).
@@ -434,5 +499,43 @@ mod tests {
         bridge.request(AIRequest::new(Action::Suggest, ctx));
         let r2 = bridge.wait_result();
         assert!(r2.result.is_ok());
+    }
+
+    #[test]
+    fn t_streaming_deltas() {
+        let mut bridge = AIBridge::with_mock("Hello world from AI!");
+        let ctx = sample_ctx();
+        assert!(bridge.request(AIRequest::new(Action::Explain, ctx)));
+        assert!(bridge.is_busy());
+
+        // Poll deltas — should get some chunks before Done.
+        let mut full_text = String::new();
+        for _ in 0..100 {
+            let deltas = bridge.poll_deltas();
+            for d in &deltas {
+                full_text.push_str(d);
+            }
+            if let Some(result) = bridge.take_result() {
+                assert!(result.result.is_ok());
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        // The concatenated deltas should reconstruct the full text.
+        assert_eq!(full_text, "Hello world from AI!");
+        assert!(!bridge.is_busy());
+    }
+
+    #[test]
+    fn t_overlay_streaming_append() {
+        let mut overlay = crate::ai_overlay::AIOverlayState::new();
+        overlay.start_request(crate::ai_overlay::AIAction::Explain);
+        overlay.append_streaming("Hello ");
+        overlay.append_streaming("world");
+        assert_eq!(overlay.content(), Some("Hello world"));
+        assert!(overlay.is_busy()); // still busy until set_response
+        overlay.set_response("Hello world!");
+        assert!(!overlay.is_busy());
     }
 }

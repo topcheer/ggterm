@@ -336,10 +336,10 @@ pub fn parse_ssh_config(content: &str) -> Vec<HostEntry> {
                 }
             }
             "port" => {
-                if let Some(ref mut entry) = current {
-                    if let Ok(port) = value.parse::<u16>() {
-                        entry.port = port;
-                    }
+                if let Some(ref mut entry) = current
+                    && let Ok(port) = value.parse::<u16>()
+                {
+                    entry.port = port;
                 }
             }
             "user" => {
@@ -371,10 +371,10 @@ pub fn parse_ssh_config(content: &str) -> Vec<HostEntry> {
 
 /// Expand `~` to the home directory in a path.
 fn expand_tilde(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return format!("{home}/{rest}");
-        }
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return format!("{home}/{rest}");
     }
     path.to_string()
 }
@@ -696,7 +696,9 @@ Host my-key
     IdentityFile ~/.ssh/custom_key
 "#;
         // SAFETY: single-threaded test, no other code accessing HOME.
-        unsafe { std::env::set_var("HOME", "/test/home"); }
+        unsafe {
+            std::env::set_var("HOME", "/test/home");
+        }
         let entries = parse_ssh_config(config);
         assert_eq!(entries.len(), 1);
         assert_eq!(

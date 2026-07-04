@@ -104,6 +104,17 @@ impl AIOverlayState {
         self.content = Some(text.into());
     }
 
+    /// Append streaming text delta. Used for progressive display.
+    /// The overlay stays in busy state until `set_response` is called.
+    pub fn append_streaming(&mut self, text: &str) {
+        if self.content.is_none() {
+            self.content = Some(String::new());
+        }
+        if let Some(ref mut content) = self.content {
+            content.push_str(text);
+        }
+    }
+
     /// Set an error message and clear busy state.
     pub fn set_error(&mut self, error: impl std::fmt::Display) {
         self.busy = false;
