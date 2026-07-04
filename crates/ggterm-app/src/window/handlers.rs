@@ -2726,30 +2726,35 @@ fn truncate_str(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_code_block() {
         let text = "Here's the command:\n```bash\ngit status\n```\nThat's it.";
         assert_eq!(extract_ai_command(text), "git status");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_code_block_no_lang() {
         let text = "Try this:\n```\ndocker ps -a\n```";
         assert_eq!(extract_ai_command(text), "docker ps -a");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_dollar_prompt() {
         let text = "You can run:\n$ cargo build --release\nTo compile.";
         assert_eq!(extract_ai_command(text), "cargo build --release");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_known_prefix() {
         let text = "The solution is:\ngit push origin main\nDone.";
         assert_eq!(extract_ai_command(text), "git push origin main");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_expanded_prefixes() {
         // Commands must be on their own line for prefix detection to work.
@@ -2768,33 +2773,39 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_single_line() {
         assert_eq!(extract_ai_command("ls -la"), "ls -la");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_multi_line_no_command() {
         let text = "This command will list files.\nUse it carefully.\nGood luck.";
         assert_eq!(extract_ai_command(text), "");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_extract_ai_command_empty() {
         assert_eq!(extract_ai_command(""), "");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_truncate_str_short() {
         assert_eq!(truncate_str("hello", 10), "hello");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_truncate_str_long() {
         let result = truncate_str("abcdefghij", 5);
         assert_eq!(result, "abcde...");
     }
 
+    #[cfg(feature = "ai")]
     #[test]
     fn test_truncate_str_utf8_safe() {
         // Multi-byte UTF-8 characters should not be split.
