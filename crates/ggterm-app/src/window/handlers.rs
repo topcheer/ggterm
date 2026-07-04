@@ -1188,15 +1188,43 @@ impl DesktopApp {
         {
             match code {
                 KeyCode::ArrowUp => {
-                    self.active_session_mut()
-                        .app_mut()
-                        .handle_event(AppEvent::PrevCommandBlock);
+                    let block_row = {
+                        let app = self.active_session_mut().app_mut();
+                        app.handle_event(AppEvent::PrevCommandBlock);
+                        app.command_nav()
+                            .navigator()
+                            .current_block(app.terminal())
+                            .map(|b| b.prompt_row)
+                    };
+                    if let Some(row) = block_row {
+                        self.active_session_mut()
+                            .app_mut()
+                            .grid_mut()
+                            .scroll_to_grid_row(row);
+                    }
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
                     return;
                 }
                 KeyCode::ArrowDown => {
-                    self.active_session_mut()
-                        .app_mut()
-                        .handle_event(AppEvent::NextCommandBlock);
+                    let block_row = {
+                        let app = self.active_session_mut().app_mut();
+                        app.handle_event(AppEvent::NextCommandBlock);
+                        app.command_nav()
+                            .navigator()
+                            .current_block(app.terminal())
+                            .map(|b| b.prompt_row)
+                    };
+                    if let Some(row) = block_row {
+                        self.active_session_mut()
+                            .app_mut()
+                            .grid_mut()
+                            .scroll_to_grid_row(row);
+                    }
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
                     return;
                 }
                 // Ctrl+Shift+A → select all text (also Cmd+A on macOS)
@@ -1490,6 +1518,12 @@ impl DesktopApp {
         // P21-A: Handle split separator drag.
         if button == winit::event::MouseButton::Left {
             if state == ElementState::Pressed {
+                // Check P2P Share button click (right side of status bar).
+                #[cfg(feature = "p2p")]
+                if self.status_bar_visible && self.is_in_share_button() {
+                    self.toggle_p2p_share();
+                    return;
+                }
                 // Check if we're clicking on a separator.
                 if self.try_start_separator_drag() {
                     return; // Don't process as pane click or selection
@@ -1887,8 +1921,13 @@ impl DesktopApp {
                 self.button_held = None;
                 self.selection.finish();
                 self.selection_auto_scroll = 0;
-                // Copy selection to clipboard if active.
-                if self.selection.is_active() {
+                // Copy selection to clipboard if active and copy_on_select is enabled.
+                if self.selection.is_active()
+                    && self
+                        .config_mgr
+                        .as_ref()
+                        .is_none_or(|m| m.config().terminal.copy_on_select)
+                {
                     self.copy_selection_to_clipboard();
                 }
                 if let Some(ref window) = self.window {

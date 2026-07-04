@@ -527,6 +527,37 @@ impl Grid {
         }
     }
 
+    /// Set the display offset directly (clamped to scrollback length).
+    pub fn set_display_offset(&mut self, offset: usize) {
+        let max = self.scrollback.len();
+        let new_offset = offset.min(max);
+        if new_offset != self.display_offset {
+            self.display_offset = new_offset;
+            self.damage.mark_all(self.height);
+            self.content_dirty = true;
+        }
+    }
+
+    /// Scroll viewport so that `grid_row` is centered in the visible area.
+    ///
+    /// `grid_row` is a Y coordinate in the *current* grid (0 = top visible row).
+    /// Since scrollback content shifts the grid up by `display_offset` lines,
+    /// we convert the grid row to an absolute position and compute the offset
+    /// that centers it.
+    pub fn scroll_to_grid_row(&mut self, grid_row: usize) {
+        if self.display_offset == 0 {
+            // Not scrolled — the grid_row is already visible.
+            return;
+        }
+        // Current absolute bottom row.
+        let abs_bottom = self.scrollback.len() + self.height;
+        // The grid_row maps to absolute row (scrollback.len() + grid_row).
+        let abs_target = self.scrollback.len() + grid_row;
+        // Center target in viewport.
+        let desired_offset = abs_bottom.saturating_sub(abs_target + self.height / 2);
+        self.set_display_offset(desired_offset);
+    }
+
     /// Return the current display offset (0 = at the active bottom).
     pub fn display_offset(&self) -> usize {
         self.display_offset
@@ -1534,5 +1565,49 @@ mod tests {
         g.reflow_resize(15, 3);
         assert_eq!(g.width(), 15);
         assert_eq!(g[(0, 0)].ch, 'X');
+    }
+
+    #[test]
+    fn set_display_offset_clamps() {
+        let mut g = Grid::with_scrollback(5, 4, 100);
+        g.scroll_up(4); // push 4 rows to scrollback (height = 4)
+        g.set_display_offset(10); // over-scroll
+        assert_eq!(g.display_offset(), 4); // clamped to scrollback_len
+        g.set_display_offset(1);
+        assert_eq!(g.display_offset(), 1);
+        g.set_display_offset(0);
+        assert_eq!(g.display_offset(), 0);
+    }
+
+    #[test]
+    fn set_display_offset_marks_dirty() {
+        let mut g = Grid::with_scrollback(5, 4, 100);
+        g.scroll_up(4);
+        g.clear_damage();
+        assert!(!g.is_dirty());
+        g.set_display_offset(2);
+        assert!(g.is_dirty());
+    }
+
+    #[test]
+    fn scroll_to_grid_row_centers() {
+        let mut g = Grid::with_scrollback(5, 10, 100);
+        g.scroll_up(5); // 5 rows in scrollback
+        g.scroll_up_viewport(5); // fully scrolled back
+        assert_eq!(g.display_offset(), 5);
+        // Scroll to grid row 5 (middle of viewport).
+        g.scroll_to_grid_row(5);
+        // Should center: abs_bottom = 5 + 10 = 15, abs_target = 5 + 5 = 10
+        // desired = 15 - 10 - 5 = 0 → shows bottom
+        assert_eq!(g.display_offset(), 0);
+    }
+
+    #[test]
+    fn scroll_to_grid_row_noop_when_at_bottom() {
+        let mut g = Grid::with_scrollback(5, 10, 100);
+        g.scroll_up(5);
+        // display_offset is 0 (at bottom)
+        g.scroll_to_grid_row(3);
+        assert_eq!(g.display_offset(), 0); // no change
     }
 }

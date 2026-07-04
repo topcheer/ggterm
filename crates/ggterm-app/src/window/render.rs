@@ -55,7 +55,13 @@ impl DesktopApp {
         );
         // Respect DECSET 12: even blink-style cursors stay steady when
         // the program has disabled cursor blinking (DECSET 12 = off).
-        let is_blink = is_blink_style && session.app().terminal().cursor_blink_enabled();
+        // Also respect user config: cursor_blink = false disables all blinking.
+        let config_blink = self
+            .config_mgr
+            .as_ref()
+            .is_none_or(|m| m.config().appearance.cursor_blink);
+        let is_blink =
+            is_blink_style && session.app().terminal().cursor_blink_enabled() && config_blink;
         self.cursor_blink.set_enabled(is_blink);
         let blink_alpha = self.cursor_blink.alpha_focused(self.window_focused);
         let blink_visible = self.cursor_blink.is_visible();
@@ -924,9 +930,12 @@ impl DesktopApp {
 
             // Panel dimensions.
             let pw = (screen_w * 0.55).min(520.0);
-            let ph = (screen_h * 0.7).min(640.0);
+            // Extra height to fit wrapped ticket text without overflow.
+            let ph = (screen_h * 0.78).min(680.0);
             let px = (screen_w - pw) * 0.5;
             let py = (screen_h - ph) * 0.5;
+            let panel_pad = 24.0_f32;
+            let inner_w = pw - panel_pad * 2.0;
 
             // Panel background.
             ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -959,10 +968,23 @@ impl DesktopApp {
                 stroke_width: 0.0,
             });
 
+            // ── Layout regions (top to bottom) ──
+            // 1. Header: title + status + error      (~3 lines)
+            // 2. QR code area
+            // 3. Instructions + ticket + close hint   (~6 lines)
+            let header_h = cell_h * 3.5 + 16.0;
+            let footer_lines = 7.0; // max lines for instructions + ticket + close
+            let footer_h = cell_h * footer_lines + 16.0;
+
+            // QR code must fit between header and footer.
+            let qr_max_h = (ph - header_h - footer_h).max(80.0);
+            let qr_max_w = inner_w;
+            let qr_max_px = qr_max_h.min(qr_max_w);
+
             // Title.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "P2P Terminal Sharing".to_string(),
-                left: px + 24.0,
+                left: px + panel_pad,
                 top: py + 20.0,
                 color: (122, 162, 247),
             });
@@ -982,29 +1004,32 @@ impl DesktopApp {
             };
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: status_text.to_string(),
-                left: px + 24.0,
+                left: px + panel_pad,
                 top: py + 20.0 + cell_h,
                 color: status_color,
             });
 
-            // Error message (if any).
+            // Error message (if any) — wrap to fit panel width.
             if let Some(ref err) = p2p.error {
-                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: err.clone(),
-                    left: px + 24.0,
-                    top: py + 20.0 + cell_h * 2.0,
-                    color: (248, 113, 113),
-                });
+                let max_chars = (inner_w / cell_w).floor() as usize;
+                for (i, line) in wrap_text(err, max_chars.max(10)).iter().enumerate() {
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: line.clone(),
+                        left: px + panel_pad,
+                        top: py + 20.0 + cell_h * (2.0 + i as f32),
+                        color: (248, 113, 113),
+                    });
+                }
             }
 
             // QR code rendering: map QR modules to UiRects.
+            let qr_y_start = py + header_h;
             if let Some(qr) = p2p.qr() {
                 let qr_size = qr.len();
-                let max_qr_px = (pw - 48.0).min(ph * 0.45);
-                let module_size = (max_qr_px / qr_size as f32).max(2.0);
+                let module_size = (qr_max_px / qr_size as f32).max(2.0);
                 let qr_px = module_size * qr_size as f32;
                 let qr_x = px + (pw - qr_px) * 0.5;
-                let qr_y = py + cell_h * 4.0 + 10.0;
+                let qr_y = qr_y_start + (qr_max_px - qr_px) * 0.5;
 
                 // White background for QR code.
                 ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -1035,40 +1060,40 @@ impl DesktopApp {
                 }
             }
 
-            // Instructions.
-            let inst_y = py + ph - cell_h * 5.0;
+            // Instructions — positioned right after QR area.
+            let inst_y = py + header_h + qr_max_px + 8.0;
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "Scan QR code with GGTerm mobile app".to_string(),
-                left: px + 24.0,
+                left: px + panel_pad,
                 top: inst_y,
                 color: (180, 180, 190),
             });
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "or copy ticket manually:".to_string(),
-                left: px + 24.0,
+                left: px + panel_pad,
                 top: inst_y + cell_h,
                 color: (180, 180, 190),
             });
 
-            // Ticket string (truncated for display).
+            // Ticket string — wrap to fit panel width to prevent overflow.
             let ticket = p2p.ticket();
-            let display_ticket = if ticket.len() > 48 {
-                format!("{}...{}", &ticket[..24], &ticket[ticket.len() - 20..])
-            } else {
-                ticket.to_string()
-            };
-            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: display_ticket,
-                left: px + 24.0,
-                top: inst_y + cell_h * 2.0,
-                color: (140, 160, 200),
-            });
+            let max_ticket_chars = (inner_w / cell_w).floor() as usize;
+            let ticket_lines = wrap_text(ticket, max_ticket_chars.max(20));
+            for (i, line) in ticket_lines.iter().enumerate() {
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: line.clone(),
+                    left: px + panel_pad,
+                    top: inst_y + cell_h * (2.0 + i as f32),
+                    color: (140, 160, 200),
+                });
+            }
 
             // Close hint.
+            let hint_y = inst_y + cell_h * (2.0 + ticket_lines.len() as f32 + 0.5);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "Press Esc or Ctrl+Shift+Alt+Q to close".to_string(),
-                left: px + 24.0,
-                top: inst_y + cell_h * 3.5,
+                left: px + panel_pad,
+                top: hint_y,
                 color: (120, 120, 130),
             });
         }
@@ -1120,6 +1145,41 @@ impl DesktopApp {
                     color: *color,
                 });
                 x += text.chars().count() as f32 * cell_w;
+            }
+
+            // Right-aligned "Share" button for P2P sharing.
+            #[cfg(feature = "p2p")]
+            {
+                let share_text = if self.p2p_share.visible {
+                    "Stop Share"
+                } else {
+                    "Share"
+                };
+                let share_text_len = share_text.chars().count() as f32;
+                let share_w = share_text_len * cell_w + 24.0;
+                let share_x = screen_w - pad_x - share_w - 8.0;
+                let share_color = if self.p2p_share.visible {
+                    (0.4, 0.6, 0.9, 0.3)
+                } else {
+                    (0.25, 0.28, 0.35, 0.6)
+                };
+                // Button background.
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: share_x,
+                    y: bar_y + 3.0,
+                    w: share_w,
+                    h: bar_h - 6.0,
+                    color: share_color,
+                    radius: 4.0,
+                    stroke_width: 0.0,
+                });
+                // Button text.
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: share_text.to_string(),
+                    left: share_x + 12.0,
+                    top: text_top,
+                    color: (180, 200, 240),
+                });
             }
         }
 
@@ -2546,4 +2606,27 @@ impl DesktopApp {
             log::debug!("settings: {}", self.settings.format_summary());
         }
     }
+}
+
+/// Word-wrap a string to fit within `max_chars` characters per line.
+/// Breaks at character boundaries (monospace terminal text).
+#[cfg(feature = "p2p")]
+fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+    if max_chars == 0 {
+        return vec![text.to_string()];
+    }
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let chars: Vec<char> = line.chars().collect();
+        let mut start = 0;
+        while start < chars.len() {
+            let end = (start + max_chars).min(chars.len());
+            lines.push(chars[start..end].iter().collect());
+            start = end;
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }

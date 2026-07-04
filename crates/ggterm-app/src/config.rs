@@ -140,6 +140,9 @@ pub struct AppearanceConfig {
     /// Terminal content padding in pixels (applied to all four sides).
     /// Default: 8 (matches the built-in CONTENT_PADDING).
     pub padding: u32,
+    /// Whether the cursor blinks. Set to false for a steady cursor.
+    /// Default: true.
+    pub cursor_blink: bool,
 }
 
 /// Terminal behaviour configuration.
@@ -155,6 +158,10 @@ pub struct TerminalConfig {
     /// Bell behavior: "none", "visual", or "sound".
     /// Default: "visual" (flash the terminal).
     pub bell_mode: String,
+    /// When true, selecting text with the mouse automatically copies it to
+    /// the system clipboard on mouse release (xterm/iTerm2 behaviour).
+    /// Default: true.
+    pub copy_on_select: bool,
 }
 
 /// AI engine configuration.
@@ -179,6 +186,7 @@ impl Default for AppearanceConfig {
             cursor_style: "block".to_string(),
             background_opacity: 1.0,
             padding: 8,
+            cursor_blink: true,
         }
     }
 }
@@ -190,6 +198,7 @@ impl Default for TerminalConfig {
             shell: String::new(),
             restore_session: false,
             bell_mode: "visual".to_string(),
+            copy_on_select: true,
         }
     }
 }
@@ -267,6 +276,7 @@ mod raw {
         pub cursor_style: Option<String>,
         pub background_opacity: Option<f32>,
         pub padding: Option<u32>,
+        pub cursor_blink: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -276,6 +286,7 @@ mod raw {
         pub shell: Option<String>,
         pub restore_session: Option<bool>,
         pub bell_mode: Option<String>,
+        pub copy_on_select: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -364,6 +375,9 @@ impl Config {
         if let Some(v) = raw.appearance.padding {
             config.appearance.padding = v.min(100); // cap at 100px
         }
+        if let Some(v) = raw.appearance.cursor_blink {
+            config.appearance.cursor_blink = v;
+        }
 
         if let Some(v) = raw.terminal.scrollback_lines {
             config.terminal.scrollback_lines = v;
@@ -379,6 +393,9 @@ impl Config {
             if mode == "none" || mode == "visual" || mode == "sound" {
                 config.terminal.bell_mode = mode;
             }
+        }
+        if let Some(v) = raw.terminal.copy_on_select {
+            config.terminal.copy_on_select = v;
         }
 
         if let Some(v) = raw.ai.enabled {
@@ -449,6 +466,7 @@ impl Config {
             (self.appearance.background_opacity as f64).into(),
         );
         appearance.insert("padding".into(), (self.appearance.padding as i64).into());
+        appearance.insert("cursor_blink".into(), self.appearance.cursor_blink.into());
         root.insert("appearance".into(), appearance.into());
 
         // [terminal]
@@ -459,6 +477,7 @@ impl Config {
         );
         terminal.insert("shell".into(), self.terminal.shell.clone().into());
         terminal.insert("bell_mode".into(), self.terminal.bell_mode.clone().into());
+        terminal.insert("copy_on_select".into(), self.terminal.copy_on_select.into());
         root.insert("terminal".into(), terminal.into());
 
         // [ai]
