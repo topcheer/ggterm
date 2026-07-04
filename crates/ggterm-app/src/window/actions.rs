@@ -898,6 +898,49 @@ impl DesktopApp {
         count
     }
 
+    /// Select and copy the output of the last completed command.
+    /// Uses OSC 133 marks to find the output region.
+    pub(super) fn copy_last_command_output(&mut self) {
+        let (scrollback, height, width) = {
+            let grid = self.active_session().app().grid();
+            (grid.scrollback_len(), grid.height(), grid.width())
+        };
+
+        let blocks = self.active_session().app().terminal().command_blocks();
+
+        // Find the last completed command block.
+        let last_block = blocks
+            .iter()
+            .rev()
+            .find(|b| b.command_row.is_some() && b.end_row.is_some());
+
+        if let Some(block) = last_block {
+            // Output region: from output_row (or command_row+1) to end_row.
+            let start_row = block
+                .output_row
+                .unwrap_or_else(|| block.command_row.unwrap_or(block.prompt_row) + 1);
+            let end_row = block.end_row.unwrap();
+
+            if end_row > start_row {
+                // Convert absolute rows to display rows.
+                let display_start = start_row.saturating_sub(scrollback);
+                let display_end = end_row.saturating_sub(scrollback);
+
+                if display_end > display_start && display_end <= height {
+                    // Set selection covering the output rows.
+                    self.selection.start(0, display_start as u16);
+                    self.selection
+                        .extend(width as u16, display_end.saturating_sub(1) as u16);
+                    self.selection.finish();
+                    self.selection_auto_scroll = 0;
+
+                    // Now copy it.
+                    self.copy_selection_to_clipboard();
+                }
+            }
+        }
+    }
+
     pub(super) fn copy_selection_to_clipboard(&mut self) {
         // Block (rectangular) selection: copy column-by-column.
         if self.selection.block_mode
@@ -1739,6 +1782,9 @@ impl DesktopApp {
             }
             "terminal.import_ssh" => {
                 self.import_ssh_hosts();
+            }
+            "terminal.copy_last_output" => {
+                self.copy_last_command_output();
             }
             "settings.open" => {
                 self.pending_open_settings = true;

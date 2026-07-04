@@ -1277,6 +1277,13 @@ impl DesktopApp {
                         return;
                     }
                 }
+                // Ctrl+Shift+Alt+O → copy last command's output
+                KeyCode::KeyO => {
+                    if self.mods.alt {
+                        self.copy_last_command_output();
+                        return;
+                    }
+                }
                 // P10-C: AI assistant shortcuts (Ctrl+Shift+E/S/H/N, not configurable)
                 #[cfg(feature = "ai")]
                 KeyCode::KeyE => {

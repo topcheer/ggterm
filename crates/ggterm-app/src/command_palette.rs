@@ -233,6 +233,12 @@ impl CommandRegistry {
             category: "Terminal".into(),
             shortcut: Some("Ctrl+Shift+Alt+H".into()),
         });
+        r.register(Command {
+            id: "terminal.copy_last_output".into(),
+            label: "Copy Last Command Output".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+O".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),

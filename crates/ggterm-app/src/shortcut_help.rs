@@ -288,6 +288,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+O".into(),
+            description: "Copy last command output".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+P".into(),
             description: "Copy current directory path".into(),
             category: ShortcutCategory::Edit,
