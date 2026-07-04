@@ -1888,14 +1888,11 @@ impl Perform for Terminal {
                 let resp = format!("\x1b[{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
-            // DECRQSS — request selection or setting (CSI Ps $ q)
-            // Programs query terminal state by string name.
-            // We respond with DCS Ps $ r <value> ST for known settings.
-            // Unknown settings get DCS 0 $ r ST (not recognized).
+            // DECRQSS fallback (CSI Ps $ q)
+            // DECRQSS is properly handled via DCS ($ q) in the dcs() method.
+            // This CSI variant can't receive string parameters, so respond
+            // "not recognized" — programs use the DCS form.
             b'q' if intermediates.contains(&b'$') => {
-                // DECRQSS takes a string parameter, but VTE gives us numbers.
-                // Common queries: "m" (SGR), "r" (DECSTBM), "s" (DECSLRM)
-                // For simplicity, respond "not recognized" for all queries.
                 self.response_buffer.extend_from_slice(b"\x1bP0$r\x1b\\");
             }
             // DECREQTPARM — Request Terminal Parameters (CSI Ps x)
@@ -2324,6 +2321,65 @@ impl Perform for Terminal {
         }
         // Sixel graphics (DCS ... q) — acknowledged but not rendered
         // tmux passthrough (DCS tmux ;) — ignored
+
+        // DECRQSS — Request Status String (DCS $ q <selector> ST)
+        // Response: DCS 1 $ r <value> ST for known settings
+        //           DCS 0 $ r ST for unknown settings
+        if final_byte == b'q' && intermediates.contains(&b'$') {
+            let selector = std::str::from_utf8(data).unwrap_or("");
+            let response = match selector {
+                // SGR — report current SGR attributes
+                "m" => {
+                    let mut sgr_parts: Vec<String> = Vec::new();
+                    let mut has_attr = false;
+                    if self.flags.contains(CellFlags::BOLD) {
+                        sgr_parts.push("1".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::DIM) {
+                        sgr_parts.push("2".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::ITALIC) {
+                        sgr_parts.push("3".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::UNDERLINE) {
+                        sgr_parts.push("4".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::BLINK) {
+                        sgr_parts.push("5".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::REVERSE) {
+                        sgr_parts.push("7".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::HIDDEN) {
+                        sgr_parts.push("8".into());
+                        has_attr = true;
+                    }
+                    if self.flags.contains(CellFlags::STRIKETHROUGH) {
+                        sgr_parts.push("9".into());
+                        has_attr = true;
+                    }
+                    let sgr = if has_attr {
+                        sgr_parts.join(";")
+                    } else {
+                        "0".into()
+                    };
+                    format!("\x1bP1$r{sgr}m\x1b\\")
+                }
+                // DECSTBM — scroll region (top;bottom)
+                "r" => {
+                    let (top, bottom) = self.grid.scroll_region();
+                    format!("\x1bP1$r{};{}r\x1b\\", top + 1, bottom)
+                }
+                _ => "\x1bP0$r\x1b\\".to_string(),
+            };
+            self.response_buffer.extend_from_slice(response.as_bytes());
+        }
     }
 }
 
@@ -4784,6 +4840,45 @@ mod tests {
         assert_eq!(hex_decode(b"67677465726d").as_deref(), Some("ggterm"));
         assert!(hex_decode(b"xyz").is_none()); // odd length
         assert!(hex_decode(b"zz").is_none()); // invalid hex
+    }
+
+    #[test]
+    fn t_decrqss_sgr_default() {
+        // DECRQSS for SGR: DCS $ q m ST
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1bP$qm\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("1$r0m"),
+            "DECRQSS SGR default should return 0m, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_decrqss_sgr_bold() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[1m"); // bold on
+        feed(&mut t, b"\x1bP$qm\x1b\\"); // query SGR
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("1$r1m"),
+            "DECRQSS SGR with bold should return 1m, got: {s}"
+        );
+    }
+
+    #[test]
+    fn t_decrqss_scroll_region() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;20r"); // set scroll region rows 5-20
+        feed(&mut t, b"\x1bP$qr\x1b\\"); // query DECSTBM
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("1$r5;20r"),
+            "DECRQSS DECSTBM should return 5;20r, got: {s}"
+        );
     }
 
     #[test]
