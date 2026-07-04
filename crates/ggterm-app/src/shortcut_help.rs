@@ -441,6 +441,24 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Tab (in search)".into(),
+            description: "Toggle case sensitivity".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Shift+Tab (in search)".into(),
+            description: "Toggle regex mode".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Up/Down (in search)".into(),
+            description: "Search history navigation".into(),
+            category: ShortcutCategory::Search,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+End".into(),
             description: "Scroll to bottom".into(),
             category: ShortcutCategory::Search,

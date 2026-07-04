@@ -2377,11 +2377,25 @@ impl DesktopApp {
                 color: mode_color,
             });
 
+            // Regex mode indicator: ".*" = regex on (green), "Ab" = literal (dim).
+            let regex_label = if self.search.regex_mode { ".*" } else { "Ab" };
+            let regex_color = if self.search.regex_mode {
+                (100u8, 220, 120)
+            } else {
+                (100u8, 100, 110)
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: regex_label.to_string(),
+                left: bar_x + 48.0,
+                top: bar_y + 10.0,
+                color: regex_color,
+            });
+
             // Search query text with cursor.
             let query_display = format!("{}_", self.search.query);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: query_display,
-                left: bar_x + 64.0,
+                left: bar_x + 72.0,
                 top: bar_y + 10.0,
                 color: (230, 230, 240),
             });

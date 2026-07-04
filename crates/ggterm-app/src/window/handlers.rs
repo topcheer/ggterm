@@ -1413,9 +1413,15 @@ impl DesktopApp {
                 search.backspace(grid);
             }
             PhysicalKey::Code(KeyCode::Tab) => {
-                // Toggle case sensitivity.
-                let grid2 = self.sessions[self.active].app().grid();
-                self.search.toggle_case(grid2);
+                if self.mods.shift {
+                    // Shift+Tab toggles regex search mode.
+                    let grid2 = self.sessions[self.active].app().grid();
+                    self.search.toggle_regex(grid2);
+                } else {
+                    // Tab toggles case sensitivity.
+                    let grid2 = self.sessions[self.active].app().grid();
+                    self.search.toggle_case(grid2);
+                }
             }
             PhysicalKey::Code(KeyCode::ArrowUp) => {
                 let grid2 = self.sessions[self.active].app().grid();
