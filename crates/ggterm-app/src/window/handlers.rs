@@ -2631,6 +2631,71 @@ fn truncate_str(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max.min(s.len())])
+        let end = s.ceil_char_boundary(max.min(s.len()));
+        format!("{}...", &s[..end])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_ai_command_code_block() {
+        let text = "Here's the command:\n```bash\ngit status\n```\nThat's it.";
+        assert_eq!(extract_ai_command(text), "git status");
+    }
+
+    #[test]
+    fn test_extract_ai_command_code_block_no_lang() {
+        let text = "Try this:\n```\ndocker ps -a\n```";
+        assert_eq!(extract_ai_command(text), "docker ps -a");
+    }
+
+    #[test]
+    fn test_extract_ai_command_dollar_prompt() {
+        let text = "You can run:\n$ cargo build --release\nTo compile.";
+        assert_eq!(extract_ai_command(text), "cargo build --release");
+    }
+
+    #[test]
+    fn test_extract_ai_command_known_prefix() {
+        let text = "The solution is:\ngit push origin main\nDone.";
+        assert_eq!(extract_ai_command(text), "git push origin main");
+    }
+
+    #[test]
+    fn test_extract_ai_command_single_line() {
+        assert_eq!(extract_ai_command("ls -la"), "ls -la");
+    }
+
+    #[test]
+    fn test_extract_ai_command_multi_line_no_command() {
+        let text = "This command will list files.\nUse it carefully.\nGood luck.";
+        assert_eq!(extract_ai_command(text), "");
+    }
+
+    #[test]
+    fn test_extract_ai_command_empty() {
+        assert_eq!(extract_ai_command(""), "");
+    }
+
+    #[test]
+    fn test_truncate_str_short() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_long() {
+        let result = truncate_str("abcdefghij", 5);
+        assert_eq!(result, "abcde...");
+    }
+
+    #[test]
+    fn test_truncate_str_utf8_safe() {
+        // Multi-byte UTF-8 characters should not be split.
+        let result = truncate_str("你好世界测试", 6);
+        assert!(result.ends_with("..."));
+        // Should not panic.
     }
 }
