@@ -98,7 +98,8 @@ clear = "Ctrl+Shift+K"
 reset = "Ctrl+Shift+R"
 
 # Copy current working directory to clipboard
-copy_cwd = "Ctrl+Shift+P"
+# (Ctrl+Shift+P without Alt is reserved for command palette)
+copy_cwd = "Ctrl+Shift+Alt+P"
 
 # Theme cycling
 cycle_theme = "Ctrl+Shift+T"

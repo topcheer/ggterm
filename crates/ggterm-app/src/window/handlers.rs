@@ -335,14 +335,13 @@ impl DesktopApp {
                 self.cycle_theme();
                 return;
             }
-            // Ctrl+Shift+P → copy current working directory
-            if self.check_keybinding(
-                "copy_cwd",
-                self.mods.ctrl,
-                self.mods.shift,
-                self.mods.alt,
-                key_name,
-            ) {
+            // Ctrl+Shift+Alt+P → copy current working directory
+            // (Ctrl+Shift+P without Alt is reserved for command palette)
+            if self.mods.ctrl
+                && self.mods.shift
+                && self.mods.alt
+                && let PhysicalKey::Code(KeyCode::KeyP) = &event.physical_key
+            {
                 if let Some(cwd) = self.active_session().cwd() {
                     crate::clipboard::set_clipboard_bytes(cwd.to_string_lossy().as_bytes());
                     self.show_toast("Copied path");
