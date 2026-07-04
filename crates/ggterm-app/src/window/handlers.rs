@@ -1258,7 +1258,8 @@ impl DesktopApp {
                 }
                 #[cfg(feature = "ai")]
                 KeyCode::KeyN => {
-                    self.trigger_ai_request(ggterm_ai::Action::NL2Command);
+                    // NL2Command: show input mode instead of immediately requesting.
+                    self.ai_overlay.start_nl2cmd_input();
                     return;
                 }
                 _ => {}
@@ -1268,6 +1269,13 @@ impl DesktopApp {
         // P10-D: When search bar is open, intercept all keyboard input.
         if self.search.visible {
             self.handle_search_input(event);
+            return;
+        }
+
+        // NL2Command input mode: intercept keyboard for text input.
+        #[cfg(feature = "ai")]
+        if self.ai_overlay.is_nl2cmd_typing() {
+            self.handle_nl2cmd_input(event);
             return;
         }
 
@@ -1367,6 +1375,54 @@ impl DesktopApp {
                     search.type_char(c, grid);
                 }
             }
+        }
+    }
+
+    /// Handle keyboard input for NL2Command text entry.
+    #[cfg(feature = "ai")]
+    pub(super) fn handle_nl2cmd_input(&mut self, event: &KeyEvent) {
+        match &event.physical_key {
+            PhysicalKey::Code(KeyCode::Escape) => {
+                self.ai_overlay.hide();
+            }
+            PhysicalKey::Code(KeyCode::Enter) => {
+                // Submit the natural language query.
+                if let Some(query) = self.ai_overlay.nl2cmd_submit() {
+                    self.trigger_ai_nl2cmd(&query);
+                }
+            }
+            PhysicalKey::Code(KeyCode::Backspace) => {
+                self.ai_overlay.nl2cmd_backspace();
+            }
+            _ => {
+                // Type printable characters.
+                if let Key::Character(s) = &event.logical_key
+                    && let Some(c) = s.chars().next()
+                    && !c.is_control()
+                {
+                    self.ai_overlay.nl2cmd_append(c);
+                }
+            }
+        }
+    }
+
+    /// Trigger NL2Command with a natural language query.
+    #[cfg(feature = "ai")]
+    fn trigger_ai_nl2cmd(&mut self, query: &str) {
+        self.ai_overlay.start_request(ggterm_ai::Action::NL2Command);
+        let ctx = ggterm_ai::AIContext::from_terminal(self.active_session().app().terminal());
+        let req = crate::ai_bridge::AIRequest {
+            action: ggterm_ai::Action::NL2Command,
+            context: ctx,
+            natural_language: Some(query.to_string()),
+        };
+        if let Some(ref mut bridge) = self.ai_bridge {
+            if !bridge.request(req) {
+                self.ai_overlay.set_error("AI is busy, please wait...");
+            }
+        } else {
+            self.ai_overlay
+                .set_error("AI not configured (set ai.api_endpoint in config)");
         }
     }
 

@@ -51,6 +51,10 @@ pub struct AIOverlayState {
     action: Option<AIAction>,
     /// The response text to display (None = no response yet).
     content: Option<String>,
+    /// NL2Command input text (user types a natural language query).
+    nl2cmd_input: String,
+    /// Whether the user is currently typing in the NL2Command input.
+    nl2cmd_typing: bool,
 }
 
 impl Default for AIOverlayState {
@@ -67,6 +71,8 @@ impl AIOverlayState {
             busy: false,
             action: None,
             content: None,
+            nl2cmd_input: String::new(),
+            nl2cmd_typing: false,
         }
     }
 
@@ -126,7 +132,53 @@ impl AIOverlayState {
         self.visible = false;
         self.busy = false;
         self.content = None;
-        self.action = None;
+        self.nl2cmd_input.clear();
+        self.nl2cmd_typing = false;
+    }
+
+    /// Start NL2Command input mode.
+    pub fn start_nl2cmd_input(&mut self) {
+        self.visible = true;
+        self.busy = false;
+        self.content = None;
+        self.action = Some(AIAction::NL2Command);
+        self.nl2cmd_input.clear();
+        self.nl2cmd_typing = true;
+    }
+
+    /// Append a character to the NL2Command input.
+    pub fn nl2cmd_append(&mut self, ch: char) {
+        if self.nl2cmd_typing {
+            self.nl2cmd_input.push(ch);
+        }
+    }
+
+    /// Remove the last character from NL2Command input.
+    pub fn nl2cmd_backspace(&mut self) {
+        if self.nl2cmd_typing {
+            self.nl2cmd_input.pop();
+        }
+    }
+
+    /// Submit the NL2Command input. Returns the natural language query.
+    pub fn nl2cmd_submit(&mut self) -> Option<String> {
+        if !self.nl2cmd_typing || self.nl2cmd_input.trim().is_empty() {
+            return None;
+        }
+        self.nl2cmd_typing = false;
+        let query = self.nl2cmd_input.trim().to_string();
+        self.busy = true;
+        Some(query)
+    }
+
+    /// Check if user is currently typing in NL2Command input.
+    pub fn is_nl2cmd_typing(&self) -> bool {
+        self.nl2cmd_typing
+    }
+
+    /// Get the NL2Command input text.
+    pub fn nl2cmd_input(&self) -> &str {
+        &self.nl2cmd_input
     }
 
     /// Toggle overlay visibility.

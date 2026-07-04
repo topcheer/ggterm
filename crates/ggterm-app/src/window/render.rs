@@ -2530,7 +2530,22 @@ impl DesktopApp {
             let content_w = panel_w - 32.0;
             let max_chars = (content_w / cell_w).floor() as usize;
 
-            if ai.is_busy() && ai.content().is_none() {
+            if ai.is_nl2cmd_typing() {
+                // NL2Command input mode: show prompt with cursor.
+                let prompt_text = format!("> {}_", ai.nl2cmd_input());
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: prompt_text,
+                    left: panel_x + 16.0,
+                    top: content_y,
+                    color: (200, 220, 255),
+                });
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: "Type what you want to do, then press Enter".to_string(),
+                    left: panel_x + 16.0,
+                    top: content_y + cell_h * 1.5,
+                    color: (120, 120, 135),
+                });
+            } else if ai.is_busy() && ai.content().is_none() {
                 // Show "Thinking..." with animated dots.
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: "Thinking...".to_string(),

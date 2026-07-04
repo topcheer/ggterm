@@ -519,7 +519,7 @@ impl DesktopApp {
             #[cfg(feature = "ai")]
             ai_overlay: crate::ai_overlay::AIOverlayState::new(),
             #[cfg(feature = "ai")]
-            ai_bridge: None,
+            ai_bridge: Self::create_ai_bridge(&config_mgr),
             search: crate::search::SearchState::new(),
             fullscreen: false,
             maximized: false,
@@ -727,6 +727,82 @@ mod handlers;
 mod render;
 
 impl DesktopApp {
+    // ── AI bridge initialization ─────────────────────────────────────
+
+    /// Create an AIBridge from config + environment variables.
+    ///
+    /// Priority for API key: config.toml `[ai] api_key` > `GGTERM_AI_API_KEY` env > `OPENAI_API_KEY` env.
+    /// Priority for endpoint: config.toml `[ai] api_endpoint` > `GGTERM_AI_BASE_URL` env > default.
+    /// Priority for model: config.toml `[ai] model` > `GGTERM_AI_MODEL` env > default.
+    #[cfg(feature = "ai")]
+    fn create_ai_bridge(config_mgr: &Option<ConfigManager>) -> Option<crate::ai_bridge::AIBridge> {
+        // Check if AI is enabled in config.
+        let ai_cfg = config_mgr.as_ref().map(|m| &m.config().ai);
+        let enabled = ai_cfg.is_some_and(|c| c.enabled);
+
+        // Also check env vars directly (env can override even if config doesn't enable).
+        let env_key = std::env::var("GGTERM_AI_API_KEY")
+            .or_else(|_| std::env::var("OPENAI_API_KEY"))
+            .ok();
+
+        if !enabled && env_key.is_none() {
+            return None;
+        }
+
+        // Gather config values with fallbacks.
+        let api_key = ai_cfg
+            .and_then(|c| {
+                if !c.api_key.is_empty() {
+                    Some(c.api_key.clone())
+                } else {
+                    None
+                }
+            })
+            .or(env_key)
+            .unwrap_or_default();
+
+        let api_endpoint = ai_cfg
+            .and_then(|c| {
+                if !c.api_endpoint.is_empty() {
+                    Some(c.api_endpoint.clone())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| std::env::var("GGTERM_AI_BASE_URL").ok())
+            .unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".to_string());
+
+        let model = ai_cfg
+            .and_then(|c| {
+                if !c.model.is_empty() {
+                    Some(c.model.clone())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| std::env::var("GGTERM_AI_MODEL").ok())
+            .unwrap_or_else(|| "glm-4-flash".to_string());
+
+        if api_key.is_empty() {
+            log::warn!(
+                "AI enabled but no API key found. Set [ai] api_key in config or GGTERM_AI_API_KEY env var."
+            );
+            return None;
+        }
+
+        let llm_config = ggterm_ai::client::AIConfig {
+            api_key,
+            base_url: api_endpoint,
+            model,
+            ..Default::default()
+        };
+
+        let client = ggterm_ai::client::LLMClient::new(llm_config);
+        let engine = ggterm_ai::AIEngine::with_provider(Box::new(client));
+        log::info!("AI bridge initialized");
+        Some(crate::ai_bridge::AIBridge::new(engine))
+    }
+
     // ── Menu dispatch (P19-A) ──────────────────────────────────────
 
     /// Dispatch a menu action to the corresponding handler.

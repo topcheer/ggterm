@@ -74,16 +74,16 @@ impl AIConfig {
             config.model = model;
         }
 
-        if let Ok(timeout_str) = std::env::var("GGTERM_AI_TIMEOUT") {
-            if let Ok(secs) = timeout_str.parse::<u64>() {
-                config.timeout = Duration::from_secs(secs);
-            }
+        if let Ok(timeout_str) = std::env::var("GGTERM_AI_TIMEOUT")
+            && let Ok(secs) = timeout_str.parse::<u64>()
+        {
+            config.timeout = Duration::from_secs(secs);
         }
 
-        if let Ok(temp_str) = std::env::var("GGTERM_AI_TEMPERATURE") {
-            if let Ok(temp) = temp_str.parse::<f32>() {
-                config.temperature = temp;
-            }
+        if let Ok(temp_str) = std::env::var("GGTERM_AI_TEMPERATURE")
+            && let Ok(temp) = temp_str.parse::<f32>()
+        {
+            config.temperature = temp;
         }
 
         config
@@ -293,15 +293,13 @@ impl LLMClient {
                 if data == "[DONE]" {
                     break;
                 }
-                if let Ok(chunk) = serde_json::from_str::<ApiStreamChunk>(data) {
-                    if let Some(choice) = chunk.choices.into_iter().next() {
-                        if let Some(delta) = choice.delta {
-                            if let Some(content) = delta.content {
-                                on_delta(&content);
-                                full_response.push_str(&content);
-                            }
-                        }
-                    }
+                if let Ok(chunk) = serde_json::from_str::<ApiStreamChunk>(data)
+                    && let Some(choice) = chunk.choices.into_iter().next()
+                    && let Some(delta) = choice.delta
+                    && let Some(content) = delta.content
+                {
+                    on_delta(&content);
+                    full_response.push_str(&content);
                 }
             }
         }

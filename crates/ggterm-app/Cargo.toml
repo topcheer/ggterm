@@ -25,7 +25,7 @@ desktop = [
     "dep:image",
 ]
 # AI integration: enables ggterm-ai engine bridge
-ai = ["dep:ggterm-ai"]
+ai = ["dep:ggterm-ai", "ggterm-ai/http"]
 # Plugin system: enables ggterm-plugin manager and hook dispatch
 plugin = ["dep:ggterm-plugin"]
 # Lua plugin runtime (implies plugin)

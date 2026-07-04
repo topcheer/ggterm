@@ -178,6 +178,8 @@ pub struct AiConfig {
     pub api_endpoint: String,
     /// Model identifier to use for suggestions.
     pub model: String,
+    /// API key for authentication. Can also be set via GGTERM_AI_API_KEY env var.
+    pub api_key: String,
 }
 
 impl Default for AppearanceConfig {
@@ -248,8 +250,9 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            api_endpoint: "https://api.openai.com/v1".to_string(),
-            model: "gpt-4o-mini".to_string(),
+            api_endpoint: "https://open.bigmodel.cn/api/paas/v4".to_string(),
+            model: "glm-4-flash".to_string(),
+            api_key: String::new(),
         }
     }
 }
@@ -302,6 +305,7 @@ mod raw {
         pub enabled: Option<bool>,
         pub api_endpoint: Option<String>,
         pub model: Option<String>,
+        pub api_key: Option<String>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -417,6 +421,9 @@ impl Config {
         if let Some(v) = raw.ai.model {
             config.ai.model = v;
         }
+        if let Some(v) = raw.ai.api_key {
+            config.ai.api_key = v;
+        }
 
         let kb = raw.keybindings;
         config.keybindings.new_tab = kb.new_tab;
@@ -496,6 +503,7 @@ impl Config {
         ai.insert("enabled".into(), self.ai.enabled.into());
         ai.insert("api_endpoint".into(), self.ai.api_endpoint.clone().into());
         ai.insert("model".into(), self.ai.model.clone().into());
+        ai.insert("api_key".into(), self.ai.api_key.clone().into());
         root.insert("ai".into(), ai.into());
 
         // [keybindings] — only non-None entries
