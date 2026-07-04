@@ -390,7 +390,23 @@ impl DesktopApp {
         if index < self.sessions.len() && index != self.active {
             self.selection.clear();
             self.selection_auto_scroll = 0;
+            self.last_active_tab = Some(self.active);
             self.active = index;
+            self.sessions[self.active].clear_unread();
+        }
+    }
+
+    /// Toggle between the current tab and the last active tab.
+    pub(super) fn toggle_last_tab(&mut self) {
+        if let Some(last) = self.last_active_tab
+            && last < self.sessions.len()
+            && last != self.active
+        {
+            let current = self.active;
+            self.active = last;
+            self.last_active_tab = Some(current);
+            self.selection.clear();
+            self.selection_auto_scroll = 0;
             self.sessions[self.active].clear_unread();
         }
     }
@@ -443,6 +459,7 @@ impl DesktopApp {
     pub(super) fn next_tab(&mut self) {
         self.selection.clear();
         self.selection_auto_scroll = 0;
+        self.last_active_tab = Some(self.active);
         self.active = (self.active + 1) % self.sessions.len();
         self.sessions[self.active].clear_unread();
     }
@@ -451,6 +468,7 @@ impl DesktopApp {
     pub(super) fn prev_tab(&mut self) {
         self.selection.clear();
         self.selection_auto_scroll = 0;
+        self.last_active_tab = Some(self.active);
         self.active = if self.active == 0 {
             self.sessions.len() - 1
         } else {
@@ -1634,6 +1652,9 @@ impl DesktopApp {
             "tab.next" => {
                 self.next_tab();
             }
+            "tab.toggle_last" => {
+                self.toggle_last_tab();
+            }
             "tab.move_left" => {
                 if self.active > 0 {
                     self.move_tab(self.active, self.active - 1);
@@ -1881,6 +1902,7 @@ impl DesktopApp {
     /// P2P: Toggle terminal sharing overlay.
     #[cfg(feature = "p2p")]
     pub(super) fn toggle_p2p_share(&mut self) {
+        crate::p2p_share::log_to_file("toggle_p2p_share() called");
         self.p2p_share.toggle();
         if self.p2p_share.is_active() {
             match self.p2p_share.status {

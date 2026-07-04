@@ -1189,6 +1189,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+` → toggle between current and last active tab
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::Backquote) = &event.physical_key
+        {
+            self.toggle_last_tab();
+            return;
+        }
+
         // Ctrl+Shift+PageUp → move tab left, Ctrl+Shift+PageDown → move tab right
         if self.mods.ctrl && self.mods.shift && !self.mods.alt && self.sessions.len() > 1 {
             match &event.physical_key {

@@ -201,6 +201,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+`".into(),
+            description: "Toggle last tab".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+T".into(),
             description: "Reopen last closed tab".into(),
             category: ShortcutCategory::Tab,

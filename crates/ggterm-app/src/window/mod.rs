@@ -87,6 +87,8 @@ pub struct DesktopApp {
     sessions: Vec<TabSession>,
     /// Index of the active tab.
     active: usize,
+    /// Index of the previously active tab (for Ctrl+Tab toggle).
+    last_active_tab: Option<usize>,
     /// Last closed tab's cwd (for "reopen closed tab" feature).
     last_closed_cwd: Option<std::path::PathBuf>,
     /// Configuration.
@@ -486,6 +488,7 @@ impl DesktopApp {
         let mut desktop = DesktopApp {
             sessions: vec![session],
             active: 0,
+            last_active_tab: None,
             last_closed_cwd: None,
             config: desktop_config,
             mods: ModsState::default(),

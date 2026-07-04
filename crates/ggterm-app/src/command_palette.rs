@@ -69,6 +69,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Tab".into()),
         });
         r.register(Command {
+            id: "tab.toggle_last".into(),
+            label: "Toggle Last Tab".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+`".into()),
+        });
+        r.register(Command {
             id: "tab.rename".into(),
             label: "Rename Current Tab".into(),
             category: "Tab".into(),
