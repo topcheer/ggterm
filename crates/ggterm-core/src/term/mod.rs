@@ -1737,8 +1737,15 @@ impl Perform for Terminal {
                     }
                     6 => {
                         // Cursor position report: CSI row;col R (1-based)
+                        // In origin mode, report relative to scroll region top.
                         let (cx, cy) = (self.cursor.x + 1, self.cursor.y + 1);
-                        let resp = format!("\x1b[{};{}R", cy, cx);
+                        let report_row = if self.modes.origin {
+                            let (top, _) = self.grid.scroll_region();
+                            cy.saturating_sub(top + 1).max(1)
+                        } else {
+                            cy
+                        };
+                        let resp = format!("\x1b[{};{}R", report_row, cx);
                         self.response_buffer.extend_from_slice(resp.as_bytes());
                     }
                     _ => {}
@@ -3954,6 +3961,26 @@ mod tests {
         let resp = t.take_response();
         let expected = b"\x1b[1;6R"; // row 1, col 6 (1-based)
         assert_eq!(resp, expected);
+    }
+
+    #[test]
+    fn t_dsr_cursor_position_origin_mode() {
+        let mut t = Terminal::new(80, 24);
+        // Set scroll region to rows 5-15 (0-based: 4-14)
+        feed(&mut t, b"\x1b[5;15r");
+        // Enable origin mode
+        feed(&mut t, b"\x1b[?6h");
+        // Move to origin (row 1, col 1 in origin mode = row 5, col 1)
+        feed(&mut t, b"\x1b[1;1H");
+        // Query cursor position — should report relative to scroll region
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Should report row 1 (relative to scroll top), col 1
+        assert!(
+            s.contains("1;1R"),
+            "DSR in origin mode should report relative position, got: {s}"
+        );
     }
 
     #[test]
