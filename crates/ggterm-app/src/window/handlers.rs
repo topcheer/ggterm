@@ -2736,16 +2736,18 @@ mod tests {
 
     #[test]
     fn test_extract_ai_command_expanded_prefixes() {
+        // Commands must be on their own line for prefix detection to work.
+        // Single-line responses are returned as-is (see test_extract_ai_command_single_line).
         assert_eq!(
-            extract_ai_command("Run: kubectl get pods"),
+            extract_ai_command("Run this:\nkubectl get pods\nThat's it."),
             "kubectl get pods"
         );
         assert_eq!(
-            extract_ai_command("Try: brew install ripgrep"),
+            extract_ai_command("Try:\nbrew install ripgrep\nDone."),
             "brew install ripgrep"
         );
         assert_eq!(
-            extract_ai_command("Use: rg 'pattern' src/"),
+            extract_ai_command("Use this:\nrg 'pattern' src/\nGood luck."),
             "rg 'pattern' src/"
         );
     }
