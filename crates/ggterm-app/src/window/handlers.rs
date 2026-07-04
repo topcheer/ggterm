@@ -780,6 +780,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+A → toggle always-on-top
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyA) = &event.physical_key
+        {
+            self.toggle_always_on_top();
+            return;
+        }
+
         // Ctrl+Shift+Alt+E → export terminal as HTML
         if self.mods.ctrl
             && self.mods.shift

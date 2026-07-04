@@ -173,6 +173,8 @@ pub struct DesktopApp {
     fullscreen: bool,
     /// Whether the window is currently maximized.
     maximized: bool,
+    /// Window always-on-top state.
+    always_on_top: bool,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -530,6 +532,7 @@ impl DesktopApp {
             search: crate::search::SearchState::new(),
             fullscreen: false,
             maximized: false,
+            always_on_top: false,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),

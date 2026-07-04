@@ -409,6 +409,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+A".into(),
+            description: "Toggle always-on-top".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+Enter".into(),
             description: "Toggle maximized".into(),
             category: ShortcutCategory::View,

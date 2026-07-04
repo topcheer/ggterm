@@ -257,6 +257,12 @@ impl CommandRegistry {
             category: "Split".into(),
             shortcut: Some("Ctrl+Shift+Alt+B".into()),
         });
+        r.register(Command {
+            id: "window.always_on_top".into(),
+            label: "Toggle Always on Top".into(),
+            category: "Window".into(),
+            shortcut: Some("Ctrl+Shift+Alt+A".into()),
+        });
         // View
         r.register(Command {
             id: "view.fullscreen".into(),

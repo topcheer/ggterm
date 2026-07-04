@@ -1460,6 +1460,24 @@ impl DesktopApp {
         }
     }
 
+    /// Toggle always-on-top window level.
+    pub(super) fn toggle_always_on_top(&mut self) {
+        if let Some(ref window) = self.window {
+            let level = if self.always_on_top {
+                winit::window::WindowLevel::Normal
+            } else {
+                winit::window::WindowLevel::AlwaysOnTop
+            };
+            window.set_window_level(level);
+            self.always_on_top = !self.always_on_top;
+            if self.always_on_top {
+                self.show_toast("Always on top: ON");
+            } else {
+                self.show_toast("Always on top: OFF");
+            }
+        }
+    }
+
     // ── P30-A: Scrollbar scroll-to-position ────────────────────────
 
     // ── P31: Profile cycling ───────────────────────────────────────
@@ -1798,6 +1816,9 @@ impl DesktopApp {
             }
             "split.balance" => {
                 self.balance_panes();
+            }
+            "window.always_on_top" => {
+                self.toggle_always_on_top();
             }
             "terminal.open_url" => {
                 self.open_url_at_cursor();
