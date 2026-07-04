@@ -295,7 +295,13 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
         },
         ShortcutEntry {
             keys: "Ctrl+Shift+Alt+S".into(),
-            description: "Save scrollback to file".into(),
+            description: "Save scrollback to text file".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+E".into(),
+            description: "Export terminal as HTML (with colors)".into(),
             category: ShortcutCategory::Edit,
             configurable: false,
         },

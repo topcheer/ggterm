@@ -753,6 +753,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+E → export terminal as HTML
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyE) = &event.physical_key
+        {
+            self.export_html();
+            return;
+        }
+
         // Ctrl+Shift+Alt+H → import SSH hosts from ~/.ssh/config
         if self.mods.ctrl
             && self.mods.shift

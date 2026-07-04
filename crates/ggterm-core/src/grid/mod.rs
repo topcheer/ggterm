@@ -489,6 +489,121 @@ impl Grid {
         }
     }
 
+    /// Export terminal output as an HTML document with ANSI colors preserved.
+    ///
+    /// Generates a self-contained HTML page with inline CSS that reproduces
+    /// the terminal's colors (fg, bg, bold, italic, underline, reverse video).
+    /// Useful for sharing terminal output in documentation or bug reports.
+    pub fn export_html(&self) -> String {
+        use crate::grid::cell::{CellFlags, Color};
+
+        let palette = Color::default_palette();
+
+        let mut html = String::with_capacity(8192);
+        html.push_str("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
+        html.push_str("<style>\n");
+        html.push_str("body { background: #1e1e1e; color: #d4d4d4; ");
+        html.push_str("font-family: 'Menlo', 'DejaVu Sans Mono', 'Cascadia Mono', monospace; ");
+        html.push_str("font-size: 14px; line-height: 1.4; padding: 16px; margin: 0; }\n");
+        html.push_str("pre { margin: 0; white-space: pre-wrap; }\n");
+        html.push_str("</style>\n</head>\n<body>\n<pre>\n");
+
+        // Helper: resolve a Color to CSS rgb string.
+        let resolve_color = |color: &Color, is_fg: bool| -> String {
+            match color {
+                Color::Default => {
+                    if is_fg {
+                        "#d4d4d4".to_string()
+                    } else {
+                        "#1e1e1e".to_string()
+                    }
+                }
+                Color::Indexed(idx) => {
+                    if (*idx as usize) < palette.len() {
+                        match &palette[*idx as usize] {
+                            Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+                            _ => {
+                                if is_fg {
+                                    "#d4d4d4".to_string()
+                                } else {
+                                    "#1e1e1e".to_string()
+                                }
+                            }
+                        }
+                    } else {
+                        // 256-color extensions — approximate.
+                        "#d4d4d4".to_string()
+                    }
+                }
+                Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+            }
+        };
+
+        // Process all rows (scrollback + visible).
+        let all_rows: Vec<&Row> = self.scrollback.iter().chain(self.rows.iter()).collect();
+
+        for row in &all_rows {
+            for cell in &row.cells {
+                if cell.flags.contains(CellFlags::WIDE_SPACER) {
+                    continue;
+                }
+                if cell.ch == '\0' || cell.ch == ' ' && cell.fg == Color::Default {
+                    html.push(' ');
+                    continue;
+                }
+
+                // Build inline style.
+                let mut styles: Vec<String> = Vec::new();
+                let fg = if cell.flags.contains(CellFlags::REVERSE) {
+                    &cell.bg
+                } else {
+                    &cell.fg
+                };
+                let bg = if cell.flags.contains(CellFlags::REVERSE) {
+                    &cell.fg
+                } else {
+                    &cell.bg
+                };
+
+                if *fg != Color::Default {
+                    styles.push(format!("color: {}", resolve_color(fg, true)));
+                }
+                if *bg != Color::Default {
+                    styles.push(format!("background-color: {}", resolve_color(bg, false)));
+                }
+                if cell.flags.contains(CellFlags::BOLD) {
+                    styles.push("font-weight: bold".to_string());
+                }
+                if cell.flags.contains(CellFlags::ITALIC) {
+                    styles.push("font-style: italic".to_string());
+                }
+                if cell.flags.contains(CellFlags::UNDERLINE) {
+                    styles.push("text-decoration: underline".to_string());
+                }
+                if cell.flags.contains(CellFlags::STRIKETHROUGH) {
+                    styles.push("text-decoration: line-through".to_string());
+                }
+                if cell.flags.contains(CellFlags::HIDDEN) {
+                    styles.push("visibility: hidden".to_string());
+                }
+
+                if styles.is_empty() {
+                    html.push_str(&html_escape_char(cell.ch));
+                } else {
+                    html.push_str(&format!(
+                        "<span style=\"{}\">{}</span>",
+                        styles.join("; "),
+                        html_escape_char(cell.ch)
+                    ));
+                }
+            }
+            html.push('\n');
+        }
+
+        html.push_str("</pre>\n</body>\n</html>\n");
+        html
+    }
+
     /// Push a row to the scrollback, evicting oldest if over capacity.
     fn push_scrollback(&mut self, row: Row) {
         if self.scrollback.len() >= self.max_scrollback {
@@ -659,6 +774,18 @@ impl std::ops::Index<(usize, usize)> for Grid {
 impl std::ops::IndexMut<(usize, usize)> for Grid {
     fn index_mut(&mut self, (col, row): (usize, usize)) -> &mut Self::Output {
         &mut self.rows[row].cells[col]
+    }
+}
+
+/// Escape a single character for HTML output.
+fn html_escape_char(ch: char) -> String {
+    match ch {
+        '<' => "&lt;".to_string(),
+        '>' => "&gt;".to_string(),
+        '&' => "&amp;".to_string(),
+        '"' => "&quot;".to_string(),
+        '\'' => "&#39;".to_string(),
+        _ => ch.to_string(),
     }
 }
 
@@ -1609,5 +1736,67 @@ mod tests {
         // display_offset is 0 (at bottom)
         g.scroll_to_grid_row(3);
         assert_eq!(g.display_offset(), 0); // no change
+    }
+
+    #[test]
+    fn export_html_basic() {
+        let mut g = Grid::new(10, 3);
+        g[(0, 0)] = Cell::with_char('H');
+        g[(1, 0)] = Cell::with_char('i');
+        let html = g.export_html();
+        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("</html>"));
+        assert!(html.contains("<pre>"));
+        assert!(html.contains("Hi"));
+    }
+
+    #[test]
+    fn export_html_escapes_special_chars() {
+        let mut g = Grid::new(10, 1);
+        g[(0, 0)] = Cell::with_char('<');
+        g[(1, 0)] = Cell::with_char('>');
+        g[(2, 0)] = Cell::with_char('&');
+        let html = g.export_html();
+        assert!(html.contains("&lt;"));
+        assert!(html.contains("&gt;"));
+        assert!(html.contains("&amp;"));
+    }
+
+    #[test]
+    fn export_html_preserves_colors() {
+        use crate::grid::cell::Color;
+        let mut g = Grid::new(10, 1);
+        let mut cell = Cell::with_char('R');
+        cell.fg = Color::Indexed(1); // red
+        g[(0, 0)] = cell;
+        let html = g.export_html();
+        assert!(html.contains("color:"));
+        assert!(html.contains("#cc0000")); // palette red
+    }
+
+    #[test]
+    fn export_html_preserves_bold() {
+        use crate::grid::cell::CellFlags;
+        let mut g = Grid::new(10, 1);
+        let mut cell = Cell::with_char('B');
+        cell.flags.insert(CellFlags::BOLD);
+        g[(0, 0)] = cell;
+        let html = g.export_html();
+        assert!(html.contains("font-weight: bold"));
+    }
+
+    #[test]
+    fn export_html_preserves_reverse_video() {
+        use crate::grid::cell::{CellFlags, Color};
+        let mut g = Grid::new(10, 1);
+        let mut cell = Cell::with_char('X');
+        cell.fg = Color::Rgb(255, 0, 0);
+        cell.bg = Color::Rgb(0, 0, 255);
+        cell.flags.insert(CellFlags::REVERSE);
+        g[(0, 0)] = cell;
+        let html = g.export_html();
+        // In reverse, fg becomes bg and vice versa
+        assert!(html.contains("background-color: #ff0000")); // fg was red
+        assert!(html.contains("color: #0000ff")); // bg was blue
     }
 }

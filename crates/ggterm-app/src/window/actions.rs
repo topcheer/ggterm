@@ -1039,6 +1039,36 @@ impl DesktopApp {
         }
     }
 
+    /// Export terminal output as a styled HTML document with ANSI colors preserved.
+    ///
+    /// The HTML file uses inline CSS to reproduce the terminal's colors,
+    /// bold, italic, underline, and reverse video. Useful for sharing
+    /// terminal output in documentation or bug reports.
+    pub(super) fn export_html(&mut self) {
+        let html = self.active_session().app().grid().export_html();
+
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let filename = format!("ggterm-export-{ts}.html");
+
+        let path = std::env::var("HOME")
+            .map(|h| std::path::PathBuf::from(h).join(&filename))
+            .unwrap_or_else(|_| std::path::PathBuf::from(&filename));
+
+        match std::fs::write(&path, &html) {
+            Ok(_) => {
+                self.show_toast(format!("Saved HTML to ~/{filename}"));
+                log::info!("HTML export saved to {}", path.display());
+            }
+            Err(e) => {
+                self.show_toast(format!("Export failed: {e}"));
+                log::error!("HTML export failed: {e}");
+            }
+        }
+    }
+
     /// Import SSH hosts from ~/.ssh/config and save to GGTerm's connection store.
     ///
     /// Reads the user's OpenSSH config file and imports host entries.
