@@ -158,6 +158,24 @@ pub fn encode_mouse_event(
     Some(s.into_bytes())
 }
 
+/// Encode a mouse event using SGR-pixel (mode 1016) encoding.
+///
+/// Same format as SGR (mode 1006) but coordinates are in pixels.
+/// Programs like kitty/image viewers use pixel-level mouse tracking.
+///
+/// Format: `CSI < Cb ; Px ; Py M/m` (Px,Py are pixel coordinates)
+pub fn encode_mouse_event_pixel(
+    ev: &MouseEvent,
+    pixel_x: u16,
+    pixel_y: u16,
+    pressed: bool,
+) -> Option<Vec<u8>> {
+    let cb = ev.button.sgr_code() | ev.mods.sgr_code();
+    let suffix = if pressed { 'M' } else { 'm' };
+    let s = format!("\x1b[<{cb};{pixel_x};{pixel_y}{suffix}");
+    Some(s.into_bytes())
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 //  Text Selection
 // ═════════════════════════════════════════════════════════════════════════

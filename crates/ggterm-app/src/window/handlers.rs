@@ -1614,17 +1614,23 @@ impl DesktopApp {
             match state {
                 ElementState::Pressed => {
                     self.button_held = Some(mouse_button);
-                    if let Some(bytes) =
+                    let bytes = if sgr_pixel {
+                        crate::mouse::encode_mouse_event_pixel(&mouse_ev, mx, my, true)
+                    } else {
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, true)
-                    {
+                    };
+                    if let Some(bytes) = bytes {
                         self.write_to_pty(&bytes);
                     }
                 }
                 ElementState::Released => {
                     self.button_held = None;
-                    if let Some(bytes) =
+                    let bytes = if sgr_pixel {
+                        crate::mouse::encode_mouse_event_pixel(&mouse_ev, mx, my, false)
+                    } else {
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, false)
-                    {
+                    };
+                    if let Some(bytes) = bytes {
                         self.write_to_pty(&bytes);
                     }
                 }
