@@ -2594,6 +2594,21 @@ impl DesktopApp {
             }
         }
 
+        // AI overlay: footer hint for Tab/Ctrl+Enter actions.
+        #[cfg(feature = "ai")]
+        if self.ai_overlay.is_visible()
+            && !self.ai_overlay.is_busy()
+            && !self.ai_overlay.is_nl2cmd_typing()
+        {
+            let hint_y = screen_h - cell_h - 4.0;
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Tab: insert command | Ctrl+Enter: run | Esc: close".to_string(),
+                left: (screen_w - 52.0 * cell_w) * 0.5,
+                top: hint_y,
+                color: (100, 110, 125),
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);

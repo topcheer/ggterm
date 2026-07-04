@@ -489,6 +489,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Ai,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Tab (in AI overlay)".into(),
+            description: "Insert AI suggested command into terminal".into(),
+            category: ShortcutCategory::Ai,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Enter (in AI overlay)".into(),
+            description: "Execute AI suggested command immediately".into(),
+            category: ShortcutCategory::Ai,
+            configurable: false,
+        },
         // Shell
         ShortcutEntry {
             keys: "Ctrl+Shift+L".into(),
