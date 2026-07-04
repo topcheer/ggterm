@@ -9,7 +9,7 @@ A GPU-accelerated, AI-native, cross-platform terminal emulator built in Rust.
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20iOS%20%7C%20Android-lightgrey.svg)](#download)
 
-> **1917+ tests passing** | 8 crates | ~62,000 lines of Rust
+> **1939+ tests passing** | 9 crates | ~64,000 lines of Rust
 
 ## Download
 
