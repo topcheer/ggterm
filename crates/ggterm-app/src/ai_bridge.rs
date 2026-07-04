@@ -213,13 +213,18 @@ impl AIBridge {
     pub fn wait_result(&mut self) -> AIResponse {
         assert!(self.busy, "no request in flight");
         let rx = self.delta_rx.as_ref().expect("receiver must exist");
+        // Capture response text from Delta messages to reconstruct mock engine.
+        let mut collected = String::new();
         loop {
             match rx.recv() {
-                Ok(AIBridgeMsg::Delta(_)) => { /* ignore for blocking test */ }
+                Ok(AIBridgeMsg::Delta(text)) => {
+                    collected.push_str(&text);
+                }
                 Ok(AIBridgeMsg::Done(resp)) => {
                     self.delta_rx = None;
                     self.busy = false;
-                    self.engine = Some(AIEngine::with_mock(""));
+                    // Reconstruct engine with the collected response text.
+                    self.engine = Some(AIEngine::with_mock(collected));
                     return resp;
                 }
                 Err(_) => {

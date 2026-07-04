@@ -132,6 +132,7 @@ impl AIOverlayState {
         self.visible = false;
         self.busy = false;
         self.content = None;
+        self.action = None;
         self.nl2cmd_input.clear();
         self.nl2cmd_typing = false;
     }
