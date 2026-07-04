@@ -2005,6 +2005,7 @@ impl Perform for Terminal {
                     12 => self.modes.cursor_blink,          // Cursor blink
                     25 => self.modes.cursor_visible,        // DECTCEM
                     47 => self.modes.alt_screen,            // Alt screen (47)
+                    9 => self.modes.mouse_tracking,         // X10 mouse tracking
                     1000 => self.modes.mouse_tracking,      // Mouse tracking
                     1002 => self.modes.mouse_button_event,  // Button-event mouse
                     1003 => self.modes.mouse_any_event,     // Any-event mouse
@@ -2027,14 +2028,22 @@ impl Perform for Terminal {
             // DECRQM for ANSI modes (CSI Ps $ p, no private '?')
             b'p' if intermediates.contains(&b'$') && !is_private => {
                 let mode = params.first().copied().unwrap_or(0);
-                let is_set = match mode {
-                    4 => self.modes.insert,         // IRM — insert mode
-                    7 => self.modes.auto_wrap,      // DECAWM — autowrap
-                    12 => self.modes.cursor_blink,  // Cursor blink
-                    20 => self.modes.new_line_mode, // LNM — line feed/new line mode
-                    _ => false,
+                // status: 0=not recognized, 1=set, 2=reset, 3=permanently set, 4=permanently reset
+                let (is_set, permanent) = match mode {
+                    4 => (self.modes.insert, false),         // IRM — insert mode
+                    7 => (self.modes.auto_wrap, false),      // DECAWM — autowrap
+                    12 => (self.modes.cursor_blink, false),  // Cursor blink
+                    20 => (self.modes.new_line_mode, false), // LNM — line feed/new line mode
+                    8 => (true, true), // ARM — auto-repeat, always on (permanently set)
+                    _ => (false, false),
                 };
-                let status = if is_set { 1 } else { 2 };
+                let status = if permanent {
+                    3 // permanently set
+                } else if is_set {
+                    1 // set
+                } else {
+                    2 // reset
+                };
                 let resp = format!("\x1b[{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
