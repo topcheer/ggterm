@@ -52,6 +52,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Timer? _blinkTimer;
   // Scroll position tracking.
   bool _isScrolledUp = false;
+  // Tap tracking for triple-tap line select.
+  int _tapCount = 0;
+  DateTime _lastTapTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Visible input bar for typing.
   final FocusNode _inputFocusNode = FocusNode();
@@ -314,6 +317,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _onTapUp(TapUpDetails details) {
+    // Track tap count for triple-tap detection.
+    final now = DateTime.now();
+    if (now.difference(_lastTapTime).inMilliseconds < 400) {
+      _tapCount++;
+    } else {
+      _tapCount = 1;
+    }
+    _lastTapTime = now;
+
+    // Triple-tap → select and copy entire line.
+    if (_tapCount >= 3) {
+      _selectLineAt(details.localPosition);
+      _tapCount = 0;
+      return;
+    }
+
     // Single tap shows input bar for typing.
     if (!_showInputBar) {
       setState(() {
@@ -321,6 +340,30 @@ class _TerminalScreenState extends State<TerminalScreen> {
       });
     }
     _inputFocusNode.requestFocus();
+  }
+
+  /// Triple-tap → select and copy entire line at position.
+  void _selectLineAt(Offset position) {
+    final row = (position.dy / _cellHeight).floor();
+    if (row < 0 || row >= _screen.rows) return;
+
+    // Extract all non-null characters on this row.
+    final buf = StringBuffer();
+    for (var col = 0; col < _screen.cols; col++) {
+      final idx = row * _screen.cols + col;
+      if (idx < _screen.cells.length) {
+        final cell = _screen.cells[idx];
+        if (cell.charCode != 0) {
+          buf.write(cell.char);
+        }
+      }
+    }
+
+    final line = buf.toString().trimRight();
+    if (line.isEmpty) return;
+
+    Clipboard.setData(ClipboardData(text: line));
+    _showCopiedSnackBar('Copied line: ${line.length > 40 ? '${line.substring(0, 40)}...' : line}');
   }
 
   /// Double-tap → select and copy the word at the tap position.
