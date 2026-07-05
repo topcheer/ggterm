@@ -10,6 +10,9 @@ import 'package:flutter/material.dart';
 /// Callback when a special key is pressed.
 typedef KeyCallback = void Function(String keyName);
 
+/// Callback when paste is requested.
+typedef PasteCallback = void Function();
+
 /// State of active modifiers.
 class ModifierState extends ChangeNotifier {
   bool _ctrl = false;
@@ -56,11 +59,13 @@ class ModifierState extends ChangeNotifier {
 class KeyboardBar extends StatefulWidget {
   final ModifierState modifiers;
   final KeyCallback onKey;
+  final PasteCallback? onPaste;
 
   const KeyboardBar({
     super.key,
     required this.modifiers,
     required this.onKey,
+    this.onPaste,
   });
 
   @override
@@ -83,6 +88,10 @@ class _KeyboardBarState extends State<KeyboardBar> {
   void _onModChange() => setState(() {});
 
   void _sendKey(String name) {
+    if (name == '__paste__') {
+      widget.onPaste?.call();
+      return;
+    }
     widget.onKey(name);
     // Auto-release modifiers after a non-modifier key.
     widget.modifiers.releaseAll();
@@ -166,6 +175,9 @@ class _KeyboardBarState extends State<KeyboardBar> {
               active: m.shift,
               onTap: m.toggleShift,
             ),
+            // Paste button — reads system clipboard and sends to terminal.
+            if (widget.onPaste != null)
+              _keyButton('Paste', '__paste__'),
             // Separator
             Container(
               width: 1,

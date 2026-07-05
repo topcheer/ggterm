@@ -135,6 +135,42 @@ class _TerminalScreenState extends State<TerminalScreen> {
     widget.sessionManager.sendInput(widget.sessionId, codes);
   }
 
+  /// Paste text from system clipboard into the terminal.
+  /// This is critical for mobile: users need to paste passwords,
+  /// commands, and file paths from other apps.
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData('text/plain');
+    if (data?.text == null || data!.text!.isEmpty) {
+      _showCopiedSnackBar('Clipboard is empty');
+      return;
+    }
+
+    final text = data.text!;
+    // Send each character as UTF-8 bytes.
+    final bytes = <int>[];
+    for (final char in text.runes) {
+      // Convert rune to UTF-8 bytes.
+      if (char < 0x80) {
+        bytes.add(char);
+      } else if (char < 0x800) {
+        bytes.add(0xC0 | (char >> 6));
+        bytes.add(0x80 | (char & 0x3F));
+      } else if (char < 0x10000) {
+        bytes.add(0xE0 | (char >> 12));
+        bytes.add(0x80 | ((char >> 6) & 0x3F));
+        bytes.add(0x80 | (char & 0x3F));
+      } else {
+        bytes.add(0xF0 | (char >> 18));
+        bytes.add(0x80 | ((char >> 12) & 0x3F));
+        bytes.add(0x80 | ((char >> 6) & 0x3F));
+        bytes.add(0x80 | (char & 0x3F));
+      }
+    }
+    widget.sessionManager.sendInput(widget.sessionId, bytes);
+
+    _showCopiedSnackBar('Pasted ${text.length} chars');
+  }
+
   /// Handle text input from the hidden TextField.
   /// Computes the delta between last and current text, then sends it.
   void _onInputChanged(String newText) {
@@ -500,6 +536,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               KeyboardBar(
                 modifiers: _modifiers,
                 onKey: _sendKey,
+                onPaste: _pasteFromClipboard,
               ),
           ],
         ),
