@@ -592,61 +592,149 @@ class _TerminalPainter extends CustomPainter {
     final cols = screen.cols;
     final rows = screen.rows;
     final maxVisibleRows = math.min(rows, (size.height / cellHeight).floor());
+    final fontSize = cellHeight * 0.85;
 
+    // Cache Paint objects to avoid per-cell allocation.
+    final cellBgPaint = Paint();
+    final cursorPaint = Paint()
+      ..color = theme.cursor.withValues(alpha: 0.5)
+      ..blendMode = BlendMode.srcOver;
+
+    // First pass: draw all cell backgrounds (batch fillRect).
     for (var row = 0; row < maxVisibleRows; row++) {
       final y = row * cellHeight;
-
       for (var col = 0; col < cols; col++) {
-        final x = col * cellWidth;
         final idx = row * cols + col;
         if (idx >= screen.cells.length) break;
-
         final cell = screen.cells[idx];
+        final x = col * cellWidth;
 
-        // Resolve background color.
-        final cellBg = Color(0xFF000000 | cell.bgRgb);
-
-        // Draw cell background.
-        final bgRect = Rect.fromLTWH(x, y, cellWidth, cellHeight);
-        canvas.drawRect(bgRect, Paint()..color = cellBg);
-
-        // Resolve foreground color.
-        final cellFg = Color(0xFF000000 | cell.fgRgb);
-
-        // Draw character.
-        if (cell.charCode != 0) {
-          final textStyle = TextStyle(
-            color: cellFg,
-            fontSize: cellHeight * 0.85,
-            fontFamily: 'monospace',
-            fontWeight: cell.bold ? FontWeight.bold : FontWeight.normal,
-            fontStyle: cell.italic ? FontStyle.italic : FontStyle.normal,
-            decoration: cell.underline
-                ? TextDecoration.underline
-                : cell.strikethrough
-                    ? TextDecoration.lineThrough
-                    : TextDecoration.none,
+        // Only paint non-default backgrounds.
+        if (cell.bgRgb != 0) {
+          cellBgPaint.color = Color(0xFF000000 | cell.bgRgb);
+          canvas.drawRect(
+            Rect.fromLTWH(x, y, cellWidth, cellHeight),
+            cellBgPaint,
           );
-
-          final tp = TextPainter(
-            text: TextSpan(text: cell.char, style: textStyle),
-            textDirection: TextDirection.ltr,
-          )..layout();
-
-          final dx = x + (cellWidth - tp.width) / 2;
-          final dy = y + (cellHeight - tp.height) / 2;
-          tp.paint(canvas, Offset(dx, dy));
-        }
-
-        // Draw cursor (block style) — only when visible (blink).
-        if (cursorVisible && col == screen.cursorCol && row == screen.cursorRow) {
-          final cursorPaint = Paint()
-            ..color = theme.cursor.withValues(alpha: 0.5)
-            ..blendMode = BlendMode.srcOver;
-          canvas.drawRect(bgRect, cursorPaint);
         }
       }
     }
+
+    // Second pass: batch render text by grouping consecutive cells with
+    // identical style (fg color, bold, italic, underline, strikethrough).
+    for (var row = 0; row < maxVisibleRows; row++) {
+      final y = row * cellHeight;
+      var runStart = -1;
+      var runText = StringBuffer();
+      var runFg = 0;
+      var runBold = false;
+      var runItalic = false;
+      var runUnderline = false;
+      var runStrikethrough = false;
+
+      for (var col = 0; col <= cols; col++) {
+        final idx = row * cols + col;
+        final cell = col < cols && idx < screen.cells.length
+            ? screen.cells[idx]
+            : null;
+
+        final isEmpty = cell == null || cell.charCode == 0;
+
+        if (!isEmpty) {
+          if (runStart < 0) {
+            // Start a new run.
+            runStart = col;
+            runText.clear();
+            runText.write(cell.char);
+            runFg = cell.fgRgb;
+            runBold = cell.bold;
+            runItalic = cell.italic;
+            runUnderline = cell.underline;
+            runStrikethrough = cell.strikethrough;
+          } else if (cell.fgRgb == runFg &&
+              cell.bold == runBold &&
+              cell.italic == runItalic &&
+              cell.underline == runUnderline &&
+              cell.strikethrough == runStrikethrough) {
+            // Continue current run.
+            runText.write(cell.char);
+          } else {
+            // Flush current run, start new one.
+            _paintRun(canvas, runText.toString(), runStart, y,
+                runFg, runBold, runItalic, runUnderline,
+                runStrikethrough, cellWidth, cellHeight, fontSize);
+            runStart = col;
+            runText.clear();
+            runText.write(cell.char);
+            runFg = cell.fgRgb;
+            runBold = cell.bold;
+            runItalic = cell.italic;
+            runUnderline = cell.underline;
+            runStrikethrough = cell.strikethrough;
+          }
+        } else if (runStart >= 0) {
+          // Empty cell — flush current run.
+          _paintRun(canvas, runText.toString(), runStart, y,
+              runFg, runBold, runItalic, runUnderline,
+              runStrikethrough, cellWidth, cellHeight, fontSize);
+          runStart = -1;
+        }
+      }
+    }
+
+    // Third pass: draw cursor (over everything).
+    if (cursorVisible) {
+      final cy = screen.cursorRow;
+      final cx = screen.cursorCol;
+      if (cy < maxVisibleRows && cx < cols) {
+        final x = cx * cellWidth;
+        final y = cy * cellHeight;
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, cellWidth, cellHeight),
+          cursorPaint,
+        );
+      }
+    }
+  }
+
+  /// Paint a run of text at the given column.
+  void _paintRun(
+    Canvas canvas,
+    String text,
+    int startCol,
+    double rowY,
+    int fg,
+    bool bold,
+    bool italic,
+    bool underline,
+    bool strikethrough,
+    double cellW,
+    double cellH,
+    double fontSize,
+  ) {
+    if (text.isEmpty) return;
+
+    final style = TextStyle(
+      color: Color(0xFF000000 | fg),
+      fontSize: fontSize,
+      fontFamily: 'monospace',
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+      decoration: underline
+          ? TextDecoration.underline
+          : strikethrough
+              ? TextDecoration.lineThrough
+              : TextDecoration.none,
+    );
+
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final x = startCol * cellW;
+    final dy = rowY + (cellH - tp.height) / 2;
+    tp.paint(canvas, Offset(x, dy));
   }
 
   @override
