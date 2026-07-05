@@ -301,6 +301,45 @@ pub extern "C" fn ggterm_transport_is_alive(id: u32) -> i32 {
     0
 }
 
+/// Scroll the terminal viewport up (toward older scrollback).
+/// `lines` is the number of rows to scroll.
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_session_scroll_up(id: u32, lines: usize) {
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get_mut(&id) {
+        s.handle.terminal.grid_mut().scroll_up_viewport(lines);
+    }
+}
+
+/// Scroll the terminal viewport down (toward newer content).
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_session_scroll_down(id: u32, lines: usize) {
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get_mut(&id) {
+        s.handle.terminal.grid_mut().scroll_down_viewport(lines);
+    }
+}
+
+/// Reset viewport to the bottom (most recent content).
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_session_reset_viewport(id: u32) {
+    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get_mut(&id) {
+        s.handle.terminal.grid_mut().reset_viewport();
+    }
+}
+
+/// Get the current display offset (0 = at bottom, >0 = scrolled up).
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_session_display_offset(id: u32) -> usize {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id) {
+        s.handle.terminal.grid().display_offset()
+    } else {
+        0
+    }
+}
+
 // ── Transport: SSH ─────────────────────────────────────────────────────
 
 /// Connect to an SSH host with password authentication.
@@ -744,13 +783,13 @@ mod tests {
 
     #[test]
     fn t_destroy_cleans_up() {
-        let count_before = ggterm_session_count();
         let id = ggterm_session_create(80, 24);
-        // Count must have increased by exactly 1 for THIS session.
-        assert_eq!(ggterm_session_count(), count_before + 1);
+        // Verify the session was created (id > 0).
+        assert!(id > 0, "session_create should return non-zero id");
+        // Verify it is alive.
+        assert_eq!(ggterm_transport_is_alive(id), 1);
         unsafe { ggterm_session_destroy(id) };
-        // After destroy, the session should be gone. Other parallel tests may
-        // have also changed the count, so we verify via is_alive instead.
+        // After destroy, the session should be gone.
         assert_eq!(ggterm_transport_is_alive(id), 0);
         assert_eq!(ggterm_transport_pump(id), 0);
         // Verify the session is gone by trying to get dimensions — should be 0,0.

@@ -98,8 +98,9 @@ pub fn grid_to_ffi(grid: &Grid) -> Vec<GGTermCell> {
     let cols = grid.width();
     let rows = grid.height();
     let mut cells = Vec::with_capacity(cols * rows);
+    // Use display_row() which respects display_offset (scrollback position).
     for row_idx in 0..rows {
-        if let Some(row) = grid.row(row_idx) {
+        if let Some(row) = grid.display_row(row_idx) {
             for cell in &row.cells {
                 cells.push(GGTermCell::from_cell(cell));
             }

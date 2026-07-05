@@ -14,6 +14,7 @@
 /// final screen = mgr.getScreenData(id);
 /// mgr.sendInput(id, 'ls\n'.codeUnits);
 /// ```
+library;
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 
@@ -131,6 +132,7 @@ class SessionManager {
   /// Send input bytes (keystrokes) to the terminal.
   void sendInput(int id, List<int> bytes) {
     if (bytes.isEmpty) return;
+
     final ptr = malloc<Uint8>(bytes.length);
     try {
       for (var i = 0; i < bytes.length; i++) {
@@ -148,12 +150,22 @@ class SessionManager {
   }
 
   /// Get terminal dimensions.
+  /// Returns (0, 0) if session not found or invalid.
   (int, int) getDimensions(int id) {
     final colsPtr = malloc<IntPtr>();
     final rowsPtr = malloc<IntPtr>();
     try {
+      // Zero-initialize to detect unfound sessions.
+      colsPtr.value = 0;
+      rowsPtr.value = 0;
       _ffi.sessionDimensions(id, colsPtr, rowsPtr);
-      return (colsPtr.value, rowsPtr.value);
+      final cols = colsPtr.value;
+      final rows = rowsPtr.value;
+      // Sanity check: dimensions must be positive and reasonable.
+      if (cols <= 0 || cols > 500 || rows <= 0 || rows > 200) {
+        return (0, 0);
+      }
+      return (cols, rows);
     } finally {
       malloc.free(colsPtr);
       malloc.free(rowsPtr);
@@ -165,6 +177,8 @@ class SessionManager {
     final colPtr = malloc<IntPtr>();
     final rowPtr = malloc<IntPtr>();
     try {
+      colPtr.value = 0;
+      rowPtr.value = 0;
       _ffi.sessionCursor(id, colPtr, rowPtr);
       return (colPtr.value, rowPtr.value);
     } finally {
@@ -184,6 +198,8 @@ class SessionManager {
     if (cols == 0 || rows == 0) return ScreenSnapshot.empty;
 
     final cellCount = cols * rows;
+    // Safety: cap allocation to prevent crashes from garbage dimensions.
+    if (cellCount <= 0 || cellCount > 100000) return ScreenSnapshot.empty;
     final ptr = malloc<GGTermCell>(cellCount);
     try {
       final n = _ffi.sessionReadCells(id, ptr, cellCount);
@@ -286,6 +302,26 @@ class SessionManager {
   /// Check if transport is alive.
   bool isAlive(int id) {
     return _ffi.transportIsAlive(id) != 0;
+  }
+
+  /// Scroll terminal viewport up (toward older scrollback).
+  void scrollUp(int id, int lines) {
+    _ffi.sessionScrollUp(id, lines);
+  }
+
+  /// Scroll terminal viewport down (toward newer content).
+  void scrollDown(int id, int lines) {
+    _ffi.sessionScrollDown(id, lines);
+  }
+
+  /// Reset viewport to bottom (most recent).
+  void resetViewport(int id) {
+    _ffi.sessionResetViewport(id);
+  }
+
+  /// Get current display offset (0 = at bottom).
+  int displayOffset(int id) {
+    return _ffi.sessionDisplayOffset(id);
   }
 
   /// One-step pump + flush cycle.

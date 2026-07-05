@@ -8,6 +8,7 @@
 /// ffi.sessionProcessBytes(sessionId, data);
 /// ffi.sessionDestroy(sessionId);
 /// ```
+library;
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
@@ -69,6 +70,12 @@ typedef _FlushDart = void Function(int id);
 
 typedef _IsAliveC = Int32 Function(Uint32 id);
 typedef _IsAliveDart = int Function(int id);
+typedef _ScrollC = Void Function(Uint32 id, UintPtr lines);
+typedef _ScrollDart = void Function(int id, int lines);
+typedef _ResetViewportC = Void Function(Uint32 id);
+typedef _ResetViewportDart = void Function(int id);
+typedef _DisplayOffsetC = UintPtr Function(Uint32 id);
+typedef _DisplayOffsetDart = int Function(int id);
 
 typedef _SshConnectC = Int32 Function(
     Uint32 id, Pointer<Utf8> host, Uint16 port, Pointer<Utf8> user, Pointer<Utf8> password);
@@ -110,6 +117,10 @@ class GgtermFfi {
   late final int Function(int) transportPump;
   late final void Function(int) transportFlush;
   late final int Function(int) transportIsAlive;
+  late final void Function(int, int) sessionScrollUp;
+  late final void Function(int, int) sessionScrollDown;
+  late final void Function(int) sessionResetViewport;
+  late final int Function(int) sessionDisplayOffset;
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnect;
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnectKey;
   late final int Function(int) echoConnect;
@@ -149,7 +160,11 @@ class GgtermFfi {
       }
     }
     if (Platform.isIOS) {
-      // Static linking — the symbols are already in the process
+      // In debug builds, the actual code lives in Runner.debug.dylib.
+      // Try opening it first before falling back to process.
+      try {
+        return DynamicLibrary.open('Runner.debug.dylib');
+      } catch (_) {}
       return DynamicLibrary.process();
     }
     if (Platform.isAndroid) {
@@ -202,6 +217,18 @@ class GgtermFfi {
     transportIsAlive = _lib
         .lookupFunction<_IsAliveC, _IsAliveDart>(
             'ggterm_transport_is_alive');
+    sessionScrollUp = _lib
+        .lookupFunction<_ScrollC, _ScrollDart>(
+            'ggterm_session_scroll_up');
+    sessionScrollDown = _lib
+        .lookupFunction<_ScrollC, _ScrollDart>(
+            'ggterm_session_scroll_down');
+    sessionResetViewport = _lib
+        .lookupFunction<_ResetViewportC, _ResetViewportDart>(
+            'ggterm_session_reset_viewport');
+    sessionDisplayOffset = _lib
+        .lookupFunction<_DisplayOffsetC, _DisplayOffsetDart>(
+            'ggterm_session_display_offset');
     // SSH functions are optional (behind the "ssh" feature flag in Rust)
     try {
       sshConnect = _lib

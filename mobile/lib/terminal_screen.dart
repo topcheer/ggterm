@@ -232,11 +232,37 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
+  // Track accumulated scroll from two-finger drag.
+  double _scrollAccumulator = 0.0;
+
   void _onScale(ScaleUpdateDetails details) {
+    // Pinch to zoom (scale change).
     if ((details.scale - 1.0).abs() > 0.01) {
       setState(() {
         _fontSize = (_fontSize * details.scale).clamp(8.0, 32.0);
       });
+      return;
+    }
+
+    // Two-finger vertical drag = scroll terminal scrollback.
+    // focalPointDelta.y < 0 = dragging up = scroll up (toward older).
+    final dy = details.focalPointDelta.dy;
+    if (dy.abs() > 0.5) {
+      _scrollAccumulator += dy;
+      // Scroll roughly one row per cell height of drag.
+      final threshold = _cellHeight;
+      while (_scrollAccumulator.abs() >= threshold) {
+        if (_scrollAccumulator < 0) {
+          // Dragging up → scroll toward older scrollback.
+          widget.sessionManager.scrollUp(widget.sessionId, 1);
+        } else {
+          // Dragging down → scroll toward newer content.
+          widget.sessionManager.scrollDown(widget.sessionId, 1);
+        }
+        _scrollAccumulator -= threshold * (_scrollAccumulator.sign);
+      }
+      // Force a screen refresh to show scrolled content.
+      _lastFrameHash = 0;
     }
   }
 
