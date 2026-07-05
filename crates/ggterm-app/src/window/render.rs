@@ -2457,6 +2457,20 @@ impl DesktopApp {
 
         // ── P33: URL hover tooltip + underline ────────────────────────
         if let Some((ref url, start_col, end_col, link_row)) = self.hovered_link {
+            // Draw background highlight beneath the URL text.
+            let hl_x = content_bounds.x as f32 + start_col as f32 * cell_w;
+            let hl_w = (end_col - start_col) as f32 * cell_w;
+            let hl_y = content_bounds.y as f32 + link_row as f32 * cell_h;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: hl_x,
+                y: hl_y,
+                w: hl_w,
+                h: cell_h,
+                color: (0.3, 0.5, 0.9, 0.15),
+                radius: 2.0,
+                stroke_width: 0.0,
+            });
+
             // Draw underline beneath the URL text.
             let under_x = content_bounds.x as f32 + start_col as f32 * cell_w;
             let under_w = (end_col - start_col) as f32 * cell_w;
