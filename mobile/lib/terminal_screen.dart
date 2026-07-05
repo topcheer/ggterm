@@ -146,7 +146,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   void _sendKey(String keyName) {
     final codes = _keyNameToBytes(keyName);
+    _sendInput(codes);
+  }
+
+  /// Send input bytes and auto-scroll to bottom if scrolled up.
+  void _sendInput(List<int> codes) {
     widget.sessionManager.sendInput(widget.sessionId, codes);
+    // Auto-scroll to bottom on input (standard terminal behavior).
+    if (widget.sessionManager.displayOffset(widget.sessionId) > 0) {
+      widget.sessionManager.resetViewport(widget.sessionId);
+      _lastFrameHash = 0; // Force refresh
+    }
   }
 
   /// Paste text from system clipboard into the terminal.
@@ -180,7 +190,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         bytes.add(0x80 | (char & 0x3F));
       }
     }
-    widget.sessionManager.sendInput(widget.sessionId, bytes);
+    _sendInput(bytes);
 
     _showCopiedSnackBar('Pasted ${text.length} chars');
   }
