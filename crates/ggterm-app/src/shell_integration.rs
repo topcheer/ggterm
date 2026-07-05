@@ -173,6 +173,11 @@ impl ShellIntegrationConfig {
                 "GGTERM_VERSION".to_string(),
                 env!("CARGO_PKG_VERSION").to_string(),
             ),
+            // Set TERM so terminfo-based programs (vim, htop, ncurses)
+            // work correctly. Use xterm-256color for broad compatibility.
+            ("TERM".to_string(), "xterm-256color".to_string()),
+            // Advertise true color support.
+            ("COLORTERM".to_string(), "truecolor".to_string()),
         ];
 
         if self.prepared && self.kind == ShellKind::Zsh {
