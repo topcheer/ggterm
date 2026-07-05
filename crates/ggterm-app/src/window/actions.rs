@@ -1067,6 +1067,31 @@ impl DesktopApp {
         }
     }
 
+    /// Copy the current selection as a fenced Markdown code block.
+    /// Wraps the text in triple backticks for easy pasting into
+    /// GitHub issues, docs, or chat.
+    pub(super) fn copy_selection_as_markdown(&mut self) {
+        // Reuse the existing selection-to-text logic by copying to clipboard,
+        // then re-reading and wrapping.
+        self.copy_selection_to_clipboard();
+
+        // Read back the copied text.
+        if let Some(text) = crate::clipboard::read_clipboard() {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                // Determine language hint from content.
+                let lang = detect_language_hint(trimmed);
+                let markdown = if lang.is_empty() {
+                    format!("```\n{}\n```", trimmed)
+                } else {
+                    format!("```{}\n{}\n```", lang, trimmed)
+                };
+                crate::clipboard::set_clipboard_bytes(markdown.as_bytes());
+                self.show_toast(format!("Copied as Markdown ({} chars)", markdown.len()));
+            }
+        }
+    }
+
     /// P30-C: Show a toast notification that fades after ~2 seconds.
     pub(super) fn show_toast(&mut self, msg: impl Into<String>) {
         self.toast = Some((msg.into(), 120)); // ~2s at 60fps
@@ -1856,6 +1881,9 @@ impl DesktopApp {
             "terminal.copy_last_output" => {
                 self.copy_last_command_output();
             }
+            "terminal.copy_markdown" => {
+                self.copy_selection_as_markdown();
+            }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
             }
@@ -2095,5 +2123,90 @@ impl DesktopApp {
                 self.active_session_mut().write_to_pty(&input);
             }
         }
+    }
+}
+
+/// Detect a programming language from terminal output content.
+/// Returns a language string for Markdown code fencing, or empty string.
+fn detect_language_hint(text: &str) -> &'static str {
+    let first_line = text.lines().next().unwrap_or("");
+    // Shell prompts.
+    if first_line.starts_with('$')
+        || first_line.starts_with(">")
+        || first_line.contains("bash")
+        || first_line.contains("zsh")
+    {
+        return "bash";
+    }
+    // Rust compiler output.
+    if text.contains("cargo")
+        || text.contains("rustc")
+        || first_line.contains("-->")
+        || text.contains("error[E")
+    {
+        return "rust";
+    }
+    // Python traceback.
+    if text.contains("Traceback") || text.contains("python") || text.contains("File \"") {
+        return "python";
+    }
+    // Git output.
+    if text.contains("git ")
+        || first_line.starts_with("commit ")
+        || first_line.starts_with("Author:")
+    {
+        return "diff";
+    }
+    // JSON.
+    if first_line.trim_start().starts_with('{') || first_line.trim_start().starts_with('[') {
+        return "json";
+    }
+    // SQL.
+    if text.to_uppercase().contains("SELECT ")
+        || text.to_uppercase().contains("INSERT INTO")
+        || text.to_uppercase().contains("CREATE TABLE")
+    {
+        return "sql";
+    }
+    ""
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_language_rust() {
+        assert_eq!(
+            detect_language_hint("error[E0308]: mismatched types"),
+            "rust"
+        );
+        assert_eq!(
+            detect_language_hint("  --> src/main.rs:10:5\ncargo build"),
+            "rust"
+        );
+    }
+
+    #[test]
+    fn test_detect_language_python() {
+        assert_eq!(
+            detect_language_hint("Traceback (most recent call last)"),
+            "python"
+        );
+    }
+
+    #[test]
+    fn test_detect_language_bash() {
+        assert_eq!(detect_language_hint("$ ls -la"), "bash");
+    }
+
+    #[test]
+    fn test_detect_language_json() {
+        assert_eq!(detect_language_hint(r#"{"key": "value"}"#), "json");
+    }
+
+    #[test]
+    fn test_detect_language_none() {
+        assert_eq!(detect_language_hint("hello world"), "");
     }
 }

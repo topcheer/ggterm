@@ -246,6 +246,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Alt+O".into()),
         });
         r.register(Command {
+            id: "terminal.copy_markdown".into(),
+            label: "Copy Selection as Markdown".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.toggle_lock".into(),
             label: "Toggle Terminal Lock".into(),
             category: "Terminal".into(),
