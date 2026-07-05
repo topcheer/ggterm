@@ -1724,6 +1724,19 @@ impl DesktopApp {
     }
 
     /// Clear the screen of all tabs (sends ESC[H ESC[2J to each tab's active pane).
+    /// Send RIS (full reset, ESC c) to all panes in all tabs.
+    pub(super) fn reset_all_tabs(&mut self) {
+        let ris = b"\x1bc"; // RIS — Reset to Initial State
+        let tab_count = self.sessions.len();
+        for i in 0..tab_count {
+            self.sessions[i].write_to_all_panes(ris);
+        }
+        self.show_toast(format!("Reset {} tabs", tab_count));
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     /// Send Ctrl+C (0x03) to all panes in all tabs.
     pub(super) fn send_ctrl_c_all_panes(&mut self) {
         let ctrl_c = [0x03u8];
@@ -1926,6 +1939,9 @@ impl DesktopApp {
             }
             "terminal.send_ctrl_c_all" => {
                 self.send_ctrl_c_all_panes();
+            }
+            "terminal.reset_all" => {
+                self.reset_all_tabs();
             }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
