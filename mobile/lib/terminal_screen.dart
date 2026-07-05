@@ -358,7 +358,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget build(BuildContext context) {
     final theme = widget.theme;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // If keyboard bar or input bar is visible, hide them first.
+        if (_showKeyboardBar || _showInputBar) {
+          setState(() {
+            _showKeyboardBar = false;
+            _showInputBar = false;
+          });
+          return;
+        }
+        // Otherwise, disconnect and go back.
+        Navigator.of(context).pop();
+      },
+      child: Scaffold(
       backgroundColor: theme.background,
       appBar: AppBar(
         title: Text(widget.title),
@@ -404,17 +419,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   // Compute grid dimensions from available space.
-                  // Lock to initial size — don't resize when keyboard opens,
-                  // as that would clear the terminal grid.
                   final availH = constraints.maxHeight;
-                  final cols = (constraints.maxWidth / _cellWidth).floor().clamp(10, 300);
-                  final rows = (availH / _cellHeight).floor().clamp(3, 100);
+                  final newCols = (constraints.maxWidth / _cellWidth).floor().clamp(10, 300);
+                  final newRows = (availH / _cellHeight).floor().clamp(3, 100);
 
-                  // Only resize once on first layout (or if cols changed).
+                  // Resize terminal when dimensions change by ≥1 row/col.
+                  // This handles keyboard open/close gracefully — the grid
+                  // preserves scrollback content on resize.
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!_sizeInitialized) {
+                    if (!_sizeInitialized || newCols != _screen.cols || newRows != _screen.rows) {
                       _sizeInitialized = true;
-                      widget.sessionManager.resize(widget.sessionId, cols, rows);
+                      widget.sessionManager.resize(widget.sessionId, newCols, newRows);
+                      _lastFrameHash = 0; // Force screen refresh
                     }
                   });
 
@@ -541,6 +557,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }
