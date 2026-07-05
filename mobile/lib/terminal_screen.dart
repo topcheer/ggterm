@@ -1,17 +1,17 @@
 /// Main terminal screen with FFI-backed Canvas renderer.
 ///
 /// Receives [SessionManager] and session ID from the connection flow.
-/// A timer loop pumps transport data and flushes input at ~30fps,
+/// A timer loop pumps transport data and flushes input at ~60fps,
+/// providing near-instant echo from the remote terminal.
 /// then repaints the terminal via [CustomPaint].
 ///
 /// Touch gestures: pan to scroll scrollback, pinch to zoom font,
 /// tap to position cursor.
 
+library;
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
-import 'package:flutter/services.dart';
 
 import 'ffi/session_manager.dart';
 import 'keyboard_bar.dart';
@@ -40,10 +40,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
   ScreenSnapshot _screen = ScreenSnapshot.empty;
   final _modifiers = ModifierState();
   bool _showKeyboardBar = true;
+  bool _showInputBar = false;
   Timer? _renderTimer;
   bool _transportAlive = true;
+  bool _sizeInitialized = false;
+  // Frame hash for change detection — avoids setState when nothing changed.
+  int _lastFrameHash = 0;
+  // Cursor blink state.
+  bool _cursorVisible = true;
+  Timer? _blinkTimer;
 
-  // Hidden text field for capturing iOS system keyboard input.
+  // Visible input bar for typing.
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _inputController = TextEditingController();
   String _lastInputText = '';
@@ -56,12 +63,24 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     _startRenderLoop();
+    _startCursorBlink();
+  }
+
+  void _startCursorBlink() {
+    _blinkTimer?.cancel();
+    // Blink cursor at ~1Hz (530ms on, 530ms off — standard terminal rate).
+    _blinkTimer = Timer.periodic(const Duration(milliseconds: 530), (_) {
+      if (!mounted || !_transportAlive) return;
+      _cursorVisible = !_cursorVisible;
+      // Only trigger repaint, not full setState — no layout change needed.
+      setState(() {});
+    });
   }
 
   void _startRenderLoop() {
     _renderTimer?.cancel();
-    // ~30fps pump + render cycle
-    _renderTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+    // ~60fps pump + render cycle for low-latency echo
+    _renderTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (!mounted) return;
       final mgr = widget.sessionManager;
       final id = widget.sessionId;
@@ -77,15 +96,34 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
       // Get screen snapshot
       final snapshot = mgr.getScreenSnapshot(id);
-      setState(() {
-        _screen = snapshot;
-      });
+
+      // Only rebuild if content changed (cursor blink handled separately).
+      final hash = _computeFrameHash(snapshot);
+      if (hash != _lastFrameHash || alive != _transportAlive) {
+        _lastFrameHash = hash;
+        setState(() {
+          _screen = snapshot;
+        });
+      }
     });
+  }
+
+  /// Fast hash of visible screen content for change detection.
+  /// Compares cells + cursor position — skips when nothing changed
+  /// to avoid 60fps setState storms on idle terminals.
+  int _computeFrameHash(ScreenSnapshot snap) {
+    var h = snap.cursorCol ^ (snap.cursorRow << 16);
+    for (var i = 0; i < snap.cells.length; i++) {
+      final c = snap.cells[i];
+      h = (h * 31 + c.charCode ^ (c.flags << 8) ^ c.fg ^ (c.bg << 16)) & 0x7FFFFFFF;
+    }
+    return h;
   }
 
   @override
   void dispose() {
     _renderTimer?.cancel();
+    _blinkTimer?.cancel();
     _inputFocusNode.dispose();
     _inputController.dispose();
     super.dispose();
@@ -135,84 +173,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
       if (codes.isNotEmpty) {
         widget.sessionManager.sendInput(widget.sessionId, codes);
+        // Flush immediately for low-latency echo — don't wait for next
+        // 16ms render cycle.
+        widget.sessionManager.flush(widget.sessionId);
       }
       _modifiers.releaseAll();
     }
 
     _lastInputText = newText;
-  }
-
-  /// Handle hardware keyboard key events (for physical keyboards).
-  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-
-    final key = event.logicalKey;
-
-    // Enter
-    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x0D]);
-      return KeyEventResult.handled;
-    }
-    // Backspace
-    if (key == LogicalKeyboardKey.backspace) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x7F]);
-      return KeyEventResult.handled;
-    }
-    // Tab
-    if (key == LogicalKeyboardKey.tab) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x09]);
-      return KeyEventResult.handled;
-    }
-    // Escape
-    if (key == LogicalKeyboardKey.escape) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x1B]);
-      return KeyEventResult.handled;
-    }
-    // Arrow keys
-    if (key == LogicalKeyboardKey.arrowUp) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x41]);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowDown) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x42]);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x44]);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowRight) {
-      widget.sessionManager.sendInput(widget.sessionId, [0x1B, 0x5B, 0x43]);
-      return KeyEventResult.handled;
-    }
-
-    // For printable characters, let the TextField handle it via _onInputChanged
-    return KeyEventResult.ignored;
-  }
-
-  void _sendChar(String char) {
-    if (char.isEmpty) return;
-    // Apply modifier prefix
-    final prefix = _modifiers.prefix;
-    final codes = <int>[];
-
-    if (prefix.contains('Ctrl')) {
-      // Ctrl+letter → control character
-      final c = char.toLowerCase().codeUnitAt(0);
-      if (c >= 0x61 && c <= 0x7A) {
-        codes.add(c - 0x60); // a=1, b=2, ...
-      }
-    } else if (prefix.contains('Alt')) {
-      codes.add(0x1B); // ESC prefix
-      codes.addAll(char.codeUnits);
-    } else {
-      codes.addAll(char.codeUnits);
-    }
-
-    widget.sessionManager.sendInput(widget.sessionId, codes);
-    _modifiers.releaseAll();
   }
 
   /// Convert special key names to terminal escape sequences.
@@ -262,13 +230,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _onTapUp(TapUpDetails details) {
-    // Tap on terminal area → bring up the iOS system keyboard
-    if (!_inputFocusNode.hasFocus) {
-      _inputFocusNode.requestFocus();
+    // Double-tap toggles the input bar.
+    if (!_showInputBar) {
+      setState(() {
+        _showInputBar = true;
+      });
     }
-    final col = (details.localPosition.dx / _cellWidth).floor();
-    final row = (details.localPosition.dy / _cellHeight).floor();
-    debugPrint('Tap at col=$col row=$row');
+    _inputFocusNode.requestFocus();
   }
 
   @override
@@ -301,6 +269,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
             icon: Icon(_showKeyboardBar ? Icons.keyboard_hide : Icons.keyboard),
             onPressed: () => setState(() => _showKeyboardBar = !_showKeyboardBar),
           ),
+          // Toggle input bar
+          IconButton(
+            icon: Icon(_showInputBar ? Icons.edit_off : Icons.edit),
+            onPressed: () {
+              setState(() => _showInputBar = !_showInputBar);
+              if (_showInputBar) {
+                _inputFocusNode.requestFocus();
+              }
+            },
+          ),
         ],
       ),
       body: SafeArea(
@@ -310,15 +288,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Compute grid dimensions from available space
+                  // Compute grid dimensions from available space.
+                  // Lock to initial size — don't resize when keyboard opens,
+                  // as that would clear the terminal grid.
+                  final availH = constraints.maxHeight;
                   final cols = (constraints.maxWidth / _cellWidth).floor().clamp(10, 300);
-                  final rows = ((constraints.maxHeight - (_showKeyboardBar ? 44 : 0)) / _cellHeight)
-                      .floor()
-                      .clamp(3, 100);
+                  final rows = (availH / _cellHeight).floor().clamp(3, 100);
 
-                  // Resize terminal if dimensions changed
+                  // Only resize once on first layout (or if cols changed).
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_screen.cols != cols || _screen.rows != rows) {
+                    if (!_sizeInitialized) {
+                      _sizeInitialized = true;
                       widget.sessionManager.resize(widget.sessionId, cols, rows);
                     }
                   });
@@ -335,54 +315,105 @@ class _TerminalScreenState extends State<TerminalScreen> {
                             theme: theme,
                             cellWidth: _cellWidth,
                             cellHeight: _cellHeight,
+                            cursorVisible: _cursorVisible,
                           ),
                           child: Container(),
                         ),
-                        // Hidden TextField to capture iOS system keyboard input.
-                        // Positioned off-screen so it's invisible but still
-                        // able to receive focus and bring up the keyboard.
-                        Positioned(
-                          left: -1000,
-                          top: -1000,
-                          child: SizedBox(
-                            width: 1,
-                            height: 1,
-                            child: Listener(
-                              onPointerDown: (_) {},
-                              child: TextField(
-                                controller: _inputController,
-                                focusNode: _inputFocusNode,
-                                onChanged: _onInputChanged,
-                                onSubmitted: (_) {
-                                  // Enter key on mobile soft keyboard
-                                  // sends CR to terminal.
-                                  widget.sessionManager
-                                      .sendInput(widget.sessionId, [0x0D]);
-                                  // Keep focus and clear text for next input.
-                                  _inputController.clear();
-                                  _lastInputText = '';
-                                  _inputFocusNode.requestFocus();
-                                },
-                                autofocus: false,
-                                style: const TextStyle(fontSize: 1),
-                                decoration: const InputDecoration(
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.zero,
+                        // Disconnect overlay
+                        if (!_transportAlive)
+                          Positioned.fill(
+                            child: Container(
+                              color: Colors.black54,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.cloud_off,
+                                      color: Colors.white70,
+                                      size: 48,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Connection closed',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                      child: const Text('Back to Connections'),
+                                    ),
+                                  ],
                                 ),
-                                autocorrect: false,
-                                enableSuggestions: false,
-                                keyboardType: TextInputType.visiblePassword,
                               ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   );
                 },
               ),
             ),
+
+            // ── Visible input bar ──
+            if (_showInputBar)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                color: Colors.grey.shade900,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _inputController,
+                        focusNode: _inputFocusNode,
+                        onChanged: _onInputChanged,
+                        onSubmitted: (_) {
+                          widget.sessionManager
+                              .sendInput(widget.sessionId, [0x0D]);
+                          widget.sessionManager.flush(widget.sessionId);
+                          _inputController.clear();
+                          _lastInputText = '';
+                          _inputFocusNode.requestFocus();
+                        },
+                        autofocus: true,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.white,
+                          fontFamily: 'monospace',
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Type here...',
+                          hintStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                        ),
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        keyboardType: TextInputType.visiblePassword,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.keyboard_return, color: Colors.white),
+                      onPressed: () {
+                        widget.sessionManager
+                            .sendInput(widget.sessionId, [0x0D]);
+                        widget.sessionManager.flush(widget.sessionId);
+                        _inputController.clear();
+                        _lastInputText = '';
+                      },
+                    ),
+                  ],
+                ),
+              ),
 
             // ── Keyboard bar ──
             if (_showKeyboardBar)
@@ -404,12 +435,14 @@ class _TerminalPainter extends CustomPainter {
   final TerminalTheme theme;
   final double cellWidth;
   final double cellHeight;
+  final bool cursorVisible;
 
   _TerminalPainter({
     required this.screen,
     required this.theme,
     required this.cellWidth,
     required this.cellHeight,
+    this.cursorVisible = true,
   });
 
   @override
@@ -471,10 +504,10 @@ class _TerminalPainter extends CustomPainter {
           tp.paint(canvas, Offset(dx, dy));
         }
 
-        // Draw cursor (block style).
-        if (col == screen.cursorCol && row == screen.cursorRow) {
+        // Draw cursor (block style) — only when visible (blink).
+        if (cursorVisible && col == screen.cursorCol && row == screen.cursorRow) {
           final cursorPaint = Paint()
-            ..color = theme.cursor.withOpacity(0.5)
+            ..color = theme.cursor.withValues(alpha: 0.5)
             ..blendMode = BlendMode.srcOver;
           canvas.drawRect(bgRect, cursorPaint);
         }
