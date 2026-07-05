@@ -1724,6 +1724,22 @@ impl DesktopApp {
     }
 
     /// Clear the screen of all tabs (sends ESC[H ESC[2J to each tab's active pane).
+    /// Send Ctrl+C (0x03) to all panes in all tabs.
+    pub(super) fn send_ctrl_c_all_panes(&mut self) {
+        let ctrl_c = [0x03u8];
+        let tab_count = self.sessions.len();
+        let mut total_panes = 0usize;
+
+        for i in 0..tab_count {
+            total_panes += self.sessions[i].pane_count();
+            self.sessions[i].write_to_all_panes(&ctrl_c);
+        }
+        self.show_toast(format!(
+            "Sent Ctrl+C to {} panes in {} tabs",
+            total_panes, tab_count
+        ));
+    }
+
     pub(super) fn clear_all_tabs(&mut self) {
         let count = self.sessions.len();
         for i in 0..count {
@@ -1907,6 +1923,9 @@ impl DesktopApp {
             }
             "terminal.open_in_finder" => {
                 self.open_cwd_in_file_manager();
+            }
+            "terminal.send_ctrl_c_all" => {
+                self.send_ctrl_c_all_panes();
             }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
@@ -2129,7 +2148,10 @@ impl DesktopApp {
         // Check for new connections.
         let new_connection = self.p2p_share.poll_connection();
         if new_connection {
-            self.show_toast("P2P: Device connected");
+            self.show_toast("P2P: Device connected — sharing terminal");
+            // Auto-hide the QR overlay — terminal is now usable.
+            self.p2p_share.visible = false;
+
             // Forward current terminal dimensions.
             let (cols, rows) = {
                 let session = self.active_session();
@@ -2138,6 +2160,12 @@ impl DesktopApp {
                 (grid.width() as u16, grid.height() as u16)
             };
             self.p2p_share.resize(cols, rows);
+
+            // Send a screen refresh — tee the current PTY output to mobile.
+            let screen_bytes = self.active_session_mut().app_mut().take_pty_tee();
+            if !screen_bytes.is_empty() {
+                self.p2p_share.tee_output(&screen_bytes);
+            }
         }
 
         // Read mobile input and forward to PTY.

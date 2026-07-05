@@ -16,6 +16,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use iroh::Endpoint;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use tokio::sync::mpsc;
 
@@ -32,6 +33,8 @@ pub struct P2pTransport {
     _runtime: Option<tokio::runtime::Runtime>,
     /// Owned connection — keeps the QUIC connection alive so streams don't close.
     _conn: Option<Connection>,
+    /// Owned endpoint — must stay alive or connection dies.
+    _endpoint: Option<Arc<Endpoint>>,
 }
 
 impl P2pTransport {
@@ -43,6 +46,7 @@ impl P2pTransport {
         send: SendStream,
         recv: RecvStream,
         conn: Connection,
+        endpoint: Arc<Endpoint>,
         runtime: tokio::runtime::Runtime,
     ) -> Self {
         let (write_tx, write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -68,6 +72,7 @@ impl P2pTransport {
             alive,
             _runtime: Some(runtime),
             _conn: Some(conn),
+            _endpoint: Some(endpoint),
         }
     }
 
@@ -189,6 +194,7 @@ mod tests {
             alive,
             _runtime: None,
             _conn: None,
+            _endpoint: None,
         };
         (transport, write_rx)
     }
@@ -219,6 +225,7 @@ mod tests {
             alive,
             _runtime: None,
             _conn: None,
+            _endpoint: None,
         };
         assert_eq!(t.read(), b"hello");
         assert!(t.read().is_empty());
@@ -244,6 +251,7 @@ mod tests {
             alive,
             _runtime: None,
             _conn: None,
+            _endpoint: None,
         };
         t.resize(120, 40);
         assert_eq!(resize_rx.try_recv().unwrap(), (120, 40));
