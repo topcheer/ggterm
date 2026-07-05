@@ -22,6 +22,8 @@ pub enum ContextMenuAction {
     SplitVertical,
     /// Clear scrollback + screen.
     Clear,
+    /// Export scrollback to a text file.
+    ExportScrollback,
     /// Reset terminal — reinitialize the shell session.
     Reset,
 }
@@ -38,6 +40,7 @@ impl ContextMenuAction {
             Self::SplitHorizontal => "Split Horizontal",
             Self::SplitVertical => "Split Vertical",
             Self::Clear => "Clear",
+            Self::ExportScrollback => "Export Scrollback",
             Self::Reset => "Reset",
         }
     }
@@ -53,6 +56,7 @@ impl ContextMenuAction {
             Self::SplitHorizontal,
             Self::SplitVertical,
             Self::Clear,
+            Self::ExportScrollback,
             Self::Reset,
         ]
     }
@@ -187,8 +191,8 @@ mod tests {
     fn t_menu_height() {
         let m = ContextMenuState::default();
         let h = m.menu_height();
-        // 9 items * 32 + 2 * 10 padding = 288 + 20 = 308
-        assert_eq!(h, 308.0);
+        // 10 items * 32 + 2 * 10 padding = 320 + 20 = 340
+        assert_eq!(h, 340.0);
     }
 
     #[test]

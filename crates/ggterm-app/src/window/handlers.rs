@@ -2536,6 +2536,9 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            crate::context_menu::ContextMenuAction::ExportScrollback => {
+                self.save_scrollback_to_file();
+            }
             crate::context_menu::ContextMenuAction::Reset => {
                 // Full reinit: restart the shell process entirely.
                 self.active_session_mut().restart_active_shell();
