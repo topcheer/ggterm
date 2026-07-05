@@ -12,6 +12,31 @@ if [[ -n "$GGTERM_SHELL_INTEGRATION_ZSH" ]]; then
 fi
 GGTERM_SHELL_INTEGRATION_ZSH=1
 
+# ── Conflict detection ──
+# If starship, powerlevel10k, or another tool already sends OSC 133
+# marks, skip our integration to avoid duplicate/conflicting marks
+# (which causes issues like the spinner always spinning).
+__ggterm_osc133_already_handled() {
+    # Starship sends OSC 133 when add_newline + shell integration is on
+    if [[ -n "$STARSHIP_SHELL_INTEGRATION" ]]; then
+        return 0
+    fi
+    # Powerlevel10k instant prompt sends its own marks
+    if [[ -n "$POWERLEVEL9K_INSTANT_PROMPT" ]] \
+       && [[ "$POWERLEVEL9K_INSTANT_PROMPT" != "quiet" ]]; then
+        return 0
+    fi
+    # oh-my-zsh terminal-app plugin on macOS
+    if [[ -n "$TERM_PROGRAM" && "$TERM_PROGRAM" == "Apple_Terminal" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+if __ggterm_osc133_already_handled; then
+    return 0
+fi
+
 # ── OSC 133 helpers ──
 
 __ggterm_osc133_A() { printf '\e]133;A\a'; }   # prompt start
