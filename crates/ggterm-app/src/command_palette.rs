@@ -252,6 +252,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.open_in_finder".into(),
+            label: "Open Working Directory in File Manager".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.toggle_lock".into(),
             label: "Toggle Terminal Lock".into(),
             category: "Terminal".into(),

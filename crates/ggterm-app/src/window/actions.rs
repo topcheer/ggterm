@@ -1702,6 +1702,27 @@ impl DesktopApp {
         }
     }
 
+    /// Open the current working directory in the system file manager.
+    /// macOS: Finder, Linux: xdg-open, Windows: explorer.
+    pub(super) fn open_cwd_in_file_manager(&mut self) {
+        if let Some(cwd) = self.active_session().cwd() {
+            let path = cwd.to_string_lossy().to_string();
+            let (cmd, args) = if cfg!(target_os = "macos") {
+                ("open", vec![path])
+            } else if cfg!(target_os = "windows") {
+                ("explorer", vec![path])
+            } else {
+                ("xdg-open", vec![path])
+            };
+            match std::process::Command::new(cmd).args(&args).spawn() {
+                Ok(_) => self.show_toast("Opened file manager"),
+                Err(e) => self.show_toast(format!("Failed: {e}")),
+            }
+        } else {
+            self.show_toast("No working directory available");
+        }
+    }
+
     /// Clear the screen of all tabs (sends ESC[H ESC[2J to each tab's active pane).
     pub(super) fn clear_all_tabs(&mut self) {
         let count = self.sessions.len();
@@ -1883,6 +1904,9 @@ impl DesktopApp {
             }
             "terminal.copy_markdown" => {
                 self.copy_selection_as_markdown();
+            }
+            "terminal.open_in_finder" => {
+                self.open_cwd_in_file_manager();
             }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
