@@ -1422,6 +1422,16 @@ impl DesktopApp {
         if let Some(input_key) = map_winit_key(&event.physical_key, logical_text, &mods) {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {
+                // Auto-scroll to bottom on keypress (standard terminal behavior).
+                // If the user scrolled up through scrollback and then starts
+                // typing, jump back to the most recent output.
+                let grid = self.sessions[self.active]
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut();
+                if grid.display_offset() > 0 {
+                    grid.reset_viewport();
+                }
                 self.write_to_pty(&bytes);
             }
         }
