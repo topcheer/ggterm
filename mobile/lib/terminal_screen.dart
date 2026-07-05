@@ -204,7 +204,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (newText.length < oldText.length) {
       final deletedCount = oldText.length - newText.length;
       for (var i = 0; i < deletedCount; i++) {
-        widget.sessionManager.sendInput(widget.sessionId, [0x7F]); // DEL
+        _sendInput([0x7F]); // DEL
       }
       _lastInputText = newText;
       return;
@@ -233,7 +233,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       }
 
       if (codes.isNotEmpty) {
-        widget.sessionManager.sendInput(widget.sessionId, codes);
+        _sendInput(codes);
         // Flush immediately for low-latency echo — don't wait for next
         // 16ms render cycle.
         widget.sessionManager.flush(widget.sessionId);
@@ -635,8 +635,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                         focusNode: _inputFocusNode,
                         onChanged: _onInputChanged,
                         onSubmitted: (_) {
-                          widget.sessionManager
-                              .sendInput(widget.sessionId, [0x0D]);
+                          _sendInput([0x0D]);
                           widget.sessionManager.flush(widget.sessionId);
                           _inputController.clear();
                           _lastInputText = '';
@@ -666,8 +665,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     IconButton(
                       icon: const Icon(Icons.keyboard_return, color: Colors.white),
                       onPressed: () {
-                        widget.sessionManager
-                            .sendInput(widget.sessionId, [0x0D]);
+                        _sendInput([0x0D]);
                         widget.sessionManager.flush(widget.sessionId);
                         _inputController.clear();
                         _lastInputText = '';
