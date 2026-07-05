@@ -497,6 +497,16 @@ impl DesktopApp {
                 .set_scrollback(cfg.terminal.scrollback_lines);
         }
 
+        // ── Step 3b: Welcome message ──
+        // Print a brief, helpful banner before the shell starts.
+        let welcome = format!(
+            "\x1b[90m GGTerm v{}\x1b[0m  \x1b[90mCtrl+Shift+? for help\x1b[0m\r\n",
+            env!("CARGO_PKG_VERSION"),
+        );
+        session
+            .app_mut()
+            .handle_event(crate::event::AppEvent::PtyBytes(welcome.into_bytes()));
+
         // ── Step 4: Build DesktopApp ──
         let mut desktop = DesktopApp {
             sessions: vec![session],
