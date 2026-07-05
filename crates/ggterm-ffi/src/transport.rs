@@ -826,4 +826,46 @@ mod tests {
             ggterm_session_destroy(id2);
         }
     }
+
+    #[test]
+    fn t_scroll_display_offset() {
+        let id = ggterm_session_create(80, 24);
+        // Initially at bottom — offset should be 0.
+        assert_eq!(ggterm_session_display_offset(id), 0);
+
+        // Process enough output to fill scrollback.
+        for _ in 0..50 {
+            let line = b"line of text\r\n";
+            unsafe {
+                ggterm_session_process_bytes(id, line.as_ptr(), line.len());
+            }
+        }
+
+        // Scroll up 5 lines.
+        ggterm_session_scroll_up(id, 5);
+        assert_eq!(ggterm_session_display_offset(id), 5);
+
+        // Scroll up more.
+        ggterm_session_scroll_up(id, 3);
+        assert_eq!(ggterm_session_display_offset(id), 8);
+
+        // Scroll down 2.
+        ggterm_session_scroll_down(id, 2);
+        assert_eq!(ggterm_session_display_offset(id), 6);
+
+        // Reset to bottom.
+        ggterm_session_reset_viewport(id);
+        assert_eq!(ggterm_session_display_offset(id), 0);
+
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_scroll_invalid_session() {
+        // Invalid session — should not crash.
+        ggterm_session_scroll_up(99999, 10);
+        ggterm_session_scroll_down(99999, 10);
+        ggterm_session_reset_viewport(99999);
+        assert_eq!(ggterm_session_display_offset(99999), 0);
+    }
 }
