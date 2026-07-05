@@ -161,7 +161,7 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+-".into()),
         });
         r.register(Command {
-            id: "font.reset".into(),
+            id: "font.zoom_reset".into(),
             label: "Reset Font Size".into(),
             category: "Font".into(),
             shortcut: Some("Ctrl+0".into()),
@@ -343,7 +343,7 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+B".into()),
         });
         r.register(Command {
-            id: "view.search".into(),
+            id: "terminal.search".into(),
             label: "Search Scrollback".into(),
             category: "View".into(),
             shortcut: Some("Ctrl+Shift+F".into()),
@@ -450,41 +450,10 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+,".into()),
         });
         r.register(Command {
-            id: "theme.cycle".into(),
-            label: "Cycle Theme".into(),
-            category: "Settings".into(),
-            shortcut: Some("Ctrl+Shift+Alt+T".into()),
-        });
-        r.register(Command {
-            id: "font.zoom_in".into(),
-            label: "Zoom In (Font Size +)".into(),
-            category: "Settings".into(),
-            shortcut: Some("Ctrl+=".into()),
-        });
-        r.register(Command {
-            id: "font.zoom_out".into(),
-            label: "Zoom Out (Font Size -)".into(),
-            category: "Settings".into(),
-            shortcut: Some("Ctrl+-".into()),
-        });
-        r.register(Command {
             id: "font.zoom_reset".into(),
             label: "Reset Font Size".into(),
             category: "Settings".into(),
             shortcut: Some("Ctrl+0".into()),
-        });
-        // Additional terminal commands
-        r.register(Command {
-            id: "terminal.select_all".into(),
-            label: "Select All".into(),
-            category: "Terminal".into(),
-            shortcut: Some("Ctrl+Shift+A".into()),
-        });
-        r.register(Command {
-            id: "terminal.paste".into(),
-            label: "Paste".into(),
-            category: "Terminal".into(),
-            shortcut: Some("Ctrl+Shift+V".into()),
         });
         r.register(Command {
             id: "tab.reopen_closed".into(),
@@ -503,19 +472,6 @@ impl CommandRegistry {
             label: "Search in Scrollback".into(),
             category: "Search".into(),
             shortcut: Some("Ctrl+Shift+F".into()),
-        });
-        // View
-        r.register(Command {
-            id: "view.fullscreen".into(),
-            label: "Toggle Fullscreen".into(),
-            category: "View".into(),
-            shortcut: Some("F11".into()),
-        });
-        r.register(Command {
-            id: "view.status_bar".into(),
-            label: "Toggle Status Bar".into(),
-            category: "View".into(),
-            shortcut: Some("Ctrl+Shift+B".into()),
         });
         r
     }
