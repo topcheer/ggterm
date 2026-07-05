@@ -568,16 +568,28 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 _lastFrameHash = 0; // Force refresh
               },
             ),
-          // Transport status indicator
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _transportAlive ? Colors.green : Colors.red,
+          // Transport status indicator (tap to show details)
+          Tooltip(
+            message: _transportAlive ? 'Connected' : 'Disconnected',
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _transportAlive ? Colors.green : Colors.red,
+                    boxShadow: _transportAlive
+                        ? [
+                            BoxShadow(
+                              color: Colors.green.withValues(alpha: 0.4),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : null,
+                  ),
                 ),
               ),
             ),
