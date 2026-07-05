@@ -16,7 +16,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use iroh::endpoint::{RecvStream, SendStream};
+use iroh::endpoint::{Connection, RecvStream, SendStream};
 use tokio::sync::mpsc;
 
 /// P2P transport implementing [`TerminalTransport`] over QUIC.
@@ -30,15 +30,19 @@ pub struct P2pTransport {
     alive: Arc<AtomicBool>,
     /// Owned runtime — keeps background task alive.
     _runtime: Option<tokio::runtime::Runtime>,
+    /// Owned connection — keeps the QUIC connection alive so streams don't close.
+    _conn: Option<Connection>,
 }
 
 impl P2pTransport {
     /// Create from established QUIC streams. Spawns background I/O task.
     ///
-    /// Takes ownership of the runtime.
+    /// Takes ownership of the runtime AND the connection.
+    /// The connection must stay alive for the streams to work.
     pub(crate) fn from_streams(
         send: SendStream,
         recv: RecvStream,
+        conn: Connection,
         runtime: tokio::runtime::Runtime,
     ) -> Self {
         let (write_tx, write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -63,6 +67,7 @@ impl P2pTransport {
             read_buf,
             alive,
             _runtime: Some(runtime),
+            _conn: Some(conn),
         }
     }
 
@@ -183,6 +188,7 @@ mod tests {
             read_buf,
             alive,
             _runtime: None,
+            _conn: None,
         };
         (transport, write_rx)
     }
@@ -212,6 +218,7 @@ mod tests {
             read_buf,
             alive,
             _runtime: None,
+            _conn: None,
         };
         assert_eq!(t.read(), b"hello");
         assert!(t.read().is_empty());
@@ -236,6 +243,7 @@ mod tests {
             read_buf,
             alive,
             _runtime: None,
+            _conn: None,
         };
         t.resize(120, 40);
         assert_eq!(resize_rx.try_recv().unwrap(), (120, 40));
