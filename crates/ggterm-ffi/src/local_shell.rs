@@ -231,32 +231,36 @@ unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellErro
         // Set up environment for an interactive shell.
 
         let home = home_dir();
-        let home_c = CString::new(home.to_string_lossy().to_string()).unwrap();
+        let home_c = CString::new(home.to_string_lossy().to_string())
+            .expect("HOME path should not contain null bytes");
         libc::setenv(b"HOME\0".as_ptr() as *const _, home_c.as_ptr(), 1);
 
-        let path = CString::new("/system/bin:/system/xbin:/data/data/com.ggterm.ggterm/files/bin")
-            .unwrap();
+        let path = CString::new(
+            "/system/bin:/system/xbin:/data/data/com.ggterm.ggterm/files/bin",
+        )
+        .expect("PATH literal should not contain null bytes");
         libc::setenv(b"PATH\0".as_ptr() as *const _, path.as_ptr(), 1);
 
-        let term = CString::new("xterm-256color").unwrap();
+        let term = CString::new("xterm-256color").expect("TERM literal is valid");
         libc::setenv(b"TERM\0".as_ptr() as *const _, term.as_ptr(), 1);
 
-        let shell_name = CString::new("sh").unwrap();
+        let shell_name = CString::new("sh").expect("SHELL literal is valid");
         libc::setenv(b"SHELL\0".as_ptr() as *const _, shell_name.as_ptr(), 1);
 
         // Change to HOME directory.
-        let home_c2 = CString::new(home.to_string_lossy().to_string()).unwrap();
+        let home_c2 = CString::new(home.to_string_lossy().to_string())
+            .expect("HOME path should not contain null bytes");
         libc::chdir(home_c2.as_ptr());
 
         // Exec /system/bin/sh
-        let sh_path = CString::new("/system/bin/sh").unwrap();
+        let sh_path = CString::new("/system/bin/sh").expect("path literal is valid");
         let argv = [sh_path.as_ptr(), std::ptr::null()];
 
         libc::execv(sh_path.as_ptr(), argv.as_ptr());
 
         // If execv returns, it failed.
         // Try /bin/sh as fallback (some Android environments).
-        let sh2 = CString::new("/bin/sh").unwrap();
+        let sh2 = CString::new("/bin/sh").expect("path literal is valid");
         let argv2 = [sh2.as_ptr(), std::ptr::null()];
         libc::execv(sh2.as_ptr(), argv2.as_ptr());
 
