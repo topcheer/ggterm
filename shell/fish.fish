@@ -25,52 +25,57 @@ if not set -q GGTERM_SHELL_INTEGRATION_FISH
     if test "$TERM_PROGRAM" = "Apple_Terminal"
         set _ggterm_skip 1
     end
+    if set -q WARP_HONOR_PS1
+        set _ggterm_skip 1
+    end
+
     if test "$_ggterm_skip" = 0
 
-    # ── OSC 133 helpers ──
+        # ── OSC 133 helpers ──
 
-    function __ggterm_osc133_A   # prompt start
-        printf '\e]133;A\a'
-    end
-
-    function __ggterm_osc133_B   # command start
-        printf '\e]133;B\a'
-    end
-
-    function __ggterm_osc133_C   # output start
-        printf '\e]133;C\a'
-    end
-
-    function __ggterm_osc133_D   # command end (arg: exit code)
-        set -l ec $argv[1]
-        if test -z "$ec"
-            set ec $status
+        function __ggterm_osc133_A   # prompt start
+            printf '\e]133;A\a'
         end
-        printf '\e]133;D;%s\a' "$ec"
-    end
 
-    # ── Fish event handlers ──
+        function __ggterm_osc133_B   # command start
+            printf '\e]133;B\a'
+        end
 
-    # fish_prompt: wrap the original to emit A before prompt text
-    functions --copy fish_prompt __ggterm_saved_fish_prompt 2>/dev/null
+        function __ggterm_osc133_C   # output start
+            printf '\e]133;C\a'
+        end
 
-    function fish_prompt
+        function __ggterm_osc133_D   # command end (arg: exit code)
+            set -l ec $argv[1]
+            if test -z "$ec"
+                set ec $status
+            end
+            printf '\e]133;D;%s\a' "$ec"
+        end
+
+        # ── Fish event handlers ──
+
+        # fish_prompt: wrap the original to emit A before prompt text
+        functions --copy fish_prompt __ggterm_saved_fish_prompt 2>/dev/null
+
+        function fish_prompt
+            __ggterm_osc133_A
+            __ggterm_saved_fish_prompt
+        end
+
+        # fish_preexec: fires when user submits a command line
+        function __ggterm_on_preexec --on-event fish_preexec
+            __ggterm_osc133_B
+            __ggterm_osc133_C
+        end
+
+        # fish_postexec: fires when a command finishes
+        function __ggterm_on_postexec --on-event fish_postexec
+            __ggterm_osc133_D $status
+        end
+
+        # Emit initial prompt start on shell launch
         __ggterm_osc133_A
-        __ggterm_saved_fish_prompt
-    end
 
-    # fish_preexec: fires when user submits a command line
-    function __ggterm_on_preexec --on-event fish_preexec
-        __ggterm_osc133_B
-        __ggterm_osc133_C
-    end
-
-    # fish_postexec: fires when a command finishes
-    function __ggterm_on_postexec --on-event fish_postexec
-        __ggterm_osc133_D $status
-    end
-
-    # Emit initial prompt start on shell launch
-        __ggterm_osc133_A
     end
 end
