@@ -3,8 +3,11 @@
 /// On successful connection, navigates to [TerminalScreen].
 
 library;
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// SSH connection parameters (passed to SessionManager).
 class ConnectionParams {
@@ -65,6 +68,54 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   bool _obscurePassword = true;
   bool _useKeyFile = false;
   String? _errorMessage;
+
+  static const _saveFile = 'last_connection.json';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedConnection();
+  }
+
+  /// Load saved connection details (host, port, user — never password).
+  Future<void> _loadSavedConnection() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_saveFile');
+      if (await file.exists()) {
+        final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _hostController.text = json['host'] as String? ?? '';
+            _portController.text = json['port'] as String? ?? '22';
+            _userController.text = json['user'] as String? ?? '';
+            _keyController.text = json['keyFile'] as String? ?? '';
+            _useKeyFile = json['useKeyFile'] as bool? ?? false;
+          });
+        }
+      }
+    } catch (_) {
+      // Ignore errors — non-critical feature.
+    }
+  }
+
+  /// Save connection details (never password) for next launch.
+  Future<void> _saveConnection() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_saveFile');
+      final json = jsonEncode({
+        'host': _hostController.text.trim(),
+        'port': _portController.text.trim(),
+        'user': _userController.text.trim(),
+        'keyFile': _keyController.text.trim(),
+        'useKeyFile': _useKeyFile,
+      });
+      await file.writeAsString(json);
+    } catch (_) {
+      // Ignore errors — non-critical feature.
+    }
+  }
 
   @override
   void dispose() {
@@ -188,6 +239,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
     try {
       await widget.onConnect(params);
+      // Save connection details for next launch (password excluded).
+      await _saveConnection();
     } catch (e) {
       if (mounted) {
         setState(() {
