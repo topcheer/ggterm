@@ -271,7 +271,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       case 'CtrlE':
         return [0x05]; // Ctrl+E — end of line
       default:
-        return name.codeUnits;
+        return utf8.encode(name);
     }
   }
 

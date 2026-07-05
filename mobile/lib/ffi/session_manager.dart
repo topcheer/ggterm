@@ -12,9 +12,10 @@
 /// final id = mgr.createSession(80, 24);
 /// mgr.echoConnect(id); // for testing
 /// final screen = mgr.getScreenData(id);
-/// mgr.sendInput(id, 'ls\n'.codeUnits);
+/// mgr.sendInput(id, utf8.encode('ls\n'));
 /// ```
 library;
+import 'dart:convert';
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 
@@ -144,9 +145,9 @@ class SessionManager {
     }
   }
 
-  /// Send a string as input.
+  /// Send a string as input (UTF-8 encoded).
   void sendString(int id, String text) {
-    sendInput(id, text.codeUnits);
+    sendInput(id, utf8.encode(text));
   }
 
   /// Get terminal dimensions.
