@@ -10,6 +10,7 @@
 
 library;
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -170,26 +171,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
 
     final text = data.text!;
-    // Send each character as UTF-8 bytes.
-    final bytes = <int>[];
-    for (final char in text.runes) {
-      // Convert rune to UTF-8 bytes.
-      if (char < 0x80) {
-        bytes.add(char);
-      } else if (char < 0x800) {
-        bytes.add(0xC0 | (char >> 6));
-        bytes.add(0x80 | (char & 0x3F));
-      } else if (char < 0x10000) {
-        bytes.add(0xE0 | (char >> 12));
-        bytes.add(0x80 | ((char >> 6) & 0x3F));
-        bytes.add(0x80 | (char & 0x3F));
-      } else {
-        bytes.add(0xF0 | (char >> 18));
-        bytes.add(0x80 | ((char >> 12) & 0x3F));
-        bytes.add(0x80 | ((char >> 6) & 0x3F));
-        bytes.add(0x80 | (char & 0x3F));
-      }
-    }
+    // Send text as UTF-8 bytes to the PTY.
+    final bytes = utf8.encode(text);
     _sendInput(bytes);
 
     _showCopiedSnackBar('Pasted ${text.length} chars');
@@ -222,13 +205,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
           if (c >= 0x61 && c <= 0x7A) {
             codes.add(c - 0x60); // a=1, b=2, ...
           } else {
-            codes.addAll(char.codeUnits);
+            codes.addAll(utf8.encode(char));
           }
         } else if (_modifiers.alt) {
           codes.add(0x1B); // ESC prefix
-          codes.addAll(char.codeUnits);
+          codes.addAll(utf8.encode(char));
         } else {
-          codes.addAll(char.codeUnits);
+          codes.addAll(utf8.encode(char));
         }
       }
 
