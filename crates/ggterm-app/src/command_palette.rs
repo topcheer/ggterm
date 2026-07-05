@@ -270,6 +270,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "config.reload".into(),
+            label: "Reload Configuration".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.toggle_lock".into(),
             label: "Toggle Terminal Lock".into(),
             category: "Terminal".into(),

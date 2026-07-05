@@ -1724,6 +1724,15 @@ impl DesktopApp {
     }
 
     /// Clear the screen of all tabs (sends ESC[H ESC[2J to each tab's active pane).
+    /// Force reload the config file on the next tick.
+    pub(super) fn reload_configuration(&mut self) {
+        self.force_config_reload = true;
+        self.show_toast("Reloading configuration...");
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     /// Send RIS (full reset, ESC c) to all panes in all tabs.
     pub(super) fn reset_all_tabs(&mut self) {
         let ris = b"\x1bc"; // RIS — Reset to Initial State
@@ -1942,6 +1951,9 @@ impl DesktopApp {
             }
             "terminal.reset_all" => {
                 self.reset_all_tabs();
+            }
+            "config.reload" => {
+                self.reload_configuration();
             }
             "terminal.toggle_lock" => {
                 self.toggle_lock();

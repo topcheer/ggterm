@@ -153,6 +153,8 @@ pub struct DesktopApp {
     // ── Resize debouncing (P9-H) ──
     /// Pending resize dimensions (stored during drag, applied after debounce).
     pending_resize: Option<(u32, u32)>,
+    /// Force config reload on next about_to_wait tick.
+    force_config_reload: bool,
     /// Instant of the last resize event (for debounce timing).
     last_resize_time: Option<std::time::Instant>,
 
@@ -523,6 +525,7 @@ impl DesktopApp {
             window_focused: true,
             scale_factor: 1.0,
             pending_resize: None,
+            force_config_reload: false,
             last_resize_time: None,
             last_redraw: std::time::Instant::now(),
             debug_visible: false,
@@ -1546,6 +1549,13 @@ impl ApplicationHandler for DesktopApp {
         let mut pending_scrollback: Option<usize> = None;
         #[cfg(feature = "config-watch")]
         let mut pending_theme: Option<String> = None;
+        #[cfg(feature = "config-watch")]
+        if self.force_config_reload {
+            self.force_config_reload = false;
+            if let Some(ref mut mgr) = self.config_mgr {
+                let _ = mgr.reload();
+            }
+        }
         #[cfg(feature = "config-watch")]
         if let Some(ref mut mgr) = self.config_mgr {
             match mgr.poll_reload() {
