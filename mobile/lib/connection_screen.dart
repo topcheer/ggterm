@@ -348,23 +348,48 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
               const SizedBox(height: 24),
 
-              // ── Recent connections ──
-              Text(
-                'Recent Connections',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Colors.grey.shade400,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Material(
-                color: Colors.transparent,
-                child: ListTile(
-                  leading: const Icon(Icons.history, color: Colors.grey),
-                  title: Text(
-                    'No saved connections',
-                    style: TextStyle(color: Colors.grey.shade600),
+              // ── Quick tips ──
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.blue.withValues(alpha: 0.2),
+                    width: 1,
                   ),
-                  dense: true,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.lightbulb_outline,
+                            color: Colors.blue, size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Tips',
+                          style: TextStyle(
+                            color: Colors.blue.shade300,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '• Connect to any SSH server using host, port, and credentials\n'
+                      '• Use Scan QR to connect to a GGTerm desktop sharing its terminal\n'
+                      '• Long-press terminal text to copy it\n'
+                      '• Two-finger drag to scroll through history',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
