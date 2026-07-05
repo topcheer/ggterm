@@ -12,7 +12,7 @@
 // FFI unsafe functions have simple null-safety contracts documented inline.
 #![allow(clippy::missing_safety_doc)]
 
-use crate::{GGTermCell, TerminalHandle, grid_to_ffi};
+use crate::{GGTermCell, TerminalHandle};
 use std::collections::HashMap;
 #[cfg(feature = "ssh")]
 use std::ffi::CStr;
@@ -167,11 +167,26 @@ pub unsafe extern "C" fn ggterm_session_read_cells(
     }
     let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get(&id) {
-        let cells = grid_to_ffi(s.handle.terminal.grid());
-        let n = cells.len().min(max_cells);
-        if n > 0 {
+        let grid = s.handle.terminal.grid();
+        let cols = grid.width();
+        let rows = grid.height();
+        let total = cols * rows;
+        let n = total.min(max_cells);
+
+        // Write directly to the output buffer — avoids allocating a Vec.
+        for idx in 0..n {
+            let row = idx / cols;
+            let col = idx % cols;
+            let cell = if let Some(r) = grid.display_row(row) {
+                r.cells.get(col)
+            } else {
+                None
+            };
             unsafe {
-                std::ptr::copy_nonoverlapping(cells.as_ptr(), buf, n);
+                *buf.add(idx) = match cell {
+                    Some(c) => GGTermCell::from_cell(c),
+                    None => GGTermCell::default(),
+                };
             }
         }
         n
