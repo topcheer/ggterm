@@ -631,11 +631,12 @@ pub extern "C" fn ggterm_last_error() -> *const c_char {
     if msg.is_empty() {
         return c"".as_ptr();
     }
-    // Update the buffer
+    // Update the buffer and return pointer in a single lock.
     let cstr = std::ffi::CString::new(msg.as_str())
         .unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
-    *buf.lock().unwrap_or_else(|e| e.into_inner()) = cstr;
-    buf.lock().unwrap_or_else(|e| e.into_inner()).as_ptr()
+    let mut b = buf.lock().unwrap_or_else(|e| e.into_inner());
+    *b = cstr;
+    b.as_ptr()
 }
 
 #[cfg(test)]
