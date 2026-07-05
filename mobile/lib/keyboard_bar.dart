@@ -4,6 +4,7 @@
 /// toggleable buttons. When active, a modifier stays highlighted until
 /// the next regular key press, then auto-releases.
 
+library;
 import 'package:flutter/material.dart';
 
 /// Callback when a special key is pressed.
@@ -97,7 +98,7 @@ class _KeyboardBarState extends State<KeyboardBar> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? Colors.blue.withOpacity(0.3) : Colors.grey.shade800,
+          color: active ? Colors.blue.withValues(alpha: 0.3) : Colors.grey.shade800,
           borderRadius: BorderRadius.circular(6),
           border: active
               ? Border.all(color: Colors.blue, width: 1.5)
@@ -200,6 +201,33 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('PgDn', 'PageDown'),
             _keyButton('Home', 'Home'),
             _keyButton('End', 'End'),
+            // Separator
+            Container(
+              width: 1,
+              height: 24,
+              color: Colors.grey.shade700,
+            ),
+            // Quick-access terminal symbols (painful to type on mobile keyboard)
+            _keyButton('/', '/'),
+            _keyButton('~', '~'),
+            _keyButton('|', '|'),
+            _keyButton('-', '-'),
+            _keyButton('..', '..'),
+            _keyButton('*', '*'),
+            _keyButton('\$', '\$'),
+            _keyButton('&&', '&&'),
+            // Separator
+            Container(
+              width: 1,
+              height: 24,
+              color: Colors.grey.shade700,
+            ),
+            // Common Ctrl combos
+            _keyButton('^L', 'CtrlL'), // clear screen
+            _keyButton('^R', 'CtrlR'), // reverse search
+            _keyButton('^W', 'CtrlW'), // delete word
+            _keyButton('^A', 'CtrlA'), // start of line
+            _keyButton('^E', 'CtrlE'), // end of line
           ],
         ),
       ),

@@ -216,6 +216,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
         return [0x1B, 0x5B, 0x35, 0x7E]; // ESC [ 5 ~
       case 'PageDown':
         return [0x1B, 0x5B, 0x36, 0x7E]; // ESC [ 6 ~
+      case 'CtrlL':
+        return [0x0C]; // Ctrl+L — clear screen
+      case 'CtrlR':
+        return [0x12]; // Ctrl+R — reverse search
+      case 'CtrlW':
+        return [0x17]; // Ctrl+W — delete word
+      case 'CtrlA':
+        return [0x01]; // Ctrl+A — start of line
+      case 'CtrlE':
+        return [0x05]; // Ctrl+E — end of line
       default:
         return name.codeUnits;
     }
