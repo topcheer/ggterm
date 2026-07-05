@@ -1739,6 +1739,28 @@ impl DesktopApp {
         }
     }
 
+    /// Run the current selection as a shell command.
+    /// Copies selection to clipboard, then writes it + newline to PTY.
+    pub(super) fn run_selection_as_command(&mut self) {
+        self.copy_selection_to_clipboard();
+
+        if let Some(text) = crate::clipboard::read_clipboard() {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                self.show_toast("No text selected");
+                return;
+            }
+
+            // Write the command + Enter to PTY.
+            let mut input = trimmed.to_string();
+            input.push('\n');
+            self.write_to_pty(input.as_bytes());
+            self.show_toast(format!("Running: {}", truncate_for_toast(trimmed)));
+        } else {
+            self.show_toast("No text selected");
+        }
+    }
+
     /// Open the current selection in the user's $EDITOR.
     /// Writes selection to a temp file, opens editor, then reads back.
     pub(super) fn edit_selection_in_editor(&mut self) {
@@ -2086,6 +2108,9 @@ impl DesktopApp {
             "terminal.edit_selection" => {
                 self.edit_selection_in_editor();
             }
+            "terminal.run_selection" => {
+                self.run_selection_as_command();
+            }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
             }
@@ -2357,6 +2382,15 @@ fn url_encode(s: &str) -> String {
         }
     }
     result
+}
+
+/// Truncate a string for toast display (max 40 chars).
+fn truncate_for_toast(s: &str) -> String {
+    if s.len() > 40 {
+        format!("{}...", &s[..37])
+    } else {
+        s.to_string()
+    }
 }
 
 /// Detect a programming language from terminal output content.

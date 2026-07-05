@@ -294,6 +294,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.run_selection".into(),
+            label: "Run Selection as Command".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.toggle_lock".into(),
             label: "Toggle Terminal Lock".into(),
             category: "Terminal".into(),
