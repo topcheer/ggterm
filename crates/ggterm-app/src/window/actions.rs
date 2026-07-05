@@ -1739,6 +1739,58 @@ impl DesktopApp {
         }
     }
 
+    /// Open the current selection in the user's $EDITOR.
+    /// Writes selection to a temp file, opens editor, then reads back.
+    pub(super) fn edit_selection_in_editor(&mut self) {
+        // First, copy the selection to clipboard to extract text.
+        self.copy_selection_to_clipboard();
+
+        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            self.show_toast("No text selected");
+            return;
+        }
+
+        // Write to temp file.
+        let tmp = std::env::temp_dir().join("ggterm-selection.txt");
+        if let Err(e) = std::fs::write(&tmp, trimmed) {
+            self.show_toast(format!("Failed: {e}"));
+            return;
+        }
+
+        // Get editor from $EDITOR or fall back to `vi`.
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+        let editor_path = editor.split_whitespace().next().unwrap_or("vi");
+        let editor_args: Vec<String> = editor
+            .split_whitespace()
+            .skip(1)
+            .map(String::from)
+            .collect();
+
+        let mut cmd = std::process::Command::new(editor_path);
+        cmd.args(&editor_args).arg(&tmp);
+
+        match cmd.status() {
+            Ok(status) if status.success() => {
+                // Read back the edited content and write to PTY.
+                if let Ok(edited) = std::fs::read_to_string(&tmp)
+                    && !edited.is_empty()
+                {
+                    self.write_to_pty(edited.as_bytes());
+                    self.show_toast("Pasted edited selection");
+                }
+                let _ = std::fs::remove_file(&tmp);
+            }
+            Ok(_) => {
+                self.show_toast("Editor exited with error");
+            }
+            Err(e) => {
+                self.show_toast(format!("Failed to open editor: {e}"));
+            }
+        }
+    }
+
     /// Search the current selection on the web (opens default browser).
     pub(super) fn search_selection_on_web(&mut self) {
         // First, copy the selection to clipboard to extract the text.
@@ -2031,6 +2083,9 @@ impl DesktopApp {
             "terminal.search_selection" => {
                 self.search_selection_on_web();
             }
+            "terminal.edit_selection" => {
+                self.edit_selection_in_editor();
+            }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
             }
@@ -2256,14 +2311,9 @@ impl DesktopApp {
             // Auto-hide the QR overlay — terminal is now usable.
             self.p2p_share.visible = false;
 
-            // Forward current terminal dimensions.
-            let (cols, rows) = {
-                let session = self.active_session();
-                let app = session.app();
-                let grid = app.grid();
-                (grid.width() as u16, grid.height() as u16)
-            };
-            self.p2p_share.resize(cols, rows);
+            // DO NOT send resize — it was injected control frames into the
+            // data stream and causing garbled output. The mobile terminal
+            // has its own dimensions.
 
             // Send accumulated PTY output (the raw bytes from the shell).
             let screen_data = self.active_session_mut().app_mut().take_pty_tee();
@@ -2273,10 +2323,15 @@ impl DesktopApp {
             ));
             self.p2p_share.tee_output(&screen_data);
 
-            // Trigger a screen redraw by sending Ctrl+L to the shell.
-            // This causes the shell to reprint its prompt, which gets
-            // tee'd to the mobile device on the next about_to_wait cycle.
+            // Send Ctrl+L to the shell. This clears the screen and redraws
+            // the prompt WITHOUT executing any pending user input (unlike \n).
+            // The redraw output gets tee'd to the mobile device.
             self.active_session_mut().write_to_pty(b"\x0c");
+
+            // Force window redraw so about_to_wait keeps cycling.
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
         }
 
         // Read mobile input and forward to PTY.

@@ -288,6 +288,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.edit_selection".into(),
+            label: "Edit Selection in $EDITOR".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.toggle_lock".into(),
             label: "Toggle Terminal Lock".into(),
             category: "Terminal".into(),
