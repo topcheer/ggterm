@@ -50,6 +50,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
   // Cursor blink state.
   bool _cursorVisible = true;
   Timer? _blinkTimer;
+  // Scroll position tracking.
+  bool _isScrolledUp = false;
 
   // Visible input bar for typing.
   final FocusNode _inputFocusNode = FocusNode();
@@ -100,8 +102,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
       // Only rebuild if content changed (cursor blink handled separately).
       final hash = _computeFrameHash(snapshot);
-      if (hash != _lastFrameHash || alive != _transportAlive) {
+      final scrolledUp = widget.sessionManager.displayOffset(id) > 0;
+      if (hash != _lastFrameHash || alive != _transportAlive || scrolledUp != _isScrolledUp) {
         _lastFrameHash = hash;
+        _isScrolledUp = scrolledUp;
         setState(() {
           _screen = snapshot;
         });
@@ -380,6 +384,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
         actions: [
+          // Scroll-to-bottom button (visible when scrolled up).
+          if (_isScrolledUp)
+            IconButton(
+              icon: const Icon(Icons.vertical_align_bottom),
+              tooltip: 'Scroll to bottom',
+              onPressed: () {
+                widget.sessionManager.resetViewport(widget.sessionId);
+                _lastFrameHash = 0; // Force refresh
+              },
+            ),
           // Transport status indicator
           Padding(
             padding: const EdgeInsets.only(right: 12),
