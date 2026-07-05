@@ -103,8 +103,20 @@ Zsh has native `precmd` and `preexec` hooks:
 
 Fish has event-based hooks:
 - **`fish_prompt`**: Wrapped to emit `A` before the original prompt.
-- **`fish_preexec` event**: Emits `B` when a command is submitted.
-- **`fish_postexec` event**: Emits `C` and `D;exitcode` when a command finishes.
+- **`fish_preexec` event**: Emits `B` (command start) and `C` (output start) when a command is submitted.
+- **`fish_postexec` event**: Emits `D;exitcode` when a command finishes.
+
+## Conflict Avoidance
+
+All three shells (bash, zsh, fish) detect common sources of duplicate OSC 133 marks and skip integration when found:
+
+- **Starship**: `$STARSHIP_SHELL_INTEGRATION` set
+- **iTerm2**: `$ITERM_SESSION_ID` set
+- **Apple Terminal**: `$TERM_PROGRAM == Apple_Terminal`
+- **Warp**: `$WARP_HONOR_PS1` set
+- **Powerlevel10k** (zsh only): `$POWERLEVEL9K_INSTANT_PROMPT` set and not `quiet`
+
+If you use a tool not listed here that sends OSC 133 marks, set one of these environment variables to prevent duplicate marks.
 
 ## Compatibility
 
