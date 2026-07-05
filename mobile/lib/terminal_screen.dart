@@ -626,6 +626,43 @@ class _TerminalScreenState extends State<TerminalScreen> {
               }
             },
           ),
+          // Overflow menu
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            color: Colors.grey.shade900,
+            onSelected: (value) {
+              switch (value) {
+                case 'clear':
+                  // Clear screen: send Ctrl+L
+                  _sendInput([0x0C]);
+                  widget.sessionManager.flush(widget.sessionId);
+                  break;
+                case 'disconnect':
+                  widget.sessionManager.destroySession(widget.sessionId);
+                  if (mounted) Navigator.of(context).pop();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'clear',
+                child: Row(children: [
+                  Icon(Icons.clear, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Clear screen', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'disconnect',
+                child: Row(children: [
+                  Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                  SizedBox(width: 12),
+                  Text('Disconnect',
+                      style: TextStyle(color: Colors.redAccent)),
+                ]),
+              ),
+            ],
+          ),
         ],
       ),
       body: SafeArea(
