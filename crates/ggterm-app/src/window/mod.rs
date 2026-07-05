@@ -1269,6 +1269,7 @@ impl ApplicationHandler for DesktopApp {
                         .unwrap_or_default();
                 }
                 self.status_bar.git_branch = self.git_branch_cache.clone();
+                self.status_bar.theme_name = self.last_applied_theme.clone();
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
@@ -1446,6 +1447,7 @@ impl ApplicationHandler for DesktopApp {
 
         // P29-C: Check if we should quit after confirmation.
         if self.should_quit {
+            self.send_terminal_reset();
             self.save_session_on_exit();
             event_loop.exit();
             return;

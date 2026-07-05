@@ -90,6 +90,8 @@ pub struct StatusBar {
     pub uptime: String,
     /// Git branch name (empty = not in a git repo).
     pub git_branch: String,
+    /// Active theme name (e.g., "dark", "tokyo-night").
+    pub theme_name: String,
 }
 
 impl Default for StatusBar {
@@ -129,6 +131,7 @@ impl StatusBar {
             locked: false,
             uptime: String::new(),
             git_branch: String::new(),
+            theme_name: String::new(),
         }
     }
 
@@ -272,6 +275,11 @@ impl StatusBar {
             parts.push(format!(" {}", self.git_branch));
         }
 
+        // Active theme name.
+        if !self.theme_name.is_empty() {
+            parts.push(format!("theme:{}", self.theme_name));
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -392,6 +400,11 @@ impl StatusBar {
         // Git branch (shown in accent green).
         if !self.git_branch.is_empty() {
             seg!(format!(" {}", self.git_branch), (120u8, 200, 120));
+        }
+
+        // Active theme name (dim color — informational only).
+        if !self.theme_name.is_empty() {
+            seg!(format!("theme:{}", self.theme_name), dim_color);
         }
 
         // Mode indicators.
