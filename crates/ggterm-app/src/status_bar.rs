@@ -88,6 +88,8 @@ pub struct StatusBar {
     pub locked: bool,
     /// Session uptime as a formatted string (e.g., "5m", "1h23m").
     pub uptime: String,
+    /// Git branch name (empty = not in a git repo).
+    pub git_branch: String,
 }
 
 impl Default for StatusBar {
@@ -126,6 +128,7 @@ impl StatusBar {
             selection_count: 0,
             locked: false,
             uptime: String::new(),
+            git_branch: String::new(),
         }
     }
 
@@ -260,6 +263,11 @@ impl StatusBar {
             parts.push(self.uptime.clone());
         }
 
+        // Git branch.
+        if !self.git_branch.is_empty() {
+            parts.push(format!(" {}", self.git_branch));
+        }
+
         // Mode indicators.
         if self.bell_active {
             parts.push("bell".to_string());
@@ -375,6 +383,11 @@ impl StatusBar {
         // Session uptime.
         if !self.uptime.is_empty() {
             seg!(self.uptime.clone(), dim_color);
+        }
+
+        // Git branch (shown in accent green).
+        if !self.git_branch.is_empty() {
+            seg!(format!(" {}", self.git_branch), (120u8, 200, 120));
         }
 
         // Mode indicators.
@@ -915,6 +928,17 @@ mod tests {
         assert!(
             formatted.contains("LOCK"),
             "should show LOCK indicator: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_git_branch_shown() {
+        let mut sb = StatusBar::new();
+        sb.git_branch = "main".into();
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("main"),
+            "should show git branch: {formatted}"
         );
     }
 }

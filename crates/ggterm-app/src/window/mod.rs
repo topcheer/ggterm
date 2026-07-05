@@ -175,6 +175,10 @@ pub struct DesktopApp {
     maximized: bool,
     /// Window always-on-top state.
     always_on_top: bool,
+    /// Cached git branch for current cwd (updated every ~5s).
+    git_branch_cache: String,
+    /// Counter to throttle git branch checks (every ~300 frames ≈ 5s).
+    git_check_counter: u32,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -533,6 +537,8 @@ impl DesktopApp {
             fullscreen: false,
             maximized: false,
             always_on_top: false,
+            git_branch_cache: String::new(),
+            git_check_counter: 0,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
@@ -1226,6 +1232,30 @@ impl ApplicationHandler for DesktopApp {
                 } else {
                     String::new()
                 };
+
+                // Git branch (throttled: check every ~5s / 300 frames).
+                self.git_check_counter = self.git_check_counter.wrapping_add(1);
+                if self.git_check_counter.is_multiple_of(300) {
+                    let cwd = self.active_session().cwd();
+                    self.git_branch_cache = cwd
+                        .and_then(|p| {
+                            std::process::Command::new("git")
+                                .arg("branch")
+                                .arg("--show-current")
+                                .current_dir(p)
+                                .output()
+                                .ok()
+                                .and_then(|o| {
+                                    if o.status.success() {
+                                        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                        })
+                        .unwrap_or_default();
+                }
+                self.status_bar.git_branch = self.git_branch_cache.clone();
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
