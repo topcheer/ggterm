@@ -11,9 +11,11 @@
 library;
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'ffi/session_manager.dart';
 import 'keyboard_bar.dart';
@@ -39,6 +41,7 @@ class TerminalScreen extends StatefulWidget {
 
 class _TerminalScreenState extends State<TerminalScreen> {
   double _fontSize = 13.0;
+  static const _fontSizeFile = 'font_size.json';
   ScreenSnapshot _screen = ScreenSnapshot.empty;
   final _modifiers = ModifierState();
   bool _showKeyboardBar = true;
@@ -69,8 +72,32 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void initState() {
     super.initState();
+    _loadFontSize();
     _startRenderLoop();
     _startCursorBlink();
+  }
+
+  Future<void> _loadFontSize() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_fontSizeFile');
+      if (await file.exists()) {
+        final size = double.tryParse(await file.readAsString());
+        if (size != null && size >= 8.0 && size <= 32.0) {
+          setState(() {
+            _fontSize = size;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveFontSize() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_fontSizeFile');
+      await file.writeAsString(_fontSize.toStringAsFixed(1));
+    } catch (_) {}
   }
 
   void _startCursorBlink() {
@@ -284,6 +311,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       setState(() {
         _fontSize = (_fontSize * details.scale).clamp(8.0, 32.0);
       });
+      _saveFontSize();
       return;
     }
 
