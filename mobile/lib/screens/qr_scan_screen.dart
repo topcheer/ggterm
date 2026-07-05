@@ -4,9 +4,11 @@
 /// On successful scan, calls [P2pBindings.connect] and navigates to
 /// [TerminalScreen] on success.
 
+library;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../ffi/p2p_bindings.dart';
 import '../ffi/session_manager.dart';
@@ -30,66 +32,46 @@ class QrScanScreen extends StatefulWidget {
 }
 
 class _QrScanScreenState extends State<QrScanScreen> with WidgetsBindingObserver {
-  late MobileScannerController _controller;
+  final MobileScannerController _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    facing: CameraFacing.back,
+    torchEnabled: false,
+  );
   bool _isConnecting = false;
-  bool _cameraStarted = false;
+  bool _permissionGranted = false;
   String? _lastError;
-  int _retryCount = 0;
 
   @override
   void initState() {
     super.initState();
+    debugPrint('[QR] initState');
     WidgetsBinding.instance.addObserver(this);
-    _controller = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      facing: CameraFacing.back,
-      torchEnabled: false,
-    );
-    // Start camera after first frame to ensure the widget is fully mounted
-    // and the Android activity is ready to handle permission requests.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startCamera();
-    });
+    _checkPermission();
   }
 
-  Future<void> _startCamera() async {
-    if (_cameraStarted || _isConnecting) return;
+  Future<void> _checkPermission() async {
+    var status = await Permission.camera.status;
+    debugPrint('[QR] permission status: $status');
 
-    try {
-      // mobile_scanner v5: start() internally requests camera permission
-      // on Android. If permission is denied, it throws. We catch and
-      // show a retry UI.
-      await _controller.start();
+    if (!status.isGranted) {
+      debugPrint('[QR] requesting permission...');
+      status = await Permission.camera.request();
+      debugPrint('[QR] request result: $status');
+    }
 
-      // Small delay to let the camera surface attach on some devices.
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (mounted) {
-        setState(() {
-          _cameraStarted = true;
-          _lastError = null;
-          _retryCount = 0;
-        });
-      }
-    } on MobileScannerException catch (e) {
-      if (mounted) {
-        setState(() {
-          _lastError = e.errorCode == MobileScannerErrorCode.permissionDenied
-              ? 'Camera permission denied. Please grant camera access in Settings.'
-              : 'Camera error: ${e.errorCode.name}';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _lastError = 'Failed to start camera: $e';
-        });
-      }
+    if (mounted) {
+      setState(() {
+        _permissionGranted = status.isGranted;
+        if (!status.isGranted) {
+          _lastError = 'Camera permission denied. Grant in Settings > Apps > GGTerm > Permissions.';
+        }
+      });
     }
   }
 
   @override
   void dispose() {
+    debugPrint('[QR] dispose');
     WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
@@ -97,13 +79,7 @@ class _QrScanScreenState extends State<QrScanScreen> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Resume camera when app returns to foreground.
-    if (state == AppLifecycleState.resumed && !_isConnecting) {
-      _startCamera();
-    } else if (state == AppLifecycleState.inactive && _cameraStarted) {
-      _controller.stop();
-      _cameraStarted = false;
-    }
+    debugPrint('[QR] lifecycle: $state');
   }
 
   void _handleBarcode(BarcodeCapture capture) {
@@ -115,77 +91,87 @@ class _QrScanScreenState extends State<QrScanScreen> with WidgetsBindingObserver
     final String? rawValue = barcodes.first.rawValue;
     if (rawValue == null || rawValue.isEmpty) return;
 
+    debugPrint('[QR] barcode: ${rawValue.substring(0, rawValue.length > 30 ? 30 : null)}...');
     _attemptConnection(rawValue);
   }
 
   Future<void> _attemptConnection(String ticket) async {
+    debugPrint('[QR] attempt connect, len=${ticket.length}');
     setState(() {
       _isConnecting = true;
       _lastError = null;
     });
 
+    // Stop camera while connecting.
     await _controller.stop();
-    _cameraStarted = false;
 
+    debugPrint('[QR] calling p2p.connect (non-blocking)...');
     final sessionId = widget.p2p.connect(ticket);
+    debugPrint('[QR] sessionId=$sessionId (connect started in background)');
 
-    if (sessionId > 0 && mounted) {
-      final connected = await _waitForConnection(sessionId, timeoutSeconds: 15);
-
-      if (connected && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => TerminalScreen(
-              sessionManager: widget.sessionManager,
-              sessionId: sessionId,
-              title: 'P2P Session',
-              theme: widget.theme,
-            ),
-          ),
-        );
-      } else if (mounted) {
+    if (sessionId == 0) {
+      final err = widget.p2p.lastError();
+      debugPrint('[QR] immediate failure: $err');
+      if (mounted) {
         setState(() {
           _isConnecting = false;
-          _lastError = 'Connection timed out. The host may be offline.';
+          _lastError = 'Failed to start: ${err ?? "unknown"}';
         });
-        _startCamera();
       }
+      return;
+    }
+
+    // Poll connect status for up to 60 seconds (non-blocking connect).
+    debugPrint('[QR] polling connect status...');
+    bool connected = false;
+    for (int i = 0; i < 120; i++) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+
+      final status = widget.p2p.connectStatus(sessionId);
+      if (i % 10 == 0) debugPrint('[QR] poll #$i: status=$status');
+
+      if (status == 1) {
+        connected = true;
+        break;
+      }
+      if (status == -1) {
+        final err = widget.p2p.lastError();
+        debugPrint('[QR] connect failed: $err');
+        if (mounted) {
+          setState(() {
+            _isConnecting = false;
+            _lastError = 'Connection failed: ${err ?? "unknown"}';
+          });
+          // Restart camera so user can scan again.
+          _controller.start();
+        }
+        return;
+      }
+    }
+
+    debugPrint('[QR] final: connected=$connected');
+
+    if (connected && mounted) {
+      debugPrint('[QR] navigating to terminal');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => TerminalScreen(
+            sessionManager: widget.sessionManager,
+            sessionId: sessionId,
+            title: 'P2P Session',
+            theme: widget.theme,
+          ),
+        ),
+      );
     } else if (mounted) {
       setState(() {
         _isConnecting = false;
-        _lastError = 'Invalid ticket or P2P not available.';
+        _lastError = 'Connection timed out (30s). Host may be offline.';
       });
-      _startCamera();
+      // Restart camera so user can scan again.
+      _controller.start();
     }
-  }
-
-  Future<bool> _waitForConnection(int sessionId,
-      {int timeoutSeconds = 15}) async {
-    final deadline = DateTime.now().add(Duration(seconds: timeoutSeconds));
-    while (DateTime.now().isBefore(deadline)) {
-      if (widget.p2p.isConnected(sessionId)) {
-        return true;
-      }
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-    return false;
-  }
-
-  /// Retry camera start — used by the Retry button.
-  Future<void> _retryCamera() async {
-    setState(() {
-      _lastError = null;
-      _retryCount++;
-    });
-    // Recreate controller on retry to reset internal state.
-    _controller.dispose();
-    _controller = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      facing: CameraFacing.back,
-      torchEnabled: false,
-    );
-    _cameraStarted = false;
-    await _startCamera();
   }
 
   @override
@@ -201,102 +187,90 @@ class _QrScanScreenState extends State<QrScanScreen> with WidgetsBindingObserver
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          // Torch toggle — only show when camera is active.
-          if (_cameraStarted)
-            ValueListenableBuilder(
-              valueListenable: _controller,
-              builder: (context, MobileScannerState state, _) {
-                return IconButton(
-                  icon: Icon(
-                    state.torchState == TorchState.on
-                        ? Icons.flash_on
-                        : Icons.flash_off,
-                    color: state.torchState == TorchState.on
-                        ? Colors.amber
-                        : Colors.white54,
-                  ),
-                  onPressed: () => _controller.toggleTorch(),
-                );
-              },
-            ),
+          ValueListenableBuilder(
+            valueListenable: _controller,
+            builder: (context, MobileScannerState state, _) {
+              if (state.torchState == TorchState.off) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                icon: Icon(
+                  state.torchState == TorchState.on ? Icons.flash_on : Icons.flash_off,
+                  color: state.torchState == TorchState.on ? Colors.amber : Colors.white54,
+                ),
+                onPressed: () => _controller.toggleTorch(),
+              );
+            },
+          ),
         ],
       ),
       body: Stack(
         children: [
-          // Camera scanner — only show when camera is active.
-          if (!_isConnecting && _cameraStarted)
+          // MobileScanner is ALWAYS in the tree — it manages its own lifecycle.
+          // We overlay other widgets on top instead of conditionally hiding it.
+          if (_permissionGranted && !_isConnecting)
             MobileScanner(
               controller: _controller,
               onDetect: _handleBarcode,
             ),
 
-          // Scan overlay reticle.
-          if (!_isConnecting && _cameraStarted)
-            _ScanOverlay(color: widget.theme.cursor),
+          // Scan reticle overlay.
+          if (_permissionGranted && !_isConnecting)
+            const _ScanOverlay(),
 
-          // Camera not started / error state.
-          if (!_isConnecting && !_cameraStarted)
-            _CameraStateView(
-              error: _lastError,
-              retryCount: _retryCount,
-              onRetry: _retryCamera,
+          // Permission not granted / requesting state.
+          if (!_permissionGranted)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _lastError != null ? Icons.camera_alt_outlined : Icons.hourglass_empty,
+                    size: 64,
+                    color: Colors.white38,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _lastError ?? 'Requesting camera permission...',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54, fontSize: 16),
+                  ),
+                  if (_lastError != null) ...[
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _lastError = null;
+                          _permissionGranted = false;
+                        });
+                        _checkPermission();
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ],
+              ),
             ),
 
-          // Connecting indicator.
+          // Connecting overlay.
           if (_isConnecting)
             Container(
               color: Colors.black87,
-              child: Center(
+              child: const Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const CircularProgressIndicator(
-                      color: Colors.blue,
-                      strokeWidth: 3,
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Connecting...',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
+                    CircularProgressIndicator(color: Colors.blue, strokeWidth: 3),
+                    SizedBox(height: 24),
+                    Text('Connecting...', style: TextStyle(color: Colors.white, fontSize: 18)),
                   ],
                 ),
               ),
             ),
 
-          // Error toast (non-fatal, e.g. connection timeout).
-          if (_lastError != null && !_isConnecting && _cameraStarted)
-            Positioned(
-              bottom: 80,
-              left: 24,
-              right: 24,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade900.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _lastError!,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Instructions.
-          if (!_isConnecting && _lastError == null && _cameraStarted)
+          // Instructions at bottom.
+          if (_permissionGranted && !_isConnecting && _lastError == null)
             Positioned(
               bottom: 80,
               left: 24,
@@ -321,85 +295,43 @@ class _QrScanScreenState extends State<QrScanScreen> with WidgetsBindingObserver
                 ),
               ),
             ),
+
+          // Error toast.
+          if (_lastError != null && !_isConnecting && _permissionGranted)
+            Positioned(
+              bottom: 80,
+              left: 24,
+              right: 24,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade900.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(_lastError!, style: const TextStyle(color: Colors.white))),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-/// Shows camera starting/permission-denied state with a Retry button.
-class _CameraStateView extends StatelessWidget {
-  final String? error;
-  final int retryCount;
-  final VoidCallback onRetry;
-
-  const _CameraStateView({
-    this.error,
-    required this.retryCount,
-    required this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasError = error != null;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              hasError ? Icons.camera_alt_outlined : Icons.hourglass_empty,
-              size: 64,
-              color: Colors.white38,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              error ?? 'Starting camera...',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 16,
-                decoration: TextDecoration.none,
-              ),
-            ),
-            if (hasError) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: Text(retryCount > 0 ? 'Retry ($retryCount)' : 'Retry'),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'If camera still fails, check:\n'
-                'Settings > Apps > GGTerm > Permissions > Camera',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white30,
-                  fontSize: 13,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Animated reticle overlay for the scanner.
+/// Reticle overlay for the scanner.
 class _ScanOverlay extends StatelessWidget {
-  final Color color;
-
-  const _ScanOverlay({required this.color});
+  const _ScanOverlay();
 
   @override
   Widget build(BuildContext context) {
     return ColorFiltered(
       colorFilter: ColorFilter.mode(
-        Colors.black.withOpacity(0.4),
+        Colors.black.withValues(alpha: 0.4),
         BlendMode.srcOut,
       ),
       child: Stack(
