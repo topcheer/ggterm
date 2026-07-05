@@ -631,6 +631,38 @@ class _TerminalScreenState extends State<TerminalScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // ── Disconnected banner ──
+            if (!_transportAlive)
+              Material(
+                color: const Color(0xFFB71C1C),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.wifi_off, color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Connection lost',
+                          style: TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          minimumSize: const Size(0, 32),
+                        ),
+                        child: const Text('Reconnect'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             // ── Terminal canvas with hidden text input ──
             Expanded(
               child: LayoutBuilder(
