@@ -127,11 +127,14 @@ impl ggterm_core::TerminalTransport for P2pTransport {
 /// Spawn a background task bridging async QUIC streams to sync buffers.
 ///
 /// Must be called from within a tokio runtime context.
+///
+/// The QUIC stream carries **pure terminal data** — no control frames.
+/// Resize is handled at the application level, not through the stream.
 pub(crate) fn spawn_io_task(
     mut send: SendStream,
     mut recv: RecvStream,
     mut write_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    mut resize_rx: mpsc::UnboundedReceiver<(u16, u16)>,
+    _resize_rx: mpsc::UnboundedReceiver<(u16, u16)>,
     read_buf: Arc<Mutex<Vec<u8>>>,
     alive: Arc<AtomicBool>,
 ) {
@@ -147,11 +150,8 @@ pub(crate) fn spawn_io_task(
                 }
             }
 
-            // ── Apply pending resize (non-blocking) ────────────
-            while let Ok((cols, rows)) = resize_rx.try_recv() {
-                let frame = [0x01u8, cols as u8, rows as u8];
-                let _ = send.write_all(&frame).await;
-            }
+            // Resize frames are NOT sent through the data stream.
+            // They caused garbled output when interpreted as terminal data.
 
             // ── Read from QUIC stream (5ms timeout) ────────────
             match tokio::time::timeout(std::time::Duration::from_millis(5), recv.read(&mut buf))
@@ -162,8 +162,19 @@ pub(crate) fn spawn_io_task(
                     return;
                 }
                 Ok(Ok(Some(n))) => {
-                    if let Ok(mut rb) = read_buf.lock() {
-                        rb.extend_from_slice(&buf[..n]);
+                    // Skip the initial handshake byte (0x00) if present.
+                    let start = if n > 0
+                        && buf[0] == 0x00
+                        && read_buf.lock().map(|r| r.is_empty()).unwrap_or(true)
+                    {
+                        1 // Skip the client's initial handshake byte
+                    } else {
+                        0
+                    };
+                    if n > start
+                        && let Ok(mut rb) = read_buf.lock()
+                    {
+                        rb.extend_from_slice(&buf[start..n]);
                     }
                 }
                 Ok(Ok(None)) => {
