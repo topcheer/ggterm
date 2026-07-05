@@ -12,6 +12,7 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'ffi/session_manager.dart';
 import 'keyboard_bar.dart';
@@ -249,6 +250,48 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _inputFocusNode.requestFocus();
   }
 
+  /// Long-press → copy all visible terminal text to clipboard.
+  /// This is the simplest and most useful copy action on mobile:
+  /// user presses and holds, gets immediate "Copied N lines" feedback.
+  void _onLongPress(LongPressStartDetails details) {
+    final text = _extractVisibleText();
+    if (text.trim().isEmpty) {
+      _showCopiedSnackBar('Nothing to copy');
+      return;
+    }
+
+    final lineCount = text.trim().split('\n').length;
+    Clipboard.setData(ClipboardData(text: text));
+    _showCopiedSnackBar('Copied $lineCount lines');
+  }
+
+  /// Extract all visible terminal text as a string.
+  String _extractVisibleText() {
+    final buf = StringBuffer();
+    for (var row = 0; row < _screen.rows; row++) {
+      var lineText = '';
+      for (var col = 0; col < _screen.cols; col++) {
+        final idx = row * _screen.cols + col;
+        if (idx < _screen.cells.length) {
+          final cell = _screen.cells[idx];
+          lineText += cell.char;
+        }
+      }
+      // Trim trailing spaces but keep the line.
+      buf.writeln(lineText.trimRight());
+    }
+    return buf.toString().trimRight();
+  }
+
+  void _showCopiedSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = widget.theme;
@@ -316,6 +359,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   return GestureDetector(
                     onScaleUpdate: _onScale,
                     onTapUp: _onTapUp,
+                    onLongPressStart: _onLongPress,
                     child: Stack(
                       children: [
                         // Terminal canvas
