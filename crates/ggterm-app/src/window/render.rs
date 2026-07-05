@@ -209,6 +209,22 @@ impl DesktopApp {
                     });
                 }
 
+                // Running command indicator: green dot on non-active tabs.
+                if !tab.active
+                    && tab_idx < self.sessions.len()
+                    && self.sessions[tab_idx].is_running()
+                {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: x + w - 22.0,
+                        y: tab_y + 3.0,
+                        w: 6.0,
+                        h: 6.0,
+                        color: (0.3, 0.8, 0.4, 0.9),
+                        radius: 3.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
                 if tab.active {
                     // Active tab: brighter surface.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
