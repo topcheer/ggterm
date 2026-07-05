@@ -3,7 +3,7 @@
 //! Renders a single-line summary string suitable for display in the window
 //! title or a dedicated status line.
 //!
-//! Example output: `"Row:5 Col:10 | Tab 1/3 | bell | search"`
+//! Example output: `"Row:6 Col:11 | Tab 1/3 | bell | search"`
 
 // ── StatusBar ───────────────────────────────────────────────────────────
 
@@ -207,7 +207,7 @@ impl StatusBar {
 
     /// Format the status bar as a single-line string.
     ///
-    /// Example: `"!ERROR! | Row:5 Col:10 | Tab 1/3 | exit:0 | bell | search | ai"`
+    /// Example: `"!ERROR! | Row:6 Col:11 | Tab 1/3 | exit:0 | bell | search | ai"`
     ///
     /// When a config error is set, `!ERROR!` is prepended so the renderer
     /// can highlight it in red.
@@ -220,7 +220,11 @@ impl StatusBar {
         }
 
         // Cursor position (always shown).
-        parts.push(format!("Row:{} Col:{}", self.cursor_row, self.cursor_col));
+        parts.push(format!(
+            "Row:{} Col:{}",
+            self.cursor_row + 1,
+            self.cursor_col + 1
+        ));
 
         // Tab info (only show "Tab x/y" when more than 1 tab).
         if self.tab_count > 1 {
@@ -338,9 +342,9 @@ impl StatusBar {
             seg!("!ERROR!".to_string(), err_color);
         }
 
-        // Cursor position.
+        // Cursor position (1-indexed — terminal convention).
         seg!(
-            format!("{}:{}", self.cursor_row, self.cursor_col),
+            format!("{}:{}", self.cursor_row + 1, self.cursor_col + 1),
             accent_color
         );
 
@@ -486,14 +490,14 @@ mod tests {
         let sb = StatusBar::new();
         let formatted = sb.format();
         // Default: cursor (0,0), single tab (not shown), no flags.
-        assert_eq!(formatted, "Row:0 Col:0");
+        assert_eq!(formatted, "Row:1 Col:1");
     }
 
     #[test]
     fn t_update_cursor() {
         let mut sb = StatusBar::new();
         sb.update_cursor(5, 10);
-        assert_eq!(sb.format(), "Row:5 Col:10");
+        assert_eq!(sb.format(), "Row:6 Col:11");
     }
 
     #[test]
@@ -503,7 +507,7 @@ mod tests {
         sb.set_bell(true);
         sb.set_search(true);
         sb.set_ai(true);
-        assert_eq!(sb.format(), "Row:3 Col:7 | bell | search | ai");
+        assert_eq!(sb.format(), "Row:4 Col:8 | bell | search | ai");
     }
 
     #[test]
@@ -511,7 +515,7 @@ mod tests {
         let mut sb = StatusBar::new();
         sb.update_cursor(0, 0);
         sb.update_tabs(3, 1); // 3 tabs, active = index 1 (Tab 2/3)
-        assert_eq!(sb.format(), "Row:0 Col:0 | Tab 2/3");
+        assert_eq!(sb.format(), "Row:1 Col:1 | Tab 2/3");
     }
 
     #[test]
@@ -529,7 +533,7 @@ mod tests {
         sb.set_ai(false);
 
         // Should show cursor + tabs only.
-        assert_eq!(sb.format(), "Row:10 Col:20 | Tab 1/2");
+        assert_eq!(sb.format(), "Row:11 Col:21 | Tab 1/2");
     }
 
     #[test]
@@ -538,21 +542,21 @@ mod tests {
         sb.update_cursor(0, 0);
         sb.update_tabs(1, 0);
         // With a single tab, "Tab 1/1" should NOT appear.
-        assert_eq!(sb.format(), "Row:0 Col:0");
+        assert_eq!(sb.format(), "Row:1 Col:1");
     }
 
     #[test]
     fn t_bell_only() {
         let mut sb = StatusBar::new();
         sb.set_bell(true);
-        assert_eq!(sb.format(), "Row:0 Col:0 | bell");
+        assert_eq!(sb.format(), "Row:1 Col:1 | bell");
     }
 
     #[test]
     fn t_search_only() {
         let mut sb = StatusBar::new();
         sb.set_search(true);
-        assert_eq!(sb.format(), "Row:0 Col:0 | search");
+        assert_eq!(sb.format(), "Row:1 Col:1 | search");
     }
 
     // ── P17-E: Exit code tests ──────────────────────────────────────
@@ -561,21 +565,21 @@ mod tests {
     fn t_exit_code_zero_shows_ok() {
         let mut sb = StatusBar::new();
         sb.set_exit_code(Some(0));
-        assert_eq!(sb.format(), "Row:0 Col:0 | exit:0");
+        assert_eq!(sb.format(), "Row:1 Col:1 | exit:0");
     }
 
     #[test]
     fn t_exit_code_nonzero_shows_code() {
         let mut sb = StatusBar::new();
         sb.set_exit_code(Some(127));
-        assert_eq!(sb.format(), "Row:0 Col:0 | exit:127");
+        assert_eq!(sb.format(), "Row:1 Col:1 | exit:127");
     }
 
     #[test]
     fn t_exit_code_none_not_shown() {
         let mut sb = StatusBar::new();
         sb.set_exit_code(None);
-        assert_eq!(sb.format(), "Row:0 Col:0");
+        assert_eq!(sb.format(), "Row:1 Col:1");
     }
 
     // ── P21-G: Config error indicator tests ──────────────────────────
@@ -593,7 +597,7 @@ mod tests {
         sb.set_config_error(Some("font_size out of range".to_string()));
         assert!(sb.has_config_error());
         assert_eq!(sb.config_error_text(), Some("font_size out of range"));
-        assert_eq!(sb.format(), "!ERROR! | Row:0 Col:0");
+        assert_eq!(sb.format(), "!ERROR! | Row:1 Col:1");
     }
 
     #[test]
@@ -603,7 +607,7 @@ mod tests {
         sb.update_tabs(2, 0);
         sb.set_bell(true);
         sb.set_config_error(Some("bad theme".to_string()));
-        assert_eq!(sb.format(), "!ERROR! | Row:5 Col:10 | Tab 1/2 | bell");
+        assert_eq!(sb.format(), "!ERROR! | Row:6 Col:11 | Tab 1/2 | bell");
     }
 
     #[test]
@@ -614,7 +618,7 @@ mod tests {
 
         sb.clear_config_error();
         assert!(!sb.has_config_error());
-        assert_eq!(sb.format(), "Row:0 Col:0");
+        assert_eq!(sb.format(), "Row:1 Col:1");
     }
 
     #[test]
@@ -641,7 +645,7 @@ mod tests {
         let formatted = sb.format();
         // ERROR must appear before cursor position.
         let err_pos = formatted.find("!ERROR!").unwrap();
-        let cursor_pos = formatted.find("Row:3").unwrap();
+        let cursor_pos = formatted.find("Row:4").unwrap();
         assert!(err_pos < cursor_pos);
     }
 
@@ -674,7 +678,7 @@ mod tests {
         let mut sb = StatusBar::new();
         sb.update_cursor(5, 10);
         sb.set_profile("presentation");
-        assert_eq!(sb.format(), "Row:5 Col:10 | @presentation");
+        assert_eq!(sb.format(), "Row:6 Col:11 | @presentation");
     }
 
     #[test]
@@ -683,14 +687,14 @@ mod tests {
         sb.update_cursor(0, 0);
         sb.set_bell(true);
         sb.set_profile("compact");
-        assert_eq!(sb.format(), "Row:0 Col:0 | bell | @compact");
+        assert_eq!(sb.format(), "Row:1 Col:1 | bell | @compact");
     }
 
     #[test]
     fn t_profile_not_shown_when_empty() {
         let mut sb = StatusBar::new();
         sb.set_profile("");
-        assert_eq!(sb.format(), "Row:0 Col:0");
+        assert_eq!(sb.format(), "Row:1 Col:1");
     }
 
     #[test]
@@ -710,9 +714,9 @@ mod tests {
     fn t_segments_default() {
         let sb = StatusBar::new();
         let segs = sb.format_segments();
-        // Default: just cursor position "0:0" with accent color.
+        // Default: just cursor position "1:1" with accent color.
         assert!(!segs.is_empty());
-        assert_eq!(segs[0].0, "0:0");
+        assert_eq!(segs[0].0, "1:1");
     }
 
     #[test]
@@ -720,7 +724,8 @@ mod tests {
         let mut sb = StatusBar::new();
         sb.update_cursor(5, 10);
         let segs = sb.format_segments();
-        assert_eq!(segs[0].0, "5:10");
+        // 1-indexed display: internal 5,10 → displayed as 6:11
+        assert_eq!(segs[0].0, "6:11");
     }
 
     #[test]
