@@ -2,7 +2,9 @@
 ///
 /// On successful connection, navigates to [TerminalScreen].
 
+library;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// SSH connection parameters (passed to SessionManager).
 class ConnectionParams {
@@ -57,10 +59,12 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   final _userController = TextEditingController();
   final _passController = TextEditingController();
   final _keyController = TextEditingController();
+  final _ticketController = TextEditingController();
 
   bool _connecting = false;
   bool _obscurePassword = true;
   bool _useKeyFile = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -69,13 +73,25 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     _userController.dispose();
     _passController.dispose();
     _keyController.dispose();
+    _ticketController.dispose();
     super.dispose();
+  }
+
+  /// Direct P2P connect via pasted ticket.
+  void _onDirectConnect(String ticket) {
+    if (ticket.trim().isEmpty) return;
+    // Navigate to terminal screen with the pasted ticket.
+    // The QR scan screen handler accepts both scanned and pasted tickets.
+    widget.onScanQr?.call();
   }
 
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _connecting = true);
+    setState(() {
+      _connecting = true;
+      _errorMessage = null;
+    });
 
     final params = ConnectionParams(
       host: _hostController.text.trim(),
@@ -91,9 +107,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       await widget.onConnect(params);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        setState(() {
+          _errorMessage = e.toString();
+        });
       }
     } finally {
       if (mounted) setState(() => _connecting = false);
@@ -196,6 +212,31 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 const SizedBox(height: 16),
               ],
 
+              // ── Error message (inline, not transient SnackBar) ──
+              if (_errorMessage != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade700, width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(color: Colors.red.shade200, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // ── Connect button ──
               FilledButton.icon(
                 onPressed: _connecting ? null : _connect,
@@ -219,11 +260,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 OutlinedButton.icon(
                   onPressed: () => widget.onEchoTest!(),
                   icon: const Icon(Icons.terminal),
-                  label: const Text('Echo Test (No SSH)'),
+                  label: const Text('Echo Test'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(44),
                   ),
                 ),
+
+              const SizedBox(height: 12),
 
               // ── Local Shell button (Android only) ──
               if (widget.onLocalShell != null)
@@ -235,6 +278,49 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     minimumSize: const Size.fromHeight(44),
                   ),
                 ),
+
+              const SizedBox(height: 12),
+
+              // ── P2P: Direct Ticket Input ──
+              if (widget.onScanQr != null) ...[
+                const Divider(),
+                const SizedBox(height: 8),
+                Text('P2P Direct Connect',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _ticketController,
+                  decoration: InputDecoration(
+                    labelText: 'Paste Ticket',
+                    hintText: 'Paste P2P ticket here...',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.paste),
+                      onPressed: () async {
+                        final clip = await Clipboard.getData('text/plain');
+                        if (clip?.text != null &&
+                            clip!.text!.isNotEmpty) {
+                          _ticketController.text = clip.text!;
+                        }
+                      },
+                    ),
+                  ),
+                  maxLines: 2,
+                  style: const TextStyle(
+                      fontSize: 12, fontFamily: 'monospace'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: _ticketController.text.isEmpty
+                      ? null
+                      : () => _onDirectConnect(_ticketController.text),
+                  icon: const Icon(Icons.link),
+                  label: const Text('Connect via Ticket'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 12),
 
