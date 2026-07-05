@@ -753,6 +753,11 @@ class _TerminalPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TerminalPainter old) {
-    return true; // Always repaint — FFI data may have changed
+    // Only repaint if something actually changed.
+    // Cursor visibility, cell data, or dimensions.
+    return cursorVisible != old.cursorVisible ||
+        cellWidth != old.cellWidth ||
+        cellHeight != old.cellHeight ||
+        !identical(screen, old.screen);
   }
 }
