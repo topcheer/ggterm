@@ -30,6 +30,14 @@ __ggterm_osc133_already_handled() {
     if [[ -n "$TERM_PROGRAM" && "$TERM_PROGRAM" == "Apple_Terminal" ]]; then
         return 0
     fi
+    # iTerm2 shell integration
+    if [[ -n "$ITERM_SESSION_ID" ]]; then
+        return 0
+    fi
+    # Warp terminal
+    if [[ -n "$WARP_HONOR_PS1" ]]; then
+        return 0
+    fi
     return 1
 }
 

@@ -23,6 +23,10 @@ __ggterm_osc133_already_handled() {
     if [ -n "$ITERM_SESSION_ID" ]; then
         return 0
     fi
+    # Warp terminal
+    if [ -n "$WARP_HONOR_PS1" ]; then
+        return 0
+    fi
     # Check if PROMPT_COMMAND already contains OSC 133
     if echo "$PROMPT_COMMAND" | grep -q "133;A" 2>/dev/null; then
         return 0
