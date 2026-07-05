@@ -85,6 +85,89 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     widget.onScanQr?.call();
   }
 
+  /// Paste from clipboard and parse SSH connection string.
+  /// Supports formats:
+  ///   ssh://user@host:port
+  ///   user@host:port
+  ///   user@host
+  ///   host:port
+  Future<void> _pasteAndParseSshUrl() async {
+    final data = await Clipboard.getData('text/plain');
+    if (data?.text == null || data!.text!.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Clipboard is empty')),
+        );
+      }
+      return;
+    }
+
+    var text = data.text!.trim();
+    // Strip ssh:// prefix.
+    if (text.startsWith('ssh://')) {
+      text = text.substring(6);
+    }
+    // Strip trailing path.
+    final slashIdx = text.indexOf('/');
+    if (slashIdx >= 0) {
+      text = text.substring(0, slashIdx);
+    }
+
+    String host = '';
+    String port = '22';
+    String user = '';
+
+    // Split user@rest.
+    final atIdx = text.indexOf('@');
+    if (atIdx >= 0) {
+      user = text.substring(0, atIdx);
+      text = text.substring(atIdx + 1);
+    }
+
+    // Split host:port — handle IPv6 [::1]:22 and regular host:22.
+    if (text.startsWith('[')) {
+      // IPv6: [addr]:port
+      final bracketEnd = text.indexOf(']');
+      if (bracketEnd >= 0) {
+        host = text.substring(1, bracketEnd);
+        final after = text.substring(bracketEnd + 1);
+        if (after.startsWith(':')) {
+          port = after.substring(1);
+        }
+      } else {
+        host = text;
+      }
+    } else {
+      final colonIdx = text.lastIndexOf(':');
+      if (colonIdx >= 0) {
+        final maybePort = text.substring(colonIdx + 1);
+        if (int.tryParse(maybePort) != null) {
+          host = text.substring(0, colonIdx);
+          port = maybePort;
+        } else {
+          host = text;
+        }
+      } else {
+        host = text;
+      }
+    }
+
+    setState(() {
+      _hostController.text = host;
+      _portController.text = port;
+      if (user.isNotEmpty) _userController.text = user;
+    });
+
+    if (mounted) {
+      final summary = user.isNotEmpty
+          ? '$user@$host:$port'
+          : '$host:$port';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Filled: $summary')),
+      );
+    }
+  }
+
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -134,10 +217,15 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               // ── Host ──
               TextFormField(
                 controller: _hostController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Host',
                   hintText: 'example.com',
-                  prefixIcon: Icon(Icons.dns),
+                  prefixIcon: const Icon(Icons.dns),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.content_paste),
+                    tooltip: 'Paste SSH URL (user@host:port)',
+                    onPressed: _pasteAndParseSshUrl,
+                  ),
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Enter host' : null,
