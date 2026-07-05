@@ -1047,6 +1047,7 @@ impl DesktopApp {
         }
 
         let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
+            self.show_toast("Nothing selected to copy");
             return;
         };
 
