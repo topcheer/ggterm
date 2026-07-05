@@ -70,11 +70,15 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   String? _errorMessage;
 
   static const _saveFile = 'last_connection.json';
+  static const _historyFile = 'connection_history.json';
+  List<Map<String, dynamic>> _history = [];
+  final int _maxHistory = 10;
 
   @override
   void initState() {
     super.initState();
     _loadSavedConnection();
+    _loadHistory();
   }
 
   /// Load saved connection details (host, port, user — never password).
@@ -115,6 +119,77 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     } catch (_) {
       // Ignore errors — non-critical feature.
     }
+  }
+
+  /// Load connection history list.
+  Future<void> _loadHistory() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_historyFile');
+      if (await file.exists()) {
+        final list = jsonDecode(await file.readAsString()) as List;
+        if (mounted) {
+          setState(() {
+            _history = list
+                .map((e) => e as Map<String, dynamic>)
+                .toList();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Save connection to history (deduplicated by host+port+user).
+  Future<void> _addToHistory() async {
+    final entry = {
+      'host': _hostController.text.trim(),
+      'port': _portController.text.trim(),
+      'user': _userController.text.trim(),
+      'keyFile': _keyController.text.trim(),
+      'useKeyFile': _useKeyFile,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+    if ((entry['host'] as String?)?.isEmpty ?? true) return;
+
+    // Deduplicate by host+port+user.
+    final key = '${entry['host']}:${entry['port']}@${entry['user']}';
+    _history.removeWhere((e) {
+      final ek = '${e['host']}:${e['port']}@${e['user']}';
+      return ek == key;
+    });
+    _history.insert(0, entry);
+    if (_history.length > _maxHistory) {
+      _history = _history.sublist(0, _maxHistory);
+    }
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_historyFile');
+      await file.writeAsString(jsonEncode(_history));
+    } catch (_) {}
+  }
+
+  /// Fill the form from a history entry.
+  void _fillFromHistory(Map<String, dynamic> entry) {
+    setState(() {
+      _hostController.text = entry['host'] as String? ?? '';
+      _portController.text = entry['port'] as String? ?? '22';
+      _userController.text = entry['user'] as String? ?? '';
+      _keyController.text = entry['keyFile'] as String? ?? '';
+      _useKeyFile = entry['useKeyFile'] as bool? ?? false;
+    });
+  }
+
+  /// Delete a history entry.
+  Future<void> _removeFromHistory(int index) async {
+    setState(() {
+      _history.removeAt(index);
+    });
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_historyFile');
+      await file.writeAsString(jsonEncode(_history));
+    } catch (_) {}
   }
 
   @override
@@ -241,6 +316,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       await widget.onConnect(params);
       // Save connection details for next launch (password excluded).
       await _saveConnection();
+      await _addToHistory();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -396,6 +472,47 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
               const SizedBox(height: 12),
 
+              // ── Connection History ──
+              if (_history.isNotEmpty) ...[
+                const Divider(),
+                Row(
+                  children: [
+                    const Icon(Icons.history, size: 16, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Text('Recent Connections',
+                        style: Theme.of(context).textTheme.titleSmall),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ..._history.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final e = entry.value;
+                  final host = e['host'] as String? ?? '';
+                  final port = e['port'] as String? ?? '22';
+                  final user = e['user'] as String? ?? '';
+                  final subtitle = user.isNotEmpty
+                      ? '$user@$host${port != '22' ? ':$port' : ''}'
+                      : '$host${port != '22' ? ':$port' : ''}';
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.dns, size: 20),
+                    title: Text(host,
+                        style: const TextStyle(fontSize: 14)),
+                    subtitle: Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade500)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      onPressed: () => _removeFromHistory(idx),
+                      tooltip: 'Remove',
+                    ),
+                    onTap: () => _fillFromHistory(e),
+                  );
+                }),
+              ],
+
+              const SizedBox(height: 12),
+
               // ── Echo Test button (no SSH needed) ──
               if (widget.onEchoTest != null)
                 OutlinedButton.icon(
@@ -523,6 +640,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                       '• Connect to any SSH server using host, port, and credentials\n'
                       '• Use Scan QR to connect to a GGTerm desktop sharing its terminal\n'
                       '• Long-press terminal text to copy it\n'
+                      '• Double-tap a word to copy just that word\n'
                       '• Two-finger drag to scroll through history',
                       style: TextStyle(
                         color: Colors.grey.shade400,
