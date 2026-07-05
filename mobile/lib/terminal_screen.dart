@@ -435,15 +435,74 @@ class _TerminalScreenState extends State<TerminalScreen> {
   /// This is the simplest and most useful copy action on mobile:
   /// user presses and holds, gets immediate "Copied N lines" feedback.
   void _onLongPress(LongPressStartDetails details) {
-    final text = _extractVisibleText();
-    if (text.trim().isEmpty) {
-      _showCopiedSnackBar('Nothing to copy');
-      return;
-    }
-
-    final lineCount = text.trim().split('\n').length;
-    Clipboard.setData(ClipboardData(text: text));
-    _showCopiedSnackBar('Copied $lineCount lines');
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.grey.shade900,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 4),
+              // Handle bar.
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade600,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.copy, color: Colors.white70),
+                title: const Text('Copy all visible text',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  final text = _extractVisibleText();
+                  if (text.trim().isEmpty) {
+                    _showCopiedSnackBar('Nothing to copy');
+                    return;
+                  }
+                  final lineCount = text.trim().split('\n').length;
+                  Clipboard.setData(ClipboardData(text: text));
+                  _showCopiedSnackBar(
+                      lineCount > 1 ? 'Copied $lineCount lines' : 'Copied');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.paste, color: Colors.white70),
+                title: const Text('Paste from clipboard',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pasteFromClipboard();
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.select_all, color: Colors.white70),
+                title: const Text('Select word',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Simulate double-tap word select at long-press position.
+                  _onDoubleTapDown(TapDownDetails(
+                    globalPosition: details.globalPosition,
+                    localPosition: details.localPosition,
+                  ));
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   /// Extract all visible terminal text as a string.
