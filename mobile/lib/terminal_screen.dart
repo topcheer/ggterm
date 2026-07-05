@@ -110,6 +110,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
           _screen = snapshot;
         });
       }
+
+      // Bell feedback — vibrate when terminal emits BEL (0x07).
+      // This alerts the user when a long-running command finishes,
+      // a tab-completion error occurs, or any program rings the bell.
+      if (snapshot.hasBell) {
+        HapticFeedback.mediumImpact();
+      }
     });
   }
 
