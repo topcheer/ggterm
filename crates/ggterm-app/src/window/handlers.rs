@@ -157,6 +157,20 @@ impl DesktopApp {
             return;
         }
 
+        // Escape clears text selection (when no overlays are open).
+        if !self.mods.ctrl
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
+            && self.selection.is_active()
+        {
+            self.selection.clear();
+            self.selection_auto_scroll = 0;
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
         // ── P14-D: Config-driven keybinding dispatch ──
         // All configurable actions are resolved through check_keybinding().
         // The resolved_keybindings map is populated from ConfigManager at
