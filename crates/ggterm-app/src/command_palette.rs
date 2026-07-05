@@ -282,6 +282,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.search_selection".into(),
+            label: "Search Selection on the Web".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.toggle_lock".into(),
             label: "Toggle Terminal Lock".into(),
             category: "Terminal".into(),

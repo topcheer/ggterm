@@ -1739,6 +1739,39 @@ impl DesktopApp {
         }
     }
 
+    /// Search the current selection on the web (opens default browser).
+    pub(super) fn search_selection_on_web(&mut self) {
+        // First, copy the selection to clipboard to extract the text.
+        self.copy_selection_to_clipboard();
+
+        if let Some(text) = crate::clipboard::read_clipboard() {
+            let query = text.trim();
+            if query.is_empty() {
+                self.show_toast("No text selected");
+                return;
+            }
+
+            // URL-encode the query.
+            let encoded = url_encode(query);
+            let url = format!("https://www.google.com/search?q={}", encoded);
+
+            // Open in default browser.
+            let (cmd, args) = if cfg!(target_os = "macos") {
+                ("open", vec![url])
+            } else if cfg!(target_os = "windows") {
+                ("cmd", vec!["/C".to_string(), "start".to_string(), url])
+            } else {
+                ("xdg-open", vec![url])
+            };
+            match std::process::Command::new(cmd).args(&args).spawn() {
+                Ok(_) => self.show_toast(format!("Searching: {}", query)),
+                Err(e) => self.show_toast(format!("Failed: {e}")),
+            }
+        } else {
+            self.show_toast("No text selected");
+        }
+    }
+
     /// Open the current working directory in the system file manager.
     /// macOS: Finder, Linux: xdg-open, Windows: explorer.
     pub(super) fn open_cwd_in_file_manager(&mut self) {
@@ -1995,6 +2028,9 @@ impl DesktopApp {
             "terminal.new_session" => {
                 self.new_session();
             }
+            "terminal.search_selection" => {
+                self.search_selection_on_web();
+            }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
             }
@@ -2236,6 +2272,11 @@ impl DesktopApp {
                 screen_data.len()
             ));
             self.p2p_share.tee_output(&screen_data);
+
+            // Trigger a screen redraw by sending Ctrl+L to the shell.
+            // This causes the shell to reprint its prompt, which gets
+            // tee'd to the mobile device on the next about_to_wait cycle.
+            self.active_session_mut().write_to_pty(b"\x0c");
         }
 
         // Read mobile input and forward to PTY.
@@ -2246,6 +2287,21 @@ impl DesktopApp {
             }
         }
     }
+}
+
+/// URL-encode a string for use in query parameters.
+fn url_encode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for byte in s.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(*byte as char);
+            }
+            b' ' => result.push('+'),
+            _ => result.push_str(&format!("%{:02X}", *byte)),
+        }
+    }
+    result
 }
 
 /// Detect a programming language from terminal output content.
@@ -2330,5 +2386,22 @@ mod tests {
     #[test]
     fn test_detect_language_none() {
         assert_eq!(detect_language_hint("hello world"), "");
+    }
+
+    #[test]
+    fn test_url_encode_basic() {
+        assert_eq!(url_encode("hello"), "hello");
+        assert_eq!(url_encode("hello world"), "hello+world");
+    }
+
+    #[test]
+    fn test_url_encode_special_chars() {
+        assert_eq!(url_encode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(url_encode("100%"), "100%25");
+    }
+
+    #[test]
+    fn test_url_encode_safe_chars() {
+        assert_eq!(url_encode("a-b_c.d~e"), "a-b_c.d~e");
     }
 }
