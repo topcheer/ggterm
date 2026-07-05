@@ -1997,7 +1997,9 @@ impl DesktopApp {
                                 let hit = cb.size / 2.0 + 4.0; // generous touch target
                                 let dx = px - cb.cx;
                                 let dy = py - cb.cy;
-                                if dx.abs() <= hit && dy.abs() <= hit && self.sessions.len() > 1
+                                if dx.abs() <= hit
+                                    && dy.abs() <= hit
+                                    && self.sessions.len() > 1
                                     && !self.sessions[tab_idx].is_pinned()
                                 {
                                     self.close_tab();
@@ -2512,6 +2514,9 @@ impl DesktopApp {
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
+            }
+            crate::context_menu::ContextMenuAction::OpenUrl => {
+                self.open_url_at_cursor();
             }
             crate::context_menu::ContextMenuAction::SplitHorizontal => {
                 self.split_pane_horizontal();
