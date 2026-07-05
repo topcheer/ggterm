@@ -2373,6 +2373,14 @@ impl Perform for Terminal {
                             self.last_command_duration = Some(start.elapsed());
                         }
                     }
+                    CommandMarkKind::PromptStart => {
+                        // Safety: clear any stale command_start_time.
+                        // If a CommandStart (B) was received without a matching
+                        // CommandEnd (D), the spinner would spin forever.
+                        // PromptStart (A) always means we're back at the prompt,
+                        // so any running command must have finished.
+                        self.command_start_time = None;
+                    }
                     _ => {}
                 }
             }
@@ -4626,6 +4634,21 @@ mod tests {
     fn t_command_blocks_last_exit_code_none() {
         let t = Terminal::new(80, 24);
         assert_eq!(t.last_exit_code(), None);
+    }
+
+    #[test]
+    fn t_prompt_start_clears_stale_command_running() {
+        // Simulate: CommandStart (B) received but CommandEnd (D) missed.
+        // Then PromptStart (A) arrives — should clear stale running state.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;B\x07"); // CommandStart
+        assert!(t.is_command_running());
+
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart (next prompt)
+        assert!(
+            !t.is_command_running(),
+            "PromptStart should clear stale command_running"
+        );
     }
 
     #[test]

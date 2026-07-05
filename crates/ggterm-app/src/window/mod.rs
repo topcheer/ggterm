@@ -181,6 +181,8 @@ pub struct DesktopApp {
     git_branch_cache: String,
     /// Counter to throttle git branch checks (every ~300 frames ≈ 5s).
     git_check_counter: u32,
+    /// Last time spinner frame was advanced (for ~12fps throttle).
+    last_spinner_tick: std::time::Instant,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -542,6 +544,7 @@ impl DesktopApp {
             always_on_top: false,
             git_branch_cache: String::new(),
             git_check_counter: 0,
+            last_spinner_tick: std::time::Instant::now(),
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
@@ -1208,7 +1211,14 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.command_running =
                     self.active_session().app().terminal().is_command_running();
                 if self.status_bar.command_running {
-                    self.status_bar.spinner_frame = self.status_bar.spinner_frame.wrapping_add(1);
+                    // Throttle spinner to ~12fps so it doesn't spin out of control
+                    // during resize/mouse-move (which call about_to_wait in a tight loop).
+                    let now = std::time::Instant::now();
+                    if now.duration_since(self.last_spinner_tick).as_millis() >= 80 {
+                        self.last_spinner_tick = now;
+                        self.status_bar.spinner_frame =
+                            self.status_bar.spinner_frame.wrapping_add(1);
+                    }
                 }
 
                 // Selection character count (live feedback while selecting).
@@ -1426,6 +1436,14 @@ impl ApplicationHandler for DesktopApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Auto-start P2P share (triggered by --p2p-share CLI flag).
+        #[cfg(feature = "p2p")]
+        if std::path::Path::new("/tmp/ggterm_auto_share").exists() && !self.p2p_share.is_active() {
+            let _ = std::fs::remove_file("/tmp/ggterm_auto_share");
+            self.toggle_p2p_share();
+            crate::p2p_share::log_to_file("auto-share triggered");
+        }
+
         // P29-C: Check if we should quit after confirmation.
         if self.should_quit {
             self.save_session_on_exit();
@@ -1507,17 +1525,38 @@ impl ApplicationHandler for DesktopApp {
         // P2P: Poll for connections and forward mobile input/output.
         #[cfg(feature = "p2p")]
         if self.p2p_share.is_active() {
-            // Tee PTY output to connected mobile device.
-            if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
-                let tee = self.active_session_mut().app_mut().take_pty_tee();
-                if !tee.is_empty() {
-                    self.p2p_share.tee_output(&tee);
+            static P2P_TICK: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            let tick = P2P_TICK.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+            crate::p2p_share::log_to_file(&format!(
+                "about_to_wait: P2P active, status={}, tick={}",
+                self.p2p_share.status as u8, tick
+            ));
+            let p2p_status = self.p2p_share.status;
+            let tee_len = self.active_session_mut().app_mut().take_pty_tee();
+            if p2p_status == crate::p2p_share::P2pShareStatus::Connected {
+                if !tee_len.is_empty() {
+                    crate::p2p_share::log_to_file(&format!(
+                        "about_to_wait: tee {} bytes to mobile",
+                        tee_len.len()
+                    ));
+                    self.p2p_share.tee_output(&tee_len);
                 }
             } else {
-                // Drain tee buffer even when not connected to prevent unbounded growth.
-                self.active_session_mut().app_mut().take_pty_tee();
+                // Waiting: put data back into pty_tee so it's available on connect.
+                if !tee_len.is_empty() {
+                    crate::p2p_share::log_to_file(&format!(
+                        "about_to_wait: Waiting, preserving {} bytes in pty_tee",
+                        tee_len.len()
+                    ));
+                    self.active_session_mut().app_mut().restore_pty_tee(tee_len);
+                }
             }
+            // When Waiting: DON'T drain tee — let it accumulate for flush on connect.
             self.poll_p2p();
+        } else {
+            // Not active at all: drain to prevent unbounded growth.
+            self.active_session_mut().app_mut().take_pty_tee();
         }
 
         // P28-C: Sync command history sidebar from OSC 133 marks.
@@ -1730,10 +1769,17 @@ impl ApplicationHandler for DesktopApp {
             }
         } else if !content_dirty {
             // Idle: sleep to avoid busy-looping at 100% CPU.
-            // Use a longer sleep when no blink is needed to minimize CPU.
-            // Blink needs a check every ~500ms, so 50ms sleep is fine
-            // (up to 50ms latency on blink start, imperceptible).
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            // When P2P is connected, use shorter sleep for lower latency
+            // (faster echo round-trip for mobile users).
+            #[cfg(feature = "p2p")]
+            let sleep_ms = if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
+                5
+            } else {
+                50
+            };
+            #[cfg(not(feature = "p2p"))]
+            let sleep_ms = 50;
+            std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
         }
 
         // If we have a pending (debounced) resize, keep polling so we apply
