@@ -327,7 +327,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _onTapUp(TapUpDetails details) {
-    // Track tap count for triple-tap detection.
+    // Track tap count for multi-tap detection.
+    // We handle ALL tap logic here (including double-tap word select)
+    // because Flutter's onDoubleTapDown doesn't increment our counter,
+    // which breaks triple-tap detection.
     final now = DateTime.now();
     if (now.difference(_lastTapTime).inMilliseconds < 400) {
       _tapCount++;
@@ -343,6 +346,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
       return;
     }
 
+    // Double-tap → select and copy word.
+    if (_tapCount == 2) {
+      _selectWordAt(details.localPosition);
+      return;
+    }
+
     // Single tap shows input bar for typing.
     if (!_showInputBar) {
       setState(() {
@@ -352,35 +361,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _inputFocusNode.requestFocus();
   }
 
-  /// Triple-tap → select and copy entire line at position.
-  void _selectLineAt(Offset position) {
-    final row = (position.dy / _cellHeight).floor();
-    if (row < 0 || row >= _screen.rows) return;
-
-    // Extract all non-null characters on this row.
-    final buf = StringBuffer();
-    for (var col = 0; col < _screen.cols; col++) {
-      final idx = row * _screen.cols + col;
-      if (idx < _screen.cells.length) {
-        final cell = _screen.cells[idx];
-        if (cell.charCode != 0) {
-          buf.write(cell.char);
-        }
-      }
-    }
-
-    final line = buf.toString().trimRight();
-    if (line.isEmpty) return;
-
-    Clipboard.setData(ClipboardData(text: line));
-    _showCopiedSnackBar('Copied line: ${line.length > 40 ? '${line.substring(0, 40)}...' : line}');
-  }
-
   /// Double-tap → select and copy the word at the tap position.
-  /// Scans left and right for word boundaries (alphanumeric + / . _ -).
-  void _onDoubleTapDown(TapDownDetails details) {
-    final col = (details.localPosition.dx / _cellWidth).floor();
-    final row = (details.localPosition.dy / _cellHeight).floor();
+  void _selectWordAt(Offset position) {
+    final col = (position.dx / _cellWidth).floor();
+    final row = (position.dy / _cellHeight).floor();
     if (row < 0 || row >= _screen.rows || col < 0 || col >= _screen.cols) {
       return;
     }
@@ -431,6 +415,32 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _showCopiedSnackBar('Copied: $word');
   }
 
+  /// Triple-tap → select and copy entire line at position.
+  void _selectLineAt(Offset position) {
+    final row = (position.dy / _cellHeight).floor();
+    if (row < 0 || row >= _screen.rows) return;
+
+    // Extract all non-null characters on this row.
+    final buf = StringBuffer();
+    for (var col = 0; col < _screen.cols; col++) {
+      final idx = row * _screen.cols + col;
+      if (idx < _screen.cells.length) {
+        final cell = _screen.cells[idx];
+        if (cell.charCode != 0) {
+          buf.write(cell.char);
+        }
+      }
+    }
+
+    final line = buf.toString().trimRight();
+    if (line.isEmpty) return;
+
+    Clipboard.setData(ClipboardData(text: line));
+    _showCopiedSnackBar('Copied line: ${line.length > 40 ? '${line.substring(0, 40)}...' : line}');
+  }
+
+  /// Double-tap → select and copy the word at the tap position.
+  /// Scans left and right for word boundaries (alphanumeric + / . _ -).
   /// Long-press → copy all visible terminal text to clipboard.
   /// This is the simplest and most useful copy action on mobile:
   /// user presses and holds, gets immediate "Copied N lines" feedback.
@@ -490,11 +500,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
-                  // Simulate double-tap word select at long-press position.
-                  _onDoubleTapDown(TapDownDetails(
-                    globalPosition: details.globalPosition,
-                    localPosition: details.localPosition,
-                  ));
+                  _selectWordAt(details.localPosition);
                 },
               ),
               const SizedBox(height: 8),
@@ -637,7 +643,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   return GestureDetector(
                     onScaleUpdate: _onScale,
                     onTapUp: _onTapUp,
-                    onDoubleTapDown: _onDoubleTapDown,
                     onLongPressStart: _onLongPress,
                     child: Stack(
                       children: [
