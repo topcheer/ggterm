@@ -384,6 +384,11 @@ impl DesktopApp {
         if self.sessions.len() <= 1 {
             return;
         }
+        // Don't close pinned tabs.
+        if self.sessions[self.active].is_pinned() {
+            self.show_toast("Tab is pinned — unpin first to close");
+            return;
+        }
         // Save the cwd of the active pane for "reopen closed tab".
         self.last_closed_cwd = self.sessions[self.active].cwd().map(|p| p.to_path_buf());
         self.sessions.remove(self.active);
@@ -822,6 +827,16 @@ impl DesktopApp {
             self.show_toast("Pane zoom restored");
         }
         log::info!("Pane zoom: {}", self.pane_zoomed);
+    }
+
+    /// Toggle pin on the active tab. Pinned tabs cannot be closed.
+    pub(super) fn toggle_pin_tab(&mut self) {
+        let pinned = self.active_session_mut().toggle_pin();
+        if pinned {
+            self.show_toast("Tab pinned");
+        } else {
+            self.show_toast("Tab unpinned");
+        }
     }
 
     /// Open URL at the current cursor position (or hovered link if any).
@@ -2061,6 +2076,9 @@ impl DesktopApp {
             }
             "split.zoom" => {
                 self.toggle_pane_zoom();
+            }
+            "tab.toggle_pin" => {
+                self.toggle_pin_tab();
             }
             "split.balance" => {
                 self.balance_panes();

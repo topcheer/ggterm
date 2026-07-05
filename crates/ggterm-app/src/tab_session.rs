@@ -135,6 +135,8 @@ pub struct TabSession {
     has_bell: bool,
     /// When this tab was created (for uptime display).
     created_at: std::time::Instant,
+    /// Pinned tabs cannot be closed with Ctrl+W or the × button.
+    pinned: bool,
 }
 
 impl TabSession {
@@ -161,6 +163,7 @@ impl TabSession {
             has_unread_output: false,
             has_bell: false,
             created_at: std::time::Instant::now(),
+            pinned: false,
         })
     }
 
@@ -175,6 +178,7 @@ impl TabSession {
             has_unread_output: false,
             has_bell: false,
             created_at: std::time::Instant::now(),
+            pinned: false,
         }
     }
 
@@ -268,6 +272,17 @@ impl TabSession {
     /// Returns true if this tab has a pending bell indicator.
     pub fn has_bell(&self) -> bool {
         self.has_bell
+    }
+
+    /// Returns true if this tab is pinned (cannot be closed).
+    pub fn is_pinned(&self) -> bool {
+        self.pinned
+    }
+
+    /// Toggle pin state. Pinned tabs cannot be closed with Ctrl+W or ×.
+    pub fn toggle_pin(&mut self) -> bool {
+        self.pinned = !self.pinned;
+        self.pinned
     }
 
     /// Returns true if any pane's grid has dirty content (needs redraw).

@@ -112,6 +112,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Z".into()),
         });
         r.register(Command {
+            id: "tab.toggle_pin".into(),
+            label: "Pin/Unpin Tab".into(),
+            category: "Tab".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.open_url".into(),
             label: "Open URL at Cursor".into(),
             category: "Terminal".into(),

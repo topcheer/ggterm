@@ -213,6 +213,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Command Palette".into(),
+            description: "Pin/Unpin tab (prevents accidental close)".into(),
+            category: ShortcutCategory::Tab,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+I".into(),
             description: "Rename current tab".into(),
             category: ShortcutCategory::Tab,
