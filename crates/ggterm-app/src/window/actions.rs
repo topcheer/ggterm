@@ -1169,16 +1169,14 @@ impl DesktopApp {
         let bracketed = self.active_session().app().terminal().bracketed_paste();
 
         // Safety: if the program doesn't support bracketed paste and the
-        // clipboard contains newlines, strip trailing newlines so the first
-        // line doesn't get auto-executed as a command.
+        // clipboard contains newlines, strip trailing newlines so an extra
+        // Enter isn't sent at the end (which would auto-execute the last
+        // line before the user has a chance to review).
         let text = if !bracketed && text.contains('\n') {
             let stripped = text.trim_end_matches(['\n', '\r']);
-            let line_count = text.lines().count();
+            let line_count = stripped.lines().count();
             if line_count > 1 {
-                self.show_toast(format!(
-                    "Pasted first line ({} lines stripped)",
-                    line_count.saturating_sub(1)
-                ));
+                self.show_toast(format!("Pasted {} lines (bracketed paste off)", line_count));
             }
             stripped.to_string()
         } else {
