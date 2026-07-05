@@ -310,6 +310,43 @@ impl DesktopApp {
     // ── Tab management (P10-A) ──
 
     /// Open a new tab: create a TabSession with a fresh PTY.
+    /// Close all tabs and open a fresh single tab.
+    pub(super) fn new_session(&mut self) {
+        let cols = self.config.cols;
+        let rows = self.config.rows;
+        let shell = self.shell().to_string();
+
+        // Send reset sequences to all existing PTYs.
+        for session in &mut self.sessions {
+            session.write_to_all_panes(
+                b"\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?25h\x1bc",
+            );
+        }
+
+        // Drop all sessions.
+        self.sessions.clear();
+        self.active = 0;
+        self.last_active_tab = None;
+
+        // Create a fresh session.
+        match TabSession::new(cols, rows, &shell) {
+            Ok(session) => {
+                self.sessions.push(session);
+                self.active = 0;
+                self.selection.clear();
+                self.selection_auto_scroll = 0;
+                self.show_toast("New session started");
+                log::info!("New session: all tabs closed, fresh tab opened");
+            }
+            Err(e) => {
+                log::error!("Failed to create new session: {e}");
+            }
+        }
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     pub(super) fn open_tab(&mut self) {
         let cols = self.config.cols;
         let rows = self.config.rows;
@@ -1955,6 +1992,9 @@ impl DesktopApp {
             "config.reload" => {
                 self.reload_configuration();
             }
+            "terminal.new_session" => {
+                self.new_session();
+            }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
             }
@@ -2132,10 +2172,10 @@ impl DesktopApp {
             let share_top = bar_y + 3.0;
             let share_bot = bar_y + bar_h - 3.0;
 
-            log::debug!(
-                "share_button: mx={mx}, my={my}, x=[{share_x:.0}, {:.0}], y=[{share_top:.0}, {share_bot:.0}]",
+            crate::p2p_share::log_to_file(&format!(
+                "is_in_share_button: cursor=({mx},{my}), share_btn=[{share_x:.0}-{:.0}, {share_top:.0}-{share_bot:.0}]",
                 share_x + share_w
-            );
+            ));
 
             mx >= share_x as f64
                 && mx <= (share_x + share_w) as f64
@@ -2189,11 +2229,13 @@ impl DesktopApp {
             };
             self.p2p_share.resize(cols, rows);
 
-            // Send a screen refresh — tee the current PTY output to mobile.
-            let screen_bytes = self.active_session_mut().app_mut().take_pty_tee();
-            if !screen_bytes.is_empty() {
-                self.p2p_share.tee_output(&screen_bytes);
-            }
+            // Send accumulated PTY output (the raw bytes from the shell).
+            let screen_data = self.active_session_mut().app_mut().take_pty_tee();
+            crate::p2p_share::log_to_file(&format!(
+                "poll_p2p: sending {} bytes of accumulated PTY data",
+                screen_data.len()
+            ));
+            self.p2p_share.tee_output(&screen_data);
         }
 
         // Read mobile input and forward to PTY.
