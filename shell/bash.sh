@@ -12,6 +12,28 @@ if [ -n "$GGTERM_SHELL_INTEGRATION_BASH" ]; then
 fi
 GGTERM_SHELL_INTEGRATION_BASH=1
 
+# ── Conflict detection ──
+# Skip if another tool already sends OSC 133 marks.
+__ggterm_osc133_already_handled() {
+    # Starship sends OSC 133 when shell integration is enabled
+    if [ -n "$STARSHIP_SHELL_INTEGRATION" ]; then
+        return 0
+    fi
+    # iTerm2 shell integration
+    if [ -n "$ITERM_SESSION_ID" ]; then
+        return 0
+    fi
+    # Check if PROMPT_COMMAND already contains OSC 133
+    if echo "$PROMPT_COMMAND" | grep -q "133;A" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+if __ggterm_osc133_already_handled; then
+    return 0
+fi
+
 # ── OSC 133 helpers ──
 
 # A: prompt start — before shell draws the prompt
