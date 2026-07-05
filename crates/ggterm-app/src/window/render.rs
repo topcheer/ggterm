@@ -281,8 +281,10 @@ impl DesktopApp {
 
                 // Tab title text — only truncate if genuinely too long.
                 let title = tab.format();
-                // Reserve space for close button only when 2+ tabs exist.
-                let reserved = if self.tab_bar.tabs.len() > 1 {
+                // Reserve space for close button only when 2+ tabs AND not pinned.
+                let is_pinned = tab_idx < self.sessions.len()
+                    && self.sessions[tab_idx].is_pinned();
+                let reserved = if self.tab_bar.tabs.len() > 1 && !is_pinned {
                     24.0 // close "x" + margin
                 } else {
                     8.0 // just right padding
@@ -311,7 +313,8 @@ impl DesktopApp {
                 });
 
                 // Close button "x" — show on active tab, hovered tab, or when 2+ tabs.
-                if self.tab_bar.tabs.len() > 1 {
+                // Skip for pinned tabs (they can't be closed).
+                if self.tab_bar.tabs.len() > 1 && !is_pinned {
                     // Check if mouse is hovering this tab.
                     let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
                     let is_hovered =

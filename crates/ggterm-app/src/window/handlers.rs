@@ -1997,7 +1997,9 @@ impl DesktopApp {
                                 let hit = cb.size / 2.0 + 4.0; // generous touch target
                                 let dx = px - cb.cx;
                                 let dy = py - cb.cy;
-                                if dx.abs() <= hit && dy.abs() <= hit && self.sessions.len() > 1 {
+                                if dx.abs() <= hit && dy.abs() <= hit && self.sessions.len() > 1
+                                    && !self.sessions[tab_idx].is_pinned()
+                                {
                                     self.close_tab();
                                     return;
                                 }
@@ -2134,6 +2136,7 @@ impl DesktopApp {
                         .compute_layout(self.tab_layout_width(), self.tab_font_size());
                     if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px)
                         && self.sessions.len() > 1
+                        && !self.sessions[tab_idx].is_pinned()
                     {
                         // Switch to the tab first, then close it.
                         self.switch_tab(tab_idx);
