@@ -1739,6 +1739,26 @@ impl DesktopApp {
         }
     }
 
+    /// Copy the current selection as styled HTML, preserving colors and attributes.
+    pub(super) fn copy_selection_as_html(&mut self) {
+        let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
+            self.show_toast("No text selected");
+            return;
+        };
+
+        let grid = self.active_session().app().grid();
+        let theme = self.active_session().app().theme();
+
+        let html = selection_to_html(grid, sx, sy, ex, ey, theme);
+
+        if html.is_empty() {
+            self.show_toast("No text selected");
+        } else {
+            crate::clipboard::set_clipboard_bytes(html.as_bytes());
+            self.show_toast("Copied as HTML");
+        }
+    }
+
     /// Run the current selection as a shell command.
     /// Copies selection to clipboard, then writes it + newline to PTY.
     pub(super) fn run_selection_as_command(&mut self) {
@@ -2111,6 +2131,9 @@ impl DesktopApp {
             "terminal.run_selection" => {
                 self.run_selection_as_command();
             }
+            "terminal.copy_as_html" => {
+                self.copy_selection_as_html();
+            }
             "terminal.toggle_lock" => {
                 self.toggle_lock();
             }
@@ -2391,6 +2414,132 @@ fn truncate_for_toast(s: &str) -> String {
     } else {
         s.to_string()
     }
+}
+
+/// Resolve a Color to an RGB hex string (e.g., "#ff0000").
+fn color_to_hex(color: &ggterm_core::Color, theme: &ggterm_render::RenderTheme) -> String {
+    match color {
+        ggterm_core::Color::Default => "#c0c0c0".to_string(),
+        ggterm_core::Color::Indexed(i) => {
+            if (*i as usize) < 16 {
+                match theme.palette[*i as usize] {
+                    ggterm_core::Color::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b),
+                    _ => "#c0c0c0".to_string(),
+                }
+            } else {
+                "#c0c0c0".to_string()
+            }
+        }
+        ggterm_core::Color::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b),
+    }
+}
+
+/// Escape HTML special characters.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Convert a selection region to styled HTML with inline CSS.
+fn selection_to_html(
+    grid: &ggterm_core::Grid,
+    sx: u16,
+    sy: u16,
+    ex: u16,
+    ey: u16,
+    theme: &ggterm_render::RenderTheme,
+) -> String {
+    let mut html = String::from(
+        "<pre style=\"font-family:monospace;font-size:14px;background:#1a1a2e;color:#c0c0c0;padding:12px;border-radius:6px;overflow-x:auto\">",
+    );
+
+    let width = grid.width() as u16;
+
+    for row in sy..=ey {
+        let col_start = if row == sy { sx } else { 0 };
+        let col_end = if row == ey { ex } else { width - 1 };
+
+        let mut span_buf = String::new();
+        let mut cur_fg: Option<String> = None;
+        let mut cur_bold = false;
+        let mut cur_italic = false;
+
+        for col in col_start..=col_end {
+            let cell = match grid.display_cell(col as usize, row as usize) {
+                Some(c) => c,
+                None => continue,
+            };
+            if cell.is_wide_spacer() {
+                continue;
+            }
+
+            // Determine effective fg color (bright override for bold).
+            let cell_fg = if cell.flags.contains(ggterm_core::CellFlags::BOLD)
+                && let ggterm_core::Color::Indexed(i) = cell.fg
+                && i < 8
+            {
+                ggterm_core::Color::Indexed(i + 8)
+            } else {
+                cell.fg
+            };
+            let fg_hex = if matches!(cell_fg, ggterm_core::Color::Default) {
+                None
+            } else {
+                Some(color_to_hex(&cell_fg, theme))
+            };
+            let bold = cell.flags.contains(ggterm_core::CellFlags::BOLD);
+            let italic = cell.flags.contains(ggterm_core::CellFlags::ITALIC);
+
+            // Flush if style changed.
+            if fg_hex != cur_fg || bold != cur_bold || italic != cur_italic {
+                flush_span(&mut span_buf, &cur_fg, cur_bold, cur_italic, &mut html);
+                cur_fg = fg_hex;
+                cur_bold = bold;
+                cur_italic = italic;
+            }
+
+            span_buf.push(cell.ch);
+            for &c in &cell.combining {
+                span_buf.push(c);
+            }
+        }
+        flush_span(&mut span_buf, &cur_fg, cur_bold, cur_italic, &mut html);
+        html.push('\n');
+    }
+
+    html.push_str("</pre>");
+    html
+}
+
+/// Flush accumulated text as an HTML span with inline style.
+fn flush_span(buf: &mut String, fg: &Option<String>, bold: bool, italic: bool, html: &mut String) {
+    if buf.is_empty() {
+        return;
+    }
+    let mut style = String::new();
+    if let Some(c) = fg {
+        style.push_str(&format!("color:{}", c));
+    }
+    if bold {
+        if !style.is_empty() {
+            style.push(';');
+        }
+        style.push_str("font-weight:bold");
+    }
+    if italic {
+        if !style.is_empty() {
+            style.push(';');
+        }
+        style.push_str("font-style:italic");
+    }
+    let escaped = html_escape(buf);
+    if style.is_empty() {
+        html.push_str(&escaped);
+    } else {
+        html.push_str(&format!("<span style=\"{}\">{}</span>", style, escaped));
+    }
+    buf.clear();
 }
 
 /// Detect a programming language from terminal output content.
