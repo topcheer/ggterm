@@ -438,15 +438,15 @@ mod tests {
     fn test_pty_write_echo() {
         let mut pty = PtySession::open(80, 24).expect("open pty");
 
-        // Give the shell a moment to start
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Give the shell a moment to start (more time under parallel test load).
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         // Write a command
         let cmd = b"echo hello_ggterm_12345\n";
         pty.write(cmd).expect("write");
 
-        // Give the shell time to process
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        // Give the shell time to process (more time under parallel test load).
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         // Read output
         let mut buf = [0u8; 8192];
