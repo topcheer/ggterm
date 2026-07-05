@@ -178,6 +178,14 @@ impl ShellIntegrationConfig {
             ("TERM".to_string(), "xterm-256color".to_string()),
             // Advertise true color support.
             ("COLORTERM".to_string(), "truecolor".to_string()),
+            // Standard terminal identification env vars.
+            // Many programs (tmux, nvim, fzf, bat, delta) use these
+            // to enable features or adjust behavior.
+            ("TERM_PROGRAM".to_string(), "GGTerm".to_string()),
+            (
+                "TERM_PROGRAM_VERSION".to_string(),
+                env!("CARGO_PKG_VERSION").to_string(),
+            ),
         ];
 
         if self.prepared && self.kind == ShellKind::Zsh {
