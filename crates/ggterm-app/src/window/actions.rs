@@ -2642,4 +2642,82 @@ mod tests {
     fn test_url_encode_safe_chars() {
         assert_eq!(url_encode("a-b_c.d~e"), "a-b_c.d~e");
     }
+
+    #[test]
+    fn test_html_escape() {
+        assert_eq!(html_escape("hello"), "hello");
+        assert_eq!(html_escape("a<b>c"), "a&lt;b&gt;c");
+        assert_eq!(html_escape("a&b"), "a&amp;b");
+        assert_eq!(html_escape("a&<b>"), "a&amp;&lt;b&gt;");
+    }
+
+    #[test]
+    fn test_truncate_for_toast_short() {
+        assert_eq!(truncate_for_toast("hello"), "hello");
+    }
+
+    #[test]
+    fn test_truncate_for_toast_long() {
+        let long = "a".repeat(50);
+        let result = truncate_for_toast(&long);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.len(), 40);
+    }
+
+    #[test]
+    fn test_color_to_hex_rgb() {
+        let theme = ggterm_render::RenderTheme::by_name("dark").unwrap();
+        assert_eq!(
+            color_to_hex(&ggterm_core::Color::Rgb(255, 0, 0), &theme),
+            "#ff0000"
+        );
+        assert_eq!(
+            color_to_hex(&ggterm_core::Color::Rgb(0, 128, 255), &theme),
+            "#0080ff"
+        );
+    }
+
+    #[test]
+    fn test_color_to_hex_indexed() {
+        let theme = ggterm_render::RenderTheme::by_name("dark").unwrap();
+        // Color index 1 = red in most palettes
+        let result = color_to_hex(&ggterm_core::Color::Indexed(1), &theme);
+        assert!(result.starts_with('#'));
+        assert_eq!(result.len(), 7);
+    }
+
+    #[test]
+    fn test_color_to_hex_default() {
+        let theme = ggterm_render::RenderTheme::by_name("dark").unwrap();
+        assert_eq!(
+            color_to_hex(&ggterm_core::Color::Default, &theme),
+            "#c0c0c0"
+        );
+    }
+
+    #[test]
+    fn test_flush_span_plain() {
+        let mut html = String::new();
+        let mut buf = "hello".to_string();
+        flush_span(&mut buf, &None, false, false, &mut html);
+        assert_eq!(html, "hello");
+    }
+
+    #[test]
+    fn test_flush_span_bold() {
+        let mut html = String::new();
+        let mut buf = "bold text".to_string();
+        flush_span(&mut buf, &Some("#ff0000".into()), true, false, &mut html);
+        assert!(html.contains("color:#ff0000"));
+        assert!(html.contains("font-weight:bold"));
+        assert!(html.contains("bold text"));
+    }
+
+    #[test]
+    fn test_flush_span_empty() {
+        let mut html = String::new();
+        let mut buf = String::new();
+        flush_span(&mut buf, &Some("#fff".into()), true, true, &mut html);
+        assert!(html.is_empty());
+    }
 }
