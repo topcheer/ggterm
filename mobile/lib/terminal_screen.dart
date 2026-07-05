@@ -314,13 +314,68 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _onTapUp(TapUpDetails details) {
-    // Double-tap toggles the input bar.
+    // Single tap shows input bar for typing.
     if (!_showInputBar) {
       setState(() {
         _showInputBar = true;
       });
     }
     _inputFocusNode.requestFocus();
+  }
+
+  /// Double-tap → select and copy the word at the tap position.
+  /// Scans left and right for word boundaries (alphanumeric + / . _ -).
+  void _onDoubleTapDown(TapDownDetails details) {
+    final col = (details.localPosition.dx / _cellWidth).floor();
+    final row = (details.localPosition.dy / _cellHeight).floor();
+    if (row < 0 || row >= _screen.rows || col < 0 || col >= _screen.cols) {
+      return;
+    }
+
+    final idx = row * _screen.cols + col;
+    if (idx >= _screen.cells.length) return;
+    final cell = _screen.cells[idx];
+    if (cell.charCode == 0) return;
+
+    // Scan left for word start.
+    var startCol = col;
+    while (startCol > 0) {
+      final i = row * _screen.cols + (startCol - 1);
+      if (i >= _screen.cells.length) break;
+      final c = _screen.cells[i];
+      if (c.charCode == 0) break;
+      final ch = c.char;
+      if (!RegExp(r'[A-Za-z0-9/._\-~]').hasMatch(ch)) break;
+      startCol--;
+    }
+
+    // Scan right for word end.
+    var endCol = col;
+    while (endCol < _screen.cols - 1) {
+      final i = row * _screen.cols + (endCol + 1);
+      if (i >= _screen.cells.length) break;
+      final c = _screen.cells[i];
+      if (c.charCode == 0) break;
+      final ch = c.char;
+      if (!RegExp(r'[A-Za-z0-9/._\-~]').hasMatch(ch)) break;
+      endCol++;
+    }
+
+    // Extract word text.
+    final buf = StringBuffer();
+    for (var c = startCol; c <= endCol; c++) {
+      final i = row * _screen.cols + c;
+      if (i < _screen.cells.length) {
+        final cell = _screen.cells[i];
+        if (cell.charCode != 0) buf.write(cell.char);
+      }
+    }
+
+    final word = buf.toString();
+    if (word.isEmpty) return;
+
+    Clipboard.setData(ClipboardData(text: word));
+    _showCopiedSnackBar('Copied: $word');
   }
 
   /// Long-press → copy all visible terminal text to clipboard.
@@ -458,6 +513,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   return GestureDetector(
                     onScaleUpdate: _onScale,
                     onTapUp: _onTapUp,
+                    onDoubleTapDown: _onDoubleTapDown,
                     onLongPressStart: _onLongPress,
                     child: Stack(
                       children: [

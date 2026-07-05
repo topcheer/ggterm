@@ -13,6 +13,20 @@
 if not set -q GGTERM_SHELL_INTEGRATION_FISH
     set -g GGTERM_SHELL_INTEGRATION_FISH 1
 
+    # ── Conflict detection ──
+    # Skip if another tool already sends OSC 133 marks.
+    set -l _ggterm_skip 0
+    if set -q STARSHIP_SHELL_INTEGRATION
+        set _ggterm_skip 1
+    end
+    if set -q ITERM_SESSION_ID
+        set _ggterm_skip 1
+    end
+    if test "$TERM_PROGRAM" = "Apple_Terminal"
+        set _ggterm_skip 1
+    end
+    if test "$_ggterm_skip" = 0
+
     # ── OSC 133 helpers ──
 
     function __ggterm_osc133_A   # prompt start
@@ -57,5 +71,6 @@ if not set -q GGTERM_SHELL_INTEGRATION_FISH
     end
 
     # Emit initial prompt start on shell launch
-    __ggterm_osc133_A
+        __ggterm_osc133_A
+    end
 end
