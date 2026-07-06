@@ -247,11 +247,7 @@ pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize
 /// into `buf`. Returns the number of bytes written (excluding NUL), or 0 if
 /// the session doesn't exist or the title is empty.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ggterm_session_title(
-    id: u32,
-    buf: *mut c_char,
-    max_len: usize,
-) -> usize {
+pub unsafe extern "C" fn ggterm_session_title(id: u32, buf: *mut c_char, max_len: usize) -> usize {
     if buf.is_null() || max_len == 0 {
         return 0;
     }
@@ -273,11 +269,7 @@ pub unsafe extern "C" fn ggterm_session_title(
 /// (including NUL) into `buf`. Returns bytes written (excl. NUL), or 0 if
 /// the session has no cwd.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ggterm_session_cwd(
-    id: u32,
-    buf: *mut c_char,
-    max_len: usize,
-) -> usize {
+pub unsafe extern "C" fn ggterm_session_cwd(id: u32, buf: *mut c_char, max_len: usize) -> usize {
     if buf.is_null() || max_len == 0 {
         return 0;
     }
@@ -405,6 +397,17 @@ pub extern "C" fn ggterm_session_display_offset(id: u32) -> usize {
     let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get(&id) {
         s.handle.terminal.grid().display_offset()
+    } else {
+        0
+    }
+}
+
+/// Get the total number of scrollback lines (off-screen history).
+#[unsafe(no_mangle)]
+pub extern "C" fn ggterm_session_scrollback_len(id: u32) -> usize {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id) {
+        s.handle.terminal.grid().scrollback_len()
     } else {
         0
     }

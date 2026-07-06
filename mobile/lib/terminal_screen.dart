@@ -70,6 +70,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
   double get _cellWidth => _fontSize * 0.6;
   double get _cellHeight => _fontSize * 1.3;
 
+  /// Human-readable scroll position label (e.g., "↓ 45%", "↓ 1.2k lines").
+  String get _scrollPercentLabel {
+    final offset = widget.sessionManager.displayOffset(widget.sessionId);
+    if (offset <= 0) return '↓';
+    final total = widget.sessionManager.scrollbackLen(widget.sessionId);
+    if (total <= 0) return '↓ $offset';
+    final pct = ((offset / total) * 100).round().clamp(1, 99);
+    if (offset > 999) {
+      return '↓ ${offset ~/ 1000}.${(offset % 1000) ~/ 100}k';
+    }
+    return '↓ $pct%';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -656,15 +669,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
         actions: [
-          // Scroll-to-bottom button (visible when scrolled up).
+          // Scroll-to-bottom button with line count (visible when scrolled up).
           if (_isScrolledUp)
-            IconButton(
-              icon: const Icon(Icons.vertical_align_bottom),
-              tooltip: 'Scroll to bottom',
+            TextButton.icon(
               onPressed: () {
                 widget.sessionManager.resetViewport(widget.sessionId);
                 _lastFrameHash = 0; // Force refresh
               },
+              icon: const Icon(Icons.vertical_align_bottom,
+                  color: Colors.white70, size: 18),
+              label: Text(
+                _scrollPercentLabel,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
             ),
           // Transport status indicator (tap to show details)
           Tooltip(

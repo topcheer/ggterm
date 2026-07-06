@@ -340,6 +340,15 @@ class SessionManager {
     return _ffi.sessionDisplayOffset(id);
   }
 
+  /// Get total scrollback history length (off-screen lines).
+  int scrollbackLen(int id) {
+    try {
+      return _ffi.sessionScrollbackLen(id);
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// One-step pump + flush cycle.
   /// Call this in a timer loop for the render cycle.
   int pumpAndFlush(int id) {

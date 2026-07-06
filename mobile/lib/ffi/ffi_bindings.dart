@@ -127,6 +127,7 @@ class GgtermFfi {
   late final void Function(int, int) sessionScrollDown;
   late final void Function(int) sessionResetViewport;
   late final int Function(int) sessionDisplayOffset;
+  late final int Function(int) sessionScrollbackLen;
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnect;
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnectKey;
   late final int Function(int) echoConnect;
@@ -237,6 +238,13 @@ class GgtermFfi {
     sessionDisplayOffset = _lib
         .lookupFunction<_DisplayOffsetC, _DisplayOffsetDart>(
             'ggterm_session_display_offset');
+    try {
+      sessionScrollbackLen = _lib
+          .lookupFunction<_DisplayOffsetC, _DisplayOffsetDart>(
+              'ggterm_session_scrollback_len');
+    } catch (_) {
+      sessionScrollbackLen = (_) => 0;
+    }
     // SSH functions are optional (behind the "ssh" feature flag in Rust)
     try {
       sshConnect = _lib
