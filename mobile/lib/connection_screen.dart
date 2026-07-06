@@ -346,6 +346,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               // ── Host ──
               TextFormField(
                 controller: _hostController,
+                autofillHints: const [AutofillHints.url],
                 decoration: InputDecoration(
                   labelText: 'Host',
                   hintText: 'example.com',
@@ -382,6 +383,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               // ── Username ──
               TextFormField(
                 controller: _userController,
+                autofillHints: const [AutofillHints.username],
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   hintText: 'root',
@@ -414,6 +416,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 TextFormField(
                   controller: _passController,
                   obscureText: _obscurePassword,
+                  autofillHints: const [AutofillHints.password],
+                  textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock),
