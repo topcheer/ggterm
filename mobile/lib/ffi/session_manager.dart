@@ -327,9 +327,10 @@ class SessionManager {
 
   /// One-step pump + flush cycle.
   /// Call this in a timer loop for the render cycle.
-  void pumpAndFlush(int id) {
-    pump(id);
+  int pumpAndFlush(int id) {
+    final bytes = pump(id);
     flush(id);
+    return bytes;
   }
 
   String _lastError = '';

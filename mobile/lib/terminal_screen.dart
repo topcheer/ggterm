@@ -40,6 +40,7 @@ class TerminalScreen extends StatefulWidget {
 }
 
 class _TerminalScreenState extends State<TerminalScreen> {
+  static final _wordCharRe = RegExp(r'[A-Za-z0-9/._\-~]');
   double _fontSize = 13.0;
   static const _fontSizeFile = 'font_size.json';
   ScreenSnapshot _screen = ScreenSnapshot.empty;
@@ -119,8 +120,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final mgr = widget.sessionManager;
       final id = widget.sessionId;
 
-      // Pump transport data
-      mgr.pumpAndFlush(id);
+      // Pump transport data — returns bytes read.
+      final bytesPumped = mgr.pumpAndFlush(id);
 
       // Check alive
       final alive = mgr.isAlive(id);
@@ -131,9 +132,21 @@ class _TerminalScreenState extends State<TerminalScreen> {
       // Get screen snapshot
       final snapshot = mgr.getScreenSnapshot(id);
 
+      // Skip expensive hash comparison if no data was pumped AND
+      // transport state + scroll position haven't changed.
+      final scrolledUp = widget.sessionManager.displayOffset(id) > 0;
+      if (bytesPumped == 0 &&
+          alive == _transportAlive &&
+          scrolledUp == _isScrolledUp) {
+        // Only check bell on idle.
+        if (snapshot.hasBell) {
+          HapticFeedback.mediumImpact();
+        }
+        return;
+      }
+
       // Only rebuild if content changed (cursor blink handled separately).
       final hash = _computeFrameHash(snapshot);
-      final scrolledUp = widget.sessionManager.displayOffset(id) > 0;
       if (hash != _lastFrameHash || alive != _transportAlive || scrolledUp != _isScrolledUp) {
         _lastFrameHash = hash;
         _isScrolledUp = scrolledUp;
@@ -393,7 +406,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final c = _screen.cells[i];
       if (c.charCode == 0) break;
       final ch = c.char;
-      if (!RegExp(r'[A-Za-z0-9/._\-~]').hasMatch(ch)) break;
+      if (!_wordCharRe.hasMatch(ch)) break;
       startCol--;
     }
 
@@ -405,7 +418,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final c = _screen.cells[i];
       if (c.charCode == 0) break;
       final ch = c.char;
-      if (!RegExp(r'[A-Za-z0-9/._\-~]').hasMatch(ch)) break;
+      if (!_wordCharRe.hasMatch(ch)) break;
       endCol++;
     }
 
