@@ -101,6 +101,24 @@ pub fn row_to_runs(
             );
         }
 
+        // Bold-as-bright: when bold attribute is set and fg is an indexed
+        // color 0-7, promote to the bright variant (8-15). This matches the
+        // xterm/Alacritty standard behavior for 16-color palette.
+        // Note: Rgb colors are not affected (only indexed palette).
+        let bold = cell.flags.contains(CellFlags::BOLD);
+        if bold
+            && let ggterm_core::Color::Indexed(n) = &cell.fg
+            && !cell.flags.contains(CellFlags::REVERSE)
+            && *n < 8
+        {
+            let bright_n = n + 8;
+            if let Some(rgb) = palette_overrides.get(&bright_n) {
+                fg_rgb = *rgb;
+            } else {
+                fg_rgb = theme.resolve_indexed(bright_n);
+            }
+        }
+
         // P13-A: HIDDEN — set fg = bg so text is invisible.
         if cell.flags.contains(CellFlags::HIDDEN) {
             fg_rgb = bg_rgb;
@@ -141,7 +159,6 @@ pub fn row_to_runs(
             // When !c.focused, cursor renders as underline (hollow outline)
         }
 
-        let bold = cell.flags.contains(CellFlags::BOLD);
         let italic = cell.flags.contains(CellFlags::ITALIC);
         let has_link = cell.hyperlink.is_some();
         // OSC 8 hyperlinks render with underline even if cell doesn't have UNDERLINE flag.
@@ -561,6 +578,63 @@ mod tests {
             runs[0].bg,
             (255, 128, 0),
             "bg should be swapped to fg color"
+        );
+    }
+
+    #[test]
+    fn test_bold_as_bright_promotes_color() {
+        // Bold indexed color 1 (red) should use bright variant (color 9).
+        let mut grid = Grid::new(2, 1);
+        let mut c = Cell::with_char('X');
+        c.fg = Color::Indexed(1); // red
+        c.flags |= CellFlags::BOLD;
+        grid[(0, 0)] = c;
+
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
+        assert_eq!(runs.len(), 1);
+        // The bright red (9) should differ from normal red (1).
+        let normal_red = theme.resolve_indexed(1);
+        let bright_red = theme.resolve_indexed(9);
+        assert_ne!(normal_red, bright_red, "bright should differ from normal");
+        assert_eq!(runs[0].fg, bright_red, "bold should use bright variant");
+    }
+
+    #[test]
+    fn test_non_bold_uses_normal_color() {
+        // Non-bold indexed color 1 (red) should use normal variant.
+        let mut grid = Grid::new(1, 1);
+        let mut c = Cell::with_char('X');
+        c.fg = Color::Indexed(1); // red
+        grid[(0, 0)] = c;
+
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
+        assert_eq!(runs.len(), 1);
+        assert_eq!(
+            runs[0].fg,
+            theme.resolve_indexed(1),
+            "non-bold uses normal color"
         );
     }
 }

@@ -163,7 +163,7 @@ impl RenderTheme {
         }
     }
 
-    fn resolve_indexed(&self, n: u8) -> (u8, u8, u8) {
+    pub fn resolve_indexed(&self, n: u8) -> (u8, u8, u8) {
         match n {
             0..=15 => {
                 if let Color::Rgb(r, g, b) = self.palette[n as usize] {
