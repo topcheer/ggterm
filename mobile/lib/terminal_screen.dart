@@ -141,6 +141,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
         _transportAlive = alive;
       }
 
+      // Apply inertial scrolling (continues scrolling after finger lift).
+      _applyInertialScroll();
+
       // Get screen snapshot
       final snapshot = mgr.getScreenSnapshot(id);
 
@@ -331,6 +334,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   // Track accumulated scroll from two-finger drag.
   double _scrollAccumulator = 0.0;
+  // Inertial scrolling: velocity in rows/frame, decays over time.
+  double _scrollVelocity = 0.0;
+  DateTime _lastScrollTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   void _onScale(ScaleUpdateDetails details) {
     // Pinch to zoom (scale change).
@@ -347,6 +353,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final dy = details.focalPointDelta.dy;
     if (dy.abs() > 0.5) {
       _scrollAccumulator += dy;
+      // Track velocity for inertial scrolling.
+      // Normalize to rows/sec based on cell height.
+      final now = DateTime.now();
+      final dtMs = now.difference(_lastScrollTime).inMilliseconds;
+      if (dtMs > 0 && dtMs < 200) {
+        // Exponential moving average of velocity (rows per 16ms frame).
+        final instVel = dy / _cellHeight * (16 / dtMs);
+        _scrollVelocity = _scrollVelocity * 0.5 + instVel * 0.5;
+      }
+      _lastScrollTime = now;
+
       // Scroll roughly one row per cell height of drag.
       final threshold = _cellHeight;
       while (_scrollAccumulator.abs() >= threshold) {
@@ -362,6 +379,36 @@ class _TerminalScreenState extends State<TerminalScreen> {
       // Force a screen refresh to show scrolled content.
       _lastFrameHash = 0;
     }
+  }
+
+  /// Apply inertial scrolling: called each frame to continue scrolling
+  /// after the user lifts their fingers, with exponential decay.
+  void _applyInertialScroll() {
+    if (_scrollVelocity.abs() < 0.1) return;
+    // Accumulate velocity into pixel space.
+    final delta = _scrollVelocity * _cellHeight;
+    _scrollAccumulator += delta;
+    // Apply scroll.
+    final threshold = _cellHeight;
+    while (_scrollAccumulator.abs() >= threshold) {
+      if (_scrollAccumulator < 0) {
+        widget.sessionManager.scrollUp(widget.sessionId, 1);
+      } else {
+        widget.sessionManager.scrollDown(widget.sessionId, 1);
+      }
+      _scrollAccumulator -= threshold * (_scrollAccumulator.sign);
+    }
+    _lastFrameHash = 0;
+    // Decay velocity (0.92 = lose 8% per frame ≈ 0.5s to ~stop).
+    _scrollVelocity *= 0.92;
+    if (_scrollVelocity.abs() < 0.1) {
+      _scrollVelocity = 0;
+    }
+  }
+
+  /// Stop inertial scrolling immediately (e.g. on touch).
+  void _cancelInertia() {
+    _scrollVelocity = 0;
   }
 
   void _onTapUp(TapUpDetails details) {
@@ -748,6 +795,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   });
 
                   return GestureDetector(
+                    onScaleStart: (_) => _cancelInertia(),
                     onScaleUpdate: _onScale,
                     onTapUp: _onTapUp,
                     onLongPressStart: _onLongPress,
