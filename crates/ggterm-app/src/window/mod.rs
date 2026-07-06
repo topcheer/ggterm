@@ -1243,8 +1243,7 @@ impl ApplicationHandler for DesktopApp {
                         .terminal()
                         .running_command_elapsed()
                     {
-                        self.status_bar.command_timer =
-                            crate::status_bar::format_duration(elapsed);
+                        self.status_bar.command_timer = crate::status_bar::format_duration(elapsed);
                     }
                     // Throttle spinner to ~12fps so it doesn't spin out of control
                     // during resize/mouse-move (which call about_to_wait in a tight loop).
@@ -1261,6 +1260,11 @@ impl ApplicationHandler for DesktopApp {
                 // Selection character count (live feedback while selecting).
                 self.status_bar.selection_count = if self.selection.is_active() {
                     self.count_selection_chars()
+                } else {
+                    0
+                };
+                self.status_bar.selection_words = if self.selection.is_active() {
+                    self.count_selection_words()
                 } else {
                     0
                 };

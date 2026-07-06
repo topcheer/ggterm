@@ -89,6 +89,8 @@ pub struct StatusBar {
     pub spinner_frame: u32,
     /// Character count of current text selection (0 = no selection).
     pub selection_count: usize,
+    /// Number of words in the current selection (0 when no selection).
+    pub selection_words: usize,
     /// True when terminal input is locked (read-only mode).
     pub locked: bool,
     /// Session uptime as a formatted string (e.g., "5m", "1h23m").
@@ -135,6 +137,7 @@ impl StatusBar {
             command_timer: String::new(),
             spinner_frame: 0,
             selection_count: 0,
+            selection_words: 0,
             locked: false,
             uptime: String::new(),
             git_branch: String::new(),
@@ -269,7 +272,14 @@ impl StatusBar {
 
         // Selection character count.
         if self.selection_count > 0 {
-            parts.push(format!("SEL:{}", self.selection_count));
+            if self.selection_words > 0 {
+                parts.push(format!(
+                    "SEL:{}c/{}w",
+                    self.selection_count, self.selection_words
+                ));
+            } else {
+                parts.push(format!("SEL:{}c", self.selection_count));
+            }
         }
 
         // Terminal lock indicator.
@@ -406,7 +416,12 @@ impl StatusBar {
 
         // Selection character count.
         if self.selection_count > 0 {
-            seg!(format!("SEL:{}", self.selection_count), warn_color);
+            let label = if self.selection_words > 0 {
+                format!("SEL:{}c/{}w", self.selection_count, self.selection_words)
+            } else {
+                format!("SEL:{}c", self.selection_count)
+            };
+            seg!(label, warn_color);
         }
 
         // Terminal lock indicator.
@@ -958,7 +973,7 @@ mod tests {
         sb.selection_count = 42;
         let formatted = sb.format();
         assert!(
-            formatted.contains("SEL:42"),
+            formatted.contains("SEL:42c"),
             "should show selection count: {formatted}"
         );
     }
@@ -979,6 +994,30 @@ mod tests {
         sb.uptime = "5m".into();
         let formatted = sb.format();
         assert!(formatted.contains("5m"), "should show uptime: {formatted}");
+    }
+
+    #[test]
+    fn t_status_bar_selection_words_shown() {
+        let mut sb = StatusBar::new();
+        sb.selection_count = 42;
+        sb.selection_words = 7;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("SEL:42c/7w"),
+            "should show chars and words: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_selection_words_zero_omitted() {
+        let mut sb = StatusBar::new();
+        sb.selection_count = 5;
+        sb.selection_words = 0;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("SEL:5c") && !formatted.contains("/"),
+            "should show chars only when no words: {formatted}"
+        );
     }
 
     #[test]

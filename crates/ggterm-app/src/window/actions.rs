@@ -982,6 +982,36 @@ impl DesktopApp {
         count
     }
 
+    /// Count words in the current text selection.
+    /// A "word" is a maximal run of non-whitespace characters.
+    pub(super) fn count_selection_words(&self) -> usize {
+        let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
+            return 0;
+        };
+        let grid = self.active_session().app().grid();
+        let mut text = String::new();
+        for row in sy..=ey {
+            let (row_start, row_end) = if sy == ey {
+                (sx as usize, ex as usize)
+            } else if row == sy {
+                (sx as usize, grid.width())
+            } else if row == ey {
+                (0, ex as usize)
+            } else {
+                (0, grid.width())
+            };
+            for col in row_start..row_end {
+                if let Some(cell) = grid.display_cell(col, row as usize)
+                    && !cell.is_wide_spacer()
+                {
+                    text.push(cell.ch);
+                }
+            }
+            text.push('\n');
+        }
+        text.split_whitespace().count()
+    }
+
     /// Select and copy the output of the last completed command.
     /// Uses OSC 133 marks to find the output region.
     pub(super) fn copy_last_command_output(&mut self) {
