@@ -82,6 +82,9 @@ pub struct StatusBar {
     pub command_duration: String,
     /// True when a command is currently executing (between OSC 133;B and 133;D).
     pub command_running: bool,
+    /// Live elapsed time of the currently running command (e.g., "3.2s").
+    /// Empty when no command is running. Updated every frame from the event loop.
+    pub command_timer: String,
     /// Spinner frame counter (incremented externally for animation).
     pub spinner_frame: u32,
     /// Character count of current text selection (0 = no selection).
@@ -129,6 +132,7 @@ impl StatusBar {
             p2p_active: false,
             command_duration: String::new(),
             command_running: false,
+            command_timer: String::new(),
             spinner_frame: 0,
             selection_count: 0,
             locked: false,
@@ -255,7 +259,12 @@ impl StatusBar {
         if self.command_running {
             let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frame = frames[(self.spinner_frame as usize) % frames.len()];
-            parts.push(frame.to_string());
+            // Show live timer if available.
+            if !self.command_timer.is_empty() {
+                parts.push(format!("{frame} {}", self.command_timer));
+            } else {
+                parts.push(frame.to_string());
+            }
         }
 
         // Selection character count.
@@ -383,11 +392,16 @@ impl StatusBar {
             seg!(self.command_duration.clone(), dim_color);
         }
 
-        // Running command spinner.
+        // Running command spinner with live timer.
         if self.command_running {
             let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let frame = frames[(self.spinner_frame as usize) % frames.len()];
-            seg!(frame.to_string(), accent_color);
+            let label = if !self.command_timer.is_empty() {
+                format!("{frame} {}", self.command_timer)
+            } else {
+                frame.to_string()
+            };
+            seg!(label, accent_color);
         }
 
         // Selection character count.
@@ -909,6 +923,32 @@ mod tests {
         assert!(
             !formatted.contains("⠋") && !formatted.contains("⠙"),
             "should not show spinner when idle: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_running_timer_shown() {
+        let mut sb = StatusBar::new();
+        sb.command_running = true;
+        sb.command_timer = "2.5s".into();
+        sb.spinner_frame = 0;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("2.5s"),
+            "should show live timer when running: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_running_timer_empty_shows_spinner_only() {
+        let mut sb = StatusBar::new();
+        sb.command_running = true;
+        sb.command_timer.clear();
+        sb.spinner_frame = 0;
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("⠋"),
+            "should still show spinner when timer empty: {formatted}"
         );
     }
 

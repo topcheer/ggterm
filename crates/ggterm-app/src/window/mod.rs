@@ -1236,6 +1236,16 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.command_running =
                     self.active_session().app().terminal().is_command_running();
                 if self.status_bar.command_running {
+                    // Live timer: show elapsed seconds next to the spinner.
+                    if let Some(elapsed) = self
+                        .active_session()
+                        .app()
+                        .terminal()
+                        .running_command_elapsed()
+                    {
+                        self.status_bar.command_timer =
+                            crate::status_bar::format_duration(elapsed);
+                    }
                     // Throttle spinner to ~12fps so it doesn't spin out of control
                     // during resize/mouse-move (which call about_to_wait in a tight loop).
                     let now = std::time::Instant::now();
@@ -1244,6 +1254,8 @@ impl ApplicationHandler for DesktopApp {
                         self.status_bar.spinner_frame =
                             self.status_bar.spinner_frame.wrapping_add(1);
                     }
+                } else {
+                    self.status_bar.command_timer.clear();
                 }
 
                 // Selection character count (live feedback while selecting).
