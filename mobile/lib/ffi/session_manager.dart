@@ -73,10 +73,10 @@ class GGTermCellData {
   bool get wide => (flags & CellFlags.wide) != 0;
 
   /// Resolved foreground RGB (0xRRGGBB).
-  int get fgRgb => AnsiPalette.resolve(fg);
+  int get fgRgb => AnsiPalette.resolve(fg, isBackground: false);
 
   /// Resolved background RGB (0xRRGGBB).
-  int get bgRgb => AnsiPalette.resolve(bg, defaultFg: 0x1E1E2E, defaultBg: 0x1E1E2E);
+  int get bgRgb => AnsiPalette.resolve(bg, isBackground: true);
 }
 
 /// Connection parameters for SSH.

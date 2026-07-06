@@ -1,6 +1,7 @@
 /// Dart mirror of Rust GGTermCell struct.
 ///
 /// Memory layout must match `#[repr(C)]` struct in ggterm-ffi/src/lib.rs.
+library;
 import 'dart:ffi';
 
 /// FFI struct matching Rust's `GGTermCell`.
@@ -17,7 +18,7 @@ import 'dart:ffi';
 final class GGTermCell extends Struct {
   @Uint32() external int charCode;
   @Uint16() external int flags;
-  @Uint16() external int _padding;
+  // @Uint16() external int _padding; // removed — unused
   @Uint32() external int fg;
   @Uint32() external int bg;
 }
@@ -87,12 +88,22 @@ class AnsiPalette {
   ];
 
   /// Resolve a packed color value to RGB.
-  static int resolve(int packed, {int defaultFg = 0xD4D4D4, int defaultBg = 0x1E1E2E}) {
-    if (ColorCodec.isDefault(packed)) return defaultFg;
+  ///
+  /// When the color is Default (packed == 0), returns [defaultBg] if
+  /// [isBackground] is true, otherwise returns [defaultFg].
+  static int resolve(
+    int packed, {
+    int defaultFg = 0xD4D4D4,
+    int defaultBg = 0x1E1E2E,
+    bool isBackground = false,
+  }) {
+    if (ColorCodec.isDefault(packed)) {
+      return isBackground ? defaultBg : defaultFg;
+    }
     if (ColorCodec.isIndexed(packed)) {
       final idx = ColorCodec.getIndex(packed);
       if (idx < standard16.length) return standard16[idx];
-      return defaultFg;
+      return isBackground ? defaultBg : defaultFg;
     }
     return packed & 0x00FFFFFF;
   }
