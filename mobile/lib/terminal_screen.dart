@@ -605,6 +605,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   _selectWordAt(details.localPosition);
                 },
               ),
+              ListTile(
+                leading:
+                    const Icon(Icons.cleaning_services, color: Colors.white70),
+                title: const Text('Clear screen',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Ctrl+L = clear screen
+                  widget.sessionManager
+                      .sendInput(widget.sessionId, [0x0C]);
+                  HapticFeedback.selectionClick();
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.keyboard_tab, color: Colors.white70),
+                title: const Text('Send Tab (autocomplete)',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.sessionManager
+                      .sendInput(widget.sessionId, [0x09]);
+                  HapticFeedback.selectionClick();
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),
