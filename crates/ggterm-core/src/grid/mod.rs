@@ -1820,13 +1820,19 @@ mod tests {
         let g = Grid::with_scrollback(4, 3, 100);
         let visible = g.export_visible_text();
         // Empty grid should produce empty string (all rows blank → trimmed)
-        assert!(visible.is_empty(), "empty grid should produce empty: {visible:?}");
+        assert!(
+            visible.is_empty(),
+            "empty grid should produce empty: {visible:?}"
+        );
 
         // With content
         let mut g2 = Grid::with_scrollback(4, 3, 100);
         g2[(1, 0)] = Cell::with_char('H');
         g2[(1, 1)] = Cell::with_char('i');
         let v2 = g2.export_visible_text();
-        assert!(v2.contains('H') && v2.contains('i'), "should contain Hi: {v2:?}");
+        assert!(
+            v2.contains('H') && v2.contains('i'),
+            "should contain Hi: {v2:?}"
+        );
     }
 }

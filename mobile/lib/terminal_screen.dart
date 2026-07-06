@@ -393,6 +393,18 @@ class _TerminalScreenState extends State<TerminalScreen>
         return [0x01]; // Ctrl+A — start of line
       case 'CtrlE':
         return [0x05]; // Ctrl+E — end of line
+      case 'CtrlSpace':
+        return [0x00]; // Ctrl+Space — NUL (vim autocomplete, emacs set-mark)
+      case 'CtrlB':
+        return [0x02]; // Ctrl+B — tmux prefix / backward char
+      case 'CtrlK':
+        return [0x0B]; // Ctrl+K — kill to end of line
+      case 'CtrlF':
+        return [0x06]; // Ctrl+F — forward char
+      case 'CtrlN':
+        return [0x0E]; // Ctrl+N — next history
+      case 'CtrlP':
+        return [0x10]; // Ctrl+P — previous history
       default:
         return utf8.encode(name);
     }

@@ -258,6 +258,12 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('^W', 'CtrlW'), // delete word
             _keyButton('^A', 'CtrlA'), // start of line
             _keyButton('^E', 'CtrlE'), // end of line
+            _keyButton('^F', 'CtrlF'), // forward char
+            _keyButton('^B', 'CtrlB'), // backward char / tmux prefix
+            _keyButton('^K', 'CtrlK'), // kill to end of line
+            _keyButton('^P', 'CtrlP'), // previous history
+            _keyButton('^N', 'CtrlN'), // next history
+            _keyButton('^␣', 'CtrlSpace'), // NUL (vim autocomplete)
             // Separator
             Container(
               width: 1,
