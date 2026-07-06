@@ -713,9 +713,27 @@ class _TerminalScreenState extends State<TerminalScreen> {
       child: Scaffold(
       backgroundColor: theme.background,
       appBar: AppBar(
-        title: Text(
-          _screen.title.isNotEmpty ? _screen.title : widget.title,
-          overflow: TextOverflow.ellipsis,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _screen.title.isNotEmpty ? _screen.title : widget.title,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16),
+            ),
+            // Subtitle: show SSH connection info when available
+            if (widget.title != 'Echo Test' && widget.title != 'P2P Session')
+              Text(
+                widget.title,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+          ],
         ),
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
