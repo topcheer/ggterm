@@ -1477,6 +1477,11 @@ impl ApplicationHandler for DesktopApp {
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
+                // Clear bell/unread indicator on the active tab when the
+                // window regains focus — the user has seen the alert.
+                if focused {
+                    self.active_session_mut().clear_unread();
+                }
             }
 
             // Skip GPU rendering when the window is occluded (hidden behind
