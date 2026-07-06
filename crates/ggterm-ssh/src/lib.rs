@@ -244,7 +244,7 @@ impl SshSession {
             // (SSH_MSG_GLOBAL_REQUEST) rather than channel data, so it doesn't
             // interfere with terminal output.
             let mut tick: u32 = 0;
-            const KEEPALIVE_INTERVAL: u32 = 200; // ~1s at 5ms poll
+            const KEEPALIVE_INTERVAL: u32 = 6000; // ~30s at 5ms poll
             // Track current terminal dimensions for keepalive window_change.
             let mut current_cols: Option<u32> = None;
             let mut current_rows: Option<u32> = None;
