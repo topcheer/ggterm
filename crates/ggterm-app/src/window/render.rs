@@ -92,6 +92,33 @@ impl DesktopApp {
             Vec::new()
         };
 
+        // ── Cursor line highlight (Vim-style cursorline) ──────────────
+        // Pre-compute before the mutable borrow at line 95.
+        let cursor_line_rect = {
+            let enabled = self
+                .config_mgr
+                .as_ref()
+                .is_some_and(|m| m.config().appearance.cursor_line_highlight);
+            if enabled {
+                let cell_h = self
+                    .renderer
+                    .as_ref()
+                    .map(|r| r.cell_height())
+                    .unwrap_or(20) as f32;
+                let bounds = self.content_area_bounds();
+                let (_, row) = self.active_session().app().cursor();
+                let y_pos = bounds.y as f32 + row as f32 * cell_h;
+                Some((
+                    bounds.x as f32,
+                    y_pos,
+                    bounds.width as f32,
+                    cell_h,
+                ))
+            } else {
+                None
+            }
+        };
+
         let (gpu, surface, renderer) = match (&mut self.gpu, &self.surface, &mut self.renderer) {
             (Some(g), Some(s), Some(r)) => (g, s, r),
             _ => return,
@@ -282,8 +309,7 @@ impl DesktopApp {
                 // Tab title text — only truncate if genuinely too long.
                 let title = tab.format();
                 // Reserve space for close button only when 2+ tabs AND not pinned.
-                let is_pinned = tab_idx < self.sessions.len()
-                    && self.sessions[tab_idx].is_pinned();
+                let is_pinned = tab_idx < self.sessions.len() && self.sessions[tab_idx].is_pinned();
                 let reserved = if self.tab_bar.tabs.len() > 1 && !is_pinned {
                     24.0 // close "x" + margin
                 } else {
@@ -474,6 +500,19 @@ impl DesktopApp {
                 }
             }
             // Close of `if self.tab_bar.visible` block.
+        }
+
+        // ── Cursor line highlight (rendered if enabled) ───────────────
+        if let Some((cx, cy, cw, ch)) = cursor_line_rect {
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: cx,
+                y: cy,
+                w: cw,
+                h: ch,
+                color: (1.0, 1.0, 1.0, 0.06), // very subtle white overlay
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
         }
 
         // ── P27-A: Text selection highlight ────────────────────────────

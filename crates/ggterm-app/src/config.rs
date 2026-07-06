@@ -143,6 +143,9 @@ pub struct AppearanceConfig {
     /// Whether the cursor blinks. Set to false for a steady cursor.
     /// Default: true.
     pub cursor_blink: bool,
+    /// Whether to highlight the entire line where the cursor is positioned.
+    /// Similar to Vim's `cursorline`. Default: false.
+    pub cursor_line_highlight: bool,
 }
 
 /// Terminal behaviour configuration.
@@ -197,6 +200,7 @@ impl Default for AppearanceConfig {
             background_opacity: 1.0,
             padding: 8,
             cursor_blink: true,
+            cursor_line_highlight: false,
         }
     }
 }
@@ -290,6 +294,7 @@ mod raw {
         pub background_opacity: Option<f32>,
         pub padding: Option<u32>,
         pub cursor_blink: Option<bool>,
+        pub cursor_line_highlight: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -394,6 +399,9 @@ impl Config {
         if let Some(v) = raw.appearance.cursor_blink {
             config.appearance.cursor_blink = v;
         }
+        if let Some(v) = raw.appearance.cursor_line_highlight {
+            config.appearance.cursor_line_highlight = v;
+        }
 
         if let Some(v) = raw.terminal.scrollback_lines {
             config.terminal.scrollback_lines = v;
@@ -492,6 +500,7 @@ impl Config {
         );
         appearance.insert("padding".into(), (self.appearance.padding as i64).into());
         appearance.insert("cursor_blink".into(), self.appearance.cursor_blink.into());
+        appearance.insert("cursor_line_highlight".into(), self.appearance.cursor_line_highlight.into());
         root.insert("appearance".into(), appearance.into());
 
         // [terminal]
@@ -2318,6 +2327,25 @@ cursor_blink = false
 
         // Default is true
         assert!(Config::default().appearance.cursor_blink);
+    }
+
+    #[test]
+    fn test_cursor_line_highlight_parse() {
+        let toml = r#"
+[appearance]
+cursor_line_highlight = true
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(
+            config.appearance.cursor_line_highlight,
+            "should parse cursor_line_highlight = true"
+        );
+
+        // Default is false
+        assert!(
+            !Config::default().appearance.cursor_line_highlight,
+            "cursor_line_highlight should default to false"
+        );
     }
 
     #[test]
