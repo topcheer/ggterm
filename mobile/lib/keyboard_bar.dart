@@ -6,6 +6,7 @@
 
 library;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Callback when a special key is pressed.
 typedef KeyCallback = void Function(String keyName);
@@ -103,7 +104,10 @@ class _KeyboardBarState extends State<KeyboardBar> {
     required VoidCallback onTap,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
@@ -127,7 +131,10 @@ class _KeyboardBarState extends State<KeyboardBar> {
 
   Widget _keyButton(String label, String keyName) {
     return GestureDetector(
-      onTap: () => _sendKey(keyName),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        _sendKey(keyName);
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
