@@ -258,6 +258,25 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('^W', 'CtrlW'), // delete word
             _keyButton('^A', 'CtrlA'), // start of line
             _keyButton('^E', 'CtrlE'), // end of line
+            // Separator
+            Container(
+              width: 1,
+              height: 24,
+              color: Colors.grey.shade700,
+            ),
+            // F-keys (essential for vim, htop, man)
+            _keyButton('F1', 'F1'),
+            _keyButton('F2', 'F2'),
+            _keyButton('F3', 'F3'),
+            _keyButton('F4', 'F4'),
+            _keyButton('F5', 'F5'),
+            _keyButton('F6', 'F6'),
+            _keyButton('F7', 'F7'),
+            _keyButton('F8', 'F8'),
+            _keyButton('F9', 'F9'),
+            _keyButton('F10', 'F10'),
+            _keyButton('F11', 'F11'),
+            _keyButton('F12', 'F12'),
           ],
         ),
       ),

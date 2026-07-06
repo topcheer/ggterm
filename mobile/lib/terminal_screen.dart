@@ -334,6 +334,32 @@ class _TerminalScreenState extends State<TerminalScreen> {
         return [0x1B, 0x5B, 0x35, 0x7E]; // ESC [ 5 ~
       case 'PageDown':
         return [0x1B, 0x5B, 0x36, 0x7E]; // ESC [ 6 ~
+      // F1-F4 use SS3 (ESC O P/Q/R/S)
+      case 'F1':
+        return [0x1B, 0x4F, 0x50]; // ESC O P
+      case 'F2':
+        return [0x1B, 0x4F, 0x51]; // ESC O Q
+      case 'F3':
+        return [0x1B, 0x4F, 0x52]; // ESC O R
+      case 'F4':
+        return [0x1B, 0x4F, 0x53]; // ESC O S
+      // F5-F12 use CSI with parameter
+      case 'F5':
+        return [0x1B, 0x5B, 0x31, 0x35, 0x7E]; // ESC [ 1 5 ~
+      case 'F6':
+        return [0x1B, 0x5B, 0x31, 0x37, 0x7E]; // ESC [ 1 7 ~
+      case 'F7':
+        return [0x1B, 0x5B, 0x31, 0x38, 0x7E]; // ESC [ 1 8 ~
+      case 'F8':
+        return [0x1B, 0x5B, 0x31, 0x39, 0x7E]; // ESC [ 1 9 ~
+      case 'F9':
+        return [0x1B, 0x5B, 0x32, 0x30, 0x7E]; // ESC [ 2 0 ~
+      case 'F10':
+        return [0x1B, 0x5B, 0x32, 0x31, 0x7E]; // ESC [ 2 1 ~
+      case 'F11':
+        return [0x1B, 0x5B, 0x32, 0x33, 0x7E]; // ESC [ 2 3 ~
+      case 'F12':
+        return [0x1B, 0x5B, 0x32, 0x34, 0x7E]; // ESC [ 2 4 ~
       case 'CtrlL':
         return [0x0C]; // Ctrl+L — clear screen
       case 'CtrlR':
