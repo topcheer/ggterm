@@ -499,9 +499,14 @@ impl DesktopApp {
 
         // ── Step 3b: Welcome message ──
         // Print a brief, helpful banner before the shell starts.
+        let shell_name = std::path::Path::new(&effective_shell)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("shell");
         let welcome = format!(
-            "\x1b[90m GGTerm v{}\x1b[0m  \x1b[90mCtrl+Shift+? for help\x1b[0m\r\n",
+            "\x1b[90m GGTerm v{} ({}) \x1b[0m\x1b[90mCtrl+Shift+? for help\x1b[0m\r\n",
             env!("CARGO_PKG_VERSION"),
+            shell_name,
         );
         session
             .app_mut()
