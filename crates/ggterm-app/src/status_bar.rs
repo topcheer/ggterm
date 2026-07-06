@@ -1060,4 +1060,36 @@ mod tests {
             "should show git branch: {formatted}"
         );
     }
+
+    #[test]
+    fn t_status_bar_exit_code_success() {
+        let mut sb = StatusBar::new();
+        sb.exit_code = Some(0);
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("exit:0"),
+            "should show exit:0 for success: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_exit_code_failure() {
+        let mut sb = StatusBar::new();
+        sb.exit_code = Some(127);
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("exit:127"),
+            "should show exit:127 for failure: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_exit_code_none_omitted() {
+        let sb = StatusBar::new();
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("exit:"),
+            "should not show exit when no command completed: {formatted}"
+        );
+    }
 }
