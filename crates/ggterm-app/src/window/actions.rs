@@ -1214,6 +1214,14 @@ impl DesktopApp {
             return;
         }
 
+        // Safety: warn on very large pastes (>100KB) to prevent terminal
+        // slowdowns from processing massive clipboard content.
+        const MAX_PASTE_WARN: usize = 100_000;
+        if text.len() > MAX_PASTE_WARN {
+            let kb = text.len() / 1024;
+            self.show_toast(format!("Pasting {kb}KB (large paste may be slow)"));
+        }
+
         let bracketed = self.active_session().app().terminal().bracketed_paste();
 
         // Safety: if the program doesn't support bracketed paste and the
