@@ -480,6 +480,21 @@ impl Grid {
         lines.join("\n")
     }
 
+    /// Export only the visible terminal screen (no scrollback history).
+    ///
+    /// This is the text currently visible on screen, excluding scrolled-off
+    /// scrollback. Useful for quickly copying the current terminal state.
+    pub fn export_visible_text(&self) -> String {
+        let mut lines: Vec<String> = Vec::with_capacity(self.height);
+        for row in &self.rows {
+            lines.push(row.text().trim_end().to_string());
+        }
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        lines.join("\n")
+    }
+
     /// Set the maximum scrollback capacity.
     /// Truncates existing scrollback if new limit is smaller.
     pub fn set_scrollback(&mut self, max: usize) {
@@ -1798,5 +1813,20 @@ mod tests {
         // In reverse, fg becomes bg and vice versa
         assert!(html.contains("background-color: #ff0000")); // fg was red
         assert!(html.contains("color: #0000ff")); // bg was blue
+    }
+
+    #[test]
+    fn export_visible_text_basic() {
+        let g = Grid::with_scrollback(4, 3, 100);
+        let visible = g.export_visible_text();
+        // Empty grid should produce empty string (all rows blank → trimmed)
+        assert!(visible.is_empty(), "empty grid should produce empty: {visible:?}");
+
+        // With content
+        let mut g2 = Grid::with_scrollback(4, 3, 100);
+        g2[(1, 0)] = Cell::with_char('H');
+        g2[(1, 1)] = Cell::with_char('i');
+        let v2 = g2.export_visible_text();
+        assert!(v2.contains('H') && v2.contains('i'), "should contain Hi: {v2:?}");
     }
 }

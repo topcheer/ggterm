@@ -252,6 +252,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Alt+O".into()),
         });
         r.register(Command {
+            id: "terminal.copy_visible".into(),
+            label: "Copy Visible Screen".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.copy_markdown".into(),
             label: "Copy Selection as Markdown".into(),
             category: "Terminal".into(),

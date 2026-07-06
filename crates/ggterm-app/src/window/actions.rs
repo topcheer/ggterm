@@ -2169,6 +2169,11 @@ impl DesktopApp {
             "terminal.copy_last_output" => {
                 self.copy_last_command_output();
             }
+            "terminal.copy_visible" => {
+                let text = self.active_session().app().grid().export_visible_text();
+                crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                self.show_toast(format!("Copied {} chars (visible screen)", text.len()));
+            }
             "terminal.copy_markdown" => {
                 self.copy_selection_as_markdown();
             }
