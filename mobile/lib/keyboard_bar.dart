@@ -230,6 +230,15 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('*', '*'),
             _keyButton('\$', '\$'),
             _keyButton('&&', '&&'),
+            // Programming symbols
+            _keyButton('{', '{'),
+            _keyButton('}', '}'),
+            _keyButton('[', '['),
+            _keyButton(']', ']'),
+            _keyButton(';', ';'),
+            _keyButton('>', '>'),
+            _keyButton('#', '#'),
+            _keyButton('=', '='),
             // Separator
             Container(
               width: 1,
