@@ -66,6 +66,10 @@ class GGTermCellData {
   bool get italic => (flags & CellFlags.italic) != 0;
   bool get underline => (flags & CellFlags.underline) != 0;
   bool get strikethrough => (flags & CellFlags.strikethrough) != 0;
+  bool get blink => (flags & CellFlags.blink) != 0;
+  bool get dim => (flags & CellFlags.faint) != 0;
+  bool get hidden => (flags & CellFlags.hidden) != 0;
+  bool get reverse => (flags & CellFlags.reverse) != 0;
 
   /// Resolved foreground RGB (0xRRGGBB).
   int get fgRgb => AnsiPalette.resolve(fg);

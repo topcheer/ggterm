@@ -906,9 +906,13 @@ class _TerminalPainter extends CustomPainter {
         final cell = screen.cells[idx];
         final x = col * cellWidth;
 
-        // Only paint non-default backgrounds.
-        if (cell.bgRgb != 0) {
-          cellBgPaint.color = Color(0xFF000000 | cell.bgRgb);
+        // Skip hidden cells (SGR 8).
+        if (cell.hidden) continue;
+
+        // For reverse video (SGR 7), draw fg color as background.
+        final effectiveBg = cell.reverse ? cell.fgRgb : cell.bgRgb;
+        if (effectiveBg != 0) {
+          cellBgPaint.color = Color(0xFF000000 | effectiveBg);
           canvas.drawRect(
             Rect.fromLTWH(x, y, cellWidth, cellHeight),
             cellBgPaint,
@@ -928,6 +932,7 @@ class _TerminalPainter extends CustomPainter {
       var runItalic = false;
       var runUnderline = false;
       var runStrikethrough = false;
+      var runDim = false;
 
       for (var col = 0; col <= cols; col++) {
         final idx = row * cols + col;
@@ -935,45 +940,50 @@ class _TerminalPainter extends CustomPainter {
             ? screen.cells[idx]
             : null;
 
-        final isEmpty = cell == null || cell.charCode == 0;
+        final isEmpty = cell == null || cell.charCode == 0 || cell.hidden;
 
         if (!isEmpty) {
+          // For reverse video, use bg color as text color.
+          final effectiveFg = cell.reverse ? cell.bgRgb : cell.fgRgb;
           if (runStart < 0) {
             // Start a new run.
             runStart = col;
             runText.clear();
             runText.write(cell.char);
-            runFg = cell.fgRgb;
+            runFg = effectiveFg;
             runBold = cell.bold;
             runItalic = cell.italic;
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
-          } else if (cell.fgRgb == runFg &&
+            runDim = cell.dim;
+          } else if (effectiveFg == runFg &&
               cell.bold == runBold &&
               cell.italic == runItalic &&
               cell.underline == runUnderline &&
-              cell.strikethrough == runStrikethrough) {
+              cell.strikethrough == runStrikethrough &&
+              cell.dim == runDim) {
             // Continue current run.
             runText.write(cell.char);
           } else {
             // Flush current run, start new one.
             _paintRun(canvas, runText.toString(), runStart, y,
                 runFg, runBold, runItalic, runUnderline,
-                runStrikethrough, cellWidth, cellHeight, fontSize);
+                runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
             runStart = col;
             runText.clear();
             runText.write(cell.char);
-            runFg = cell.fgRgb;
+            runFg = effectiveFg;
             runBold = cell.bold;
             runItalic = cell.italic;
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
+            runDim = cell.dim;
           }
         } else if (runStart >= 0) {
           // Empty cell — flush current run.
           _paintRun(canvas, runText.toString(), runStart, y,
               runFg, runBold, runItalic, runUnderline,
-              runStrikethrough, cellWidth, cellHeight, fontSize);
+              runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
           runStart = -1;
         }
       }
@@ -1005,14 +1015,19 @@ class _TerminalPainter extends CustomPainter {
     bool italic,
     bool underline,
     bool strikethrough,
+    bool dim,
     double cellW,
     double cellH,
     double fontSize,
   ) {
     if (text.isEmpty) return;
 
+    var textColor = Color(0xFF000000 | fg);
+    // SGR 2 (dim/faint): render at 60% opacity.
+    if (dim) textColor = textColor.withValues(alpha: 0.6);
+
     final style = TextStyle(
-      color: Color(0xFF000000 | fg),
+      color: textColor,
       fontSize: fontSize,
       fontFamily: 'monospace',
       fontWeight: bold ? FontWeight.bold : FontWeight.normal,
