@@ -970,6 +970,14 @@ class _TerminalPainter extends CustomPainter {
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
             runDim = cell.dim;
+            // Wide chars (CJK, emoji) are 2 cells wide — flush immediately
+            // so subsequent text starts at the correct column.
+            if (cell.wide) {
+              _paintRun(canvas, runText.toString(), runStart, y,
+                  runFg, runBold, runItalic, runUnderline,
+                  runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
+              runStart = -1;
+            }
           } else if (effectiveFg == runFg &&
               cell.bold == runBold &&
               cell.italic == runItalic &&
@@ -978,6 +986,14 @@ class _TerminalPainter extends CustomPainter {
               cell.dim == runDim) {
             // Continue current run.
             runText.write(cell.char);
+            // Wide chars (CJK, emoji) take 2 cells. Flush immediately
+            // so subsequent text starts at the correct column.
+            if (cell.wide) {
+              _paintRun(canvas, runText.toString(), runStart, y,
+                  runFg, runBold, runItalic, runUnderline,
+                  runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
+              runStart = -1;
+            }
           } else {
             // Flush current run, start new one.
             _paintRun(canvas, runText.toString(), runStart, y,

@@ -70,6 +70,7 @@ class GGTermCellData {
   bool get dim => (flags & CellFlags.faint) != 0;
   bool get hidden => (flags & CellFlags.hidden) != 0;
   bool get reverse => (flags & CellFlags.reverse) != 0;
+  bool get wide => (flags & CellFlags.wide) != 0;
 
   /// Resolved foreground RGB (0xRRGGBB).
   int get fgRgb => AnsiPalette.resolve(fg);
