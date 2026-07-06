@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'theme.dart';
 
 /// SSH connection parameters (passed to SessionManager).
 class ConnectionParams {
@@ -51,6 +52,10 @@ class ConnectionScreen extends StatefulWidget {
     this.onShare,
   });
 
+  /// Currently selected terminal theme name (read by main.dart).
+  /// Updated whenever the user picks a theme in the connection screen.
+  static String currentThemeName = 'dark';
+
   @override
   State<ConnectionScreen> createState() => _ConnectionScreenState();
 }
@@ -68,6 +73,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   bool _obscurePassword = true;
   bool _useKeyFile = false;
   String? _errorMessage;
+  String _selectedTheme = 'dark'; // persisted theme name
 
   static const _saveFile = 'last_connection.json';
   static const _historyFile = 'connection_history.json';
@@ -79,6 +85,31 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     super.initState();
     _loadSavedConnection();
     _loadHistory();
+    _loadSavedTheme();
+  }
+
+  Future<void> _loadSavedTheme() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/theme.txt');
+      if (await file.exists()) {
+        final name = (await file.readAsString()).trim();
+        if (builtinThemeNames.contains(name)) {
+          setState(() {
+            _selectedTheme = name;
+            ConnectionScreen.currentThemeName = name;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveTheme(String name) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/theme.txt');
+      await file.writeAsString(name);
+    } catch (_) {}
   }
 
   /// Load saved connection details (host, port, user — never password).
@@ -457,6 +488,41 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+
+              // ── Theme selector ──
+              Row(
+                children: [
+                  const Icon(Icons.palette_outlined, size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedTheme,
+                      decoration: const InputDecoration(
+                        labelText: 'Terminal Theme',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: builtinThemeNames.map((name) {
+                        return DropdownMenuItem(
+                          value: name,
+                          child: Text(name),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedTheme = value;
+                            ConnectionScreen.currentThemeName = value;
+                          });
+                          _saveTheme(value);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
 
               // ── Connect button ──
               FilledButton.icon(
