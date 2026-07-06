@@ -436,24 +436,34 @@ mod tests {
 
     #[test]
     fn test_pty_write_echo() {
+        // This test is timing-sensitive: under parallel test load the shell
+        // may take longer to start and process. Use a retry loop to avoid
+        // false negatives.
         let mut pty = PtySession::open(80, 24).expect("open pty");
 
-        // Give the shell a moment to start (more time under parallel test load).
+        // Give the shell a moment to start.
         std::thread::sleep(std::time::Duration::from_millis(500));
 
         // Write a command
         let cmd = b"echo hello_ggterm_12345\n";
         pty.write(cmd).expect("write");
 
-        // Give the shell time to process (more time under parallel test load).
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        // Read output with retries — the shell may need extra time under load.
+        let mut output = String::new();
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            let mut buf = [0u8; 8192];
+            if let Ok(n) = pty.try_read(&mut buf)
+                && n > 0
+            {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if output.contains("hello_ggterm_12345") {
+                    break;
+                }
+            }
+        }
 
-        // Read output
-        let mut buf = [0u8; 8192];
-        let n = pty.try_read(&mut buf).expect("read");
-        assert!(n > 0, "expected some output from the shell");
-
-        let output = String::from_utf8_lossy(&buf[..n]);
+        assert!(!output.is_empty(), "expected some output from the shell");
         assert!(
             output.contains("echo") || output.contains("hello_ggterm_12345"),
             "expected echo or output, got: {}",
