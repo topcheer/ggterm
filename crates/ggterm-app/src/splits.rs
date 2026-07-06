@@ -465,6 +465,31 @@ impl SplitNode {
             }
         }
     }
+
+    /// Swap two pane IDs throughout the tree.
+    ///
+    /// After calling this, every leaf that held `id_a` will hold `id_b`
+    /// and vice versa. This effectively swaps which terminal session
+    /// appears in which region without changing the split geometry.
+    pub fn swap_ids(&mut self, id_a: PaneId, id_b: PaneId) {
+        match self {
+            SplitNode::Pane(id) => {
+                if *id == id_a {
+                    *id = id_b;
+                } else if *id == id_b {
+                    *id = id_a;
+                }
+            }
+            SplitNode::Horizontal { left, right, .. } => {
+                left.swap_ids(id_a, id_b);
+                right.swap_ids(id_a, id_b);
+            }
+            SplitNode::Vertical { top, bottom, .. } => {
+                top.swap_ids(id_a, id_b);
+                bottom.swap_ids(id_a, id_b);
+            }
+        }
+    }
 }
 
 /// Manages a split-pane tree with focus tracking for a single tab.
@@ -690,6 +715,27 @@ impl SplitTree {
     /// Returns `true` if a separator was found and adjusted.
     pub fn set_ratio_at_point(&mut self, px: u32, py: u32, bounds: Rect) -> bool {
         self.root.set_ratio_at_point(px, py, bounds)
+    }
+
+    /// Swap the active pane with the next pane in the tree.
+    ///
+    /// This swaps the pane *content* (the PaneId values) so that the active
+    /// pane's terminal moves to the next position and vice versa. The split
+    /// geometry (positions, ratios) stays the same — only which terminal
+    /// appears in which region changes.
+    pub fn swap_active_with_next(&mut self) {
+        let ids = self.pane_ids();
+        if ids.len() < 2 {
+            return;
+        }
+        let active = self.active;
+        // Find the index of the active pane in the ordered list.
+        let idx = ids.iter().position(|&id| id == active).unwrap_or(0);
+        let next_idx = (idx + 1) % ids.len();
+        let other = ids[next_idx];
+        if active != other {
+            self.root.swap_ids(active, other);
+        }
     }
 }
 
@@ -1332,5 +1378,36 @@ mod tests {
         tree.balance(); // Should not panic.
         let areas = tree.areas(Rect::new(0, 0, 100, 50));
         assert_eq!(areas.len(), 1);
+    }
+
+    #[test]
+    fn t_swap_ids_basic() {
+        let mut node = SplitNode::Pane(5);
+        node.swap_ids(5, 10);
+        assert_eq!(node, SplitNode::Pane(10));
+    }
+
+    #[test]
+    fn t_swap_ids_in_tree() {
+        // Tree: Horizontal(0, 1)
+        let mut tree = SplitTree::new(0);
+        tree.split_horizontal(0.5);
+        assert_eq!(tree.pane_ids(), vec![0, 1]);
+
+        // Swap pane 0 and 1.
+        tree.swap_active_with_next();
+
+        // Active was 0, now swapped with 1.
+        let ids = tree.pane_ids();
+        assert!(ids.contains(&0));
+        assert!(ids.contains(&1));
+    }
+
+    #[test]
+    fn t_swap_ids_noop_single_pane() {
+        let mut tree = SplitTree::new(0);
+        tree.swap_active_with_next(); // Single pane — should be noop.
+        assert_eq!(tree.pane_count(), 1);
+        assert_eq!(tree.active(), 0);
     }
 }

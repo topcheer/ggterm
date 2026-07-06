@@ -294,6 +294,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Space".into()),
         });
         r.register(Command {
+            id: "split.swap".into(),
+            label: "Swap Active Pane".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+X".into()),
+        });
+        r.register(Command {
             id: "terminal.new_session".into(),
             label: "New Session (Close All Tabs)".into(),
             category: "Tab".into(),

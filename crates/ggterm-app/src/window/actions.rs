@@ -829,6 +829,24 @@ impl DesktopApp {
         log::info!("Pane zoom: {}", self.pane_zoomed);
     }
 
+    /// Swap the active pane's position with the next pane.
+    /// The split geometry stays the same, but the terminal content
+    /// moves to a different region.
+    pub(super) fn swap_active_pane(&mut self) {
+        let count = self.active_session().pane_count();
+        if count < 2 {
+            self.show_toast("Need 2+ panes to swap");
+            return;
+        }
+        self.active_session_mut()
+            .split_tree_mut()
+            .swap_active_with_next();
+        self.show_toast("Panes swapped");
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
+    }
+
     /// Toggle pin on the active tab. Pinned tabs cannot be closed.
     pub(super) fn toggle_pin_tab(&mut self) {
         let pinned = self.active_session_mut().toggle_pin();
@@ -2149,6 +2167,9 @@ impl DesktopApp {
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
+            }
+            "split.swap" => {
+                self.swap_active_pane();
             }
             "terminal.new_session" => {
                 self.new_session();

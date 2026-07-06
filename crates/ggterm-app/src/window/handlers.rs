@@ -561,6 +561,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+X → swap active pane with next pane
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyX) = &event.physical_key
+        {
+            self.swap_active_pane();
+            return;
+        }
+
         // Alt+h/j/k/l → vim-style pane navigation (tmux-navigator compatible)
         if !self.mods.ctrl && !self.mods.shift && self.mods.alt {
             match &event.physical_key {

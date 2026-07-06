@@ -298,6 +298,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::View,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+X".into(),
+            description: "Swap active pane with next".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
         // Edit
         ShortcutEntry {
             keys: "Ctrl+Shift+V".into(),
