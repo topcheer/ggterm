@@ -9,7 +9,7 @@ A GPU-accelerated, AI-native, cross-platform terminal emulator built in Rust.
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20iOS%20%7C%20Android-lightgrey.svg)](#download)
 
-> **1939+ tests passing** | 9 crates | ~64,000 lines of Rust
+> **2094+ tests passing** | 9 crates | ~70,000 lines of Rust
 
 ## Download
 
@@ -208,8 +208,10 @@ paste = "Ctrl+Shift+V"
 | `Ctrl+Shift+D` | Split horizontal |
 | `Ctrl+Shift+\` | Split vertical |
 | `Ctrl+Shift+[` / `]` | Focus prev/next pane |
+| `Ctrl+Shift+X` | Swap active pane with next |
 | `Ctrl+Shift+Z` | Toggle pane zoom |
 | `Ctrl+Shift+Alt+Arrows` | Adjust split ratio |
+| `Alt+H/J/K/L` | Vim-style pane navigation |
 | `Drag separator` | Resize split |
 
 ### Terminal & Clipboard
@@ -222,6 +224,8 @@ paste = "Ctrl+Shift+V"
 | `Ctrl+Shift+R` | Reset terminal (RIS) (*) |
 | `Ctrl+Shift+U` | Open URL at cursor |
 | `Ctrl+Click` | Open file path / URL |
+| `Shift+Insert` | Paste (cross-platform) |
+| `Alt+Drag` | Block/rectangular selection |
 
 ### Font & Display
 
@@ -239,7 +243,11 @@ paste = "Ctrl+Shift+V"
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+F` | Toggle search bar (*) |
+| `Ctrl+Shift+Space` | Scrollback browse mode (j/k/G/g/d/u/q) |
 | `Ctrl+Shift+Up/Down` | Navigate command blocks |
+| `Ctrl+Shift+Alt+Up` | Scroll to mark (OSC 1337) |
+| `Ctrl+Shift+Alt+S` | Export scrollback to file |
+| `Ctrl+Shift+End` | Scroll to bottom |
 
 ### AI & Productivity
 
