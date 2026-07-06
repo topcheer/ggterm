@@ -577,6 +577,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                       tooltip: 'Remove',
                     ),
                     onTap: () => _fillFromHistory(e),
+                    onLongPress: () {
+                      // Long-press: fill form and attempt direct connect
+                      _fillFromHistory(e);
+                      if (_formKey.currentState?.validate() ?? false) {
+                        HapticFeedback.mediumImpact();
+                        _connect();
+                      }
+                    },
                   );
                 }),
               ],
