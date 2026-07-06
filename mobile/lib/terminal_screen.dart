@@ -39,7 +39,8 @@ class TerminalScreen extends StatefulWidget {
   State<TerminalScreen> createState() => _TerminalScreenState();
 }
 
-class _TerminalScreenState extends State<TerminalScreen> {
+class _TerminalScreenState extends State<TerminalScreen>
+    with WidgetsBindingObserver {
   static final _wordCharRe = RegExp(r'[A-Za-z0-9/._\-~]');
   double _fontSize = 13.0;
   static const _fontSizeFile = 'font_size.json';
@@ -50,6 +51,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Timer? _renderTimer;
   bool _transportAlive = true;
   bool _sizeInitialized = false;
+  bool _isPaused = false; // true when app is in background
   // Frame hash for change detection — avoids setState when nothing changed.
   int _lastFrameHash = 0;
   // Cursor blink state.
@@ -86,9 +88,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadFontSize();
     _startRenderLoop();
     _startCursorBlink();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      // App went to background — pause rendering to save battery.
+      _isPaused = true;
+      _renderTimer?.cancel();
+      _blinkTimer?.cancel();
+    } else if (state == AppLifecycleState.resumed) {
+      // App came back to foreground — resume rendering.
+      if (_isPaused) {
+        _isPaused = false;
+        _startRenderLoop();
+        _startCursorBlink();
+        _lastFrameHash = 0; // Force full refresh on resume
+      }
+    }
   }
 
   Future<void> _loadFontSize() async {
@@ -206,6 +228,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _renderTimer?.cancel();
     _blinkTimer?.cancel();
     _inputFocusNode.dispose();
