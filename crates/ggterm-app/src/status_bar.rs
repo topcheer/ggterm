@@ -71,6 +71,8 @@ pub struct StatusBar {
     pub remote_host: String,
     /// Whether pane zoom mode is active.
     pub pane_zoomed: bool,
+    /// True when cursor line highlight is enabled.
+    pub cursor_line: bool,
     /// True when scrollback browse mode is active (vim-style navigation).
     pub scroll_mode: bool,
     /// Task progress (0.0–1.0) from OSC 9;4. None = no active progress.
@@ -129,6 +131,7 @@ impl StatusBar {
             cwd: String::new(),
             remote_host: String::new(),
             pane_zoomed: false,
+            cursor_line: false,
             scroll_mode: false,
             progress: None,
             p2p_active: false,
@@ -332,6 +335,9 @@ impl StatusBar {
         if self.pane_zoomed {
             parts.push("ZOOM".to_string());
         }
+        if self.cursor_line {
+            parts.push("CL".to_string());
+        }
 
         // Scrollback browse mode indicator.
         if self.scroll_mode {
@@ -473,6 +479,9 @@ impl StatusBar {
         // Pane zoom.
         if self.pane_zoomed {
             seg!("ZOOM".to_string(), accent_color);
+        }
+        if self.cursor_line {
+            seg!("CL".to_string(), dim_color);
         }
 
         // Scrollback browse mode.

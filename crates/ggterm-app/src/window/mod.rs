@@ -1329,6 +1329,10 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
                 self.status_bar.pane_zoomed = self.pane_zoomed;
+                self.status_bar.cursor_line = self
+                    .config_mgr
+                    .as_ref()
+                    .is_some_and(|m| m.config().appearance.cursor_line_highlight);
                 self.status_bar.scroll_mode = self.scroll_mode;
                 // CWD from OSC 7 (pane-level cwd tracking).
                 self.status_bar.cwd = self
