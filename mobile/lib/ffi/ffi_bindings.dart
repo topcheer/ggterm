@@ -93,6 +93,12 @@ typedef _EchoConnectDart = int Function(int id);
 typedef _LocalShellConnectC = Int32 Function(Uint32 id);
 typedef _LocalShellConnectDart = int Function(int id);
 
+// Title and CWD functions
+typedef _SessionStringC = IntPtr Function(
+    Uint32 id, Pointer<Int8> buf, IntPtr maxLen);
+typedef _SessionStringDart = int Function(
+    int id, Pointer<Int8> buf, int maxLen);
+
 typedef _LastErrorC = Pointer<Utf8> Function();
 typedef _LastErrorDart = Pointer<Utf8> Function();
 
@@ -125,6 +131,8 @@ class GgtermFfi {
   late final int Function(int, Pointer<Utf8>, int, Pointer<Utf8>, Pointer<Utf8>) sshConnectKey;
   late final int Function(int) echoConnect;
   late final int Function(int) localShellConnect;
+  late final int Function(int, Pointer<Int8>, int) sessionTitle;
+  late final int Function(int, Pointer<Int8>, int) sessionCwd;
   late final Pointer<Utf8> Function() lastError;
 
   /// Load the ggterm_ffi library.
@@ -258,6 +266,21 @@ class GgtermFfi {
     lastError = _lib
         .lookupFunction<_LastErrorC, _LastErrorDart>(
             'ggterm_last_error');
+    // Title and CWD are optional (older builds may not have them).
+    try {
+      sessionTitle = _lib
+          .lookupFunction<_SessionStringC, _SessionStringDart>(
+              'ggterm_session_title');
+    } catch (_) {
+      sessionTitle = (_, __, ___) => 0;
+    }
+    try {
+      sessionCwd = _lib
+          .lookupFunction<_SessionStringC, _SessionStringDart>(
+              'ggterm_session_cwd');
+    } catch (_) {
+      sessionCwd = (_, __, ___) => 0;
+    }
   }
 
   /// Get the last error message as a Dart string.
@@ -265,5 +288,31 @@ class GgtermFfi {
     final ptr = lastError();
     if (ptr == nullptr) return '';
     return ptr.toDartString();
+  }
+
+  /// Get the terminal title (OSC 0/2) as a Dart string.
+  /// Returns empty string if no title is set or the function is unavailable.
+  String getSessionTitle(int id, {int maxLen = 256}) {
+    final buf = calloc.allocate<Int8>(maxLen);
+    try {
+      final n = sessionTitle(id, buf, maxLen);
+      if (n <= 0) return '';
+      return buf.cast<Utf8>().toDartString(length: n);
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
+  /// Get the current working directory (OSC 7) as a Dart string.
+  /// Returns empty string if no cwd is set or the function is unavailable.
+  String getSessionCwd(int id, {int maxLen = 1024}) {
+    final buf = calloc.allocate<Int8>(maxLen);
+    try {
+      final n = sessionCwd(id, buf, maxLen);
+      if (n <= 0) return '';
+      return buf.cast<Utf8>().toDartString(length: n);
+    } finally {
+      calloc.free(buf);
+    }
   }
 }

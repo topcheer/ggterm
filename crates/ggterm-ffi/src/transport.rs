@@ -243,6 +243,61 @@ pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize
     }
 }
 
+/// Get the terminal title (OSC 0/2). Writes up to `max_len` bytes (including NUL)
+/// into `buf`. Returns the number of bytes written (excluding NUL), or 0 if
+/// the session doesn't exist or the title is empty.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_title(
+    id: u32,
+    buf: *mut c_char,
+    max_len: usize,
+) -> usize {
+    if buf.is_null() || max_len == 0 {
+        return 0;
+    }
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(s) = map.get(&id) else {
+        return 0;
+    };
+    let title = s.handle.terminal.title();
+    let bytes = title.as_bytes();
+    let copy_len = bytes.len().min(max_len - 1); // -1 for NUL
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+        *buf.add(copy_len) = 0; // NUL terminate
+    }
+    copy_len
+}
+
+/// Get the current working directory (OSC 7). Writes up to `max_len` bytes
+/// (including NUL) into `buf`. Returns bytes written (excl. NUL), or 0 if
+/// the session has no cwd.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_cwd(
+    id: u32,
+    buf: *mut c_char,
+    max_len: usize,
+) -> usize {
+    if buf.is_null() || max_len == 0 {
+        return 0;
+    }
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(s) = map.get(&id) else {
+        return 0;
+    };
+    let Some(cwd) = s.handle.terminal.cwd() else {
+        return 0;
+    };
+    let path_str = cwd.to_string_lossy();
+    let bytes = path_str.as_bytes();
+    let copy_len = bytes.len().min(max_len - 1);
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+        *buf.add(copy_len) = 0;
+    }
+    copy_len
+}
+
 /// Consume the bell flag. Returns 1 if bell was rung, 0 otherwise.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_take_bell(id: u32) -> i32 {
@@ -821,6 +876,57 @@ mod tests {
         let ptr = ggterm_last_error();
         // Should return a valid pointer (empty string or message)
         assert!(!ptr.is_null());
+    }
+
+    #[test]
+    fn t_session_title() {
+        let id = ggterm_session_create(80, 24);
+        // Set title via OSC 2.
+        let osc = b"\x1b]2;My Terminal Title\x07";
+        unsafe {
+            ggterm_session_process_bytes(id, osc.as_ptr(), osc.len());
+        }
+        let mut buf = [0i8; 128];
+        let n = unsafe { ggterm_session_title(id, buf.as_mut_ptr(), buf.len()) };
+        assert!(n > 0);
+        let title_bytes: Vec<u8> = buf[..n].iter().map(|&b| b as u8).collect();
+        assert_eq!(String::from_utf8_lossy(&title_bytes), "My Terminal Title");
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_title_empty() {
+        let id = ggterm_session_create(80, 24);
+        let mut buf = [0i8; 128];
+        let n = unsafe { ggterm_session_title(id, buf.as_mut_ptr(), buf.len()) };
+        // No title set — should be 0 or very short.
+        assert_eq!(n, 0);
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_title_truncated() {
+        let id = ggterm_session_create(80, 24);
+        let long_title = "A".repeat(200);
+        let osc = format!("\x1b]2;{long_title}\x07");
+        unsafe {
+            ggterm_session_process_bytes(id, osc.as_ptr(), osc.len());
+        }
+        let mut buf = [0i8; 32];
+        let n = unsafe { ggterm_session_title(id, buf.as_mut_ptr(), buf.len()) };
+        assert_eq!(n, 31); // max_len - 1 = 31
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_title_null_args() {
+        let id = ggterm_session_create(80, 24);
+        let n = unsafe { ggterm_session_title(id, std::ptr::null_mut(), 128) };
+        assert_eq!(n, 0);
+        let mut buf = [0i8; 128];
+        let n = unsafe { ggterm_session_title(id, buf.as_mut_ptr(), 0) };
+        assert_eq!(n, 0);
+        unsafe { ggterm_session_destroy(id) };
     }
 
     #[test]
