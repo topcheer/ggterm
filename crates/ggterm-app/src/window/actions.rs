@@ -2318,6 +2318,35 @@ impl DesktopApp {
                     self.rename_text = self.sessions[idx].title().to_owned();
                 }
             }
+            crate::tab_bar::TabMenuAction::CloseOtherTabs => {
+                if let Some(idx) = self.tab_context_menu.tab_index
+                    && self.sessions.len() > 1
+                {
+                    // Swap the kept tab to position 0, then truncate.
+                    self.sessions.swap(0, idx);
+                    self.sessions.truncate(1);
+                    self.active = 0;
+                    self.show_toast("Closed other tabs");
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+            crate::tab_bar::TabMenuAction::CloseTabsRight => {
+                if let Some(idx) = self.tab_context_menu.tab_index
+                    && idx + 1 < self.sessions.len()
+                {
+                    let count = self.sessions.len() - idx - 1;
+                    self.sessions.truncate(idx + 1);
+                    if self.active > idx {
+                        self.active = idx;
+                    }
+                    self.show_toast(format!("Closed {count} tab(s) to the right"));
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
             crate::tab_bar::TabMenuAction::NextTab => {
                 self.next_tab();
             }

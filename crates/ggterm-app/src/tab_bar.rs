@@ -390,6 +390,10 @@ pub enum TabMenuAction {
     DuplicateTab,
     /// Rename this tab.
     RenameTab,
+    /// Close all tabs except the right-clicked one.
+    CloseOtherTabs,
+    /// Close all tabs to the right of the right-clicked one.
+    CloseTabsRight,
     /// Switch to the next tab.
     NextTab,
     /// Switch to the previous tab.
@@ -404,6 +408,8 @@ impl TabMenuAction {
             Self::CloseTab => "Close Tab",
             Self::DuplicateTab => "Duplicate Tab",
             Self::RenameTab => "Rename Tab",
+            Self::CloseOtherTabs => "Close Other Tabs",
+            Self::CloseTabsRight => "Close Tabs to the Right",
             Self::NextTab => "Next Tab",
             Self::PrevTab => "Previous Tab",
         }
@@ -416,6 +422,8 @@ impl TabMenuAction {
             Self::CloseTab,
             Self::DuplicateTab,
             Self::RenameTab,
+            Self::CloseOtherTabs,
+            Self::CloseTabsRight,
             Self::NextTab,
             Self::PrevTab,
         ]
@@ -428,6 +436,8 @@ impl TabMenuAction {
             Self::CloseTab => "Ctrl+W",
             Self::DuplicateTab => "",
             Self::RenameTab => "",
+            Self::CloseOtherTabs => "",
+            Self::CloseTabsRight => "",
             Self::NextTab => "Ctrl+Tab",
             Self::PrevTab => "Ctrl+Shift+Tab",
         }
