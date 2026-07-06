@@ -977,9 +977,6 @@ class _TerminalPainter extends CustomPainter {
 
     // Cache Paint objects to avoid per-cell allocation.
     final cellBgPaint = Paint();
-    final cursorPaint = Paint()
-      ..color = theme.cursor.withValues(alpha: 0.5)
-      ..blendMode = BlendMode.srcOver;
 
     // First pass: draw all cell backgrounds (batch fillRect).
     for (var row = 0; row < maxVisibleRows; row++) {
@@ -1090,15 +1087,28 @@ class _TerminalPainter extends CustomPainter {
     }
 
     // Third pass: draw cursor (over everything).
+    // Semi-transparent so the character underneath remains visible.
     if (cursorVisible) {
       final cy = screen.cursorRow;
       final cx = screen.cursorCol;
       if (cy < maxVisibleRows && cx < cols) {
         final x = cx * cellWidth;
         final y = cy * cellHeight;
+        // Draw cursor block with 50% opacity — text underneath remains readable.
+        final cursorRectPaint = Paint()
+          ..color = theme.cursor.withValues(alpha: 0.5);
         canvas.drawRect(
           Rect.fromLTWH(x, y, cellWidth, cellHeight),
-          cursorPaint,
+          cursorRectPaint,
+        );
+        // Draw a 1px border for crispness.
+        final cursorBorderPaint = Paint()
+          ..color = theme.cursor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, cellWidth, cellHeight),
+          cursorBorderPaint,
         );
       }
     }
