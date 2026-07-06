@@ -216,6 +216,11 @@ impl DesktopApp {
                 self.toggle_p2p_share();
                 return;
             }
+            // Ctrl+Shift+Alt+L → manually reload config from file
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "l" {
+                self.reload_configuration();
+                return;
+            }
             // Ctrl+W → close tab (also Cmd+W on macOS)
             if self.check_keybinding(
                 "close_tab",

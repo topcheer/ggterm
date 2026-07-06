@@ -649,6 +649,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+L".into(),
+            description: "Reload config from file".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+Alt+N".into(),
             description: "Reset layout to single pane".into(),
             category: ShortcutCategory::System,
