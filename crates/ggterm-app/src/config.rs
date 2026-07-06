@@ -688,6 +688,75 @@ impl Config {
             )));
         }
 
+        // Check for keybinding conflicts — two actions bound to the same
+        // key combination silently causes one of them to be dead.
+        self.validate_keybinding_conflicts()?;
+
+        Ok(())
+    }
+
+    /// Detect keybinding conflicts where two or more actions share
+    /// the same key combination.
+    ///
+    /// Only conflicts within user-configured bindings are checked.
+    /// Default bindings are assumed conflict-free.
+    fn validate_keybinding_conflicts(&self) -> Result<(), ConfigError> {
+        let kb = &self.keybindings;
+
+        // Collect (action_name, parsed_binding) pairs for all configured bindings.
+        // Store normalized form as (ctrl, shift, alt, key_lowercase).
+        type KeyCombo = (bool, bool, bool, String);
+        let mut bindings: Vec<(&str, KeyCombo)> = Vec::new();
+
+        let entries: [(&str, Option<&String>); 13] = [
+            ("new_tab", kb.new_tab.as_ref()),
+            ("close_tab", kb.close_tab.as_ref()),
+            ("switch_tab_1", kb.switch_tab_1.as_ref()),
+            ("paste", kb.paste.as_ref()),
+            ("copy", kb.copy.as_ref()),
+            ("search", kb.search.as_ref()),
+            ("zoom_in", kb.zoom_in.as_ref()),
+            ("zoom_out", kb.zoom_out.as_ref()),
+            ("zoom_reset", kb.zoom_reset.as_ref()),
+            ("fullscreen", kb.fullscreen.as_ref()),
+            ("clear", kb.clear.as_ref()),
+            ("reset", kb.reset.as_ref()),
+            ("cycle_theme", kb.cycle_theme.as_ref()),
+        ];
+
+        for (action, binding_opt) in &entries {
+            if let Some(s) = binding_opt
+                && let Some((c, sh, a, k)) = parse_keybinding(s)
+            {
+                bindings.push((action, (c, sh, a, k.to_lowercase())));
+            }
+        }
+
+        // Check for duplicates using a HashMap.
+        let mut seen: std::collections::HashMap<KeyCombo, &str> = std::collections::HashMap::new();
+        for (action, combo) in &bindings {
+            if let Some(prev_action) = seen.get(combo) {
+                // Format the key combo for the error message.
+                let mut label = String::new();
+                if combo.0 {
+                    label.push_str("Ctrl+");
+                }
+                if combo.1 {
+                    label.push_str("Shift+");
+                }
+                if combo.2 {
+                    label.push_str("Alt+");
+                }
+                label.push_str(&combo.3.to_uppercase());
+
+                return Err(ConfigError::Validation(format!(
+                    "keybinding conflict: '{}' and '{}' are both bound to {}",
+                    prev_action, action, label
+                )));
+            }
+            seen.insert(combo.clone(), action);
+        }
+
         Ok(())
     }
 
@@ -2287,5 +2356,57 @@ word_chars = "-._/"
         assert!(toml.contains("cursor_blink"));
         assert!(toml.contains("copy_on_select"));
         assert!(toml.contains("word_chars"));
+    }
+
+    #[test]
+    fn test_keybinding_conflict_detected() {
+        let toml = r#"
+[keybindings]
+new_tab = "Ctrl+N"
+close_tab = "Ctrl+N"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        let err = config.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::Validation(_)));
+        assert!(err.to_string().contains("keybinding conflict"));
+        assert!(err.to_string().contains("new_tab"));
+        assert!(err.to_string().contains("close_tab"));
+        assert!(err.to_string().contains("Ctrl+N"));
+    }
+
+    #[test]
+    fn test_keybinding_no_conflict() {
+        // Different keys with same modifier — no conflict.
+        let toml = r#"
+[keybindings]
+new_tab = "Ctrl+T"
+close_tab = "Ctrl+W"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_keybinding_conflict_case_insensitive() {
+        // "Ctrl+A" and "Ctrl+a" should be treated as the same binding.
+        let toml = r#"
+[keybindings]
+copy = "Ctrl+A"
+paste = "Ctrl+a"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_keybinding_no_conflict_different_modifiers() {
+        // Same key, different modifiers — no conflict.
+        let toml = r#"
+[keybindings]
+copy = "Ctrl+C"
+paste = "Ctrl+Shift+C"
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.validate().is_ok());
     }
 }
