@@ -2103,6 +2103,21 @@ impl Perform for Terminal {
                 let resp = format!("\x1b[?{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
+            // DECRQM for modifyOtherKeys (CSI > Ps $ p)
+            // Must be checked BEFORE the ANSI-mode DECRQM below because the
+            // '>' intermediate is not a private '?' marker, so is_private=false.
+            b'p' if intermediates.contains(&b'$') && intermediates.contains(&b'>') => {
+                let mode = params.first().copied().unwrap_or(0);
+                if mode == 4 {
+                    let m = self.modes.modify_other_keys;
+                    let status: u8 = if m > 0 { 1 } else { 2 }; // 1=set, 2=reset
+                    let resp = format!("\x1b[>{mode};{status}$y");
+                    self.response_buffer.extend_from_slice(resp.as_bytes());
+                } else {
+                    let resp = format!("\x1b[>{mode};0$y");
+                    self.response_buffer.extend_from_slice(resp.as_bytes());
+                }
+            }
             // DECRQM for ANSI modes (CSI Ps $ p, no private '?')
             b'p' if intermediates.contains(&b'$') && !is_private => {
                 let mode = params.first().copied().unwrap_or(0);
@@ -5283,6 +5298,33 @@ mod tests {
         // Push more flags: CSI > 2 u sets bit 1
         feed(&mut t, b"\x1b[>2u");
         assert_eq!(t.kitty_keyboard_flags(), 3);
+    }
+
+    #[test]
+    fn t_decrqm_modify_other_keys_default() {
+        // Query modifyOtherKeys when disabled: CSI > 4 $ p
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>4$p");
+        let resp_bytes = t.take_response();
+        let resp = String::from_utf8_lossy(&resp_bytes);
+        assert!(
+            resp.contains("\x1b[>4;2$y"),
+            "DECRQM modifyOtherKeys default should be reset (2): got {resp:?}"
+        );
+    }
+
+    #[test]
+    fn t_decrqm_modify_other_keys_set() {
+        // Set modifyOtherKeys mode 1, then query
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>4;1h");
+        feed(&mut t, b"\x1b[>4$p");
+        let resp_bytes = t.take_response();
+        let resp = String::from_utf8_lossy(&resp_bytes);
+        assert!(
+            resp.contains("\x1b[>4;1$y"),
+            "DECRQM modifyOtherKeys mode 1 should be set (1): got {resp:?}"
+        );
     }
 
     #[test]
