@@ -206,6 +206,8 @@ pub struct DesktopApp {
     last_applied_theme: String,
     /// Last applied font size from config (for change detection on hot-reload).
     last_applied_font_size: f32,
+    /// Last applied font family from config (for change detection on hot-reload).
+    last_applied_font_family: String,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -575,6 +577,10 @@ impl DesktopApp {
                 .as_ref()
                 .map(|m| m.config().appearance.font_size as f32)
                 .unwrap_or(crate::font::DEFAULT_FONT_SIZE),
+            last_applied_font_family: config_mgr
+                .as_ref()
+                .map(|m| m.config().appearance.font_family.clone())
+                .unwrap_or_default(),
             status_bar_visible: true,
             hovered_link: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
@@ -1637,6 +1643,7 @@ impl ApplicationHandler for DesktopApp {
                     let cfg = mgr.config();
                     let new_theme = cfg.appearance.theme.clone();
                     let new_font_size = cfg.appearance.font_size as f32;
+                    let new_font_family = cfg.appearance.font_family.clone();
                     let new_scrollback = cfg.terminal.scrollback_lines;
                     let new_cursor_style = match cfg.appearance.cursor_style.as_str() {
                         "underline" => ggterm_core::CursorStyle::BlinkUnderline,
@@ -1664,6 +1671,28 @@ impl ApplicationHandler for DesktopApp {
                         self.apply_font_size();
                         self.last_applied_font_size = new_font_size;
                         log::info!("Font size changed -> applied {new_font_size:.1}px");
+                    }
+
+                    // Apply font family change if different.
+                    if !new_font_family.is_empty()
+                        && new_font_family != self.last_applied_font_family
+                    {
+                        if let Some(ref mut renderer) = self.renderer {
+                            renderer.set_font_family(&new_font_family);
+                        }
+                        self.last_applied_font_family = new_font_family.clone();
+                        log::info!("Font family changed -> applied {new_font_family}");
+                        // Re-measure cell dimensions and resize terminal grid.
+                        if let (Some(renderer), Some(window)) = (&self.renderer, &self.window) {
+                            let cw = renderer.cell_width();
+                            let ch = renderer.cell_height();
+                            let inner = window.inner_size();
+                            let new_cols = ((inner.width / cw.max(1)) as usize).max(10) as u16;
+                            let new_rows = ((inner.height / ch.max(1)) as usize).max(3) as u16;
+                            for session in &mut self.sessions {
+                                session.resize(new_cols, new_rows);
+                            }
+                        }
                     }
 
                     // Defer scrollback + cursor style to apply to ALL sessions

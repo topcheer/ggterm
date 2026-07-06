@@ -39,19 +39,20 @@ const DEFAULT_FONT_SIZE: f32 = 15.0;
 const DEFAULT_LINE_HEIGHT: f32 = 15.0;
 
 /// Terminal font family — platform-specific for best box-drawing support.
+/// This is the default; overridden at runtime by config `font_family`.
 #[cfg(target_os = "macos")]
-const TERMINAL_FONT: &str = "Menlo";
+pub const DEFAULT_TERMINAL_FONT: &str = "Menlo";
 #[cfg(all(unix, not(target_os = "macos")))]
-const TERMINAL_FONT: &str = "DejaVu Sans Mono"; // Linux — widely available
+pub const DEFAULT_TERMINAL_FONT: &str = "DejaVu Sans Mono"; // Linux — widely available
 #[cfg(target_os = "windows")]
-const TERMINAL_FONT: &str = "Cascadia Mono"; // Windows 11 default terminal font
+pub const DEFAULT_TERMINAL_FONT: &str = "Cascadia Mono"; // Windows 11 default terminal font
 
 /// Measure the actual monospace advance width from the font system.
 /// Returns the pixel width of a single character at the given font size.
 /// Falls back to `font_size * 0.6` if measurement fails.
-fn measure_cell_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
+fn measure_cell_width(font_system: &mut FontSystem, font_size: f32, font_name: &str) -> f32 {
     let metrics = Metrics::new(font_size, font_size);
-    let attrs = Attrs::new().family(Family::Name(TERMINAL_FONT));
+    let attrs = Attrs::new().family(Family::Name(font_name));
     let attrs_list = AttrsList::new(&attrs);
 
     // Use 'M' as a representative monospace character.
@@ -95,6 +96,8 @@ fn measure_cell_width(font_system: &mut FontSystem, font_size: f32) -> f32 {
 pub struct GlyphonRenderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
+    /// Current font family name (config-overridable).
+    font_family: String,
     /// Glyphon cache — kept alive for the lifetime of the renderer.
     #[allow(dead_code)]
     cache: GlyphonCache,
@@ -254,7 +257,8 @@ impl GlyphonRenderer {
         // matches exactly, positioning is perfect.
         // CJK chars occupy 2 cells but render at their natural width within
         // that space (each in its own run at start_col positioning).
-        let natural_advance = measure_cell_width(&mut font_system, scaled_font);
+        let font_family = DEFAULT_TERMINAL_FONT.to_string();
+        let natural_advance = measure_cell_width(&mut font_system, scaled_font, &font_family);
         let cell_w_f32 = natural_advance;
         let cell_w = natural_advance.round() as u32;
         let cell_h = scaled_lh.round() as u32;
@@ -284,6 +288,7 @@ impl GlyphonRenderer {
         Self {
             font_system,
             swash_cache,
+            font_family,
             cache,
             atlas,
             text_renderer,
@@ -441,7 +446,23 @@ impl GlyphonRenderer {
         // P18-B: line_height = font_size for seamless box-drawing character tiling.
         self.line_height = self.font_size;
         // P18-D: Use exact float advance as cell width — no rounding.
-        let natural = measure_cell_width(&mut self.font_system, self.font_size);
+        let natural = measure_cell_width(&mut self.font_system, self.font_size, &self.font_family);
+        self.natural_advance = natural;
+        self.cell_width_f32 = natural;
+        // Re-measure cell width with the current font family.
+        self.measured_cell_width = natural.round() as u32;
+    }
+
+    /// Set the terminal font family (e.g. "JetBrains Mono", "Fira Code").
+    /// Re-measures cell width for the new font. Call this when the user
+    /// changes `font_family` in the config.
+    pub fn set_font_family(&mut self, family: &str) {
+        if family == self.font_family {
+            return;
+        }
+        self.font_family = family.to_string();
+        // Re-measure cell width with the new font.
+        let natural = measure_cell_width(&mut self.font_system, self.font_size, &self.font_family);
         self.natural_advance = natural;
         self.cell_width_f32 = natural;
         self.measured_cell_width = natural.round() as u32;
@@ -537,7 +558,7 @@ impl GlyphonRenderer {
                 // The cell_w is set to the exact float advance of the ASCII 'M',
                 // so glyphon's natural positioning matches the grid perfectly.
                 let attrs = Attrs::new()
-                    .family(Family::Name(TERMINAL_FONT))
+                    .family(Family::Name(&self.font_family))
                     .color(GlyphonColor::rgb(run.fg.0, run.fg.1, run.fg.2));
                 let mut attrs = attrs;
                 // P18-D: Do NOT apply Weight::BOLD. Menlo Bold is missing
@@ -577,7 +598,7 @@ impl GlyphonRenderer {
         let overlay_texts = std::mem::take(&mut self.overlay_text);
         for ot in &overlay_texts {
             let attrs = Attrs::new()
-                .family(Family::Name(TERMINAL_FONT))
+                .family(Family::Name(&self.font_family))
                 .color(GlyphonColor::rgb(ot.color.0, ot.color.1, ot.color.2));
             let attrs_list = AttrsList::new(&attrs);
             let mut buffer = Buffer::new(&mut self.font_system, metrics);
@@ -1198,7 +1219,7 @@ impl GlyphonRenderer {
 
             for ot in &overlay_texts {
                 let attrs = Attrs::new()
-                    .family(Family::Name(TERMINAL_FONT))
+                    .family(Family::Name(&self.font_family))
                     .color(GlyphonColor::rgb(ot.color.0, ot.color.1, ot.color.2));
                 let attrs_list = AttrsList::new(&attrs);
                 let mut buffer = Buffer::new(&mut self.font_system, metrics);
