@@ -112,6 +112,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
   }
 
+  /// Reset cursor to visible and restart blink timer.
+  /// Called when user sends input, so the cursor is always visible
+  /// during active typing (matches desktop and iTerm2 behavior).
+  void _resetCursorBlink() {
+    if (!_cursorVisible) {
+      _cursorVisible = true;
+    }
+    // Restart the timer so the cursor stays visible for at least
+    // one full blink cycle after the last keystroke.
+    _startCursorBlink();
+  }
+
   void _startRenderLoop() {
     _renderTimer?.cancel();
     // ~60fps pump + render cycle for low-latency echo
@@ -198,6 +210,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
       widget.sessionManager.resetViewport(widget.sessionId);
       _lastFrameHash = 0; // Force refresh
     }
+    // Reset cursor blink so it's visible during active typing.
+    _resetCursorBlink();
   }
 
   /// Paste text from system clipboard into the terminal.
