@@ -101,6 +101,8 @@ pub struct StatusBar {
     pub git_branch: String,
     /// Active theme name (e.g., "dark", "tokyo-night").
     pub theme_name: String,
+    /// Terminal dimensions as "COLS×ROWS" (e.g., "120×40").
+    pub dimensions: String,
 }
 
 impl Default for StatusBar {
@@ -145,6 +147,7 @@ impl StatusBar {
             uptime: String::new(),
             git_branch: String::new(),
             theme_name: String::new(),
+            dimensions: String::new(),
         }
     }
 
@@ -304,6 +307,9 @@ impl StatusBar {
         if !self.theme_name.is_empty() {
             parts.push(format!("theme:{}", self.theme_name));
         }
+        if !self.dimensions.is_empty() {
+            parts.push(self.dimensions.clone());
+        }
 
         // Mode indicators.
         if self.bell_active {
@@ -448,6 +454,9 @@ impl StatusBar {
         // Active theme name (dim color — informational only).
         if !self.theme_name.is_empty() {
             seg!(format!("theme:{}", self.theme_name), dim_color);
+        }
+        if !self.dimensions.is_empty() {
+            seg!(self.dimensions.clone(), dim_color);
         }
 
         // Mode indicators.

@@ -1323,6 +1323,11 @@ impl ApplicationHandler for DesktopApp {
                 }
                 self.status_bar.git_branch = self.git_branch_cache.clone();
                 self.status_bar.theme_name = self.last_applied_theme.clone();
+                self.status_bar.dimensions = format!(
+                    "{}×{}",
+                    self.active_session().app().grid().width(),
+                    self.active_session().app().grid().height()
+                );
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
