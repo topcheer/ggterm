@@ -2201,6 +2201,20 @@ impl DesktopApp {
             "split.swap" => {
                 self.swap_active_pane();
             }
+            "view.toggle_cursor_line" => {
+                if let Some(mgr) = &mut self.config_mgr {
+                    let new_val = !mgr.config().appearance.cursor_line_highlight;
+                    mgr.config_mut().appearance.cursor_line_highlight = new_val;
+                    if new_val {
+                        self.show_toast("Cursor line highlight: ON");
+                    } else {
+                        self.show_toast("Cursor line highlight: OFF");
+                    }
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
             "terminal.new_session" => {
                 self.new_session();
             }

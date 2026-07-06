@@ -300,6 +300,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+X".into()),
         });
         r.register(Command {
+            id: "view.toggle_cursor_line".into(),
+            label: "Toggle Cursor Line Highlight".into(),
+            category: "View".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.new_session".into(),
             label: "New Session (Close All Tabs)".into(),
             category: "Tab".into(),

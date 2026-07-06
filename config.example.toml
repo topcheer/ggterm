@@ -33,6 +33,10 @@ cursor_style = "block"
 # Default: true (blinks when window is focused)
 # cursor_blink = true
 
+# Highlight the entire line where the cursor is positioned.
+# Similar to Vim's `cursorline`. Default: false.
+# cursor_line_highlight = false
+
 [terminal]
 # Maximum scrollback history lines
 scrollback_lines = 10000
