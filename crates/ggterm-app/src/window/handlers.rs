@@ -511,6 +511,28 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) {
+                // If there's selected text, pre-fill the search query
+                // with the first line of the selection.
+                if !self.search.visible && self.selection.is_active() {
+                    if let Some(((sx, sy), (ex, ey))) = self.selection.normalized() {
+                        if sy == ey {
+                            // Single-line selection — use as search query.
+                            let grid = self.active_session().app().grid();
+                            let mut text = String::new();
+                            for x in sx..=ex {
+                                if let Some(cell) = grid.display_cell(x as usize, sy as usize)
+                                    && !cell.is_wide_spacer()
+                                {
+                                    text.push(cell.ch);
+                                }
+                            }
+                            let text = text.trim().to_string();
+                            if !text.is_empty() {
+                                self.search.query = text;
+                            }
+                        }
+                    }
+                }
                 self.search.toggle();
                 return;
             }
