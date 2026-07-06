@@ -97,9 +97,16 @@ model = "glm-4-flash"
 # Examples:
 #   "Ctrl+T"           → Ctrl + T
 #   "Ctrl+Shift+V"     → Ctrl + Shift + V
-#   "Alt+1"            → Alt + 1
-#   "F11"              → F11 (no modifiers)
-#   "Ctrl+="           → Ctrl + =
+# Keybindings are validated on load. If two actions share the
+# same key combination, GGTerm will show an error toast and a
+# "!ERROR!" indicator in the status bar with details.
+#
+# Format:
+#   "Ctrl+Shift+X"    → Ctrl + Shift + X
+#   "Alt+1"           → Alt + 1
+#   "F11"             → F11 (no modifiers)
+#   "Ctrl+="          → Ctrl + =
+# Key names are case-insensitive (Ctrl+A == Ctrl+a).
 
 [keybindings]
 # Tab management
