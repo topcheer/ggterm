@@ -264,11 +264,43 @@ class _TerminalScreenState extends State<TerminalScreen>
     }
 
     final text = data.text!;
+
+    // Safety: confirm before pasting multi-line content.
+    // Multi-line paste can execute multiple commands accidentally.
+    final lineCount = text.trim().split('\n').length;
+    if (lineCount > 1 && mounted) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Multi-line paste'),
+          content: Text(
+            'Clipboard contains $lineCount lines.\n'
+            'Pasting may execute multiple commands.\n\n'
+            'First line: ${text.split('\n').first.length > 60 ? '${text.split('\n').first.substring(0, 60)}...' : text.split('\n').first}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Paste'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (!mounted) return;
+
     // Send text as UTF-8 bytes to the PTY.
     final bytes = utf8.encode(text);
     _sendInput(bytes);
 
-    _showCopiedSnackBar('Pasted ${text.length} chars');
+    _showCopiedSnackBar(
+      lineCount > 1 ? 'Pasted $lineCount lines' : 'Pasted ${text.length} chars',
+    );
   }
 
   /// Handle text input from the hidden TextField.
