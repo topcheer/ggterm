@@ -191,6 +191,8 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('^C', 'CtrlC'), // SIGINT
             _keyButton('^D', 'CtrlD'), // EOF
             _keyButton('^Z', 'CtrlZ'), // SIGTSTP
+            _keyButton(r'^\', r'CtrlBackslash'), // SIGQUIT
+            _keyButton('^U', 'CtrlU'), // clear line
             // Separator
             Container(
               width: 1,

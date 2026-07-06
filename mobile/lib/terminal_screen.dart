@@ -301,6 +301,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
         return [0x04]; // EOF
       case 'CtrlZ':
         return [0x1A]; // SIGTSTP
+      case 'CtrlBackslash':
+        return [0x1C]; // SIGQUIT (Ctrl+\)
+      case 'CtrlU':
+        return [0x15]; // Ctrl+U — clear line
       case 'Up':
         return [0x1B, 0x5B, 0x41]; // ESC [ A
       case 'Down':
