@@ -239,6 +239,12 @@ impl SshSession {
 
         runtime.spawn(async move {
             let mut channel = channel;
+            // Keepalive: send a dummy data byte every ~200 loop iterations
+            // (roughly every 1 second at 5ms poll interval). This prevents
+            // idle SSH connections from being dropped by NAT/firewall timeouts.
+            // Many SSH servers also have ClientAliveInterval settings.
+            let mut tick: u32 = 0;
+            const KEEPALIVE_INTERVAL: u32 = 200; // ~1s at 5ms poll
             loop {
                 // ── Drain pending writes (non-blocking) ────────────
                 // &self borrow, released after each iteration
@@ -269,7 +275,15 @@ impl SshSession {
                         break;
                     }
                     Err(_) => {
-                        // Timeout — no data, loop back to check writes
+                        // Timeout — no data. Send keepalive if interval elapsed.
+                        tick += 1;
+                        if tick >= KEEPALIVE_INTERVAL {
+                            tick = 0;
+                            // Best-effort keepalive: send a single NUL byte.
+                            // Most SSH servers ignore it but it keeps the
+                            // TCP connection alive through NAT/firewalls.
+                            let _ = channel.data(&b"\x00"[..]).await;
+                        }
                     }
                     _ => {}
                 }
