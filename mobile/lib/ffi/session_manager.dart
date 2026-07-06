@@ -30,6 +30,10 @@ class ScreenSnapshot {
   final int cursorCol;
   final int cursorRow;
   final bool hasBell;
+  /// Terminal title (OSC 0/2). Empty if not set.
+  final String title;
+  /// Current working directory (OSC 7). Empty if not reported.
+  final String cwd;
 
   const ScreenSnapshot({
     required this.cols,
@@ -38,6 +42,8 @@ class ScreenSnapshot {
     this.cursorCol = 0,
     this.cursorRow = 0,
     this.hasBell = false,
+    this.title = '',
+    this.cwd = '',
   });
 
   static const empty = ScreenSnapshot(
@@ -224,6 +230,8 @@ class SessionManager {
 
       final (cursorCol, cursorRow) = getCursor(id);
       final bell = _ffi.sessionTakeBell(id) != 0;
+      final title = _ffi.getSessionTitle(id);
+      final cwd = _ffi.getSessionCwd(id);
 
       return ScreenSnapshot(
         cols: cols,
@@ -232,6 +240,8 @@ class SessionManager {
         cursorCol: cursorCol,
         cursorRow: cursorRow,
         hasBell: bell,
+        title: title,
+        cwd: cwd,
       );
     } finally {
       malloc.free(ptr);

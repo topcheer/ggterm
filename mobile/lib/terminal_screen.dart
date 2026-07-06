@@ -649,7 +649,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
       child: Scaffold(
       backgroundColor: theme.background,
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(
+          _screen.title.isNotEmpty ? _screen.title : widget.title,
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
         actions: [
