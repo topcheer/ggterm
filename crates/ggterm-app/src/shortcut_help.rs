@@ -691,6 +691,24 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Effects,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+X".into(),
+            description: "Swap active pane with next".into(),
+            category: ShortcutCategory::Split,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+S".into(),
+            description: "Export scrollback to file".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+End".into(),
+            description: "Scroll to bottom".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
     ]
 }
 
