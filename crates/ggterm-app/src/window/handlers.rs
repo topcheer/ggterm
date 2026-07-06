@@ -2784,6 +2784,38 @@ impl DesktopApp {
             return;
         }
 
+        // Mouse tracking OFF — check for alternate scroll mode (DECSET 7727).
+        // When in the alternate screen (less, man, vim without mouse), convert
+        // wheel events to Up/Down arrow key sequences so users can scroll.
+        if term.is_alt_screen() && term.alternate_scroll_enabled() && !self.mods.shift {
+            let lines = match delta {
+                winit::event::MouseScrollDelta::LineDelta(_x, y) => -(y as i32),
+                winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                    -(pos.y as f32 / 16.0).round() as i32
+                }
+            };
+            // Send arrow keys for each scroll line.
+            let key_bytes = if lines > 0 {
+                // Scroll up → Up arrow
+                if term.cursor_keys_app() {
+                    b"\x1bOA".to_vec()
+                } else {
+                    b"\x1b[A".to_vec()
+                }
+            } else {
+                // Scroll down → Down arrow
+                if term.cursor_keys_app() {
+                    b"\x1bOB".to_vec()
+                } else {
+                    b"\x1b[B".to_vec()
+                }
+            };
+            for _ in 0..lines.unsigned_abs() {
+                self.write_to_pty(&key_bytes);
+            }
+            return;
+        }
+
         // Mouse tracking OFF — feed smooth scroller.
         let cell_h = if let Some(ref renderer) = self.renderer {
             renderer.cell_height() as f32

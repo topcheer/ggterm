@@ -310,6 +310,12 @@ pub struct Modes {
     /// When enabled, content reflows when the terminal is resized.
     /// Default: true.
     pub reflow: bool,
+    /// DECSET 7727 — alternate scroll mode.
+    /// When in the alternate screen and mouse tracking is off, mouse wheel
+    /// events are converted to Up/Down arrow key sequences so the user can
+    /// scroll in full-screen apps (less, man, vim) without mouse mode.
+    /// Default: true (matches xterm).
+    pub alternate_scroll: bool,
     /// DECPAM — keypad application mode (ESC =).
     /// When enabled, numeric keypad keys send SS3 sequences instead of digits.
     pub keypad_app: bool,
@@ -354,6 +360,7 @@ impl Modes {
             focus_event: false,
             synchronized_output: false,
             reflow: true,
+            alternate_scroll: true,
             keypad_app: false,
             cursor_blink: true,
             reverse_video: false,
@@ -737,6 +744,12 @@ impl Terminal {
     /// Return true if text reflow on resize is enabled (DECSET 2027, P24-B).
     pub fn reflow_enabled(&self) -> bool {
         self.modes.reflow
+    }
+
+    /// Return true if alternate scroll mode is enabled (DECSET 7727).
+    /// When in alt screen + no mouse tracking, wheel events become arrow keys.
+    pub fn alternate_scroll_enabled(&self) -> bool {
+        self.modes.alternate_scroll
     }
 
     /// Return true if cursor keys are in application mode (DECCKM).
@@ -1191,6 +1204,7 @@ impl Terminal {
             1004 => self.modes.focus_event = enable, // Focus event reporting
             2026 => self.modes.synchronized_output = enable, // Synchronized output
             2027 => self.modes.reflow = enable,      // Text reflow on resize
+            7727 => self.modes.alternate_scroll = enable, // Alternate scroll
             _ => {}
         }
     }
@@ -2082,6 +2096,7 @@ impl Perform for Terminal {
                     2004 => self.modes.bracketed_paste, // Bracketed paste
                     2026 => self.modes.synchronized_output, // Synchronized output
                     2027 => self.modes.reflow, // Text reflow
+                    7727 => self.modes.alternate_scroll, // Alternate scroll
                     _ => false,
                 };
                 let status = if is_set { 1 } else { 2 };
@@ -4955,6 +4970,28 @@ mod tests {
         assert!(!t.reflow_enabled());
         feed(&mut t, b"\x1b[?2027h");
         assert!(t.reflow_enabled());
+    }
+
+    // ===== DECSET 7727: Alternate scroll mode tests =====
+
+    #[test]
+    fn t_alternate_scroll_default() {
+        let t = Terminal::new(80, 24);
+        assert!(
+            t.alternate_scroll_enabled(),
+            "alternate scroll should be enabled by default"
+        );
+    }
+
+    #[test]
+    fn t_alternate_scroll_toggle() {
+        let mut t = Terminal::new(80, 24);
+        // Disable: DECSET 7727 off
+        feed(&mut t, b"\x1b[?7727l");
+        assert!(!t.alternate_scroll_enabled());
+        // Enable: DECSET 7727 on
+        feed(&mut t, b"\x1b[?7727h");
+        assert!(t.alternate_scroll_enabled());
     }
 
     // ===== P24-D: DECSCA / DECSED selective erase tests =====
