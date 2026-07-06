@@ -2136,6 +2136,20 @@ impl DesktopApp {
             "config.reload" => {
                 self.reload_configuration();
             }
+            "config.open" => {
+                self.open_config_file();
+            }
+            "terminal.scroll_mode" => {
+                self.scroll_mode = !self.scroll_mode;
+                if self.scroll_mode {
+                    self.show_toast("Scroll mode: j/k scroll, G/g jump, q/Esc exit");
+                } else {
+                    self.show_toast("Exited scroll mode");
+                }
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
             "terminal.new_session" => {
                 self.new_session();
             }

@@ -303,6 +303,9 @@ pub struct DesktopApp {
     dragging_tab: Option<usize>,
     /// Pane zoom mode: when true, only the active pane is rendered at full size.
     pane_zoomed: bool,
+    /// Scrollback browse mode: when active, keys navigate scrollback
+    /// instead of being sent to the PTY (vim-style j/k/G/g/q).
+    scroll_mode: bool,
     /// Independent settings window (None when closed).
     settings_window: Option<crate::settings_window::SettingsWindowState>,
     /// Flag to open settings window on next about_to_wait (set from handlers).
@@ -605,6 +608,7 @@ impl DesktopApp {
             saved_window_size: None,
             dragging_tab: None,
             pane_zoomed: false,
+            scroll_mode: false,
             settings_window: None,
             pending_open_settings: false,
             #[cfg(feature = "p2p")]
@@ -1291,6 +1295,7 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
                 self.status_bar.pane_zoomed = self.pane_zoomed;
+                self.status_bar.scroll_mode = self.scroll_mode;
                 // CWD from OSC 7 (pane-level cwd tracking).
                 self.status_bar.cwd = self
                     .active_session()

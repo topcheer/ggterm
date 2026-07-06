@@ -282,6 +282,18 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "config.open".into(),
+            label: "Open Config File".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+O".into()),
+        });
+        r.register(Command {
+            id: "terminal.scroll_mode".into(),
+            label: "Toggle Scrollback Browse Mode".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+Space".into()),
+        });
+        r.register(Command {
             id: "terminal.new_session".into(),
             label: "New Session (Close All Tabs)".into(),
             category: "Tab".into(),

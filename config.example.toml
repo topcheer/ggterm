@@ -138,3 +138,14 @@ copy_cwd = "Ctrl+Shift+Alt+P"
 
 # Theme cycling
 cycle_theme = "Ctrl+Shift+T"
+
+# ──────────────────────────────────────────────────────────────────────
+# Non-configurable shortcuts (always available)
+# ──────────────────────────────────────────────────────────────────────
+# Ctrl+Shift+O      → Open config file in system editor (creates if missing)
+# Ctrl+Shift+Space  → Toggle scrollback browse mode (j/k/G/g/d/u/b/Space/q/Esc)
+#                     In browse mode, keys navigate scrollback instead of
+#                     being sent to the shell. Press q or Esc to exit.
+# Ctrl+Shift+P      → Command palette (fuzzy search all actions)
+# Ctrl+Shift+/      → Keyboard shortcut help overlay
+# Ctrl+Shift+,      → Open config file (alternative to Ctrl+Shift+O)

@@ -157,6 +157,118 @@ impl DesktopApp {
             return;
         }
 
+        // Scrollback browse mode: toggle with Ctrl+Shift+Space.
+        // When active, vim-style keys navigate scrollback instead of going to PTY.
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::Space) = &event.physical_key
+        {
+            self.scroll_mode = !self.scroll_mode;
+            if self.scroll_mode {
+                self.show_toast("Scroll mode: j/k scroll, G/g jump, q/Esc exit");
+            } else {
+                self.show_toast("Exited scroll mode");
+            }
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+            return;
+        }
+
+        // Scrollback browse mode navigation.
+        if self.scroll_mode && !self.mods.ctrl {
+            let grid_h = self.active_session().app().grid().height();
+            let scrollback_len = self.active_session().app().grid().scrollback_len();
+            let mut handled = true;
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::KeyJ) | PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_down_viewport(1);
+                }
+                PhysicalKey::Code(KeyCode::KeyK) | PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(1);
+                }
+                PhysicalKey::Code(KeyCode::KeyG) => {
+                    if self.mods.shift {
+                        // Shift+G → jump to top (oldest)
+                        self.active_session_mut()
+                            .app_mut()
+                            .grid_mut()
+                            .scroll_up_viewport(scrollback_len);
+                    } else {
+                        // g → jump to bottom (newest)
+                        self.active_session_mut()
+                            .app_mut()
+                            .grid_mut()
+                            .reset_viewport();
+                    }
+                }
+                PhysicalKey::Code(KeyCode::KeyU) => {
+                    // u → half page up
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(grid_h / 2);
+                }
+                PhysicalKey::Code(KeyCode::KeyD) => {
+                    // d → half page down
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_down_viewport(grid_h / 2);
+                }
+                PhysicalKey::Code(KeyCode::PageUp) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(grid_h);
+                }
+                PhysicalKey::Code(KeyCode::PageDown) => {
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_down_viewport(grid_h);
+                }
+                PhysicalKey::Code(KeyCode::Space) => {
+                    // Space → page down
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_down_viewport(grid_h);
+                }
+                PhysicalKey::Code(KeyCode::KeyB) => {
+                    // b → page up
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_up_viewport(grid_h);
+                }
+                PhysicalKey::Code(KeyCode::KeyQ) | PhysicalKey::Code(KeyCode::Escape) => {
+                    // q or Esc → exit scroll mode
+                    self.scroll_mode = false;
+                    self.show_toast("Exited scroll mode");
+                }
+                _ => {
+                    // Any other key → exit scroll mode and fall through to normal processing.
+                    self.scroll_mode = false;
+                    handled = false;
+                }
+            }
+            if handled {
+                self.smooth_scroll.reset();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+                return;
+            }
+        }
+
         // Escape clears text selection (when no overlays are open).
         if !self.mods.ctrl
             && !self.mods.alt
@@ -493,6 +605,16 @@ impl DesktopApp {
             && let PhysicalKey::Code(KeyCode::KeyU) = &event.physical_key
         {
             self.open_url_at_cursor();
+            return;
+        }
+
+        // Ctrl+Shift+O → open config file in default editor
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyO) = &event.physical_key
+        {
+            self.open_config_file();
             return;
         }
 

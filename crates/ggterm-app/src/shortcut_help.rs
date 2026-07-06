@@ -286,6 +286,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::View,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+O".into(),
+            description: "Open config file in editor".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Space".into(),
+            description: "Toggle scrollback browse mode (j/k/G/g/d/u/q)".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
         // Edit
         ShortcutEntry {
             keys: "Ctrl+Shift+V".into(),
