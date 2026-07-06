@@ -147,6 +147,9 @@ pub struct DesktopApp {
     smooth_scroll: crate::smooth_scroll::SmoothScroller,
     /// P27-F: Whether the window is currently focused (for cursor style).
     window_focused: bool,
+    /// True when the window is occluded (covered by other windows) or minimized.
+    /// When true, rendering is skipped to save GPU/CPU resources.
+    window_occluded: bool,
     /// DPI scale factor (2.0 on Retina, 1.0 on standard). P18-A.
     scale_factor: f64,
 
@@ -545,6 +548,7 @@ impl DesktopApp {
             context_menu: Default::default(),
             smooth_scroll: Default::default(),
             window_focused: true,
+            window_occluded: false,
             scale_factor: 1.0,
             pending_resize: None,
             force_config_reload: false,
@@ -1208,6 +1212,14 @@ impl ApplicationHandler for DesktopApp {
                     return;
                 }
 
+                // Skip GPU rendering when the window is hidden (occluded) to
+                // save battery and GPU resources. We still process PTY data.
+                if self.window_occluded {
+                    // Sleep longer when occluded to minimize CPU usage.
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    return;
+                }
+
                 self.render_frame();
 
                 // Update status bar from active session state.
@@ -1460,6 +1472,21 @@ impl ApplicationHandler for DesktopApp {
                 }
                 if let Some(ref window) = self.window {
                     window.request_redraw();
+                }
+            }
+
+            // Skip GPU rendering when the window is occluded (hidden behind
+            // other windows) to save battery and GPU resources.
+            WindowEvent::Occluded(occluded) => {
+                if self.window_occluded != occluded {
+                    self.window_occluded = occluded;
+                    log::debug!("Window occluded: {occluded}");
+                    if !occluded {
+                        // Window became visible — request a redraw.
+                        if let Some(ref window) = self.window {
+                            window.request_redraw();
+                        }
+                    }
                 }
             }
 
