@@ -1609,13 +1609,26 @@ impl ApplicationHandler for DesktopApp {
         if self.force_config_reload {
             self.force_config_reload = false;
             if let Some(ref mut mgr) = self.config_mgr {
-                let _ = mgr.reload();
+                match mgr.reload() {
+                    Ok(true) => {
+                        log::info!("Config manually reloaded successfully");
+                        self.status_bar.clear_config_error();
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        log::warn!("Config reload error: {e}");
+                        self.show_toast(format!("Config error: {e}"));
+                        self.status_bar.set_config_error(Some(e.to_string()));
+                    }
+                }
             }
         }
         #[cfg(feature = "config-watch")]
         if let Some(ref mut mgr) = self.config_mgr {
             match mgr.poll_reload() {
                 Ok(true) => {
+                    // Clear any previous config error on successful reload.
+                    self.status_bar.clear_config_error();
                     let cfg = mgr.config();
                     let new_theme = cfg.appearance.theme.clone();
                     let new_font_size = cfg.appearance.font_size as f32;
@@ -1657,7 +1670,11 @@ impl ApplicationHandler for DesktopApp {
                     self.show_toast("Config reloaded");
                 }
                 Ok(false) => {}
-                Err(e) => log::warn!("Config reload error: {e}"),
+                Err(e) => {
+                    log::warn!("Config reload error: {e}");
+                    self.show_toast(format!("Config error: {e}"));
+                    self.status_bar.set_config_error(Some(e.to_string()));
+                }
             }
         }
 
