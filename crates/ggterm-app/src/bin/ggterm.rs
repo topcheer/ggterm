@@ -46,7 +46,8 @@ struct Cli {
     #[arg(short = 't', long, default_value = "GGTerm")]
     title: String,
 
-    /// Color theme: dark, light, or dracula.
+    /// Color theme: dark, light, dracula, solarized-dark, solarized-light,
+    /// gruvbox, nord, tokyo-night, catppuccin-mocha.
     #[arg(long, default_value = "dark")]
     theme: String,
 
@@ -65,6 +66,10 @@ struct Cli {
     /// Verbosity: -v info, -vv debug, -vvv trace.
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    /// Auto-start P2P share on launch (for testing).
+    #[arg(long)]
+    p2p_share: bool,
 }
 
 fn main() -> ExitCode {
@@ -110,6 +115,16 @@ fn main() -> ExitCode {
         config = config.with_title(format!("GGTerm {}", env!("CARGO_PKG_VERSION")));
     }
 
+    // Auto-start P2P share if flag is set.
+    if cli.p2p_share {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            log::info!("Auto-starting P2P share (CLI --p2p-share)");
+            // Write a flag file that about_to_wait checks.
+            let _ = std::fs::write("/tmp/ggterm_auto_share", "1");
+        });
+    }
+
     // Launch the terminal.
     match DesktopApp::run(config) {
         Ok(()) => {
@@ -122,4 +137,9 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Auto-start P2P share (used by --p2p-share flag).
+pub fn should_auto_share() -> bool {
+    std::env::args().any(|a| a == "--p2p-share")
 }
