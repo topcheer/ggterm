@@ -239,12 +239,15 @@ impl SshSession {
 
         runtime.spawn(async move {
             let mut channel = channel;
-            // Keepalive: send a dummy data byte every ~200 loop iterations
-            // (roughly every 1 second at 5ms poll interval). This prevents
-            // idle SSH connections from being dropped by NAT/firewall timeouts.
-            // Many SSH servers also have ClientAliveInterval settings.
+            // Keepalive: send SSH protocol keepalive every ~200 loop iterations
+            // (~1 second at 5ms poll). This uses the SSH transport layer
+            // (SSH_MSG_GLOBAL_REQUEST) rather than channel data, so it doesn't
+            // interfere with terminal output.
             let mut tick: u32 = 0;
             const KEEPALIVE_INTERVAL: u32 = 200; // ~1s at 5ms poll
+            // Track current terminal dimensions for keepalive window_change.
+            let mut current_cols: Option<u32> = None;
+            let mut current_rows: Option<u32> = None;
             loop {
                 // ── Drain pending writes (non-blocking) ────────────
                 // &self borrow, released after each iteration
@@ -254,6 +257,8 @@ impl SshSession {
                 // ── Apply pending resize (non-blocking) ────────────
                 while let Ok((cols, rows)) = resize_rx.try_recv() {
                     let _ = channel.window_change(cols, rows, 0, 0).await;
+                    current_cols = Some(cols);
+                    current_rows = Some(rows);
                 }
                 // ── Read from SSH channel (5ms timeout) ────────────
                 // &mut self borrow — no other borrows active here
@@ -276,13 +281,23 @@ impl SshSession {
                     }
                     Err(_) => {
                         // Timeout — no data. Send keepalive if interval elapsed.
+                        // Use window_change (PTY resize) as a harmless keepalive:
+                        // it sends a real SSH message that prevents NAT/firewall
+                        // timeouts without injecting data into the terminal stream.
                         tick += 1;
                         if tick >= KEEPALIVE_INTERVAL {
                             tick = 0;
-                            // Best-effort keepalive: send a single NUL byte.
-                            // Most SSH servers ignore it but it keeps the
-                            // TCP connection alive through NAT/firewalls.
-                            let _ = channel.data(&b"\x00"[..]).await;
+                            // Re-send the last known window size as keepalive.
+                            // This is a no-op for the remote terminal but keeps
+                            // the SSH connection alive.
+                            let _ = channel
+                                .window_change(
+                                    current_cols.unwrap_or(80),
+                                    current_rows.unwrap_or(24),
+                                    0,
+                                    0,
+                                )
+                                .await;
                         }
                     }
                     _ => {}
