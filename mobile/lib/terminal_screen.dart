@@ -758,6 +758,101 @@ class _TerminalScreenState extends State<TerminalScreen>
     );
   }
 
+  /// Handle hardware keyboard events (iPad/Android tablet with physical keyboard).
+  /// Maps physical keys to terminal escape sequences, enabling Tab, Esc, F-keys,
+  /// arrow keys, and Ctrl combos without needing the on-screen keyboard bar.
+  KeyEventResult _onHardwareKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    final ctrl = HardwareKeyboard.instance.isControlPressed;
+    final alt = HardwareKeyboard.instance.isAltPressed;
+
+    // Map common special keys.
+    final keyId = key.keyId;
+    switch (keyId) {
+      // Tab
+      case 0x0100000015:
+        _sendInput([0x09]);
+        return KeyEventResult.handled;
+      // Escape
+      case 0x0100000019:
+        _sendInput([0x1B]);
+        return KeyEventResult.handled;
+      // Backspace
+      case 0x0100000016:
+        _sendInput([0x7F]);
+        return KeyEventResult.handled;
+      // Enter
+      case 0x0100000024:
+        _sendInput([0x0D]);
+        return KeyEventResult.handled;
+      // Arrow keys
+      case 0x0100000058: // Up
+        _sendInput([0x1B, 0x5B, 0x41]);
+        return KeyEventResult.handled;
+      case 0x0100000059: // Down
+        _sendInput([0x1B, 0x5B, 0x42]);
+        return KeyEventResult.handled;
+      case 0x010000005A: // Right
+        _sendInput([0x1B, 0x5B, 0x43]);
+        return KeyEventResult.handled;
+      case 0x0100000057: // Left
+        _sendInput([0x1B, 0x5B, 0x44]);
+        return KeyEventResult.handled;
+      // Home / End / PageUp / PageDown
+      case 0x0100000050: // Home
+        _sendInput([0x1B, 0x5B, 0x48]);
+        return KeyEventResult.handled;
+      case 0x010000004F: // End
+      case 0x0100000051: // End (alternate)
+        _sendInput([0x1B, 0x5B, 0x46]);
+        return KeyEventResult.handled;
+      case 0x010000004C: // PageUp
+        _sendInput([0x1B, 0x5B, 0x35, 0x7E]);
+        return KeyEventResult.handled;
+      case 0x010000004E: // PageDown
+        _sendInput([0x1B, 0x5B, 0x36, 0x7E]);
+        return KeyEventResult.handled;
+      // Delete
+      case 0x0100000080:
+      case 0x0100000006:
+        _sendInput([0x1B, 0x5B, 0x33, 0x7E]);
+        return KeyEventResult.handled;
+    }
+
+    // Ctrl+letter combos (a-z)
+    if (ctrl) {
+      final char = key.keyLabel.toLowerCase();
+      if (char.length == 1 && char.codeUnitAt(0) >= 0x61 && char.codeUnitAt(0) <= 0x7A) {
+        _sendInput([char.codeUnitAt(0) - 0x60]); // Ctrl+a = 0x01, etc.
+        return KeyEventResult.handled;
+      }
+      // Ctrl+Space = NUL
+      if (keyId == 0x0100000020 || key.keyLabel == 'Space') {
+        _sendInput([0x00]);
+        return KeyEventResult.handled;
+      }
+    }
+
+    // Regular printable characters — let TextField handle them
+    // so that the onChanged handler picks them up.
+    if (!ctrl && !alt) {
+      return KeyEventResult.ignored;
+    }
+
+    // Alt+letter = ESC + letter (meta prefix)
+    if (alt && !ctrl) {
+      final char = key.keyLabel;
+      if (char.isNotEmpty) {
+        _sendInput([0x1B, ...utf8.encode(char)]);
+        return KeyEventResult.handled;
+      }
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = widget.theme;
@@ -777,7 +872,10 @@ class _TerminalScreenState extends State<TerminalScreen>
         // Otherwise, disconnect and go back.
         Navigator.of(context).pop();
       },
-      child: Scaffold(
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: _onHardwareKeyEvent,
+        child: Scaffold(
       backgroundColor: theme.background,
       appBar: AppBar(
         title: Column(
@@ -1096,10 +1194,11 @@ class _TerminalScreenState extends State<TerminalScreen>
                 onPaste: _pasteFromClipboard,
               ),
           ],
-        ),
-      ),
-    ),
-    );
+        ), // Column
+      ), // SafeArea
+      ), // Scaffold
+      ), // Focus
+    ); // PopScope
   }
 }
 
