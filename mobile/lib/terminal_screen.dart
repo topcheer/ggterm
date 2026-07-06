@@ -776,7 +776,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
               ),
             // ── Terminal canvas with hidden text input ──
             Expanded(
-              child: LayoutBuilder(
+              child: Stack(
+                children: [
+                  LayoutBuilder(
                 builder: (context, constraints) {
                   // Compute grid dimensions from available space.
                   final availH = constraints.maxHeight;
@@ -851,6 +853,26 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   );
                 },
               ),
+                  // Floating scroll-to-bottom button (visible when scrolled up).
+                  if (_isScrolledUp)
+                    Positioned(
+                      bottom: 16,
+                      right: 16,
+                      child: FloatingActionButton(
+                        mini: true,
+                        backgroundColor: Colors.blue.withValues(alpha: 0.85),
+                        foregroundColor: Colors.white,
+                        elevation: 4,
+                        onPressed: () {
+                          widget.sessionManager.resetViewport(widget.sessionId);
+                          _lastFrameHash = 0;
+                          _cancelInertia();
+                        },
+                        child: const Icon(Icons.arrow_downward, size: 20),
+                      ),
+                    ),
+                ],
+            ),
             ),
 
             // ── Visible input bar ──
