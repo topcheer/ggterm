@@ -749,6 +749,52 @@ class _TerminalScreenState extends State<TerminalScreen>
     return buf.toString().trimRight();
   }
 
+  /// Extract text from the current visible terminal screen and copy to clipboard.
+  /// Useful for sharing terminal output without a selection.
+  Future<void> _copyScreenText() async {
+    final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
+    if (snap.cells.isEmpty) {
+      _showCopiedSnackBar('Screen is empty');
+      return;
+    }
+
+    // Build text from cell data, row by row.
+    final lines = <String>[];
+    for (var row = 0; row < snap.rows; row++) {
+      final sb = StringBuffer();
+      for (var col = 0; col < snap.cols; col++) {
+        final idx = row * snap.cols + col;
+        if (idx < snap.cells.length) {
+          final cell = snap.cells[idx];
+          // Skip wide-char spacers (second half of CJK/emoji)
+          if (cell.flags & 0x100 != 0) continue; // WIDE_SPACER flag
+          if (cell.charCode != 0) {
+            sb.writeCharCode(cell.charCode);
+          } else {
+            sb.write(' ');
+          }
+        }
+      }
+      final line = sb.toString().trimRight();
+      lines.add(line);
+    }
+
+    // Trim trailing empty lines
+    while (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+
+    if (lines.isEmpty) {
+      _showCopiedSnackBar('Screen is empty');
+      return;
+    }
+
+    final text = lines.join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    _showCopiedSnackBar('Copied ${text.length} chars (${lines.length} lines)');
+    HapticFeedback.selectionClick();
+  }
+
   void _showCopiedSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -942,6 +988,12 @@ class _TerminalScreenState extends State<TerminalScreen>
                 ),
               ),
             ),
+          ),
+          // Export screen text to clipboard
+          IconButton(
+            icon: const Icon(Icons.content_copy, color: Colors.white70, size: 20),
+            tooltip: 'Copy screen text',
+            onPressed: _copyScreenText,
           ),
           // Toggle keyboard bar
           IconButton(
