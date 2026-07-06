@@ -153,3 +153,33 @@ cycle_theme = "Ctrl+Shift+T"
 # Ctrl+Shift+P      → Command palette (fuzzy search all actions)
 # Ctrl+Shift+/      → Keyboard shortcut help overlay
 # Ctrl+Shift+,      → Open config file (alternative to Ctrl+Shift+O)
+
+# ──────────────────────────────────────────────────────────────────────
+# Profiles (P22-C)
+# ──────────────────────────────────────────────────────────────────────
+# Named profiles allow switching between appearance/terminal presets
+# at runtime via Ctrl+Shift+Alt+P or the command palette.
+# Each profile can override any combination of the fields below.
+# Fields not specified inherit the global defaults.
+#
+# [profiles.large]
+# font_size = 18
+#
+# [profiles.minimal]
+# scrollback_lines = 1000
+# theme = "light"
+#
+# [profiles.code]
+# font_size = 13
+# theme = "solarized-dark"
+# scrollback_lines = 50000
+
+# ──────────────────────────────────────────────────────────────────────
+# Plugins (P23-D)
+# ──────────────────────────────────────────────────────────────────────
+# Lua plugin system. Plugins are loaded from the directory below.
+# Plugin scripts can hook into terminal events and extend functionality.
+#
+# [plugins]
+# enabled = false
+# directory = "~/.ggterm/plugins"

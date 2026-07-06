@@ -709,6 +709,24 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::View,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Alt+Drag".into(),
+            description: "Block/rectangular selection".into(),
+            category: ShortcutCategory::Edit,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+P".into(),
+            description: "Cycle profiles".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+E".into(),
+            description: "Export config to clipboard (TOML)".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
     ]
 }
 
