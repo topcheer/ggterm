@@ -870,8 +870,8 @@ impl DesktopApp {
         }
 
         // P29-A: Ctrl+Shift+/ → toggle shortcut help overlay.
-        if self.mods.ctrl
-            && self.mods.shift
+        // On macOS, Cmd+/ also works (more natural for Mac users).
+        if (self.mods.ctrl && self.mods.shift || cfg!(target_os = "macos") && self.mods.super_key)
             && let PhysicalKey::Code(KeyCode::Slash) = &event.physical_key
         {
             self.shortcut_help.toggle();
