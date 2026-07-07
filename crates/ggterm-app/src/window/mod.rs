@@ -1492,6 +1492,10 @@ impl ApplicationHandler for DesktopApp {
                 // window regains focus — the user has seen the alert.
                 if focused {
                     self.active_session_mut().clear_unread();
+                    // Cancel any pending dock/taskbar attention request.
+                    if let Some(ref window) = self.window {
+                        window.request_user_attention(None);
+                    }
                 }
             }
 
