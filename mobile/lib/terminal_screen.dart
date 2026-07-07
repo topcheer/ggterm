@@ -15,6 +15,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'ffi/session_manager.dart';
@@ -91,6 +92,9 @@ class _TerminalScreenState extends State<TerminalScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _connectedAt = DateTime.now();
+    // Keep screen awake while terminal is active — prevents screen timeout
+    // during long-running commands, log monitoring, etc.
+    WakelockPlus.enable();
     _loadFontSize();
     _startRenderLoop();
     _startCursorBlink();
@@ -231,6 +235,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    WakelockPlus.disable();
     _renderTimer?.cancel();
     _blinkTimer?.cancel();
     _inputFocusNode.dispose();
