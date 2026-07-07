@@ -168,6 +168,46 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 .map((e) => e as Map<String, dynamic>)
                 .toList();
           });
+          // Sort by timestamp descending to find most recent.
+          _history.sort((a, b) {
+            final ta = (a['timestamp'] as num?)?.toInt() ?? 0;
+            final tb = (b['timestamp'] as num?)?.toInt() ?? 0;
+            return tb.compareTo(ta);
+          });
+          // Offer quick reconnect to the most recent connection.
+          if (_history.isNotEmpty) {
+            final last = _history.first;
+            final host = last['host'] as String? ?? '';
+            final user = last['user'] as String? ?? '';
+            final port = last['port'] as String? ?? '22';
+            if (host.isNotEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).clearSnackBars();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    duration: const Duration(seconds: 6),
+                    content: Text('Reconnect to $user@$host:$port?'),
+                    action: SnackBarAction(
+                      label: 'Connect',
+                      onPressed: () {
+                        _hostController.text = host;
+                        _portController.text = port;
+                        _userController.text = user;
+                        if (last['useKeyFile'] == true) {
+                          setState(() {
+                            _useKeyFile = true;
+                          });
+                          _keyController.text = last['keyFile'] as String? ?? '';
+                        }
+                        _connect();
+                      },
+                    ),
+                  ),
+                );
+              });
+            }
+          }
         }
       }
     } catch (_) {}
