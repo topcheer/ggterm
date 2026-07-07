@@ -649,7 +649,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+Alt+P".into(),
+            keys: "Ctrl+Shift+Alt+F".into(),
             description: "Cycle config profile".into(),
             category: ShortcutCategory::System,
             configurable: false,
