@@ -795,6 +795,51 @@ class _TerminalScreenState extends State<TerminalScreen>
     HapticFeedback.selectionClick();
   }
 
+  /// Copy screen text as a Markdown fenced code block.
+  /// Useful for pasting terminal output into Slack, Discord, GitHub, etc.
+  Future<void> _copyScreenAsMarkdown() async {
+    final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
+    if (snap.cells.isEmpty) {
+      _showCopiedSnackBar('Screen is empty');
+      return;
+    }
+
+    final lines = <String>[];
+    for (var row = 0; row < snap.rows; row++) {
+      final sb = StringBuffer();
+      for (var col = 0; col < snap.cols; col++) {
+        final idx = row * snap.cols + col;
+        if (idx < snap.cells.length) {
+          final cell = snap.cells[idx];
+          if (cell.flags & 0x100 != 0) continue; // WIDE_SPACER flag
+          if (cell.charCode != 0) {
+            sb.writeCharCode(cell.charCode);
+          } else {
+            sb.write(' ');
+          }
+        }
+      }
+      final line = sb.toString().trimRight();
+      lines.add(line);
+    }
+
+    while (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+
+    if (lines.isEmpty) {
+      _showCopiedSnackBar('Screen is empty');
+      return;
+    }
+
+    final text = lines.join('\n');
+    final markdown = '```\n$text\n```';
+    await Clipboard.setData(ClipboardData(text: markdown));
+    _showCopiedSnackBar(
+        'Copied ${lines.length} lines as Markdown code block');
+    HapticFeedback.selectionClick();
+  }
+
   void _showCopiedSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1021,6 +1066,9 @@ class _TerminalScreenState extends State<TerminalScreen>
                   _sendInput([0x0C]);
                   widget.sessionManager.flush(widget.sessionId);
                   break;
+                case 'copy_markdown':
+                  _copyScreenAsMarkdown();
+                  break;
                 case 'disconnect':
                   widget.sessionManager.destroySession(widget.sessionId);
                   if (mounted) Navigator.of(context).pop();
@@ -1034,6 +1082,15 @@ class _TerminalScreenState extends State<TerminalScreen>
                   Icon(Icons.clear, color: Colors.white70, size: 20),
                   SizedBox(width: 12),
                   Text('Clear screen', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'copy_markdown',
+                child: Row(children: [
+                  Icon(Icons.code, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Copy as Markdown',
+                      style: TextStyle(color: Colors.white)),
                 ]),
               ),
               const PopupMenuItem(
