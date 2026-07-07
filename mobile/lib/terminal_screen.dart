@@ -1051,29 +1051,53 @@ class _TerminalScreenState extends State<TerminalScreen>
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
-          // Transport status indicator (tap to show details)
+          // Transport status indicator (green dot=connected, red pulsing=disconnected)
           Tooltip(
             message: _transportAlive ? 'Connected' : 'Disconnected',
             child: Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: 8),
               child: Center(
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _transportAlive ? Colors.green : Colors.red,
-                    boxShadow: _transportAlive
-                        ? [
+                child: _transportAlive
+                    ? Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.green,
+                          boxShadow: [
                             BoxShadow(
                               color: Colors.green.withValues(alpha: 0.4),
                               blurRadius: 6,
                               spreadRadius: 1,
                             ),
-                          ]
-                        : null,
-                  ),
-                ),
+                          ],
+                        ),
+                      )
+                    : TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.5, end: 1.0),
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeInOut,
+                        builder: (context, scale, child) {
+                          return Transform.scale(
+                            scale: 0.8 + scale * 0.4,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.red.withValues(alpha: 0.6 + scale * 0.4),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.red.withValues(alpha: 0.3 + scale * 0.3),
+                                    blurRadius: 4 + scale * 4,
+                                    spreadRadius: scale,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
             ),
           ),
