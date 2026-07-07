@@ -203,6 +203,9 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('^O', 'CtrlO'), // vim: open file
             _keyButton('^Y', 'CtrlY'), // redo / scroll up one line
             _keyButton('^G', 'CtrlG'), // cancel (emacs help, vim beep)
+            _keyButton('^S', 'CtrlS'), // XOFF (pause output)
+            _keyButton('^Q', 'CtrlQ'), // XON (resume output)
+            _keyButton('^V', 'CtrlV'), // literal next (insert verbatim)
             // Separator
             Container(
               width: 1,

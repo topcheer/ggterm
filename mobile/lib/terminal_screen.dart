@@ -429,6 +429,12 @@ class _TerminalScreenState extends State<TerminalScreen>
         return [0x19]; // Ctrl+Y — redo / scroll up
       case 'CtrlG':
         return [0x07]; // Ctrl+G — bell / cancel
+      case 'CtrlS':
+        return [0x13]; // Ctrl+S — XOFF (pause output)
+      case 'CtrlQ':
+        return [0x11]; // Ctrl+Q — XON (resume output)
+      case 'CtrlV':
+        return [0x16]; // Ctrl+V — literal next (verbatim insert)
       case 'CtrlA':
         return [0x01]; // Ctrl+A — start of line
       case 'CtrlE':
