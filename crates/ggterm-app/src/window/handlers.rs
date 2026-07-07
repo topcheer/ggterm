@@ -900,11 +900,12 @@ impl DesktopApp {
             return;
         }
 
-        // P31: Ctrl+Shift+Alt+P → cycle config profile
+        // P31: Ctrl+Shift+Alt+F → cycle config profile (F = profile)
+        // (Ctrl+Shift+Alt+P is reserved for copy cwd)
         if self.mods.ctrl
             && self.mods.shift
             && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyP) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::KeyF) = &event.physical_key
         {
             self.cycle_profile();
             return;
