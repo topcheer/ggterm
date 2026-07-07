@@ -200,6 +200,9 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('^Z', 'CtrlZ'), // SIGTSTP
             _keyButton(r'^\', r'CtrlBackslash'), // SIGQUIT
             _keyButton('^U', 'CtrlU'), // clear line
+            _keyButton('^O', 'CtrlO'), // vim: open file
+            _keyButton('^Y', 'CtrlY'), // redo / scroll up one line
+            _keyButton('^G', 'CtrlG'), // cancel (emacs help, vim beep)
             // Separator
             Container(
               width: 1,

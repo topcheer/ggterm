@@ -423,6 +423,12 @@ class _TerminalScreenState extends State<TerminalScreen>
         return [0x12]; // Ctrl+R — reverse search
       case 'CtrlW':
         return [0x17]; // Ctrl+W — delete word
+      case 'CtrlO':
+        return [0x0F]; // Ctrl+O — vim open file
+      case 'CtrlY':
+        return [0x19]; // Ctrl+Y — redo / scroll up
+      case 'CtrlG':
+        return [0x07]; // Ctrl+G — bell / cancel
       case 'CtrlA':
         return [0x01]; // Ctrl+A — start of line
       case 'CtrlE':
