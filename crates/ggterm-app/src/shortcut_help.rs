@@ -661,6 +661,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+J".into(),
+            description: "Edit shell config (.bashrc/.zshrc)".into(),
+            category: ShortcutCategory::System,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+Alt+E".into(),
             description: "Export config to clipboard".into(),
             category: ShortcutCategory::System,

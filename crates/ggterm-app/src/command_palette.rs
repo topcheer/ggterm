@@ -276,6 +276,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.open_shell_config".into(),
+            label: "Edit Shell Config (.bashrc/.zshrc)".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+J".into()),
+        });
+        r.register(Command {
             id: "terminal.send_ctrl_c_all".into(),
             label: "Send Ctrl+C to All Panes".into(),
             category: "Terminal".into(),

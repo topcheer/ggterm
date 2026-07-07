@@ -2202,6 +2202,9 @@ impl DesktopApp {
             "terminal.open_in_finder" => {
                 self.open_cwd_in_file_manager();
             }
+            "terminal.open_shell_config" => {
+                self.open_shell_config();
+            }
             "terminal.send_ctrl_c_all" => {
                 self.send_ctrl_c_all_panes();
             }
