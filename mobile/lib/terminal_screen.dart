@@ -1136,6 +1136,27 @@ class _TerminalScreenState extends State<TerminalScreen>
                 case 'copy_markdown':
                   _copyScreenAsMarkdown();
                   break;
+                case 'font_increase':
+                  setState(() {
+                    _fontSize = (_fontSize + 1.0).clamp(8.0, 32.0);
+                    _saveFontSize();
+                  });
+                  HapticFeedback.selectionClick();
+                  break;
+                case 'font_decrease':
+                  setState(() {
+                    _fontSize = (_fontSize - 1.0).clamp(8.0, 32.0);
+                    _saveFontSize();
+                  });
+                  HapticFeedback.selectionClick();
+                  break;
+                case 'font_reset':
+                  setState(() {
+                    _fontSize = 13.0;
+                    _saveFontSize();
+                  });
+                  HapticFeedback.selectionClick();
+                  break;
                 case 'disconnect':
                   widget.sessionManager.destroySession(widget.sessionId);
                   if (mounted) Navigator.of(context).pop();
@@ -1158,6 +1179,30 @@ class _TerminalScreenState extends State<TerminalScreen>
                   SizedBox(width: 12),
                   Text('Copy as Markdown',
                       style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'font_increase',
+                child: Row(children: [
+                  Icon(Icons.text_increase, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Font size +', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'font_decrease',
+                child: Row(children: [
+                  Icon(Icons.text_decrease, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Font size −', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'font_reset',
+                child: Row(children: [
+                  Icon(Icons.refresh, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Reset font size', style: TextStyle(color: Colors.white)),
                 ]),
               ),
               const PopupMenuItem(
