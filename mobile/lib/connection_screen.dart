@@ -680,6 +680,23 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   return null;
                 },
               ),
+              const SizedBox(height: 8),
+              // Common SSH port presets for quick selection
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: ['22', '2222', '8022', '443'].map((port) {
+                  final isSelected = _portController.text == port;
+                  return ChoiceChip(
+                    label: Text(port),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      setState(() => _portController.text = port);
+                    },
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(),
+              ),
               const SizedBox(height: 16),
 
               // ── Username ──
