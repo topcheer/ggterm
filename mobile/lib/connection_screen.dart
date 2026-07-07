@@ -219,11 +219,116 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     setState(() {
       _history.removeAt(index);
     });
+    await _saveHistoryFile();
+  }
+
+  /// Save history to file without modifying state.
+  Future<void> _saveHistoryFile() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$_historyFile');
       await file.writeAsString(jsonEncode(_history));
     } catch (_) {}
+  }
+
+  /// Export connection history as JSON to the system share sheet.
+  /// Passwords are never stored in history, so this is safe to share.
+  Future<void> _exportHistory() async {
+    if (_history.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No history to export')),
+        );
+      }
+      return;
+    }
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final exportFile = File('${dir.path}/ggterm_connections_export.json');
+      await exportFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(_history),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Exported ${_history.length} connections'),
+          action: SnackBarAction(
+            label: 'Copy JSON',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonEncode(_history)));
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  /// Import connection history from clipboard JSON.
+  Future<void> _importHistory() async {
+    final data = await Clipboard.getData('text/plain');
+    if (data?.text == null || data!.text!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Clipboard is empty — copy JSON first')),
+      );
+      return;
+    }
+    try {
+      final parsed = jsonDecode(data.text!);
+      if (parsed is! List) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid format — expected JSON array')),
+          );
+        }
+        return;
+      }
+      final imported = parsed
+          .whereType<Map<String, dynamic>>()
+          .where((e) => e.containsKey('host') && e.containsKey('user'))
+          .toList();
+      if (imported.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No valid entries found')),
+          );
+        }
+        return;
+      }
+      // Merge: skip entries with same host+user already in history.
+      final existing = _history
+          .map((e) => '${e['host']}:${e['user']}')
+          .toSet();
+      int added = 0;
+      for (final entry in imported) {
+        final key = '${entry['host']}:${entry['user']}';
+        if (!existing.contains(key)) {
+          _history.add(entry);
+          added++;
+        }
+      }
+      if (_history.length > _maxHistory) {
+        _history = _history.sublist(0, _maxHistory);
+      }
+      await _saveHistoryFile();
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported $added connection(s)')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -478,6 +583,58 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         title: const Text('GGTerm — Connect'),
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) async {
+              switch (value) {
+                case 'export':
+                  await _exportHistory();
+                  break;
+                case 'import':
+                  await _importHistory();
+                  break;
+                case 'clear':
+                  setState(() {
+                    _history.clear();
+                  });
+                  await _saveHistoryFile();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('History cleared')),
+                    );
+                  }
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'export',
+                child: Row(children: [
+                  Icon(Icons.upload, size: 20),
+                  SizedBox(width: 12),
+                  Text('Export history'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'import',
+                child: Row(children: [
+                  Icon(Icons.download, size: 20),
+                  SizedBox(width: 12),
+                  Text('Import history'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'clear',
+                child: Row(children: [
+                  Icon(Icons.clear_all, size: 20),
+                  SizedBox(width: 12),
+                  Text('Clear all history'),
+                ]),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
