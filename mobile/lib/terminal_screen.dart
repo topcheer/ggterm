@@ -185,16 +185,16 @@ class _TerminalScreenState extends State<TerminalScreen>
       // Apply inertial scrolling (continues scrolling after finger lift).
       _applyInertialScroll();
 
-      // Get screen snapshot
+      // Get screen snapshot (needed for bell check even when idle).
       final snapshot = mgr.getScreenSnapshot(id);
 
-      // Skip expensive hash comparison if no data was pumped AND
-      // transport state + scroll position haven't changed.
+      // Skip hash comparison when no data was pumped AND no state change.
+      // This avoids the expensive _computeFrameHash() + setState() on idle
+      // terminals, saving CPU and battery at 60fps.
       final scrolledUp = widget.sessionManager.displayOffset(id) > 0;
       if (bytesPumped == 0 &&
           alive == _transportAlive &&
           scrolledUp == _isScrolledUp) {
-        // Only check bell on idle.
         if (snapshot.hasBell) {
           HapticFeedback.mediumImpact();
         }
@@ -1454,6 +1454,13 @@ class _TerminalPainter extends CustomPainter {
   final double cellHeight;
   final bool cursorVisible;
 
+  // Reusable Paint objects to avoid per-frame allocation.
+  static final _cellBgPaint = Paint();
+  static final _cursorRectPaint = Paint();
+  static final _cursorBorderPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.5;
+
   _TerminalPainter({
     required this.screen,
     required this.theme,
@@ -1478,7 +1485,7 @@ class _TerminalPainter extends CustomPainter {
     final fontSize = cellHeight * 0.85;
 
     // Cache Paint objects to avoid per-cell allocation.
-    final cellBgPaint = Paint();
+    final cellBgPaint = _cellBgPaint;
 
     // First pass: draw all cell backgrounds (batch fillRect).
     for (var row = 0; row < maxVisibleRows; row++) {
@@ -1597,20 +1604,17 @@ class _TerminalPainter extends CustomPainter {
         final x = cx * cellWidth;
         final y = cy * cellHeight;
         // Draw cursor block with 50% opacity — text underneath remains readable.
-        final cursorRectPaint = Paint()
-          ..color = theme.cursor.withValues(alpha: 0.5);
+        _cursorRectPaint.color = theme.cursor.withValues(alpha: 0.5);
         canvas.drawRect(
           Rect.fromLTWH(x, y, cellWidth, cellHeight),
-          cursorRectPaint,
+          _cursorRectPaint,
         );
         // Draw a 1px border for crispness.
-        final cursorBorderPaint = Paint()
-          ..color = theme.cursor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0;
+        _cursorBorderPaint.color = theme.cursor;
+        _cursorBorderPaint.strokeWidth = 1.0;
         canvas.drawRect(
           Rect.fromLTWH(x, y, cellWidth, cellHeight),
-          cursorBorderPaint,
+          _cursorBorderPaint,
         );
       }
     }
