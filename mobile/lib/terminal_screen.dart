@@ -874,6 +874,43 @@ class _TerminalScreenState extends State<TerminalScreen>
     return '${s}s';
   }
 
+  /// Build a thin scrollbar indicator showing scroll position in scrollback.
+  Widget _buildScrollbar(BuildContext context) {
+    final mgr = widget.sessionManager;
+    final id = widget.sessionId;
+    final scrollLen = mgr.scrollbackLen(id);
+    final offset = mgr.displayOffset(id);
+    if (scrollLen <= 0) return const SizedBox.shrink();
+
+    // Calculate scrollbar thumb position.
+    final visibleRows = mgr.getScreenSnapshot(id).rows;
+    final totalRows = scrollLen + visibleRows;
+    final thumbFraction = visibleRows / totalRows;
+    final thumbHeight = (thumbFraction * 1000).clamp(30.0, 1000.0);
+    final scrollFraction = offset / scrollLen;
+    final thumbTop = (scrollFraction * (1000 - thumbHeight)).clamp(0.0, 1000.0 - thumbHeight);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight;
+        if (maxH <= 0) return const SizedBox.shrink();
+        final ratio = maxH / 1000;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: Container(
+            width: 3,
+            height: thumbHeight * ratio,
+            margin: EdgeInsets.only(top: thumbTop * ratio),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(1.5),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showCopiedSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1354,6 +1391,14 @@ class _TerminalScreenState extends State<TerminalScreen>
                   );
                 },
               ),
+                  // Scrollbar indicator (thin bar on right edge when scrolled up).
+                  if (_isScrolledUp)
+                    Positioned(
+                      top: 0,
+                      bottom: 0,
+                      right: 2,
+                      child: _buildScrollbar(context),
+                    ),
                   // Floating scroll-to-bottom button (visible when scrolled up).
                   if (_isScrolledUp)
                     Positioned(
