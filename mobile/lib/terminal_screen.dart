@@ -1555,6 +1555,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                       child: TextField(
                         controller: _inputController,
                         focusNode: _inputFocusNode,
+                        textInputAction: TextInputAction.send,
                         onChanged: _onInputChanged,
                         onSubmitted: (_) {
                           _sendInput([0x0D]);
