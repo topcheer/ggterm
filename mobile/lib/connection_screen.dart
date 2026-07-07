@@ -402,6 +402,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               TextFormField(
                 controller: _hostController,
                 autofillHints: const [AutofillHints.url],
+                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: 'Host',
                   hintText: 'example.com',
@@ -420,6 +421,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               // ── Port ──
               TextFormField(
                 controller: _portController,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Port',
                   prefixIcon: Icon(Icons.numbers),
@@ -439,6 +441,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               TextFormField(
                 controller: _userController,
                 autofillHints: const [AutofillHints.username],
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   hintText: 'root',
