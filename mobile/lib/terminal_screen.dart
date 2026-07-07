@@ -465,8 +465,13 @@ class _TerminalScreenState extends State<TerminalScreen>
   void _onScale(ScaleUpdateDetails details) {
     // Pinch to zoom (scale change).
     if ((details.scale - 1.0).abs() > 0.01) {
+      final newSize = (_fontSize * details.scale).clamp(8.0, 32.0);
+      // Show font size toast when it changes by at least 0.5pt
+      if ((newSize - _fontSize).abs() >= 0.5) {
+        _showCopiedSnackBar('Font size: ${newSize.toStringAsFixed(1)}pt');
+      }
       setState(() {
-        _fontSize = (_fontSize * details.scale).clamp(8.0, 32.0);
+        _fontSize = newSize;
       });
       _saveFontSize();
       return;
