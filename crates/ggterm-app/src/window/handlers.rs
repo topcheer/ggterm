@@ -483,6 +483,11 @@ impl DesktopApp {
                 self.write_to_pty(b"\x1b[H\x1b[2J\x0c");
                 return;
             }
+            // Ctrl+Shift+H → copy selection as HTML (rich text with colors)
+            if self.mods.ctrl && self.mods.shift && !self.mods.alt && key_name == "h" {
+                self.copy_selection_as_html();
+                return;
+            }
             // Ctrl+Shift+R → restart shell (full reset)
             if self.check_keybinding(
                 "reset",
