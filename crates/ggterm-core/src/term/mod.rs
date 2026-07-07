@@ -6476,4 +6476,21 @@ mod tests {
         assert_eq!(t.extract_row_text(0), "Line1");
         assert_eq!(t.extract_row_text(1), "Line2");
     }
+
+    #[test]
+    fn test_last_output_time_set_on_print() {
+        let mut t = Terminal::new(10, 3);
+        assert!(t.last_output_time().is_none());
+        feed(&mut t, b"hi");
+        assert!(t.last_output_time().is_some());
+    }
+
+    #[test]
+    fn test_last_output_time_not_set_by_escape() {
+        let mut t = Terminal::new(10, 3);
+        // Escape sequences should not update last_output_time.
+        feed(&mut t, b"\x1b[31m");
+        // print() is not called for escape sequences.
+        assert!(t.last_output_time().is_none());
+    }
 }
