@@ -131,8 +131,18 @@ For detailed design docs, see:
 - SSH remote terminal (password + key authentication)
 - Local shell on Android (proot) and iOS (proot-distro)
 - Echo transport for testing without SSH server
-- 30fps render loop with RGB cell rendering + cursor block
-- Custom keyboard bar with Ctrl/Esc/Tab/Arrow keys
+- 60fps adaptive render loop with RGB cell rendering + cursor block
+- Custom keyboard bar with Ctrl/Alt/Shift/Esc/Tab/Arrow keys
+- Pinch-to-zoom font size, two-finger scroll scrollback
+- Double-tap word select, triple-tap line select
+- Long-press menu: copy word/line, paste, open URL, send Tab
+- Screen wakelock (stays awake during active sessions)
+- Connection history with swipe-to-delete + quick reconnect
+- 9 built-in themes (persisted across restarts)
+- Scrollbar indicator showing scrollback position
+- Command history in input bar (Up/Down arrow navigation)
+- Form auto-focus with Next/Send keyboard actions
+- Connect elapsed timer ("Connecting… 3s")
 
 ### Plugin System
 - Lua 5.4 runtime with hooks (input, output, render, command)
