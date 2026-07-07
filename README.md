@@ -265,6 +265,12 @@ paste = "Ctrl+Shift+V"
 | `Ctrl+Shift+Alt+N` | Reset to single pane |
 | `Ctrl+Shift+Alt+P` | Cycle profiles |
 | `Ctrl+Shift+Alt+E` | Export config to clipboard |
+| `Ctrl+Shift+J` | Edit shell config (.bashrc/.zshrc) |
+| `Ctrl+Shift+Alt+H` | Copy selection as HTML (with colors) |
+| `Ctrl+Shift+,` | Open GGTerm config file |
+| `Ctrl+Shift+U` | Open URL at cursor |
+| `Ctrl+Shift+X` | Swap pane content |
+| `Ctrl+Shift+PageUp/Down` | Reorder tabs |
 
 ### Custom Keybindings
 
