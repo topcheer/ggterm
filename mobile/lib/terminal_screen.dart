@@ -78,6 +78,35 @@ class _TerminalScreenState extends State<TerminalScreen>
   final TextEditingController _inputController = TextEditingController();
   String _lastInputText = '';
 
+  // Local command history for the input bar.
+  final List<String> _inputHistory = [];
+  int _inputHistoryIndex = -1; // -1 = not browsing history
+
+  /// Navigate input history (up = older, down = newer).
+  void _navigateInputHistory(bool up) {
+    if (_inputHistory.isEmpty) return;
+    if (up) {
+      if (_inputHistoryIndex < _inputHistory.length - 1) {
+        _inputHistoryIndex++;
+      }
+    } else {
+      if (_inputHistoryIndex > 0) {
+        _inputHistoryIndex--;
+      } else {
+        _inputHistoryIndex = -1;
+        _inputController.text = _lastInputText;
+        _inputController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _inputController.text.length),
+        );
+        return;
+      }
+    }
+    _inputController.text = _inputHistory[_inputHistory.length - 1 - _inputHistoryIndex];
+    _inputController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _inputController.text.length),
+    );
+  }
+
   // Cell dimensions derived from font size (monospace ratio ~0.6).
   double get _cellWidth => _fontSize * 0.6;
   double get _cellHeight => _fontSize * 1.3;
@@ -103,6 +132,20 @@ class _TerminalScreenState extends State<TerminalScreen>
     // Keep screen awake while terminal is active — prevents screen timeout
     // during long-running commands, log monitoring, etc.
     WakelockPlus.enable();
+    // Up/Down arrow keys on the input bar navigate command history.
+    _inputFocusNode.onKeyEvent = (node, event) {
+      if (event is KeyDownEvent) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          _navigateInputHistory(true);
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          _navigateInputHistory(false);
+          return KeyEventResult.handled;
+        }
+      }
+      return KeyEventResult.ignored;
+    };
     _loadFontSize();
     _loadTheme();
     _startRenderLoop();
@@ -1557,13 +1600,24 @@ class _TerminalScreenState extends State<TerminalScreen>
                         focusNode: _inputFocusNode,
                         textInputAction: TextInputAction.send,
                         onChanged: _onInputChanged,
-                        onSubmitted: (_) {
+                        onSubmitted: (text) {
+                          final cmd = text.trim();
+                          if (cmd.isNotEmpty) {
+                            _inputHistory.remove(cmd);
+                            _inputHistory.add(cmd);
+                            if (_inputHistory.length > 100) {
+                              _inputHistory.removeAt(0);
+                            }
+                          }
+                          _inputHistoryIndex = -1;
                           _sendInput([0x0D]);
                           widget.sessionManager.flush(widget.sessionId);
                           _inputController.clear();
                           _lastInputText = '';
                           _inputFocusNode.requestFocus();
                         },
+                        keyboardType: TextInputType.visiblePassword,
+                        onEditingComplete: () {},
                         autofocus: true,
                         style: const TextStyle(
                           fontSize: 14,
@@ -1582,7 +1636,6 @@ class _TerminalScreenState extends State<TerminalScreen>
                         ),
                         autocorrect: false,
                         enableSuggestions: false,
-                        keyboardType: TextInputType.visiblePassword,
                       ),
                     ),
                     IconButton(
