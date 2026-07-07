@@ -1897,11 +1897,10 @@ class _TerminalPainter extends CustomPainter {
       fontFamily: 'monospace',
       fontWeight: bold ? FontWeight.bold : FontWeight.normal,
       fontStyle: italic ? FontStyle.italic : FontStyle.normal,
-      decoration: underline
-          ? TextDecoration.underline
-          : strikethrough
-              ? TextDecoration.lineThrough
-              : TextDecoration.none,
+      decoration: TextDecoration.combine([
+        if (underline) TextDecoration.underline,
+        if (strikethrough) TextDecoration.lineThrough,
+      ]),
     );
 
     final tp = TextPainter(
