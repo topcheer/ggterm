@@ -859,56 +859,85 @@ class _TerminalScreenState extends State<TerminalScreen>
     final ctrl = HardwareKeyboard.instance.isControlPressed;
     final alt = HardwareKeyboard.instance.isAltPressed;
 
-    // Map common special keys.
-    final keyId = key.keyId;
-    switch (keyId) {
-      // Tab
-      case 0x0100000015:
+    // Map common special keys using Flutter LogicalKeyboardKey constants.
+    switch (key) {
+      case LogicalKeyboardKey.tab:
         _sendInput([0x09]);
         return KeyEventResult.handled;
-      // Escape
-      case 0x0100000019:
+      case LogicalKeyboardKey.escape:
         _sendInput([0x1B]);
         return KeyEventResult.handled;
-      // Backspace
-      case 0x0100000016:
+      case LogicalKeyboardKey.backspace:
         _sendInput([0x7F]);
         return KeyEventResult.handled;
-      // Enter
-      case 0x0100000024:
+      case LogicalKeyboardKey.enter:
         _sendInput([0x0D]);
         return KeyEventResult.handled;
       // Arrow keys
-      case 0x0100000058: // Up
+      case LogicalKeyboardKey.arrowUp:
         _sendInput([0x1B, 0x5B, 0x41]);
         return KeyEventResult.handled;
-      case 0x0100000059: // Down
+      case LogicalKeyboardKey.arrowDown:
         _sendInput([0x1B, 0x5B, 0x42]);
         return KeyEventResult.handled;
-      case 0x010000005A: // Right
+      case LogicalKeyboardKey.arrowRight:
         _sendInput([0x1B, 0x5B, 0x43]);
         return KeyEventResult.handled;
-      case 0x0100000057: // Left
+      case LogicalKeyboardKey.arrowLeft:
         _sendInput([0x1B, 0x5B, 0x44]);
         return KeyEventResult.handled;
-      // Home / End / PageUp / PageDown
-      case 0x0100000050: // Home
+      // Navigation keys
+      case LogicalKeyboardKey.home:
         _sendInput([0x1B, 0x5B, 0x48]);
         return KeyEventResult.handled;
-      case 0x010000004F: // End
-      case 0x0100000051: // End (alternate)
+      case LogicalKeyboardKey.end:
         _sendInput([0x1B, 0x5B, 0x46]);
         return KeyEventResult.handled;
-      case 0x010000004C: // PageUp
+      case LogicalKeyboardKey.pageUp:
         _sendInput([0x1B, 0x5B, 0x35, 0x7E]);
         return KeyEventResult.handled;
-      case 0x010000004E: // PageDown
+      case LogicalKeyboardKey.pageDown:
         _sendInput([0x1B, 0x5B, 0x36, 0x7E]);
         return KeyEventResult.handled;
-      // Delete
-      case 0x0100000080:
-      case 0x0100000006:
+      case LogicalKeyboardKey.delete:
         _sendInput([0x1B, 0x5B, 0x33, 0x7E]);
+        return KeyEventResult.handled;
+      // F1-F12
+      case LogicalKeyboardKey.f1:
+        _sendInput([0x1B, 0x4F, 0x50]); // ESC O P
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f2:
+        _sendInput([0x1B, 0x4F, 0x51]); // ESC O Q
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f3:
+        _sendInput([0x1B, 0x4F, 0x52]); // ESC O R
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f4:
+        _sendInput([0x1B, 0x4F, 0x53]); // ESC O S
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f5:
+        _sendInput([0x1B, 0x5B, 0x31, 0x35, 0x7E]); // ESC [ 1 5 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f6:
+        _sendInput([0x1B, 0x5B, 0x31, 0x37, 0x7E]); // ESC [ 1 7 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f7:
+        _sendInput([0x1B, 0x5B, 0x31, 0x38, 0x7E]); // ESC [ 1 8 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f8:
+        _sendInput([0x1B, 0x5B, 0x31, 0x39, 0x7E]); // ESC [ 1 9 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f9:
+        _sendInput([0x1B, 0x5B, 0x32, 0x30, 0x7E]); // ESC [ 2 0 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f10:
+        _sendInput([0x1B, 0x5B, 0x32, 0x31, 0x7E]); // ESC [ 2 1 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f11:
+        _sendInput([0x1B, 0x5B, 0x32, 0x33, 0x7E]); // ESC [ 2 3 ~
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.f12:
+        _sendInput([0x1B, 0x5B, 0x32, 0x34, 0x7E]); // ESC [ 2 4 ~
         return KeyEventResult.handled;
     }
 
@@ -920,7 +949,7 @@ class _TerminalScreenState extends State<TerminalScreen>
         return KeyEventResult.handled;
       }
       // Ctrl+Space = NUL
-      if (keyId == 0x0100000020 || key.keyLabel == 'Space') {
+      if (key == LogicalKeyboardKey.space) {
         _sendInput([0x00]);
         return KeyEventResult.handled;
       }
