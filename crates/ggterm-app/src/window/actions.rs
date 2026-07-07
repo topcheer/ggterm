@@ -1573,23 +1573,15 @@ impl DesktopApp {
                     .command_blocks()
                     .last()
                     .and_then(|block| {
-                        let cmd_row = block.command_row.unwrap_or(block.prompt_row);
+                        let row = block.command_row.unwrap_or(block.prompt_row);
                         let scrollback = term.grid().scrollback_len();
-                        let grid_h = term.grid().height();
-                        if cmd_row < scrollback + grid_h {
-                            let display_row = cmd_row.saturating_sub(scrollback);
-                            term.grid()
-                                .display_row(display_row)
-                                .map(|row| {
-                                    let s: String =
-                                        row.cells.iter().map(|c| c.ch).collect::<String>();
-                                    s.trim().to_string()
-                                })
-                                .filter(|s| !s.is_empty())
+                        if row >= scrollback {
+                            Some(term.extract_row_text(row - scrollback))
                         } else {
                             None
                         }
-                    });
+                    })
+                    .filter(|s| !s.is_empty());
 
                 let title = if succeeded {
                     "Command finished".to_string()
@@ -1614,18 +1606,11 @@ impl DesktopApp {
 
                 self.show_desktop_notification(&title, &body);
 
-                // Bounce dock icon on macOS to draw attention.
-                #[cfg(target_os = "macos")]
-                {
-                    std::process::Command::new("sh")
-                        .args([
-                            "-c",
-                            "osascript -e 'tell application \"System Events\" to \
-                             set frontmost of first process whose frontmost is true to false' \
-                             2>/dev/null; true",
-                        ])
-                        .spawn()
-                        .ok();
+                // Request dock/taskbar attention.
+                if let Some(ref window) = self.window {
+                    window.request_user_attention(Some(
+                        winit::window::UserAttentionType::Critical,
+                    ));
                 }
             }
             None => {
