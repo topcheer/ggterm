@@ -372,7 +372,11 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       // Save connection details for next launch (password excluded).
       await _saveConnection();
       await _addToHistory();
+      // Success: light haptic feedback.
+      HapticFeedback.lightImpact();
     } catch (e) {
+      // Failure: heavier haptic pattern for error awareness.
+      HapticFeedback.heavyImpact();
       if (mounted) {
         setState(() {
           _errorMessage = _friendlyError(e.toString());
