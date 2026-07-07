@@ -1227,6 +1227,8 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.update_cursor(row, col);
                 self.status_bar
                     .update_tabs(self.sessions.len(), self.active);
+                self.status_bar
+                    .update_pane_count(self.active_session().pane_count());
                 self.status_bar.set_bell(self.visual_bell_frames > 0);
                 self.status_bar.set_search(self.search.visible);
                 #[cfg(feature = "ai")]

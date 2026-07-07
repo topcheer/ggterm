@@ -35,6 +35,8 @@ pub struct StatusBar {
     pub cursor_col: usize,
     /// Total number of open tabs.
     pub tab_count: usize,
+    /// Number of panes in the active tab (>1 means splits exist).
+    pub pane_count: usize,
     /// Index of the active tab (0-based).
     pub active_tab: usize,
     /// Whether the terminal bell was recently triggered.
@@ -118,6 +120,7 @@ impl StatusBar {
             cursor_row: 0,
             cursor_col: 0,
             tab_count: 1,
+            pane_count: 1,
             active_tab: 0,
             bell_active: false,
             search_active: false,
@@ -161,6 +164,11 @@ impl StatusBar {
     pub fn update_tabs(&mut self, count: usize, active: usize) {
         self.tab_count = count;
         self.active_tab = active;
+    }
+
+    /// Set the number of panes in the active tab.
+    pub fn update_pane_count(&mut self, count: usize) {
+        self.pane_count = count;
     }
 
     /// Set the bell indicator.
@@ -248,6 +256,9 @@ impl StatusBar {
         // Tab info (only show "Tab x/y" when more than 1 tab).
         if self.tab_count > 1 {
             parts.push(format!("Tab {}/{}", self.active_tab + 1, self.tab_count));
+        }
+        if self.pane_count > 1 {
+            parts.push(format!("{} panes", self.pane_count));
         }
 
         // Command exit code (P17-E).
@@ -401,6 +412,10 @@ impl StatusBar {
                 format!("Tab {}/{}", self.active_tab + 1, self.tab_count),
                 text_color
             );
+        }
+        // Pane count (shown only when splits exist).
+        if self.pane_count > 1 {
+            seg!(format!("{} panes", self.pane_count), accent_color);
         }
 
         // Exit code.
