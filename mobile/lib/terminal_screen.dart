@@ -773,6 +773,15 @@ class _TerminalScreenState extends State<TerminalScreen>
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.code, color: Colors.white70),
+                title: const Text('Copy screen as Markdown',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _copyScreenAsMarkdown();
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.paste, color: Colors.white70),
                 title: const Text('Paste from clipboard',
                     style: TextStyle(color: Colors.white)),
