@@ -466,6 +466,27 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     prefixIcon: Icon(Icons.key),
                   ),
                 ),
+                const SizedBox(height: 8),
+                // Quick-fill buttons for common SSH key locations
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    '~/.ssh/id_rsa',
+                    '~/.ssh/id_ed25519',
+                    '~/.ssh/id_ecdsa',
+                  ].map((path) {
+                    final name = path.split('/').last;
+                    return ActionChip(
+                      label: Text(name),
+                      avatar: const Icon(Icons.folder_open, size: 16),
+                      onPressed: () => setState(() {
+                        _keyController.text = path;
+                      }),
+                      visualDensity: VisualDensity.compact,
+                    );
+                  }).toList(),
+                ),
                 const SizedBox(height: 16),
               ] else ...[
                 TextFormField(
