@@ -1390,6 +1390,17 @@ class _TerminalScreenState extends State<TerminalScreen>
                   _showCopiedSnackBar('Theme: ${builtinThemeNames[_themeIndex]}');
                   HapticFeedback.selectionClick();
                   break;
+                case 'copy_all':
+                  final text = widget.sessionManager.getTerminalText(widget.sessionId);
+                  if (text.isEmpty) {
+                    _showCopiedSnackBar('No text to copy');
+                  } else {
+                    Clipboard.setData(ClipboardData(text: text));
+                    final lines = '\n'.allMatches(text).length + 1;
+                    _showCopiedSnackBar('Copied $lines lines');
+                  }
+                  HapticFeedback.selectionClick();
+                  break;
                 case 'disconnect':
                   widget.sessionManager.destroySession(widget.sessionId);
                   if (mounted) Navigator.of(context).pop();
@@ -1444,6 +1455,15 @@ class _TerminalScreenState extends State<TerminalScreen>
                   Icon(Icons.palette, color: Colors.white70, size: 20),
                   SizedBox(width: 12),
                   Text('Switch theme', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'copy_all',
+                child: Row(children: [
+                  Icon(Icons.copy_all, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Copy all visible text',
+                      style: TextStyle(color: Colors.white)),
                 ]),
               ),
               const PopupMenuItem(

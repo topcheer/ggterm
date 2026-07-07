@@ -250,6 +250,45 @@ class SessionManager {
 
   // ── Transport operations ──
 
+  /// Get all visible terminal text as a string.
+  /// Reads cells from the screen buffer, converting to text line by line.
+  /// Strips trailing whitespace from each line and skips empty trailing lines.
+  String getTerminalText(int id) {
+    final (cols, rows) = getDimensions(id);
+    if (cols == 0 || rows == 0) return '';
+
+    final cellCount = cols * rows;
+    if (cellCount <= 0 || cellCount > 100000) return '';
+    final ptr = malloc<GGTermCell>(cellCount);
+    try {
+      final n = _ffi.sessionReadCells(id, ptr, cellCount);
+      if (n == 0) return '';
+
+      final lines = <String>[];
+      for (var row = 0; row < rows; row++) {
+        final buf = StringBuffer();
+        for (var col = 0; col < cols; col++) {
+          final idx = row * cols + col;
+          if (idx >= n) break;
+          final cell = ptr[idx];
+          if (cell.charCode == 0) {
+            buf.write(' ');
+          } else {
+            buf.writeCharCode(cell.charCode);
+          }
+        }
+        lines.add(buf.toString().trimRight());
+      }
+      // Remove trailing empty lines.
+      while (lines.isNotEmpty && lines.last.isEmpty) {
+        lines.removeLast();
+      }
+      return lines.join('\n');
+    } finally {
+      malloc.free(ptr);
+    }
+  }
+
   /// Connect to an SSH host with password auth.
   /// Returns true on success.
   bool sshConnect(int id, SshConnectionParams params) {
