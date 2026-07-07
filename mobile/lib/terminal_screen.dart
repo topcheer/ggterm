@@ -46,6 +46,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   static final _wordCharRe = RegExp(r'[A-Za-z0-9/._\-~]');
   double _fontSize = 13.0;
   static const _fontSizeFile = 'font_size.json';
+  static const _themeFile = 'terminal_theme.json';
   ScreenSnapshot _screen = ScreenSnapshot.empty;
   final _modifiers = ModifierState();
   bool _showKeyboardBar = true;
@@ -99,6 +100,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     // during long-running commands, log monitoring, etc.
     WakelockPlus.enable();
     _loadFontSize();
+    _loadTheme();
     _startRenderLoop();
     _startCursorBlink();
   }
@@ -914,6 +916,31 @@ class _TerminalScreenState extends State<TerminalScreen>
     );
   }
 
+  Future<void> _saveTheme() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_themeFile');
+      await file.writeAsString(builtinThemeNames[_themeIndex]);
+    } catch (_) {}
+  }
+
+  Future<void> _loadTheme() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$_themeFile');
+      if (await file.exists()) {
+        final name = (await file.readAsString()).trim();
+        final idx = builtinThemeNames.indexOf(name);
+        if (idx >= 0) {
+          setState(() {
+            _themeIndex = idx;
+            _currentTheme = themeByName(name);
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
   void _showCopiedSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1224,6 +1251,8 @@ class _TerminalScreenState extends State<TerminalScreen>
                     _themeIndex = (_themeIndex + 1) % builtinThemeNames.length;
                     _currentTheme = themeByName(builtinThemeNames[_themeIndex]);
                   });
+                  _saveTheme();
+                  _showCopiedSnackBar('Theme: ${builtinThemeNames[_themeIndex]}');
                   HapticFeedback.selectionClick();
                   break;
                 case 'disconnect':
