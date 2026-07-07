@@ -44,6 +44,7 @@ impl DesktopApp {
                 "Pane shell exited, closing pane (tab had {} panes)",
                 pane_count
             );
+            self.show_toast("Pane closed — shell exited");
             self.sessions[self.active].remove_active_pane();
 
             // Immediately persist the updated layout so it survives crashes.
@@ -69,6 +70,7 @@ impl DesktopApp {
         } else if self.sessions.len() > 1 {
             // Single-pane tab but multiple tabs: close this tab.
             log::info!("Tab shell exited, closing tab");
+            self.show_toast("Tab closed — shell exited");
             self.close_tab();
             if let Some(ref window) = self.window {
                 window.request_redraw();
