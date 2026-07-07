@@ -238,6 +238,76 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     super.dispose();
   }
 
+  /// Opens a dialog to paste SSH private key content (PEM format).
+  /// Saves the pasted key to the app's documents directory and sets the
+  /// key file path automatically. This is essential on iOS where the
+  /// filesystem isn't directly accessible to users.
+  Future<void> _pasteKeyContent() async {
+    final keyContent = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Paste SSH Private Key'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: TextField(
+              controller: controller,
+              maxLines: 12,
+              minLines: 6,
+              decoration: const InputDecoration(
+                hintText: '-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----',
+                border: OutlineInputBorder(),
+                labelText: 'Key content',
+              ),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (keyContent == null || keyContent.isEmpty) return;
+    if (!keyContent.contains('PRIVATE KEY')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid key — must contain "PRIVATE KEY" header')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final keyFile = File('${dir.path}/user_ssh_key');
+      await keyFile.writeAsString(keyContent);
+      setState(() {
+        _keyController.text = keyFile.path;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Key saved to app storage')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save key: $e')),
+        );
+      }
+    }
+  }
+
   /// Direct P2P connect via pasted ticket.
   void _onDirectConnect(String ticket) {
     if (ticket.trim().isEmpty) return;
@@ -508,7 +578,16 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                // Paste key content — for users who can't easily type a file path
+                // on mobile (e.g. iOS where the filesystem isn't accessible).
+                // Opens a dialog to paste PEM key content, saves to app docs dir.
+                TextButton.icon(
+                  onPressed: _pasteKeyContent,
+                  icon: const Icon(Icons.content_paste, size: 18),
+                  label: const Text('Paste key content instead'),
+                ),
+                const SizedBox(height: 8),
               ] else ...[
                 TextFormField(
                   controller: _passController,
