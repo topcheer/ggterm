@@ -2110,6 +2110,9 @@ impl DesktopApp {
             "tab.new" => {
                 self.open_tab();
             }
+            "window.new" => {
+                self.open_new_window();
+            }
             "tab.close" => {
                 self.close_tab();
             }

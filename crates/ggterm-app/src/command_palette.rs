@@ -51,6 +51,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+T".into()),
         });
         r.register(Command {
+            id: "window.new".into(),
+            label: "New Window".into(),
+            category: "Tab".into(),
+            shortcut: Some("Ctrl+Shift+N".into()),
+        });
+        r.register(Command {
             id: "tab.close".into(),
             label: "Close Tab".into(),
             category: "Tab".into(),
