@@ -1470,6 +1470,21 @@ class _TerminalPainter extends CustomPainter {
   });
 
   @override
+  bool shouldRepaint(covariant _TerminalPainter old) {
+    // Fast path: if dimensions and cursor state are the same, only
+    // repaint if the screen snapshot identity changed.
+    // The render timer already checks content hash before calling
+    // setState, so identical(screen) is a reliable cheap check.
+    if (cellWidth != old.cellWidth ||
+        cellHeight != old.cellHeight ||
+        cursorVisible != old.cursorVisible) {
+      return true;
+    }
+    // Screen is a different object each frame; compare by reference.
+    return !identical(screen, old.screen);
+  }
+
+  @override
   void paint(Canvas canvas, Size size) {
     // Fill background.
     final bgPaint = Paint()..color = theme.background;
@@ -1663,15 +1678,5 @@ class _TerminalPainter extends CustomPainter {
     final x = startCol * cellW;
     final dy = rowY + (cellH - tp.height) / 2;
     tp.paint(canvas, Offset(x, dy));
-  }
-
-  @override
-  bool shouldRepaint(covariant _TerminalPainter old) {
-    // Only repaint if something actually changed.
-    // Cursor visibility, cell data, or dimensions.
-    return cursorVisible != old.cursorVisible ||
-        cellWidth != old.cellWidth ||
-        cellHeight != old.cellHeight ||
-        !identical(screen, old.screen);
   }
 }
