@@ -239,13 +239,28 @@ class _TerminalScreenState extends State<TerminalScreen>
       // Check alive
       final alive = mgr.isAlive(id);
       if (alive != _transportAlive) {
+        final wasConnected = _transportAlive;
         _transportAlive = alive;
-        // Auto-hide keyboard bar and input bar on disconnect so the
-        // disconnect overlay is not obscured by keyboard UI.
-        if (!alive && (_showKeyboardBar || _showInputBar)) {
-          _showKeyboardBar = false;
-          _showInputBar = false;
-          _inputFocusNode.unfocus();
+        if (!alive) {
+          // Session disconnected — show duration toast.
+          if (wasConnected && _connectedAt != null) {
+            final dur = DateTime.now().difference(_connectedAt!);
+            final mins = dur.inMinutes;
+            final secs = dur.inSeconds % 60;
+            final durStr = mins > 0 ? '${mins}m ${secs}s' : '${secs}s';
+            _showCopiedSnackBar('Disconnected after $durStr');
+          } else {
+            _showCopiedSnackBar('Disconnected');
+          }
+          HapticFeedback.heavyImpact();
+          _durationTimer?.cancel();
+          // Auto-hide keyboard bar and input bar on disconnect so the
+          // disconnect overlay is not obscured by keyboard UI.
+          if (_showKeyboardBar || _showInputBar) {
+            _showKeyboardBar = false;
+            _showInputBar = false;
+            _inputFocusNode.unfocus();
+          }
         }
       }
 
