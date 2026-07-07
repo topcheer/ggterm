@@ -170,6 +170,15 @@ pub struct TerminalConfig {
     /// Default: ".-/:@~+#?=&%$" (path and URL characters).
     /// Set to empty string to only select alphanumeric + underscore.
     pub word_chars: String,
+
+    /// When true, shows a desktop notification when a long-running command
+    /// finishes while the terminal window is unfocused.
+    /// Default: true.
+    pub notify_on_complete: bool,
+    /// Minimum command duration (in seconds) to trigger a completion notification.
+    /// Commands shorter than this threshold are silently ignored.
+    /// Default: 10.
+    pub min_notify_duration_secs: u64,
 }
 
 /// AI engine configuration.
@@ -214,6 +223,8 @@ impl Default for TerminalConfig {
             bell_mode: "visual".to_string(),
             copy_on_select: true,
             word_chars: ".-/:@~+#?=&%$".to_string(),
+            notify_on_complete: true,
+            min_notify_duration_secs: 10,
         }
     }
 }
@@ -306,6 +317,8 @@ mod raw {
         pub bell_mode: Option<String>,
         pub copy_on_select: Option<bool>,
         pub word_chars: Option<String>,
+        pub notify_on_complete: Option<bool>,
+        pub min_notify_duration_secs: Option<u64>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -424,6 +437,12 @@ impl Config {
         if let Some(v) = raw.terminal.word_chars {
             config.terminal.word_chars = v;
         }
+        if let Some(v) = raw.terminal.notify_on_complete {
+            config.terminal.notify_on_complete = v;
+        }
+        if let Some(v) = raw.terminal.min_notify_duration_secs {
+            config.terminal.min_notify_duration_secs = v.max(1);
+        }
 
         if let Some(v) = raw.ai.enabled {
             config.ai.enabled = v;
@@ -500,7 +519,10 @@ impl Config {
         );
         appearance.insert("padding".into(), (self.appearance.padding as i64).into());
         appearance.insert("cursor_blink".into(), self.appearance.cursor_blink.into());
-        appearance.insert("cursor_line_highlight".into(), self.appearance.cursor_line_highlight.into());
+        appearance.insert(
+            "cursor_line_highlight".into(),
+            self.appearance.cursor_line_highlight.into(),
+        );
         root.insert("appearance".into(), appearance.into());
 
         // [terminal]
@@ -1331,6 +1353,35 @@ padding = 16
 "#;
         let config = Config::from_toml_str(toml).unwrap();
         assert_eq!(config.appearance.padding, 16);
+    }
+
+    #[test]
+    fn test_notify_on_complete_default() {
+        let config = Config::default();
+        assert!(config.terminal.notify_on_complete);
+        assert_eq!(config.terminal.min_notify_duration_secs, 10);
+    }
+
+    #[test]
+    fn test_notify_on_complete_parse() {
+        let toml = r#"
+[terminal]
+notify_on_complete = false
+min_notify_duration_secs = 30
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(!config.terminal.notify_on_complete);
+        assert_eq!(config.terminal.min_notify_duration_secs, 30);
+    }
+
+    #[test]
+    fn test_notify_on_complete_clamp() {
+        let toml = r#"
+[terminal]
+min_notify_duration_secs = 0
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert_eq!(config.terminal.min_notify_duration_secs, 1);
     }
 
     #[test]

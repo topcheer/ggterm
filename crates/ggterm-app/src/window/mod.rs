@@ -318,6 +318,9 @@ pub struct DesktopApp {
     /// P2P terminal sharing state (feature-gated).
     #[cfg(feature = "p2p")]
     p2p_share: crate::p2p_share::P2pShareState,
+    /// Tracks the last command duration we already notified about (prevents duplicate notifications).
+    /// Set to Some(duration) after sending a notification; reset to None when a new command starts.
+    last_notified_cmd_duration: Option<std::time::Duration>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -623,6 +626,7 @@ impl DesktopApp {
             pending_open_settings: false,
             #[cfg(feature = "p2p")]
             p2p_share: crate::p2p_share::P2pShareState::new(),
+            last_notified_cmd_duration: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -1608,6 +1612,9 @@ impl ApplicationHandler for DesktopApp {
 
         // P24-E: Poll for desktop notifications.
         self.poll_notification();
+
+        // Poll for command completion notifications (unfocused window + long-running command).
+        self.poll_command_complete();
 
         // P2P: Poll for connections and forward mobile input/output.
         #[cfg(feature = "p2p")]

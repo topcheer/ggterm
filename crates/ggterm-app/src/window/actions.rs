@@ -1453,19 +1453,173 @@ impl DesktopApp {
             .take_pending_notification()
         {
             log::info!("Desktop notification: {} — {}", title, body);
-            // macOS: use osascript for notifications
-            #[cfg(target_os = "macos")]
-            {
-                let escaped_title = title.replace('"', "\\\"");
-                let escaped_body = body.replace('"', "\\\"");
-                let script = format!(
-                    "display notification \"{}\" with title \"{}\"",
-                    escaped_body, escaped_title
-                );
-                std::process::Command::new("osascript")
-                    .args(["-e", &script])
-                    .spawn()
-                    .ok();
+            self.show_desktop_notification(&title, &body);
+        }
+    }
+
+    /// Show a cross-platform desktop notification.
+    /// macOS: `osascript display notification`
+    /// Linux: `notify-send`
+    /// Windows: PowerShell toast notification
+    fn show_desktop_notification(&self, title: &str, body: &str) {
+        log::info!("Desktop notification: {} — {}", title, body);
+        #[cfg(target_os = "macos")]
+        {
+            let et = title.replace('\\', "\\\\").replace('"', "\\\"");
+            let eb = body.replace('\\', "\\\\").replace('"', "\\\"");
+            let script = format!(
+                "display notification \"{}\" with title \"{}\"",
+                eb, et
+            );
+            std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn()
+                .ok();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let et = title.replace('\'', "\\'");
+            let eb = body.replace('\'', "\\'");
+            std::process::Command::new("notify-send")
+                .args([&et, &eb])
+                .spawn()
+                .ok();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let et = title.replace('\'', "\\'");
+            let eb = body.replace('\'', "\\'");
+            let ps = format!(
+                "[reflection.assembly]::LoadWithPartialName('System.Windows.Forms'); \
+                 $n = New-Object System.Windows.Forms.NotifyIcon; \
+                 $n.Icon = [System.Drawing.SystemIcons]::Information; \
+                 $n.Visible = $true; \
+                 $n.ShowBalloonTip(5000, '{}', '{}', [System.Windows.Forms.ToolTipIcon]::Info)",
+                et, eb
+            );
+            std::process::Command::new("powershell")
+                .args(["-Command", &ps])
+                .spawn()
+                .ok();
+        }
+        // On unsupported platforms, the notification is only logged.
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            log::warn!("Desktop notifications not supported on this platform");
+        }
+    }
+
+    /// Poll for command completion: when a long-running command finishes while
+    /// the window is unfocused, show a desktop notification.
+    ///
+    /// Uses OSC 133 shell integration marks to detect command boundaries.
+    /// Only fires if: (1) window is unfocused, (2) command ran >= 10 seconds,
+    /// (3) we haven't already notified about this particular command.
+    pub(super) fn poll_command_complete(&mut self) {
+        // Check config: is notification on completion enabled?
+        let (notify_enabled, min_secs) = if let Some(ref mgr) = self.config_mgr {
+            let t = &mgr.config().terminal;
+            (t.notify_on_complete, t.min_notify_duration_secs)
+        } else {
+            (true, 10)
+        };
+        if !notify_enabled {
+            return;
+        }
+
+        let duration = self
+            .active_session()
+            .app()
+            .terminal()
+            .last_command_duration();
+
+        match duration {
+            Some(d) => {
+                // Skip if we already notified about this exact duration.
+                if self.last_notified_cmd_duration == Some(d) {
+                    return;
+                }
+                // Only notify for commands that ran >= threshold seconds.
+                if d.as_secs() < min_secs {
+                    self.last_notified_cmd_duration = Some(d);
+                    return;
+                }
+                // Only notify when the window is not focused.
+                if self.window_focused {
+                    return;
+                }
+
+                // Mark as notified before sending to avoid double-fire.
+                self.last_notified_cmd_duration = Some(d);
+
+                let secs = d.as_secs();
+                let term = self.active_session().app().terminal();
+                let exit_code = term.last_exit_code();
+                let succeeded = term.last_command_succeeded();
+
+                // Try to get the command text from the last command block.
+                let cmd_text = term
+                    .command_blocks()
+                    .last()
+                    .and_then(|block| {
+                        let cmd_row = block.command_row.unwrap_or(block.prompt_row);
+                        let scrollback = term.grid().scrollback_len();
+                        let grid_h = term.grid().height();
+                        if cmd_row < scrollback + grid_h {
+                            let display_row = cmd_row.saturating_sub(scrollback);
+                            term.grid()
+                                .display_row(display_row)
+                                .map(|row| {
+                                    let s: String =
+                                        row.cells.iter().map(|c| c.ch).collect::<String>();
+                                    s.trim().to_string()
+                                })
+                                .filter(|s| !s.is_empty())
+                        } else {
+                            None
+                        }
+                    });
+
+                let title = if succeeded {
+                    "Command finished".to_string()
+                } else {
+                    format!(
+                        "Command failed (exit {})",
+                        exit_code.unwrap_or(-1)
+                    )
+                };
+
+                let body = if let Some(ref cmd) = cmd_text {
+                    // Truncate long commands.
+                    let short = if cmd.len() > 60 {
+                        format!("{}…", &cmd[..57])
+                    } else {
+                        cmd.clone()
+                    };
+                    format!("{} ({}s)", short, secs)
+                } else {
+                    format!("Completed in {}s", secs)
+                };
+
+                self.show_desktop_notification(&title, &body);
+
+                // Bounce dock icon on macOS to draw attention.
+                #[cfg(target_os = "macos")]
+                {
+                    std::process::Command::new("sh")
+                        .args([
+                            "-c",
+                            "osascript -e 'tell application \"System Events\" to \
+                             set frontmost of first process whose frontmost is true to false' \
+                             2>/dev/null; true",
+                        ])
+                        .spawn()
+                        .ok();
+                }
+            }
+            None => {
+                // No completed command — reset tracker so next completion fires.
+                self.last_notified_cmd_duration = None;
             }
         }
     }

@@ -60,6 +60,17 @@ restore_session = false
 # Default: true (xterm/iTerm2 behavior)
 # copy_on_select = false
 
+# Desktop notification when a long-running command finishes while the
+# window is unfocused. Uses OSC 133 shell integration to detect command
+# boundaries.
+# Default: true
+# notify_on_complete = false
+
+# Minimum command duration (in seconds) to trigger a completion notification.
+# Commands shorter than this are silently ignored.
+# Default: 10
+# min_notify_duration_secs = 5
+
 [ai]
 # Enable AI features at startup.
 # Also requires api_key (below) or GGTERM_AI_API_KEY env var.
