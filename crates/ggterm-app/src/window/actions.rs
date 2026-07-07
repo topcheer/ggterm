@@ -402,6 +402,17 @@ impl DesktopApp {
     }
 
     /// Reopen the last closed tab in its original working directory.
+    /// Open a new ggterm window by re-launching the binary.
+    pub(super) fn open_new_window(&self) {
+        let exe = std::env::current_exe().unwrap_or_else(|_| {
+            std::path::PathBuf::from("ggterm")
+        });
+        match std::process::Command::new(&exe).spawn() {
+            Ok(_) => log::info!("Launched new ggterm window"),
+            Err(e) => log::error!("Failed to open new window: {}", e),
+        }
+    }
+
     pub(super) fn reopen_closed_tab(&mut self) {
         if let Some(cwd) = self.last_closed_cwd.take() {
             match TabSession::new_with_cwd(

@@ -312,6 +312,16 @@ impl DesktopApp {
                 self.reopen_closed_tab();
                 return;
             }
+            // Ctrl+Shift+N → open new ggterm window (also Cmd+Shift+N on macOS)
+            if (self.mods.ctrl && self.mods.shift && key_name == "n")
+                || (cfg!(target_os = "macos")
+                    && self.mods.super_key
+                    && self.mods.shift
+                    && key_name == "n")
+            {
+                self.open_new_window();
+                return;
+            }
             // Ctrl+Shift+Alt+D → duplicate active tab
             if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "d" {
                 self.duplicate_tab();
