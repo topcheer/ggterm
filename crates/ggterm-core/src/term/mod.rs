@@ -6425,4 +6425,44 @@ mod tests {
         feed(&mut t, seq.as_bytes());
         // Should not crash
     }
+
+    #[test]
+    fn test_extract_row_text_simple() {
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"Hello World");
+        let text = t.extract_row_text(0);
+        assert_eq!(text, "Hello World");
+    }
+
+    #[test]
+    fn test_extract_row_text_empty() {
+        let t = Terminal::new(10, 5);
+        assert_eq!(t.extract_row_text(0), "");
+    }
+
+    #[test]
+    fn test_extract_row_text_trims_trailing() {
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"ab   ");
+        // Trailing spaces should be trimmed.
+        assert_eq!(t.extract_row_text(0), "ab");
+    }
+
+    #[test]
+    fn test_extract_row_text_wide_char() {
+        let mut t = Terminal::new(20, 5);
+        // Feed a CJK wide character (U+4E2D = 中).
+        feed(&mut t, "中".as_bytes());
+        // The wide char occupies 2 cells; the spacer should be skipped.
+        let text = t.extract_row_text(0);
+        assert_eq!(text, "中");
+    }
+
+    #[test]
+    fn test_extract_row_text_multiple_rows() {
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"Line1\r\nLine2");
+        assert_eq!(t.extract_row_text(0), "Line1");
+        assert_eq!(t.extract_row_text(1), "Line2");
+    }
 }
