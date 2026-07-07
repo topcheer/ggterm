@@ -351,7 +351,7 @@ impl CommandRegistry {
             id: "terminal.copy_as_html".into(),
             label: "Copy Selection as HTML".into(),
             category: "Terminal".into(),
-            shortcut: None,
+            shortcut: Some("Ctrl+Shift+Alt+H".into()),
         });
         r.register(Command {
             id: "terminal.toggle_lock".into(),

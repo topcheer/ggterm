@@ -324,7 +324,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+H".into(),
+            keys: "Ctrl+Shift+Alt+H".into(),
             description: "Copy selection as HTML (with colors)".into(),
             category: ShortcutCategory::Edit,
             configurable: false,
