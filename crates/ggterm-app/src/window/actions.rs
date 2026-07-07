@@ -1413,18 +1413,20 @@ impl DesktopApp {
         }
 
         let active = self.active;
-        let mut any_bell = false;
+        let mut active_bell = false;
+        let mut any_tab_bell = false;
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if session.app_mut().terminal_mut().take_bell() {
+                any_tab_bell = true;
                 if i == active {
-                    any_bell = true;
+                    active_bell = true;
                 } else {
                     session.mark_unread();
                     session.mark_bell();
                 }
             }
         }
-        if any_bell {
+        if active_bell {
             // Visual bell (flash) unless mode is "sound" only.
             if bell_mode == "visual" {
                 self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
@@ -1438,6 +1440,15 @@ impl DesktopApp {
                 self.sound_player.play(crate::sound::SoundType::Bell);
             }
             log::debug!("Bell triggered (mode: {})", bell_mode);
+        }
+        // Request dock/taskbar attention when window is unfocused and any tab has a bell.
+        if any_tab_bell
+            && !self.window_focused
+            && let Some(ref window) = self.window
+        {
+            window.request_user_attention(Some(
+                winit::window::UserAttentionType::Critical,
+            ));
         }
     }
 
