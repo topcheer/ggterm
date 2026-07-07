@@ -354,6 +354,7 @@ impl DesktopApp {
             {
                 if self.active_session().pane_count() > 1 {
                     // Multiple panes: close the active pane instead of the tab.
+                    self.show_toast("Pane closed");
                     self.active_session_mut().remove_active_pane();
                 } else {
                     self.close_tab();
