@@ -2467,15 +2467,34 @@ impl DesktopApp {
             return;
         }
 
-        #[cfg(target_os = "macos")]
-        let result = std::process::Command::new("open").arg(&rc_path).spawn();
-        #[cfg(all(unix, not(target_os = "macos")))]
-        let result = std::process::Command::new("xdg-open").arg(&rc_path).spawn();
-        #[cfg(target_os = "windows")]
-        let result = std::process::Command::new("cmd")
-            .args(["/C", "start", ""])
-            .arg(&rc_path)
-            .spawn();
+        // Prefer $EDITOR (Unix convention: vim, nano, code, etc).
+        // Fall back to system default file opener.
+        let editor = std::env::var("EDITOR").ok();
+        let result = if let Some(ed) = editor.filter(|e| !e.is_empty()) {
+            // Parse editor command (e.g. "code --wait" → ["code", "--wait"]).
+            let mut parts = ed.split_whitespace();
+            let cmd = parts.next().unwrap_or(&ed);
+            let args: Vec<&str> = parts.collect();
+            let mut command = std::process::Command::new(cmd);
+            command.args(&args).arg(&rc_path);
+            command.spawn()
+        } else {
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("open").arg(&rc_path).spawn()
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                std::process::Command::new("xdg-open").arg(&rc_path).spawn()
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("cmd")
+                    .args(["/C", "start", ""])
+                    .arg(&rc_path)
+                    .spawn()
+            }
+        };
 
         match result {
             Ok(_) => self.show_toast(format!("Opened {}", rc_path.display())),
