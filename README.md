@@ -117,6 +117,7 @@ For detailed design docs, see:
 - **Command Palette**: fuzzy search 30+ commands (Ctrl+Shift+P)
 - **Status Bar**: cursor pos, cwd, profile, broadcast mode, bell indicator (Ctrl+Shift+B)
 - **Notifications**: OSC 9/777 desktop notifications + bell sound (Ctrl+Shift+M)
+- **Command Completion Alerts**: desktop notification + dock bounce when long-running commands finish while window is unfocused
 - **Session Persistence**: save/restore tab+pane layout (opt-in via config)
 
 ### AI Integration
@@ -129,20 +130,23 @@ For detailed design docs, see:
 ### Mobile (Flutter)
 - Cross-compiled Rust FFI (C-ABI) with dart:ffi bindings
 - SSH remote terminal (password + key authentication)
+- Paste SSH private key content (saved to app storage — no file manager needed)
 - Local shell on Android (proot) and iOS (proot-distro)
 - Echo transport for testing without SSH server
 - 60fps adaptive render loop with RGB cell rendering + cursor block
 - Custom keyboard bar with Ctrl/Alt/Shift/Esc/Tab/Arrow keys
 - Pinch-to-zoom font size, two-finger scroll scrollback
 - Double-tap word select, triple-tap line select
-- Long-press menu: copy word/line, paste, open URL, send Tab
+- Long-press menu: copy word/line, copy as Markdown/HTML, paste, open URL, send Tab
+- 'Copy all visible text' option in overflow menu
 - Screen wakelock (stays awake during active sessions)
 - Connection history with swipe-to-delete + quick reconnect
 - 9 built-in themes (persisted across restarts)
 - Scrollbar indicator showing scrollback position
 - Command history in input bar (Up/Down arrow navigation)
 - Form auto-focus with Next/Send keyboard actions
-- Connect elapsed timer ("Connecting… 3s")
+- Connect elapsed timer ("Connecting… 3s") + haptic feedback
+- SSH disconnect auto-detection with keyboard hide
 
 ### Plugin System
 - Lua 5.4 runtime with hooks (input, output, render, command)
@@ -170,6 +174,8 @@ scrollback_lines = 10000
 shell = "/bin/zsh"
 bell_mode = "visual"         # none | visual | sound
 restore_session = false      # restore tabs/splits from last session
+notify_on_complete = true    # notify when long command finishes while unfocused
+min_notify_duration_secs = 10 # min seconds to trigger notification
 
 [ai]
 enabled = false
