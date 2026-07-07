@@ -240,6 +240,13 @@ class _TerminalScreenState extends State<TerminalScreen>
       final alive = mgr.isAlive(id);
       if (alive != _transportAlive) {
         _transportAlive = alive;
+        // Auto-hide keyboard bar and input bar on disconnect so the
+        // disconnect overlay is not obscured by keyboard UI.
+        if (!alive && (_showKeyboardBar || _showInputBar)) {
+          _showKeyboardBar = false;
+          _showInputBar = false;
+          _inputFocusNode.unfocus();
+        }
       }
 
       // Apply inertial scrolling (continues scrolling after finger lift).
