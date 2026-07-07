@@ -615,28 +615,39 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   final subtitle = user.isNotEmpty
                       ? '$user@$host${port != '22' ? ':$port' : ''}'
                       : '$host${port != '22' ? ':$port' : ''}';
-                  return ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.dns, size: 20),
-                    title: Text(host,
-                        style: const TextStyle(fontSize: 14)),
-                    subtitle: Text(subtitle,
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close, size: 16),
-                      onPressed: () => _removeFromHistory(idx),
-                      tooltip: 'Remove',
+                  return Dismissible(
+                    key: ValueKey('history-$idx-$host-$port-$user'),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      color: Colors.red.withValues(alpha: 0.8),
+                      child: const Icon(Icons.delete, color: Colors.white),
                     ),
-                    onTap: () => _fillFromHistory(e),
-                    onLongPress: () {
-                      // Long-press: fill form and attempt direct connect
-                      _fillFromHistory(e);
-                      if (_formKey.currentState?.validate() ?? false) {
-                        HapticFeedback.mediumImpact();
-                        _connect();
-                      }
-                    },
+                    onDismissed: (_) => _removeFromHistory(idx),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.dns, size: 20),
+                      title: Text(host,
+                          style: const TextStyle(fontSize: 14)),
+                      subtitle: Text(subtitle,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        onPressed: () => _removeFromHistory(idx),
+                        tooltip: 'Remove',
+                      ),
+                      onTap: () => _fillFromHistory(e),
+                      onLongPress: () {
+                        // Long-press: fill form and attempt direct connect
+                        _fillFromHistory(e);
+                        if (_formKey.currentState?.validate() ?? false) {
+                          HapticFeedback.mediumImpact();
+                          _connect();
+                        }
+                      },
+                    ),
                   );
                 }),
               ],
