@@ -289,6 +289,9 @@ impl StatusBar {
             } else {
                 parts.push(frame.to_string());
             }
+        } else if !self.command_timer.is_empty() {
+            // Idle timer: show time since last output (reuses command_timer field).
+            parts.push(format!("idle {}", self.command_timer));
         }
 
         // Selection character count.
@@ -443,6 +446,8 @@ impl StatusBar {
                 frame.to_string()
             };
             seg!(label, accent_color);
+        } else if !self.command_timer.is_empty() {
+            seg!(format!("idle {}", self.command_timer), dim_color);
         }
 
         // Selection character count.

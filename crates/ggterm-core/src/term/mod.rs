@@ -476,6 +476,9 @@ pub struct Terminal {
     /// Duration of the most recently completed command.
     /// `None` when no command has completed yet.
     pub(crate) last_command_duration: Option<std::time::Duration>,
+    /// Instant of the last received output from the PTY.
+    /// Used for idle detection in the status bar.
+    pub(crate) last_output_time: Option<std::time::Instant>,
 }
 
 /// Parse an OSC 7 working directory URI.
@@ -635,6 +638,7 @@ impl Terminal {
             cell_dimensions: None,
             command_start_time: None,
             last_command_duration: None,
+            last_output_time: None,
         }
     }
 
@@ -947,6 +951,12 @@ impl Terminal {
     /// `None` if no command is running.
     pub fn running_command_elapsed(&self) -> Option<std::time::Duration> {
         self.command_start_time.map(|t| t.elapsed())
+    }
+
+    /// Returns the instant of the last received terminal output.
+    /// Used for idle detection.
+    pub fn last_output_time(&self) -> Option<std::time::Instant> {
+        self.last_output_time
     }
 
     /// Extract the text content of a grid row, trimming trailing spaces.
@@ -1482,6 +1492,7 @@ fn hex_decode(data: &[u8]) -> Option<String> {
 
 impl Perform for Terminal {
     fn print(&mut self, byte: u8) {
+        self.last_output_time = Some(std::time::Instant::now());
         // ASCII: flush any pending UTF-8 buffer, then write directly
         if byte < 0x80 {
             self.flush_utf8();

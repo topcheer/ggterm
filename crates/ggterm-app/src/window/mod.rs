@@ -1272,7 +1272,16 @@ impl ApplicationHandler for DesktopApp {
                             self.status_bar.spinner_frame.wrapping_add(1);
                     }
                 } else {
+                    // Command not running — show idle timer if idle > 5s.
                     self.status_bar.command_timer.clear();
+                    let last = self.active_session().app().terminal().last_output_time();
+                    if let Some(t) = last {
+                        let idle = std::time::Instant::now().duration_since(t);
+                        if idle.as_secs() >= 5 {
+                            self.status_bar.command_timer =
+                                crate::status_bar::format_duration(idle);
+                        }
+                    }
                 }
 
                 // Selection character count (live feedback while selecting).
