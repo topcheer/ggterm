@@ -52,6 +52,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   bool _transportAlive = true;
   bool _sizeInitialized = false;
   bool _isPaused = false; // true when app is in background
+  DateTime? _connectedAt; // when the session connected (for duration display)
   // Frame hash for change detection — avoids setState when nothing changed.
   int _lastFrameHash = 0;
   // Cursor blink state.
@@ -89,6 +90,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _connectedAt = DateTime.now();
     _loadFontSize();
     _startRenderLoop();
     _startCursorBlink();
@@ -840,6 +842,16 @@ class _TerminalScreenState extends State<TerminalScreen>
     HapticFeedback.selectionClick();
   }
 
+  /// Format a Duration as human-readable string (e.g. "3m 42s", "1h 5m").
+  String _formatDuration(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    final s = d.inSeconds % 60;
+    if (h > 0) return '${h}h ${m}m';
+    if (m > 0) return '${m}m ${s}s';
+    return '${s}s';
+  }
+
   void _showCopiedSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1007,10 +1019,12 @@ class _TerminalScreenState extends State<TerminalScreen>
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 16),
             ),
-            // Subtitle: show SSH connection info when available
+            // Subtitle: show SSH connection info + duration when available
             if (widget.title != 'Echo Test' && widget.title != 'P2P Session')
               Text(
-                widget.title,
+                _connectedAt != null
+                    ? '${widget.title}  •  ${_formatDuration(DateTime.now().difference(_connectedAt!))}'
+                    : widget.title,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 11,
