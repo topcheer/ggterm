@@ -1361,6 +1361,8 @@ impl ApplicationHandler for DesktopApp {
                     .to_string();
                 // Progress from OSC 9;4
                 self.status_bar.progress = self.active_session().app().terminal().progress();
+                self.status_bar.last_exit_code =
+                    self.active_session().app().terminal().last_exit_code();
                 #[cfg(feature = "p2p")]
                 {
                     self.status_bar.p2p_active = self.p2p_share.visible;

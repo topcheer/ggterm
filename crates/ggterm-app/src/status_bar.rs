@@ -105,6 +105,9 @@ pub struct StatusBar {
     pub theme_name: String,
     /// Terminal dimensions as "COLS×ROWS" (e.g., "120×40").
     pub dimensions: String,
+    /// Exit code of the last completed command (None = no command completed or shell integration inactive).
+    /// Displayed in status bar as a red segment when non-zero.
+    pub last_exit_code: Option<i32>,
 }
 
 impl Default for StatusBar {
@@ -151,6 +154,7 @@ impl StatusBar {
             git_branch: String::new(),
             theme_name: String::new(),
             dimensions: String::new(),
+            last_exit_code: None,
         }
     }
 
@@ -551,6 +555,13 @@ impl StatusBar {
         // Progress indicator (OSC 9;4).
         if let Some(pct) = self.progress {
             seg!(format!("{:.0}%", pct * 100.0), ok_color);
+        }
+
+        // Last command exit code — show only when non-zero (failure).
+        if let Some(code) = self.last_exit_code
+            && code != 0
+        {
+            seg!(format!("exit:{}", code), err_color);
         }
 
         // P2P sharing indicator.
