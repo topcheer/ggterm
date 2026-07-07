@@ -34,6 +34,7 @@ use std::sync::{Arc, Mutex};
 use russh::client::{self};
 use russh::keys::{PrivateKey, PrivateKeyWithHashAlg};
 use russh::{ChannelMsg, Disconnect};
+use russh::client::Msg;
 use tokio::sync::mpsc;
 
 // ─────────────────────────────────────────────────────────────────
@@ -185,47 +186,88 @@ impl SshSession {
 
         let server_fingerprint: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-        let mut handle = runtime
-            .block_on(client::connect(
-                Arc::new(client::Config::default()),
-                (host, port),
-                ClientHandler {
-                    server_fingerprint: server_fingerprint.clone(),
-                },
-            ))
+        // Wrap the entire connection sequence in a 15-second timeout.
+        // This prevents indefinite hangs on unreachable hosts, which is
+        // especially important for mobile SSH where network conditions
+        // are unpredictable.
+        const CONNECT_TIMEOUT_SECS: u64 = 15;
+
+        let connect_result = runtime.block_on(async {
+            // Connect to SSH server.
+            let mut handle = tokio::time::timeout(
+                std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                client::connect(
+                    Arc::new(client::Config::default()),
+                    (host, port),
+                    ClientHandler {
+                        server_fingerprint: server_fingerprint.clone(),
+                    },
+                ),
+            )
+            .await
+            .map_err(|_| SshError::Connection("connect timeout (15s)".into()))?
             .map_err(|e| SshError::Connection(e.to_string()))?;
 
-        // Authenticate.
-        let auth_ok = match auth {
-            AuthMethod::Password(pw) => runtime
-                .block_on(handle.authenticate_password(username, &pw))
-                .map_err(|e| SshError::Auth(e.to_string()))?
-                .success(),
-            AuthMethod::PublicKey(key) => {
-                let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(*key), None);
-                runtime
-                    .block_on(handle.authenticate_publickey(username, key_with_hash))
+            // Authenticate.
+            let auth_ok = match auth {
+                AuthMethod::Password(pw) => {
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                        handle.authenticate_password(username, &pw),
+                    )
+                    .await
+                    .map_err(|_| SshError::Auth("auth timeout (15s)".into()))?
                     .map_err(|e| SshError::Auth(e.to_string()))?
                     .success()
+                }
+                AuthMethod::PublicKey(key) => {
+                    let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(*key), None);
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                        handle.authenticate_publickey(username, key_with_hash),
+                    )
+                    .await
+                    .map_err(|_| SshError::Auth("auth timeout (15s)".into()))?
+                    .map_err(|e| SshError::Auth(e.to_string()))?
+                    .success()
+                }
+            };
+
+            if !auth_ok {
+                return Err(SshError::Auth("authentication rejected".into()));
             }
-        };
 
-        if !auth_ok {
-            return Err(SshError::Auth("authentication rejected".into()));
-        }
-
-        // Open channel and request PTY + shell.
-        let channel = runtime
-            .block_on(handle.channel_open_session())
+            // Open channel and request PTY + shell.
+            let channel = tokio::time::timeout(
+                std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                handle.channel_open_session(),
+            )
+            .await
+            .map_err(|_| SshError::Channel("channel open timeout (15s)".into()))?
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
-        runtime
-            .block_on(channel.request_pty(true, "xterm-256color", 80, 24, 0, 0, &[]))
+            tokio::time::timeout(
+                std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                channel.request_pty(true, "xterm-256color", 80, 24, 0, 0, &[]),
+            )
+            .await
+            .map_err(|_| SshError::Channel("pty request timeout (15s)".into()))?
             .map_err(|e| SshError::Channel(e.to_string()))?;
 
-        runtime
-            .block_on(channel.request_shell(true))
+            tokio::time::timeout(
+                std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                channel.request_shell(true),
+            )
+            .await
+            .map_err(|_| SshError::Channel("shell request timeout (15s)".into()))?
             .map_err(|e| SshError::Channel(e.to_string()))?;
+
+            Ok::<(russh::client::Handle<ClientHandler>, russh::Channel<Msg>), SshError>((
+                handle, channel,
+            ))
+        });
+
+        let (handle, channel) = connect_result?;
 
         // ── Spawn background I/O task ───────────────────────────
         // All SSH reads/writes happen here, never blocking the FFI caller.
