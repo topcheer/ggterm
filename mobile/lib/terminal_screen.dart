@@ -21,6 +21,7 @@ import 'package:path_provider/path_provider.dart';
 import 'ffi/session_manager.dart';
 import 'keyboard_bar.dart';
 import 'theme.dart';
+export 'theme.dart' show TerminalTheme, darkTheme;
 
 class TerminalScreen extends StatefulWidget {
   final SessionManager sessionManager;
@@ -54,6 +55,8 @@ class _TerminalScreenState extends State<TerminalScreen>
   bool _sizeInitialized = false;
   bool _isPaused = false; // true when app is in background
   DateTime? _connectedAt; // when the session connected (for duration display)
+  TerminalTheme _currentTheme = darkTheme;
+  int _themeIndex = 0; // index into builtinThemeNames
   // Frame hash for change detection — avoids setState when nothing changed.
   int _lastFrameHash = 0;
   // Cursor blink state.
@@ -1046,7 +1049,7 @@ class _TerminalScreenState extends State<TerminalScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = widget.theme;
+    final theme = _currentTheme;
 
     return PopScope(
       canPop: false,
@@ -1216,6 +1219,13 @@ class _TerminalScreenState extends State<TerminalScreen>
                   });
                   HapticFeedback.selectionClick();
                   break;
+                case 'theme_cycle':
+                  setState(() {
+                    _themeIndex = (_themeIndex + 1) % builtinThemeNames.length;
+                    _currentTheme = themeByName(builtinThemeNames[_themeIndex]);
+                  });
+                  HapticFeedback.selectionClick();
+                  break;
                 case 'disconnect':
                   widget.sessionManager.destroySession(widget.sessionId);
                   if (mounted) Navigator.of(context).pop();
@@ -1262,6 +1272,14 @@ class _TerminalScreenState extends State<TerminalScreen>
                   Icon(Icons.refresh, color: Colors.white70, size: 20),
                   SizedBox(width: 12),
                   Text('Reset font size', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'theme_cycle',
+                child: Row(children: [
+                  Icon(Icons.palette, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Switch theme', style: TextStyle(color: Colors.white)),
                 ]),
               ),
               const PopupMenuItem(
