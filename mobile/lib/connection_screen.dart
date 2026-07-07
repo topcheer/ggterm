@@ -325,6 +325,30 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     }
   }
 
+  /// Convert raw SSH error strings into user-friendly messages.
+  String _friendlyError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('connect timeout')) {
+      return 'Connection timed out. Check the host and port, or try again.';
+    }
+    if (lower.contains('auth')) {
+      return 'Authentication failed. Check your username and password/key.';
+    }
+    if (lower.contains('connection refused') || lower.contains('connection reset')) {
+      return 'Connection refused. The server may be down or SSH is not running.';
+    }
+    if (lower.contains('dns') || lower.contains('resolve') || lower.contains('nodename')) {
+      return 'Cannot resolve hostname. Check the host address.';
+    }
+    if (lower.contains('network') || lower.contains('unreachable')) {
+      return 'Network is unreachable. Check your internet connection.';
+    }
+    if (lower.contains('channel') || lower.contains('pty') || lower.contains('shell')) {
+      return 'Session setup failed. The server may refuse PTY allocation.';
+    }
+    return raw;
+  }
+
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -351,7 +375,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = _friendlyError(e.toString());
         });
       }
     } finally {
