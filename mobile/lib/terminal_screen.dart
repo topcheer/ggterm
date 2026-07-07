@@ -58,6 +58,9 @@ class _TerminalScreenState extends State<TerminalScreen>
   DateTime? _connectedAt; // when the session connected (for duration display)
   TerminalTheme _currentTheme = darkTheme;
   int _themeIndex = 0; // index into builtinThemeNames
+
+  /// Last long-press position for URL extraction.
+  Offset _lastLongPressPos = Offset.zero;
   // Frame hash for change detection — avoids setState when nothing changed.
   int _lastFrameHash = 0;
   // Cursor blink state.
@@ -669,6 +672,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// This is the simplest and most useful copy action on mobile:
   /// user presses and holds, gets immediate "Copied N lines" feedback.
   void _onLongPress(LongPressStartDetails details) {
+    _lastLongPressPos = details.localPosition;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.grey.shade900,
@@ -749,6 +753,17 @@ class _TerminalScreenState extends State<TerminalScreen>
                   Navigator.pop(context);
                   widget.sessionManager
                       .sendInput(widget.sessionId, [0x09]);
+                  HapticFeedback.selectionClick();
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.open_in_browser, color: Colors.white70),
+                title: const Text('Open URL at tap position',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openUrlAt(_lastLongPressPos);
                   HapticFeedback.selectionClick();
                 },
               ),
@@ -939,6 +954,57 @@ class _TerminalScreenState extends State<TerminalScreen>
         }
       }
     } catch (_) {}
+  }
+
+  /// Extract the URL at the given position and open it in the system browser.
+  void _openUrlAt(Offset position) {
+    final col = (position.dx / _cellWidth).floor();
+    final row = (position.dy / _cellHeight).floor();
+    if (row < 0 || row >= _screen.rows || col < 0 || col >= _screen.cols) {
+      _showCopiedSnackBar('No URL found');
+      return;
+    }
+
+    // Extract the full line at the tap position.
+    final lineBuf = StringBuffer();
+    for (var c = 0; c < _screen.cols; c++) {
+      final idx = row * _screen.cols + c;
+      if (idx < _screen.cells.length) {
+        final cell = _screen.cells[idx];
+        lineBuf.write(cell.charCode != 0 ? cell.char : ' ');
+      }
+    }
+    final line = lineBuf.toString().trim();
+
+    // Find URL in the line using regex.
+    final urlRegex = RegExp(r'https?://[^\s]+');
+    final match = urlRegex.firstMatch(line);
+    if (match != null) {
+      final url = match.group(0)!;
+      _launchUrl(url);
+    } else {
+      // Also check for bare URLs (e.g., github.com/user/repo).
+      final bareUrlRegex = RegExp(r'[a-z0-9-]+\.[a-z]{2,}/?[^\s]*');
+      final bareMatch = bareUrlRegex.firstMatch(line);
+      if (bareMatch != null) {
+        _launchUrl('https://${bareMatch.group(0)}');
+      } else {
+        _showCopiedSnackBar('No URL found at tap position');
+      }
+    }
+  }
+
+  /// Launch a URL using the platform's default browser.
+  Future<void> _launchUrl(String url) async {
+    try {
+      // Use platform channel to open URL without adding url_launcher dependency.
+      await SystemChannels.platform.invokeMethod('UrlLauncher.launch', url);
+      _showCopiedSnackBar('Opening: $url');
+    } catch (_) {
+      // Fallback: copy to clipboard so user can paste in browser.
+      await Clipboard.setData(ClipboardData(text: url));
+      _showCopiedSnackBar('URL copied: $url');
+    }
   }
 
   void _showCopiedSnackBar(String message) {
