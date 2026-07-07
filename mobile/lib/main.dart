@@ -164,14 +164,19 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
       connected = _sessionManager.localShellConnect(sessionId);
       title = 'Local Shell';
     } else {
-      // SSH connect (blocking — in production, run on background isolate)
-      connected = _sessionManager.sshConnect(sessionId, SshConnectionParams(
+      // SSH connect — use key auth if key file is provided, otherwise password.
+      final sshParams = SshConnectionParams(
         host: params.host,
         port: params.port,
         user: params.username,
         password: params.password,
         keyFilePath: params.keyFilePath,
-      ));
+      );
+      if (sshParams.usesKey) {
+        connected = _sessionManager.sshConnectKey(sessionId, sshParams);
+      } else {
+        connected = _sessionManager.sshConnect(sessionId, sshParams);
+      }
       title = '${params.username}@${params.host}';
     }
 
