@@ -1587,13 +1587,18 @@ class _TerminalScreenState extends State<TerminalScreen>
                 ),
               ),
 
-            // ── Keyboard bar ──
-            if (_showKeyboardBar)
-              KeyboardBar(
-                modifiers: _modifiers,
-                onKey: _sendKey,
-                onPaste: _pasteFromClipboard,
-              ),
+            // ── Keyboard bar (animated show/hide) ──
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: _showKeyboardBar
+                  ? KeyboardBar(
+                      modifiers: _modifiers,
+                      onKey: _sendKey,
+                      onPaste: _pasteFromClipboard,
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ), // Column
       ), // SafeArea
