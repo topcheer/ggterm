@@ -401,6 +401,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               // ── Host ──
               TextFormField(
                 controller: _hostController,
+                autofocus: true,
                 autofillHints: const [AutofillHints.url],
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
