@@ -488,6 +488,11 @@ impl DesktopApp {
                 self.copy_selection_as_html();
                 return;
             }
+            // Ctrl+Shift+J → open shell rc file (.zshrc/.bashrc) in editor
+            if self.mods.ctrl && self.mods.shift && !self.mods.alt && key_name == "j" {
+                self.open_shell_config();
+                return;
+            }
             // Ctrl+Shift+R → restart shell (full reset)
             if self.check_keybinding(
                 "reset",

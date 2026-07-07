@@ -404,9 +404,7 @@ impl DesktopApp {
     /// Reopen the last closed tab in its original working directory.
     /// Open a new ggterm window by re-launching the binary.
     pub(super) fn open_new_window(&self) {
-        let exe = std::env::current_exe().unwrap_or_else(|_| {
-            std::path::PathBuf::from("ggterm")
-        });
+        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("ggterm"));
         match std::process::Command::new(&exe).spawn() {
             Ok(_) => log::info!("Launched new ggterm window"),
             Err(e) => log::error!("Failed to open new window: {}", e),
@@ -2437,6 +2435,47 @@ impl DesktopApp {
 
         match result {
             Ok(_) => self.show_toast(format!("Opened {}", path.display())),
+            Err(_) => self.show_toast("Failed to open editor"),
+        }
+    }
+
+    /// Open the shell's rc file (.zshrc, .bashrc, .config/fish/config.fish)
+    /// in the system's default editor.
+    pub(super) fn open_shell_config(&mut self) {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+        let Some(home) = home else {
+            self.show_toast("Cannot find home directory");
+            return;
+        };
+        let home = std::path::PathBuf::from(home);
+
+        // Determine which shell rc file to open based on the $SHELL env var.
+        let shell = std::env::var("SHELL").unwrap_or_default();
+        let rc_path = if shell.contains("zsh") {
+            home.join(".zshrc")
+        } else if shell.contains("fish") {
+            home.join(".config/fish/config.fish")
+        } else {
+            home.join(".bashrc")
+        };
+
+        if !rc_path.exists() {
+            self.show_toast(format!("{} not found — create it first", rc_path.display()));
+            return;
+        }
+
+        #[cfg(target_os = "macos")]
+        let result = std::process::Command::new("open").arg(&rc_path).spawn();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let result = std::process::Command::new("xdg-open").arg(&rc_path).spawn();
+        #[cfg(target_os = "windows")]
+        let result = std::process::Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(&rc_path)
+            .spawn();
+
+        match result {
+            Ok(_) => self.show_toast(format!("Opened {}", rc_path.display())),
             Err(_) => self.show_toast("Failed to open editor"),
         }
     }
