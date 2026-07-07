@@ -252,10 +252,10 @@ impl TabBarState {
         let tab_y = TAB_BAR_PADDING_V;
 
         // macOS: reserve space for traffic light buttons on the left.
-        // Matches titlebar::TRAFFIC_LIGHT_WIDTH (88px) — inlined here so
+        // Matches titlebar::TRAFFIC_LIGHT_WIDTH (92px) — inlined here so
         // tab_bar compiles without the desktop feature.
         #[cfg(target_os = "macos")]
-        let left_margin = 88.0_f32;
+        let left_margin = 92.0_f32;
         #[cfg(not(target_os = "macos"))]
         let left_margin = TAB_BAR_PADDING_H;
 

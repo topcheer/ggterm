@@ -108,12 +108,7 @@ impl DesktopApp {
                 let bounds = self.content_area_bounds();
                 let (_, row) = self.active_session().app().cursor();
                 let y_pos = bounds.y as f32 + row as f32 * cell_h;
-                Some((
-                    bounds.x as f32,
-                    y_pos,
-                    bounds.width as f32,
-                    cell_h,
-                ))
+                Some((bounds.x as f32, y_pos, bounds.width as f32, cell_h))
             } else {
                 None
             }
@@ -223,6 +218,64 @@ impl DesktopApp {
                 radius: 0.0,
                 stroke_width: 0.0,
             });
+
+            // macOS: subtle vertical divider after traffic lights.
+            #[cfg(target_os = "macos")]
+            {
+                let tl_width = crate::titlebar::TRAFFIC_LIGHT_WIDTH;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: tl_width - 1.0,
+                    y: 6.0,
+                    w: 1.0,
+                    h: bar_h - 12.0,
+                    color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.3),
+                    radius: 0.0,
+                    stroke_width: 0.0,
+                });
+            }
+
+            // Windows/Linux: custom window control buttons on the right.
+            #[cfg(not(target_os = "macos"))]
+            {
+                let ctrl = crate::titlebar::x11::compute_layout(screen_w, bar_h);
+                let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+
+                // Render in order: close, minimize, maximize (matches x11::compute_layout).
+                for (glyph, &(x, y, size), hover_color) in [
+                    ("\u{00d7}", ctrl.close, (0.90_f32, 0.30, 0.30)),       // × red
+                    ("\u{2013}", ctrl.minimize, (0.95_f32, 0.75, 0.25)),    // ─ yellow
+                    ("\u{25a1}", ctrl.maximize, (0.25_f32, 0.70, 0.35)),    // □ green
+                ] {
+                    let is_hovered =
+                        cur_x >= x - 3.0 && cur_x <= x + size + 3.0 && cur_y >= y - 3.0 && cur_y <= y + size + 3.0;
+
+                    // Button background circle.
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: x - 3.0,
+                        y: y - 3.0,
+                        w: size + 6.0,
+                        h: size + 6.0,
+                        color: if is_hovered {
+                            (hover_color, 0.85)
+                        } else {
+                            (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
+                        },
+                        radius: (size + 6.0) / 2.0,
+                        stroke_width: 0.0,
+                    });
+
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: glyph.to_string(),
+                        left: x,
+                        top: y,
+                        color: if is_hovered {
+                            (30, 30, 30) // dark text on colored background
+                        } else {
+                            (130, 135, 150) // subtle gray
+                        },
+                    });
+                }
+            }
 
             // Render each tab pill using layout positions.
             for (tab_idx, tl) in layout.tabs.iter().enumerate() {
