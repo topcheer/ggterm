@@ -52,6 +52,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   bool _showKeyboardBar = true;
   bool _showInputBar = false;
   Timer? _renderTimer;
+  Timer? _durationTimer; // updates AppBar duration every second
   bool _transportAlive = true;
   bool _sizeInitialized = false;
   bool _isPaused = false; // true when app is in background
@@ -175,6 +176,14 @@ class _TerminalScreenState extends State<TerminalScreen>
 
   void _startRenderLoop() {
     _renderTimer?.cancel();
+    // Duration update timer: refreshes AppBar every second so the
+    // connection duration stays live even when idle (no setState storms).
+    _durationTimer?.cancel();
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _connectedAt != null) {
+        setState(() {});
+      }
+    });
     // ~60fps pump + render cycle for low-latency echo
     _renderTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (!mounted) return;
@@ -246,6 +255,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     WakelockPlus.disable();
     _renderTimer?.cancel();
     _blinkTimer?.cancel();
+    _durationTimer?.cancel();
     _inputFocusNode.dispose();
     _inputController.dispose();
     super.dispose();
