@@ -493,7 +493,11 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   controller: _passController,
                   obscureText: _obscurePassword,
                   autofillHints: const [AutofillHints.password],
-                  textInputAction: TextInputAction.done,
+                  textInputAction: TextInputAction.go,
+                  onFieldSubmitted: (_) {
+                    // Press "Go" on keyboard to connect immediately
+                    if (!_connecting) _connect();
+                  },
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock),
