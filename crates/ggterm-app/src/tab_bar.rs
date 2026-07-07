@@ -794,4 +794,37 @@ mod tests {
         let max_radius = layout.tabs[0].rect.h / 2.0;
         assert!(layout.tabs[0].rect.radius <= max_radius + 0.01);
     }
+
+    #[test]
+    fn t_macos_left_margin_clears_traffic_lights() {
+        let mut state = TabBarState::new();
+        state.update(&["a", "b"], 0);
+        let layout = state.compute_layout(800.0, 14.0);
+        // First tab pill must start after the traffic light area.
+        #[cfg(target_os = "macos")]
+        {
+            assert!(
+                layout.tabs[0].rect.x >= 92.0,
+                "first tab x ({}) must be >= 92px to clear traffic lights",
+                layout.tabs[0].rect.x
+            );
+        }
+    }
+
+    #[test]
+    fn t_windows_right_margin_for_controls() {
+        let mut state = TabBarState::new();
+        state.update(&["a", "b"], 0);
+        let layout = state.compute_layout(800.0, 14.0);
+        // The "+" new tab button must not extend into the window control area.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let right_edge = layout.new_tab_button.cx + 20.0; // approx button width
+            assert!(
+                right_edge <= 800.0 - 66.0,
+                "new tab button right edge ({}) must not overlap window controls (right 66px reserved)",
+                right_edge
+            );
+        }
+    }
 }
