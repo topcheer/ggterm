@@ -3,6 +3,7 @@
 /// On successful connection, navigates to [TerminalScreen].
 
 library;
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -70,6 +71,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   final _ticketController = TextEditingController();
 
   bool _connecting = false;
+  int _connectElapsed = 0;
+  Timer? _connectTimer;
   bool _obscurePassword = true;
   bool _useKeyFile = false;
   String? _errorMessage;
@@ -225,6 +228,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
   @override
   void dispose() {
+    _connectTimer?.cancel();
     _hostController.dispose();
     _portController.dispose();
     _userController.dispose();
@@ -354,6 +358,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
     setState(() {
       _connecting = true;
+      _connectElapsed = 0;
+      _connectTimer?.cancel();
+      _connectTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted && _connecting) {
+          setState(() => _connectElapsed++);
+        }
+      });
       _errorMessage = null;
     });
 
@@ -383,6 +394,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         });
       }
     } finally {
+      _connectTimer?.cancel();
+      _connectTimer = null;
       if (mounted) setState(() => _connecting = false);
     }
   }
@@ -591,7 +604,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.electrical_services),
-                label: Text(_connecting ? 'Connecting...' : 'Connect'),
+                label: Text(_connecting
+                    ? 'Connecting… ${_connectElapsed}s'
+                    : 'Connect'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
