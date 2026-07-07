@@ -360,7 +360,7 @@ impl DesktopApp {
                 }
                 return;
             }
-            // Ctrl+= → zoom in (also Cmd+= on macOS)
+            // Ctrl+= → zoom in (also Cmd+= on macOS, also Ctrl++ for keyboards that need Shift)
             if self.check_keybinding(
                 "zoom_in",
                 self.mods.ctrl,
@@ -368,6 +368,7 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "=")
+                || (self.mods.ctrl && self.mods.shift && key_name == "+")
             {
                 if self.font_zoom.zoom_in() {
                     self.apply_font_size();
