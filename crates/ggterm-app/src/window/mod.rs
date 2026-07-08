@@ -2278,4 +2278,37 @@ mod tests {
     fn test_quote_empty_path() {
         assert_eq!(quote_shell_path(""), "''");
     }
+
+    #[test]
+    fn test_parse_cursor_style_block() {
+        assert_eq!(
+            parse_cursor_style("block"),
+            ggterm_core::CursorStyle::BlinkBlock
+        );
+    }
+
+    #[test]
+    fn test_parse_cursor_style_underline() {
+        assert_eq!(
+            parse_cursor_style("underline"),
+            ggterm_core::CursorStyle::BlinkUnderline
+        );
+    }
+
+    #[test]
+    fn test_parse_cursor_style_bar() {
+        assert_eq!(
+            parse_cursor_style("bar"),
+            ggterm_core::CursorStyle::BlinkBar
+        );
+    }
+
+    #[test]
+    fn test_parse_cursor_style_unknown_defaults_block() {
+        assert_eq!(
+            parse_cursor_style("unknown"),
+            ggterm_core::CursorStyle::BlinkBlock
+        );
+        assert_eq!(parse_cursor_style(""), ggterm_core::CursorStyle::BlinkBlock);
+    }
 }
