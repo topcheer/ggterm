@@ -972,6 +972,10 @@ impl Terminal {
                         continue;
                     }
                     text.push(cell.ch);
+                    // Append combining characters (zero-width marks like accents)
+                    for &mc in &cell.combining {
+                        text.push(mc);
+                    }
                 }
                 None => break,
             }
@@ -6475,6 +6479,16 @@ mod tests {
         feed(&mut t, b"Line1\r\nLine2");
         assert_eq!(t.extract_row_text(0), "Line1");
         assert_eq!(t.extract_row_text(1), "Line2");
+    }
+
+    #[test]
+    fn test_extract_row_text_combining_char() {
+        let mut t = Terminal::new(20, 5);
+        // Feed "e" followed by U+0301 (combining acute accent → é).
+        feed(&mut t, "e\u{0301}".as_bytes());
+        let text = t.extract_row_text(0);
+        // Should include both the base char and the combining mark.
+        assert_eq!(text, "e\u{0301}");
     }
 
     #[test]
