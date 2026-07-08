@@ -1354,11 +1354,22 @@ impl ApplicationHandler for DesktopApp {
                     .as_ref()
                     .is_some_and(|m| m.config().appearance.cursor_line_highlight);
                 self.status_bar.scroll_mode = self.scroll_mode;
-                // CWD from OSC 7 (pane-level cwd tracking).
+                // CWD from OSC 7 (pane-level cwd tracking) — abbreviate $HOME to ~.
                 self.status_bar.cwd = self
                     .active_session()
                     .cwd()
-                    .map(|p| p.display().to_string())
+                    .map(|p| {
+                        let s = p.display().to_string();
+                        if let Some(home) = std::env::var_os("HOME")
+                            && let Some(hs) = home.to_str()
+                            && hs.len() > 2
+                            && s.starts_with(hs)
+                        {
+                            format!("~{}", &s[hs.len()..])
+                        } else {
+                            s
+                        }
+                    })
                     .unwrap_or_default();
                 // Remote host from OSC 1337 RemoteHost=
                 self.status_bar.remote_host = self
