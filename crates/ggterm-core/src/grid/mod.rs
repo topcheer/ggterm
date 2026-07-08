@@ -604,11 +604,18 @@ impl Grid {
 
                 if styles.is_empty() {
                     html.push_str(&html_escape_char(cell.ch));
+                    for &mc in &cell.combining {
+                        html.push_str(&html_escape_char(mc));
+                    }
                 } else {
+                    let mut content = html_escape_char(cell.ch);
+                    for &mc in &cell.combining {
+                        content.push_str(&html_escape_char(mc));
+                    }
                     html.push_str(&format!(
                         "<span style=\"{}\">{}</span>",
                         styles.join("; "),
-                        html_escape_char(cell.ch)
+                        content
                     ));
                 }
             }
