@@ -63,6 +63,10 @@ struct Cli {
     #[arg(short = 'w', long)]
     working_directory: Option<String>,
 
+    /// Path to a custom config file (default: ~/.ggterm/config.toml).
+    #[arg(short = 'C', long)]
+    config: Option<String>,
+
     /// Verbosity: -v info, -vv debug, -vvv trace.
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -157,6 +161,15 @@ fn main() -> ExitCode {
             std::env::set_var("GGTERM_HOLD", "1");
         }
         log::info!("Hold mode: terminal will stay open after command exits");
+    }
+
+    // If --config flag is given, set env var for the config loader.
+    if let Some(ref config_path) = cli.config {
+        // SAFETY: single-threaded before app launch.
+        unsafe {
+            std::env::set_var("GGTERM_CONFIG", config_path);
+        }
+        log::info!("Using custom config: {config_path}");
     }
 
     // Launch the terminal.

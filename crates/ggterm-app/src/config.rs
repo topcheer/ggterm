@@ -894,7 +894,21 @@ impl ConfigManager {
     }
 
     /// Create a manager and load config from the default location.
+    /// If GGTERM_CONFIG env var is set, loads from that path instead
+    /// (used by `ggterm --config <path>`).
     pub fn load_default() -> Result<Self, ConfigError> {
+        // Check for CLI override via env var.
+        if let Ok(custom_path) = std::env::var("GGTERM_CONFIG")
+            && !custom_path.is_empty()
+        {
+            let path = PathBuf::from(&custom_path);
+            if path.exists() {
+                log::info!("Loading config from GGTERM_CONFIG: {custom_path}");
+                return Self::load_from(&path);
+            } else {
+                log::warn!("GGTERM_CONFIG path does not exist: {custom_path}, using default");
+            }
+        }
         let config = Config::load_default()?;
         let path = default_config_path();
         Ok(Self {
