@@ -1132,4 +1132,40 @@ mod tests {
             "should not show exit when no command completed: {formatted}"
         );
     }
+
+    #[test]
+    fn t_status_bar_idle_displayed() {
+        let mut sb = StatusBar::new();
+        sb.command_running = false;
+        sb.command_timer = "30s".into();
+        let formatted = sb.format();
+        assert!(
+            formatted.contains("idle 30s"),
+            "should show idle timer: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_idle_not_shown_when_running() {
+        let mut sb = StatusBar::new();
+        sb.command_running = true;
+        sb.command_timer = "30s".into();
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("idle"),
+            "should not show idle when command is running: {formatted}"
+        );
+    }
+
+    #[test]
+    fn t_status_bar_idle_not_shown_when_empty() {
+        let mut sb = StatusBar::new();
+        sb.command_running = false;
+        sb.command_timer = String::new();
+        let formatted = sb.format();
+        assert!(
+            !formatted.contains("idle"),
+            "should not show idle when timer is empty: {formatted}"
+        );
+    }
 }
