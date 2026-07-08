@@ -2237,4 +2237,34 @@ mod tests {
         // Verify that KeyCode::KeyB maps to "B" in our keycode_to_name.
         assert_eq!(keycode_to_name(&KeyCode::KeyB), "B");
     }
+
+    // ── quote_shell_path tests (security-critical: prevents shell injection) ──
+
+    #[test]
+    fn test_quote_simple_path() {
+        assert_eq!(
+            quote_shell_path("/home/user/file.txt"),
+            "'/home/user/file.txt'"
+        );
+    }
+
+    #[test]
+    fn test_quote_path_with_spaces() {
+        assert_eq!(
+            quote_shell_path("/home/user/My Documents/file.txt"),
+            "'/home/user/My Documents/file.txt'"
+        );
+    }
+
+    #[test]
+    fn test_quote_path_with_single_quote() {
+        // Single quote in path must be escaped: ' → '\'' (end quote, escaped quote, start quote)
+        let result = quote_shell_path("/tmp/it's a file.txt");
+        assert_eq!(result, "'/tmp/it'\\''s a file.txt'");
+    }
+
+    #[test]
+    fn test_quote_empty_path() {
+        assert_eq!(quote_shell_path(""), "''");
+    }
 }
