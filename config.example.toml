@@ -71,6 +71,12 @@ restore_session = false
 # Default: 10
 # min_notify_duration_secs = 5
 
+# Characters treated as word characters for double-click selection.
+# When you double-click on text, selection extends through these characters
+# in addition to letters, digits, and underscore.
+# Default: ".-/:@~+#?=&%$" (includes path separators, URL chars)
+# word_chars = ".-/:@~+#?=&%$_-"
+
 [ai]
 # Enable AI features at startup.
 # Also requires api_key (below) or GGTERM_AI_API_KEY env var.
