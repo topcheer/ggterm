@@ -40,6 +40,16 @@ fn quote_shell_path(path: &str) -> String {
     let escaped = path.replace('\'', "'\\''");
     format!("'{escaped}'")
 }
+
+/// Parse a cursor style config string to CursorStyle enum.
+/// Valid values: "block" (default), "underline", "bar".
+fn parse_cursor_style(s: &str) -> ggterm_core::CursorStyle {
+    match s {
+        "underline" => ggterm_core::CursorStyle::BlinkUnderline,
+        "bar" => ggterm_core::CursorStyle::BlinkBar,
+        _ => ggterm_core::CursorStyle::BlinkBlock,
+    }
+}
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -1157,11 +1167,7 @@ impl ApplicationHandler for DesktopApp {
         let cursor_style = self
             .config_mgr
             .as_ref()
-            .map(|mgr| match mgr.config().appearance.cursor_style.as_str() {
-                "underline" => ggterm_core::CursorStyle::BlinkUnderline,
-                "bar" => ggterm_core::CursorStyle::BlinkBar,
-                _ => ggterm_core::CursorStyle::BlinkBlock,
-            })
+            .map(|mgr| parse_cursor_style(&mgr.config().appearance.cursor_style))
             .unwrap_or(ggterm_core::CursorStyle::BlinkBlock);
         for session in &mut self.sessions {
             for pane_id in session.pane_ids() {
@@ -1829,11 +1835,7 @@ impl ApplicationHandler for DesktopApp {
                     let new_font_size = cfg.appearance.font_size as f32;
                     let new_font_family = cfg.appearance.font_family.clone();
                     let new_scrollback = cfg.terminal.scrollback_lines;
-                    let new_cursor_style = match cfg.appearance.cursor_style.as_str() {
-                        "underline" => ggterm_core::CursorStyle::BlinkUnderline,
-                        "bar" => ggterm_core::CursorStyle::BlinkBar,
-                        _ => ggterm_core::CursorStyle::BlinkBlock,
-                    };
+                    let new_cursor_style = parse_cursor_style(&cfg.appearance.cursor_style);
                     log::info!(
                         "Config reloaded: theme={}, font_size={}, scrollback={}",
                         new_theme,
