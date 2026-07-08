@@ -214,3 +214,51 @@ impl std::ops::IndexMut<usize> for Row {
         &mut self.cells[col]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn t_row_text_basic() {
+        let mut row = Row::new(10);
+        row.cells[0].ch = 'H';
+        row.cells[1].ch = 'i';
+        row.cells[2].ch = '!';
+        assert_eq!(row.text(), "Hi!");
+    }
+
+    #[test]
+    fn t_row_text_empty() {
+        let row = Row::new(10);
+        assert_eq!(row.text(), "");
+    }
+
+    #[test]
+    fn t_row_text_combining_char() {
+        let mut row = Row::new(10);
+        row.cells[0].ch = 'e';
+        row.cells[0].combining.push('\u{0301}'); // combining acute → é
+        row.cells[1].ch = 'x';
+        assert_eq!(row.text(), "e\u{0301}x");
+    }
+
+    #[test]
+    fn t_row_text_skips_wide_spacer() {
+        let mut row = Row::new(10);
+        row.cells[0].ch = 'あ'; // wide CJK char
+        row.cells[0].flags = CellFlags::WIDE_CHAR;
+        row.cells[1].set_wide_spacer(); // spacer cell
+        row.cells[2].ch = 'B';
+        assert_eq!(row.text(), "あB");
+    }
+
+    #[test]
+    fn t_row_text_multiple_combining() {
+        let mut row = Row::new(10);
+        row.cells[0].ch = 'a';
+        row.cells[0].combining.push('\u{0308}'); // diaeresis
+        row.cells[0].combining.push('\u{0304}'); // macron
+        assert_eq!(row.text(), "a\u{0308}\u{0304}");
+    }
+}
