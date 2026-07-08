@@ -967,6 +967,15 @@ impl ApplicationHandler for DesktopApp {
             attrs = attrs.with_decorations(false);
         }
 
+        // --fullscreen flag: start in fullscreen mode.
+        if std::env::var("GGTERM_FULLSCREEN").as_deref() == Ok("1") {
+            attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        }
+        // --maximize flag: start maximized.
+        if std::env::var("GGTERM_MAXIMIZE").as_deref() == Ok("1") {
+            attrs = attrs.with_maximized(true);
+        }
+
         // Set window icon from embedded PNG — works on all platforms.
         // winit's with_window_icon sets the title bar icon (Linux/Windows)
         // and is used by some compositors on Wayland/X11.

@@ -81,6 +81,14 @@ struct Cli {
     #[arg(long)]
     hold: bool,
 
+    /// Start in fullscreen mode (like pressing F11).
+    #[arg(long)]
+    fullscreen: bool,
+
+    /// Start maximized (fills the screen but keeps window decorations).
+    #[arg(long)]
+    maximize: bool,
+
     /// Execute a command instead of launching an interactive shell.
     /// Usage: ggterm -e vim file.txt  OR  ggterm -e htop
     /// All arguments after -e are passed as the command + args.
@@ -161,6 +169,20 @@ fn main() -> ExitCode {
             std::env::set_var("GGTERM_HOLD", "1");
         }
         log::info!("Hold mode: terminal will stay open after command exits");
+    }
+
+    // If --fullscreen or --maximize, set env vars for the window builder.
+    if cli.fullscreen {
+        // SAFETY: single-threaded before app launch.
+        unsafe {
+            std::env::set_var("GGTERM_FULLSCREEN", "1");
+        }
+    }
+    if cli.maximize {
+        // SAFETY: single-threaded before app launch.
+        unsafe {
+            std::env::set_var("GGTERM_MAXIMIZE", "1");
+        }
     }
 
     // If --config flag is given, set env var for the config loader.
