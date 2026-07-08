@@ -189,13 +189,20 @@ pub fn row_to_runs(
 
         if can_extend && let Some(ref mut c) = current {
             c.text.push(ch);
+            for &mc in &cell.combining {
+                c.text.push(mc);
+            }
         } else {
             #[allow(clippy::collapsible_if)]
             if let Some(r) = current.take() {
                 runs.push(r);
             }
+            let mut initial_text = ch.to_string();
+            for &mc in &cell.combining {
+                initial_text.push(mc);
+            }
             current = Some(TextRun {
-                text: ch.to_string(),
+                text: initial_text,
                 start_col: col,
                 fg: fg_rgb,
                 bg: bg_rgb,
@@ -228,6 +235,9 @@ pub fn row_to_text(grid: &Grid, row: usize) -> String {
         let cell = &grid[(col, row)];
         if !cell.flags.contains(CellFlags::WIDE_SPACER) {
             text.push(cell.ch);
+            for &mc in &cell.combining {
+                text.push(mc);
+            }
         }
     }
     text.trim_end_matches(' ').to_string()
