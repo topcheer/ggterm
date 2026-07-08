@@ -6,6 +6,8 @@ Shell integration scripts that emit [OSC 133 semantic prompt marks](https://gitl
 - **Track exit codes** — see whether each command succeeded or failed
 - **Navigate command blocks** — jump between commands with keyboard shortcuts
 - **Mark prompt/output regions** — visually distinguish prompts, commands, and output
+- **Track current directory** — new tabs/splits inherit the parent's working directory (OSC 7)
+- **Show CWD in status bar** — current directory path displayed at all times (OSC 7)
 
 ## OSC 133 Protocol
 
@@ -17,6 +19,19 @@ Shell integration scripts that emit [OSC 133 semantic prompt marks](https://gitl
 | **D** — CommandEnd | `OSC 133;D;exitcode ST` | After command finishes, with exit code |
 
 `ST` = string terminator (`BEL` `\a` or `ESC \\`)
+
+### OSC 7 — Current Working Directory
+
+In addition to OSC 133, the scripts emit **OSC 7** on each prompt:
+
+| Sequence | Purpose |
+|----------|---------|
+| `OSC 7;file://hostname/path ST` | Reports the current working directory |
+
+This enables:
+- **CWD inheritance**: new tabs and split panes open in the same directory
+- **Status bar display**: shows the current path without relying on `$PWD`
+- **Cross-tab navigation**: terminal knows where each session is located
 
 ### Command Lifecycle
 
