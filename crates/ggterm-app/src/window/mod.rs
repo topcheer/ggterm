@@ -1251,6 +1251,12 @@ impl ApplicationHandler for DesktopApp {
                 // P17-E: Update exit code from terminal's last command.
                 self.status_bar
                     .set_exit_code(self.active_session().app().terminal().last_exit_code());
+                // Last command output line count.
+                self.status_bar.last_output_lines = self
+                    .active_session()
+                    .app()
+                    .terminal()
+                    .last_command_output_lines();
                 // Command execution duration.
                 self.status_bar.command_duration = self
                     .active_session()

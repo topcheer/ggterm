@@ -113,6 +113,18 @@ impl CommandBlock {
     pub fn is_complete(&self) -> bool {
         self.end_row.is_some()
     }
+
+    /// Number of lines of output produced by this command.
+    /// Returns `None` if the command hasn't finished or produced no output.
+    pub fn output_line_count(&self) -> Option<usize> {
+        let output = self.output_row?;
+        let end = self.end_row?;
+        if end > output {
+            Some(end - output)
+        } else {
+            Some(0)
+        }
+    }
 }
 
 /// Group a flat list of CommandMark entries into CommandBlocks.
@@ -940,6 +952,15 @@ impl Terminal {
     /// `None` if no command has completed or shell integration is inactive.
     pub fn last_command_duration(&self) -> Option<std::time::Duration> {
         self.last_command_duration
+    }
+
+    /// Returns the number of output lines from the last completed command.
+    /// `None` if no command has completed or shell integration is inactive.
+    pub fn last_command_output_lines(&self) -> Option<usize> {
+        self.command_blocks()
+            .last()
+            .filter(|b| b.is_complete())
+            .and_then(|b| b.output_line_count())
     }
 
     /// Returns true if a command is currently running (CommandStart received, no CommandEnd yet).
@@ -4642,6 +4663,36 @@ mod tests {
         assert_eq!(blocks.len(), 1);
         assert!(blocks[0].is_failure());
         assert!(!blocks[0].is_success());
+    }
+
+    #[test]
+    fn t_command_block_output_line_count() {
+        let mut t = Terminal::new(80, 24);
+        // Command with 3 lines of output.
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart at row 0
+        feed(&mut t, b"\x1b]133;B\x07"); // CommandStart
+        feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
+        feed(&mut t, b"line1\nline2\nline3\n");
+        feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd
+        let blocks = t.command_blocks();
+        assert_eq!(blocks.len(), 1);
+        let count = blocks[0].output_line_count();
+        assert!(count.is_some(), "should have output line count");
+        assert!(
+            count.unwrap() >= 3,
+            "should have at least 3 lines of output"
+        );
+    }
+
+    #[test]
+    fn t_command_block_output_line_count_none_running() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart
+        feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
+        // No CommandEnd — command still running.
+        let blocks = t.command_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].output_line_count().is_none());
     }
 
     #[test]

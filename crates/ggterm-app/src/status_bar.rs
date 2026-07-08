@@ -111,6 +111,9 @@ pub struct StatusBar {
     /// Whether to show a system clock at the end of the status bar.
     /// Default: false (enabled at runtime in the event loop).
     pub show_clock: bool,
+    /// Number of output lines from the last completed command.
+    /// Shown as "~5L" in the status bar (L = lines).
+    pub last_output_lines: Option<usize>,
 }
 
 impl Default for StatusBar {
@@ -159,6 +162,7 @@ impl StatusBar {
             dimensions: String::new(),
             last_exit_code: None,
             show_clock: false,
+            last_output_lines: None,
         }
     }
 
@@ -276,6 +280,11 @@ impl StatusBar {
             } else {
                 parts.push(format!("exit:{}", code));
             }
+        }
+
+        // Last command output line count.
+        if let Some(lines) = self.last_output_lines {
+            parts.push(format!("{}L", lines));
         }
 
         // Command execution duration.
@@ -444,6 +453,11 @@ impl StatusBar {
         if let Some(code) = self.exit_code {
             let color = if code == 0 { ok_color } else { err_color };
             seg!(format!("exit:{}", code), color);
+        }
+
+        // Last command output line count (shown as "~5L" for 5 lines).
+        if let Some(lines) = self.last_output_lines {
+            seg!(format!("{}L", lines), dim_color);
         }
 
         // Command execution duration.
