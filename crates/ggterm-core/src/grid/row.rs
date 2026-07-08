@@ -63,12 +63,17 @@ impl Row {
 
     /// Get the text content of this row as a String (trailing spaces trimmed).
     pub fn text(&self) -> String {
-        self.cells
-            .iter()
-            .map(|c| c.ch)
-            .collect::<String>()
-            .trim_end()
-            .to_string()
+        let mut s = String::new();
+        for c in &self.cells {
+            if c.is_wide_spacer() {
+                continue;
+            }
+            s.push(c.ch);
+            for &mc in &c.combining {
+                s.push(mc);
+            }
+        }
+        s.trim_end().to_string()
     }
 
     // --------------------------------------------------------------------
