@@ -106,9 +106,10 @@ For detailed design docs, see:
 
 ### Desktop UI
 - **GPU Rendering**: wgpu + glyphon with DPI-aware per-run grid alignment
-- **Multi-Tab**: Ctrl+T/W, Alt+1-9, Ctrl+Tab, drag-to-reorder, tab rename
+- **Multi-Tab**: Ctrl+T/W, Alt+1-9, Ctrl+Tab, drag-to-reorder, tab rename, tab number badges
 - **Multi-Pane Splits**: horizontal/vertical splits, drag-to-resize, pane zoom (Ctrl+Shift+Z)
-- **9 Themes**: dark, light, dracula, solarized-dark/light, gruvbox, nord, tokyo-night, catppuccin-mocha
+- **9 Themes**: dark, light, dracula, solarized-dark/light, gruvbox, nord, tokyo-night, catppuccin-mocha + auto (follows OS)
+- **IME Support**: CJK input method (Chinese/Japanese/Korean) with preedit overlay
 - **Search**: floating search bar with case toggle + match highlighting (Ctrl+Shift+F)
 - **Clipboard**: Ctrl+Shift+V paste, OSC 52 sync, middle-click paste, select-to-copy
 - **Font Zoom**: Ctrl+=/-/0 or Ctrl+Shift+Wheel (VS Code style)
