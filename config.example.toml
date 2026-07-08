@@ -4,7 +4,7 @@
 
 [appearance]
 # Theme: dark, light, dracula, solarized-dark, solarized-light, gruvbox,
-#         nord, tokyo-night, catppuccin-mocha
+#         nord, tokyo-night, catppuccin-mocha, auto (follows OS dark/light)
 theme = "dark"
 
 # Font family name (resolved by glyphon text shaping)
