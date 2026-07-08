@@ -49,8 +49,27 @@ ggterm
 # Custom size, shell, theme
 ggterm --cols 120 --rows 40 --shell /bin/zsh --theme solarized-dark --font-size 15
 
+# Execute a command (xterm -e compatibility)
+ggterm -e vim README.md
+ggterm -e htop
+
+# Keep terminal open after command exits (--hold)
+ggterm --hold -e ./build.sh
+
+# Start fullscreen or maximized
+ggterm --fullscreen
+ggterm --maximize
+
+# Custom config file
+ggterm --config ~/.config/ggterm/work.toml
+
+# Start in a specific directory
+ggterm -w /path/to/project
+
 # Verbose logging
-ggterm -v
+ggterm -v          # info
+ggterm -vv         # debug
+ggterm -vvv        # trace
 ```
 
 ## Goals
