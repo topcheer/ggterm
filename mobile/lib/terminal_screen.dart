@@ -1365,7 +1365,7 @@ class _TerminalScreenState extends State<TerminalScreen>
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             color: Colors.grey.shade900,
-            onSelected: (value) {
+            onSelected: (value) async {
               switch (value) {
                 case 'clear':
                   // Clear screen: send Ctrl+L
@@ -1413,6 +1413,23 @@ class _TerminalScreenState extends State<TerminalScreen>
                     Clipboard.setData(ClipboardData(text: text));
                     final lines = '\n'.allMatches(text).length + 1;
                     _showCopiedSnackBar('Copied $lines lines');
+                  }
+                  HapticFeedback.selectionClick();
+                  break;
+                case 'share_text':
+                  final text = widget.sessionManager.getTerminalText(widget.sessionId);
+                  if (text.isEmpty) {
+                    _showCopiedSnackBar('No text to share');
+                  } else {
+                    // Use platform channel to share text via system share sheet.
+                    try {
+                      const channel = MethodChannel('dev.ggterm/share');
+                      await channel.invokeMethod('shareText', {'text': text, 'subject': 'GGTerm output'});
+                    } catch (_) {
+                      // Fallback: copy to clipboard if share fails.
+                      Clipboard.setData(ClipboardData(text: text));
+                      _showCopiedSnackBar('Copied to clipboard (share unavailable)');
+                    }
                   }
                   HapticFeedback.selectionClick();
                   break;
@@ -1478,6 +1495,15 @@ class _TerminalScreenState extends State<TerminalScreen>
                   Icon(Icons.copy_all, color: Colors.white70, size: 20),
                   SizedBox(width: 12),
                   Text('Copy all visible text',
+                      style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'share_text',
+                child: Row(children: [
+                  Icon(Icons.share, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Text('Share terminal text',
                       style: TextStyle(color: Colors.white)),
                 ]),
               ),
