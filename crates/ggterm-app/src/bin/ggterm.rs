@@ -70,6 +70,12 @@ struct Cli {
     /// Auto-start P2P share on launch (for testing).
     #[arg(long)]
     p2p_share: bool,
+
+    /// Execute a command instead of launching an interactive shell.
+    /// Usage: ggterm -e vim file.txt  OR  ggterm -e htop
+    /// All arguments after -e are passed as the command + args.
+    #[arg(short = 'e', long = "execute", num_args = 1.., allow_hyphen_values = true)]
+    execute: Vec<String>,
 }
 
 fn main() -> ExitCode {
@@ -123,6 +129,19 @@ fn main() -> ExitCode {
             // Write a flag file that about_to_wait checks.
             let _ = std::fs::write("/tmp/ggterm_auto_share", "1");
         });
+    }
+
+    // If -e flag is given, set the shell to execute the command directly.
+    if !cli.execute.is_empty() {
+        // Build "shell -c 'command args'" so the PTY spawns the command
+        // via the user's shell, exactly like xterm -e / alacritty -e.
+        let cmd = cli.execute.join(" ");
+        log::info!("Execute mode (-e): {cmd}");
+        // Store in env var that the shell detection reads.
+        // SAFETY: single-threaded before app launch.
+        unsafe {
+            std::env::set_var("GGTERM_EXEC", &cmd);
+        }
     }
 
     // Launch the terminal.

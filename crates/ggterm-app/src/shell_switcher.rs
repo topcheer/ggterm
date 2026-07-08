@@ -184,6 +184,15 @@ impl ShellSwitcherState {
 
 /// Get the default shell path.
 fn get_default_shell() -> String {
+    // GGTERM_EXEC: set by `ggterm -e <command>` — execute a command
+    // instead of launching an interactive shell (like xterm -e).
+    if let Ok(exec_cmd) = std::env::var("GGTERM_EXEC")
+        && !exec_cmd.is_empty()
+    {
+        // Use the user's shell to run the command with -c.
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        return format!("{shell} -c '{exec_cmd}'");
+    }
     // $SHELL environment variable
     if let Ok(shell) = std::env::var("SHELL") {
         return shell;
