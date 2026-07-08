@@ -1237,6 +1237,7 @@ impl ApplicationHandler for DesktopApp {
                 // Update status bar from active session state.
                 let (row, col) = self.active_session().app().cursor();
                 self.status_bar.update_cursor(row, col);
+                self.status_bar.show_clock = true;
                 self.status_bar
                     .update_tabs(self.sessions.len(), self.active);
                 self.status_bar

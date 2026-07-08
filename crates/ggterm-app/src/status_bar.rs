@@ -108,6 +108,9 @@ pub struct StatusBar {
     /// Exit code of the last completed command (None = no command completed or shell integration inactive).
     /// Displayed in status bar as a red segment when non-zero.
     pub last_exit_code: Option<i32>,
+    /// Whether to show a system clock at the end of the status bar.
+    /// Default: false (enabled at runtime in the event loop).
+    pub show_clock: bool,
 }
 
 impl Default for StatusBar {
@@ -155,6 +158,7 @@ impl StatusBar {
             theme_name: String::new(),
             dimensions: String::new(),
             last_exit_code: None,
+            show_clock: false,
         }
     }
 
@@ -373,6 +377,17 @@ impl StatusBar {
             parts.push(format!("{:.0}%", pct * 100.0));
         }
 
+        // System clock.
+        if self.show_clock {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let secs = now.as_secs() % 86400;
+            let h = (secs / 3600 + local_offset_hours()) % 24;
+            let m = (secs / 60) % 60;
+            parts.push(format!("{:02}:{:02}", h, m));
+        }
+
         parts.join(" | ")
     }
 
@@ -574,7 +589,42 @@ impl StatusBar {
             seg!("SHARE".to_string(), accent_color);
         }
 
+        // System clock — always shown at the end (like tmux status-right).
+        if self.show_clock {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let secs = now.as_secs() % 86400; // seconds since midnight UTC
+            let h = (secs / 3600 + local_offset_hours()) % 24;
+            let m = (secs / 60) % 60;
+            seg!(format!("{:02}:{:02}", h, m), dim_color);
+        }
+
         segs
+    }
+}
+
+/// Estimate local timezone offset in hours (heuristic — not exact but
+/// close enough for a status bar clock). Uses `date +%z` on Unix.
+fn local_offset_hours() -> u64 {
+    #[cfg(unix)]
+    {
+        if let Ok(out) = std::process::Command::new("date").arg("+%z").output()
+            && out.status.success()
+        {
+            let s = String::from_utf8_lossy(&out.stdout);
+            if s.len() >= 5 {
+                let sign = if s.starts_with('-') { -1i64 } else { 1i64 };
+                if let Ok(h) = s[1..3].parse::<i64>() {
+                    return ((sign * h) as u64 + 24) % 24;
+                }
+            }
+        }
+        0
+    }
+    #[cfg(not(unix))]
+    {
+        0
     }
 }
 
