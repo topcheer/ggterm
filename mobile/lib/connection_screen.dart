@@ -313,6 +313,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   Future<void> _importHistory() async {
     final data = await Clipboard.getData('text/plain');
     if (data?.text == null || data!.text!.trim().isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Clipboard is empty — copy JSON first')),
       );
@@ -635,15 +636,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   await _importHistory();
                   break;
                 case 'clear':
+                  final messenger = ScaffoldMessenger.of(context);
                   setState(() {
                     _history.clear();
                   });
                   await _saveHistoryFile();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('History cleared')),
-                    );
-                  }
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('History cleared')),
+                  );
                   break;
               }
             },

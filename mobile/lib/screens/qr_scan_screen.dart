@@ -13,7 +13,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../ffi/p2p_bindings.dart';
 import '../ffi/session_manager.dart';
 import '../terminal_screen.dart';
-import '../theme.dart';
 
 class QrScanScreen extends StatefulWidget {
   final P2pBindings p2p;
