@@ -1039,12 +1039,13 @@ impl DesktopApp {
             .rev()
             .find(|b| b.command_row.is_some() && b.end_row.is_some());
 
-        if let Some(block) = last_block {
+        if let Some(block) = last_block
+            && let Some(end_row) = block.end_row
+        {
             // Output region: from output_row (or command_row+1) to end_row.
             let start_row = block
                 .output_row
                 .unwrap_or_else(|| block.command_row.unwrap_or(block.prompt_row) + 1);
-            let end_row = block.end_row.unwrap();
 
             if end_row > start_row {
                 // Convert absolute rows to display rows.
