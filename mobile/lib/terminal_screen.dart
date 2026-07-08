@@ -1912,7 +1912,7 @@ class _TerminalPainter extends CustomPainter {
             // Start a new run.
             runStart = col;
             runText.clear();
-            runText.write(cell.char);
+            runText.write(cell.charWithCombining);
             runFg = effectiveFg;
             runBold = cell.bold;
             runItalic = cell.italic;
@@ -1934,7 +1934,7 @@ class _TerminalPainter extends CustomPainter {
               cell.strikethrough == runStrikethrough &&
               cell.dim == runDim) {
             // Continue current run.
-            runText.write(cell.char);
+            runText.write(cell.charWithCombining);
             // Wide chars (CJK, emoji) take 2 cells. Flush immediately
             // so subsequent text starts at the correct column.
             if (cell.wide) {
@@ -1950,7 +1950,7 @@ class _TerminalPainter extends CustomPainter {
                 runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
             runStart = col;
             runText.clear();
-            runText.write(cell.char);
+            runText.write(cell.charWithCombining);
             runFg = effectiveFg;
             runBold = cell.bold;
             runItalic = cell.italic;

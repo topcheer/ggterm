@@ -64,6 +64,9 @@ impl TerminalHandle {
 pub struct GGTermCell {
     /// Unicode codepoint (0 = empty/space).
     pub char_code: u32,
+    /// First combining character (0 = none). Covers the common case of
+    /// a single accent/diacritic mark. Additional marks are rare and ignored.
+    pub combining_char: u32,
     /// CellFlags bits (bold, italic, underline, etc.).
     pub flags: u16,
     /// Foreground color: 0=default, 0x01XX0000=indexed, 0x00RRGGBB=RGB.
@@ -77,6 +80,7 @@ impl GGTermCell {
     pub fn from_cell(cell: &Cell) -> Self {
         Self {
             char_code: if cell.ch == ' ' { 0 } else { cell.ch as u32 },
+            combining_char: cell.combining.first().map(|&c| c as u32).unwrap_or(0),
             flags: cell.flags.bits(),
             fg: pack_color(cell.fg),
             bg: pack_color(cell.bg),

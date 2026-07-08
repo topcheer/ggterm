@@ -9,16 +9,17 @@ import 'dart:ffi';
 /// Layout (repr(C)):
 /// ```text
 /// offset 0:  u32 char_code
-/// offset 4:  u16 flags
-/// offset 6:  u16 padding
-/// offset 8:  u32 fg
-/// offset 12: u32 bg
+/// offset 4:  u32 combining_char (first combining mark, 0 = none)
+/// offset 8:  u16 flags
+/// offset 10: u16 padding
+/// offset 12: u32 fg
+/// offset 16: u32 bg
 /// ```
-/// Total size: 16 bytes.
+/// Total size: 20 bytes.
 final class GGTermCell extends Struct {
   @Uint32() external int charCode;
+  @Uint32() external int combiningChar;
   @Uint16() external int flags;
-  // @Uint16() external int _padding; // removed — unused
   @Uint32() external int fg;
   @Uint32() external int bg;
 }

@@ -56,18 +56,29 @@ class ScreenSnapshot {
 /// Dart-side cell data (decoded from FFI struct).
 class GGTermCellData {
   final int charCode;
+  final int combiningChar;
   final int flags;
   final int fg;
   final int bg;
 
   const GGTermCellData({
     this.charCode = 0,
+    this.combiningChar = 0,
     this.flags = 0,
     this.fg = 0,
     this.bg = 0,
   });
 
   String get char => charCode == 0 ? ' ' : String.fromCharCode(charCode);
+  /// Character with combining mark appended (for rendering accented chars).
+  String get charWithCombining {
+    if (charCode == 0) return ' ';
+    final base = String.fromCharCode(charCode);
+    if (combiningChar != 0) {
+      return '$base${String.fromCharCode(combiningChar)}';
+    }
+    return base;
+  }
   bool get bold => (flags & CellFlags.bold) != 0;
   bool get italic => (flags & CellFlags.italic) != 0;
   bool get underline => (flags & CellFlags.underline) != 0;
@@ -222,6 +233,7 @@ class SessionManager {
         final ffiCell = ptr[i];
         cells.add(GGTermCellData(
           charCode: ffiCell.charCode,
+          combiningChar: ffiCell.combiningChar,
           flags: ffiCell.flags,
           fg: ffiCell.fg,
           bg: ffiCell.bg,
