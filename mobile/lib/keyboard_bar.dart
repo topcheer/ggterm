@@ -289,6 +289,18 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('F10', 'F10'),
             _keyButton('F11', 'F11'),
             _keyButton('F12', 'F12'),
+            // Separator
+            Container(
+              width: 1,
+              height: 24,
+              color: Colors.grey.shade700,
+            ),
+            // Git quick-send: sends full command + Enter
+            _keyButton('git st', 'git status\n'),
+            _keyButton('git lg', 'git log --oneline -10\n'),
+            _keyButton('git df', 'git diff\n'),
+            _keyButton('git pl', 'git pull\n'),
+            _keyButton('git ps', 'git push\n'),
           ],
         ),
       ),
