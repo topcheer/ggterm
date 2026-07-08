@@ -499,6 +499,24 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::View,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Wheel".into(),
+            description: "Zoom in/out (font size)".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "F1".into(),
+            description: "Toggle debug overlay".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+/".into(),
+            description: "Toggle this shortcut help".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
         // Search
         ShortcutEntry {
             keys: "Ctrl+Shift+F".into(),
