@@ -8,6 +8,9 @@
 
 // ── Layout constants ───────────────────────────────────────────────────
 
+/// Total height of the tab bar in pixels (used by render/handlers/IME).
+pub const TAB_BAR_HEIGHT: f32 = 30.0;
+
 /// Padding inside the tab bar strip (top and bottom).
 const TAB_BAR_PADDING_V: f32 = 4.0;
 /// Horizontal padding at the start/end of the tab bar.

@@ -1685,7 +1685,11 @@ impl ApplicationHandler for DesktopApp {
             let (cursor_col, cursor_row) = self.active_session().app().terminal().cursor();
             let cell_w = renderer.cell_width() as f64;
             let cell_h = renderer.cell_height() as f64;
-            let content_top = if self.tab_bar.visible { 30.0 } else { 0.0 };
+            let content_top = if self.tab_bar.visible {
+                crate::tab_bar::TAB_BAR_HEIGHT as f64
+            } else {
+                0.0
+            };
             let px = cursor_col as f64 * cell_w;
             let py = content_top + cursor_row as f64 * cell_h;
             let scale = self.scale_factor;

@@ -2803,7 +2803,11 @@ impl DesktopApp {
         // as an underline-styled overlay at the cursor position.
         if let Some(preedit) = &self.ime_preedit {
             let (ccol, crow) = self.sessions[self.active].app().terminal().cursor();
-            let ime_top = if self.tab_bar.visible { 30.0 } else { 0.0 };
+            let ime_top = if self.tab_bar.visible {
+                crate::tab_bar::TAB_BAR_HEIGHT
+            } else {
+                0.0
+            };
             let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..preedit.chars().count())
                 .map(|i| ggterm_render_wgpu::OverlayRect {
                     x: (ccol + i) as f32 * cell_w,
