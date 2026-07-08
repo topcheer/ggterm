@@ -932,4 +932,36 @@ mod tests {
         // The cell should have red foreground (SGR 31).
         assert_eq!(cell.fg, ggterm_core::Color::Indexed(1));
     }
+
+    #[test]
+    fn t_inject_bytes_combining_char() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Inject 'e' + U+0301 (combining acute accent → é).
+        app.inject_bytes("e\u{0301}".as_bytes());
+
+        let grid = app.terminal().grid();
+        let cell = grid.cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'e');
+        assert_eq!(cell.combining.len(), 1);
+        assert_eq!(cell.combining[0], '\u{0301}');
+    }
+
+    #[test]
+    fn t_inject_bytes_newline_advances_cursor() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Inject two lines separated by \r\n.
+        app.inject_bytes(b"line1\r\nline2");
+
+        let grid = app.terminal().grid();
+        // Row 0 should have "line1".
+        assert_eq!(grid.cell(0, 0).unwrap().ch, 'l');
+        // Row 1 should have "line2".
+        assert_eq!(grid.cell(0, 1).unwrap().ch, 'l');
+        assert_eq!(grid.cell(1, 1).unwrap().ch, 'i');
+        assert_eq!(grid.cell(4, 1).unwrap().ch, '2');
+    }
 }
