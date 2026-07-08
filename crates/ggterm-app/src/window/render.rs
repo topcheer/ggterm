@@ -242,12 +242,14 @@ impl DesktopApp {
 
                 // Render in order: close, minimize, maximize (matches x11::compute_layout).
                 for (glyph, &(x, y, size), hover_color) in [
-                    ("\u{00d7}", ctrl.close, (0.90_f32, 0.30, 0.30)),       // × red
-                    ("\u{2013}", ctrl.minimize, (0.95_f32, 0.75, 0.25)),    // ─ yellow
-                    ("\u{25a1}", ctrl.maximize, (0.25_f32, 0.70, 0.35)),    // □ green
+                    ("\u{00d7}", ctrl.close, (0.90_f32, 0.30, 0.30)), // × red
+                    ("\u{2013}", ctrl.minimize, (0.95_f32, 0.75, 0.25)), // ─ yellow
+                    ("\u{25a1}", ctrl.maximize, (0.25_f32, 0.70, 0.35)), // □ green
                 ] {
-                    let is_hovered =
-                        cur_x >= x - 3.0 && cur_x <= x + size + 3.0 && cur_y >= y - 3.0 && cur_y <= y + size + 3.0;
+                    let is_hovered = cur_x >= x - 3.0
+                        && cur_x <= x + size + 3.0
+                        && cur_y >= y - 3.0
+                        && cur_y <= y + size + 3.0;
 
                     // Button background circle.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -2796,6 +2798,29 @@ impl DesktopApp {
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
+
+        // IME preedit text overlay — show in-progress CJK composition text
+        // as an underline-styled overlay at the cursor position.
+        if let Some(preedit) = &self.ime_preedit {
+            let (ccol, crow) = self.sessions[self.active].app().terminal().cursor();
+            let ime_top = if self.tab_bar.visible { 30.0 } else { 0.0 };
+            let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..preedit.chars().count())
+                .map(|i| ggterm_render_wgpu::OverlayRect {
+                    x: (ccol + i) as f32 * cell_w,
+                    y: ime_top + (crow + 1) as f32 * cell_h - 2.0,
+                    w: cell_w,
+                    h: 2.0,
+                    color: (1.0, 1.0, 1.0),
+                })
+                .collect();
+            renderer.set_overlay_rects(ime_rects);
+            renderer.set_overlay_text(vec![ggterm_render_wgpu::OverlayTextSpec {
+                text: preedit.clone(),
+                left: ccol as f32 * cell_w,
+                top: ime_top + crow as f32 * cell_h,
+                color: (255, 255, 255),
+            }]);
+        }
 
         // P20-A: Multi-pane viewport rendering.
         // When the active session has multiple panes, render each pane's grid

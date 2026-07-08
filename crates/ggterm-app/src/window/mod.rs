@@ -152,6 +152,9 @@ pub struct DesktopApp {
     window_occluded: bool,
     /// DPI scale factor (2.0 on Retina, 1.0 on standard). P18-A.
     scale_factor: f64,
+    /// IME preedit string (in-progress text from input method).
+    /// When non-empty, the IME composition is active.
+    ime_preedit: Option<String>,
 
     // ── Resize debouncing (P9-H) ──
     /// Pending resize dimensions (stored during drag, applied after debounce).
@@ -553,6 +556,7 @@ impl DesktopApp {
             window_focused: true,
             window_occluded: false,
             scale_factor: 1.0,
+            ime_preedit: None,
             pending_resize: None,
             force_config_reload: false,
             last_resize_time: None,
@@ -1072,6 +1076,10 @@ impl ApplicationHandler for DesktopApp {
         {
             crate::titlebar::install_traffic_lights(&window);
         }
+
+        // Enable IME (Input Method Editor) for CJK text input.
+        window.set_ime_allowed(true);
+
         self.renderer = Some(renderer);
 
         // Set real cell dimensions on all terminal sessions so CSI 14t/15t/16t
@@ -1517,7 +1525,15 @@ impl ApplicationHandler for DesktopApp {
                     // Cancel any pending dock/taskbar attention request.
                     if let Some(ref window) = self.window {
                         window.request_user_attention(None);
+                        // Enable IME so input methods (CJK, etc.) work.
+                        window.set_ime_allowed(true);
                     }
+                } else {
+                    // Disable IME when unfocused to avoid stray preedit state.
+                    if let Some(ref window) = self.window {
+                        window.set_ime_allowed(false);
+                    }
+                    self.ime_preedit = None;
                 }
             }
 
@@ -1546,6 +1562,24 @@ impl ApplicationHandler for DesktopApp {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 self.handle_mouse_wheel(delta);
+            }
+
+            // IME (Input Method Editor) — committed text goes to PTY.
+            WindowEvent::Ime(ime) => {
+                use winit::event::Ime;
+                match ime {
+                    Ime::Commit(text) => {
+                        // Send committed IME text to PTY as UTF-8 bytes.
+                        self.write_to_pty(text.as_bytes());
+                        self.ime_preedit = None;
+                    }
+                    Ime::Preedit(text, _) => {
+                        self.ime_preedit = if text.is_empty() { None } else { Some(text) };
+                    }
+                    Ime::Disabled | Ime::Enabled => {
+                        self.ime_preedit = None;
+                    }
+                }
             }
             _ => {}
         }
@@ -1641,6 +1675,25 @@ impl ApplicationHandler for DesktopApp {
 
         // Poll for command completion notifications (unfocused window + long-running command).
         self.poll_command_complete();
+
+        // Position IME cursor area near the terminal cursor so the input
+        // method popup appears at the right location (CJK input).
+        if self.window_focused
+            && let Some(ref window) = self.window
+            && let Some(ref renderer) = self.renderer
+        {
+            let (cursor_col, cursor_row) = self.active_session().app().terminal().cursor();
+            let cell_w = renderer.cell_width() as f64;
+            let cell_h = renderer.cell_height() as f64;
+            let content_top = if self.tab_bar.visible { 30.0 } else { 0.0 };
+            let px = cursor_col as f64 * cell_w;
+            let py = content_top + cursor_row as f64 * cell_h;
+            let scale = self.scale_factor;
+            window.set_ime_cursor_area(
+                winit::dpi::PhysicalPosition::new(px * scale, py * scale),
+                winit::dpi::PhysicalSize::new(cell_w * scale, cell_h * scale),
+            );
+        }
 
         // P2P: Poll for connections and forward mobile input/output.
         #[cfg(feature = "p2p")]
