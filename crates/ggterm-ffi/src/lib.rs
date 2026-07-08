@@ -401,6 +401,26 @@ mod tests {
     }
 
     #[test]
+    fn t_ffi_combining_char_through_cells() {
+        unsafe {
+            let h = ggterm_new(80, 24);
+            // Feed "e" followed by U+0301 (combining acute accent → é).
+            let data = "e\u{0301}".as_bytes();
+            ggterm_process_bytes(h, data.as_ptr(), data.len());
+
+            let mut cells = vec![GGTermCell::default(); 80 * 24];
+            let n = ggterm_read_cells(h, cells.as_mut_ptr(), cells.len());
+            assert_eq!(n, 80 * 24);
+            // Base character should be 'e'
+            assert_eq!(cells[0].char_code, 'e' as u32);
+            // Combining mark should be U+0301 (combining acute accent)
+            assert_eq!(cells[0].combining_char, 0x0301);
+
+            ggterm_free(h);
+        }
+    }
+
+    #[test]
     fn t_ffi_send_and_take_input() {
         unsafe {
             let h = ggterm_new(80, 24);
