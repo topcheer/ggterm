@@ -899,4 +899,37 @@ mod tests {
         assert_eq!(app.tab_count(), 2);
         assert_eq!(app.theme_name(), "dracula");
     }
+
+    #[test]
+    fn t_inject_bytes_appears_on_grid() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Inject "Hi!" directly into the terminal emulator.
+        app.inject_bytes(b"Hi!");
+
+        // Verify the text appears on the grid.
+        let grid = app.terminal().grid();
+        let cell0 = grid.cell(0, 0).unwrap();
+        assert_eq!(cell0.ch, 'H');
+        let cell1 = grid.cell(1, 0).unwrap();
+        assert_eq!(cell1.ch, 'i');
+        let cell2 = grid.cell(2, 0).unwrap();
+        assert_eq!(cell2.ch, '!');
+    }
+
+    #[test]
+    fn t_inject_bytes_ansi_escape() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Inject ANSI-colored text and verify escape sequences are processed.
+        app.inject_bytes(b"\x1b[31mR\x1b[0m");
+
+        let grid = app.terminal().grid();
+        let cell = grid.cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'R');
+        // The cell should have red foreground (SGR 31).
+        assert_eq!(cell.fg, ggterm_core::Color::Indexed(1));
+    }
 }
