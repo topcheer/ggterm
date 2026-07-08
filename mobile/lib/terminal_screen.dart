@@ -111,6 +111,28 @@ class _TerminalScreenState extends State<TerminalScreen>
   double get _cellWidth => _fontSize * 0.6;
   double get _cellHeight => _fontSize * 1.3;
 
+  /// Persist input history to app storage so it survives app restarts.
+  Future<void> _saveInputHistory() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/input_history.json');
+      await file.writeAsString(jsonEncode(_inputHistory));
+    } catch (_) {}
+  }
+
+  /// Load persisted input history on startup.
+  Future<void> _loadInputHistory() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/input_history.json');
+      if (await file.exists()) {
+        final list = jsonDecode(await file.readAsString()) as List;
+        _inputHistory.clear();
+        _inputHistory.addAll(list.cast<String>());
+      }
+    } catch (_) {}
+  }
+
   /// Human-readable scroll position label (e.g., "↓ 45%", "↓ 1.2k lines").
   String get _scrollPercentLabel {
     final offset = widget.sessionManager.displayOffset(widget.sessionId);
@@ -132,6 +154,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     // Keep screen awake while terminal is active — prevents screen timeout
     // during long-running commands, log monitoring, etc.
     WakelockPlus.enable();
+    _loadInputHistory();
     // Up/Down arrow keys on the input bar navigate command history.
     _inputFocusNode.onKeyEvent = (node, event) {
       if (event is KeyDownEvent) {
@@ -1690,6 +1713,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                             if (_inputHistory.length > 100) {
                               _inputHistory.removeAt(0);
                             }
+                            _saveInputHistory();
                           }
                           _inputHistoryIndex = -1;
                           _sendInput([0x0D]);
