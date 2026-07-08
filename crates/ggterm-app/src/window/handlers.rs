@@ -1609,6 +1609,9 @@ impl DesktopApp {
         if let Some(input_key) = map_winit_key(&event.physical_key, logical_text, &mods) {
             let bytes = self.encoder.encode(&input_key);
             if !bytes.is_empty() {
+                // Clear text selection on keypress — standard terminal behavior
+                // (selection is a transient visual state, not a persistent edit).
+                self.selection.clear();
                 // Auto-scroll to bottom on keypress (standard terminal behavior).
                 // If the user scrolled up through scrollback and then starts
                 // typing, jump back to the most recent output.
