@@ -87,6 +87,12 @@ impl DesktopApp {
             return;
         }
 
+        // --hold mode: when the hold message is shown, any key closes the window.
+        if self.hold_message_shown {
+            self.should_quit = true;
+            return;
+        }
+
         // P30-B: Tab rename mode — intercept all keyboard input.
         if self.renaming_tab.is_some() {
             match &event.physical_key {
