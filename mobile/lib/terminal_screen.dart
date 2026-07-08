@@ -321,6 +321,13 @@ class _TerminalScreenState extends State<TerminalScreen>
       // a tab-completion error occurs, or any program rings the bell.
       if (snapshot.hasBell) {
         HapticFeedback.mediumImpact();
+        _bellFlashFrames = 8; // ~130ms flash at 60fps
+      }
+
+      // Decay bell flash counter — forces redraw while flashing.
+      if (_bellFlashFrames > 0) {
+        _bellFlashFrames--;
+        _lastFrameHash = 0; // Force repaint during flash
       }
     });
   }
@@ -572,6 +579,8 @@ class _TerminalScreenState extends State<TerminalScreen>
   // Inertial scrolling: velocity in rows/frame, decays over time.
   double _scrollVelocity = 0.0;
   DateTime _lastScrollTime = DateTime.fromMillisecondsSinceEpoch(0);
+  // Visual bell: counts down frames for red border flash.
+  int _bellFlashFrames = 0;
 
   void _onScale(ScaleUpdateDetails details) {
     // Pinch to zoom (scale change).
@@ -1623,6 +1632,22 @@ class _TerminalScreenState extends State<TerminalScreen>
                           ),
                           child: Container(),
                         ),
+                        // Visual bell flash — red border when BEL fires.
+                        if (_bellFlashFrames > 0)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.red
+                                        .withValues(alpha: _bellFlashFrames / 8.0 * 0.8),
+                                    width: 3,
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ),
                         // Disconnect overlay
                         if (!_transportAlive)
                           Positioned.fill(
