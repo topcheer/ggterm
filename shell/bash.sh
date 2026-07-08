@@ -89,6 +89,10 @@ __ggterm_precmd() {
 
     # A: prompt start
     __ggterm_osc133_A
+
+    # OSC 7: report current working directory for CWD tracking.
+    # Enables new tab/split to inherit CWD, and status bar display.
+    printf '\e]7;file://%s%s\a' "$HOSTNAME" "$PWD"
 }
 
 # ── Integration with Bash hooks ──

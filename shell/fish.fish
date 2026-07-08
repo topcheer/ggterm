@@ -61,6 +61,10 @@ if not set -q GGTERM_SHELL_INTEGRATION_FISH
         function fish_prompt
             __ggterm_osc133_A
             __ggterm_saved_fish_prompt
+
+            # OSC 7: report current working directory for CWD tracking.
+            # Enables new tab/split to inherit CWD, and status bar display.
+            printf '\e]7;file://%s%s\a' (hostname) "$PWD"
         end
 
         # fish_preexec: fires when user submits a command line

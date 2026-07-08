@@ -63,6 +63,10 @@ __ggterm_zsh_precmd() {
     local ec=$?
     __ggterm_osc133_D "$ec"   # D: end previous command
     __ggterm_osc133_A          # A: start new prompt
+
+    # OSC 7: report current working directory for CWD tracking.
+    # Enables new tab/split to inherit CWD, and status bar display.
+    printf '\e]7;file://%s%s\a' "$HOST" "$PWD"
 }
 
 # preexec: runs after Enter is pressed, before command starts.
