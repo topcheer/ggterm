@@ -1081,9 +1081,14 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Launch a URL using the platform's default browser.
   Future<void> _launchUrl(String url) async {
     try {
-      // Use platform channel to open URL without adding url_launcher dependency.
-      await SystemChannels.platform.invokeMethod('UrlLauncher.launch', url);
-      _showCopiedSnackBar('Opening: $url');
+      // Use our custom platform channel (backed by native AppDelegate / MainActivity).
+      const channel = MethodChannel('dev.ggterm/share');
+      final success = await channel.invokeMethod<bool>('shareUrl', {'url': url});
+      if (success == true) {
+        _showCopiedSnackBar('Opening: $url');
+      } else {
+        throw Exception('platform returned false');
+      }
     } catch (_) {
       // Fallback: copy to clipboard so user can paste in browser.
       await Clipboard.setData(ClipboardData(text: url));
