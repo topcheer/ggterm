@@ -1347,19 +1347,35 @@ impl ApplicationHandler for DesktopApp {
                     let cwd = self.active_session().cwd();
                     self.git_branch_cache = cwd
                         .and_then(|p| {
-                            std::process::Command::new("git")
+                            // Try current branch name first.
+                            let output = std::process::Command::new("git")
                                 .arg("branch")
                                 .arg("--show-current")
                                 .current_dir(p)
                                 .output()
-                                .ok()
-                                .and_then(|o| {
-                                    if o.status.success() {
-                                        Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-                                    } else {
-                                        None
-                                    }
-                                })
+                                .ok()?;
+                            if output.status.success() && !output.stdout.is_empty() {
+                                return Some(
+                                    String::from_utf8_lossy(&output.stdout).trim().to_string(),
+                                );
+                            }
+                            // Detached HEAD: show short commit hash.
+                            let rev_output = std::process::Command::new("git")
+                                .arg("rev-parse")
+                                .arg("--short")
+                                .arg("HEAD")
+                                .current_dir(p)
+                                .output()
+                                .ok()?;
+                            if rev_output.status.success() {
+                                let hash = String::from_utf8_lossy(&rev_output.stdout)
+                                    .trim()
+                                    .to_string();
+                                if !hash.is_empty() {
+                                    return Some(format!("({hash})"));
+                                }
+                            }
+                            None
                         })
                         .unwrap_or_default();
                 }
