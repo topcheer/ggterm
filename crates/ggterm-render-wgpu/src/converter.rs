@@ -398,6 +398,41 @@ mod tests {
     }
 
     #[test]
+    fn test_row_to_text_combining_char() {
+        let mut grid = Grid::new(5, 1);
+        grid.put_char(0, 0, 'e');
+        // Add combining acute accent to cell (0,0).
+        grid.cell_mut(0, 0).unwrap().combining.push('\u{0301}');
+        grid.put_char(1, 0, 'x');
+
+        let text = row_to_text(&grid, 0);
+        assert_eq!(text.trim_end(), "e\u{0301}x");
+    }
+
+    #[test]
+    fn test_row_to_runs_combining_char() {
+        let mut grid = Grid::new(5, 1);
+        grid.put_char(0, 0, 'a');
+        grid.cell_mut(0, 0).unwrap().combining.push('\u{0308}'); // diaeresis
+        grid.put_char(1, 0, 'b');
+
+        let theme = RenderTheme::default();
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            false,
+            &std::collections::HashMap::new(),
+        );
+        let total: String = runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(total.trim_end(), "a\u{0308}b");
+    }
+
+    #[test]
     fn test_row_to_runs_wide_spacer() {
         let mut grid = Grid::new(5, 1);
         grid.put_char(0, 0, 'A');
