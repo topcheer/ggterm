@@ -86,14 +86,27 @@ impl TabInfo {
         } else {
             ""
         };
-        format!("{}{}", title, suffix)
+        // Show tab number (1-9) as a dim prefix so users can see
+        // the Alt+1-9 / Cmd+1-9 shortcut mapping visually.
+        let num_prefix = if self.index <= 9 {
+            format!("{} ", self.index)
+        } else {
+            String::new()
+        };
+        format!("{num_prefix}{title}{suffix}")
     }
 
     /// Estimated pixel width of the tab text content (index + title + close button).
     pub fn estimated_width(&self) -> f32 {
         let title = self.truncated_title(MAX_TAB_TITLE_CHARS);
         let text_width = title.chars().count() as f32 * CHAR_WIDTH_ESTIMATE;
-        text_width + TAB_INNER_PADDING_H * 2.0 + CLOSE_BUTTON_GAP + CLOSE_BUTTON_SIZE
+        // +2 chars for tab number prefix (e.g. "1 ") when index <= 9.
+        let num_width = if self.index <= 9 { 2.0 } else { 0.0 };
+        text_width
+            + num_width * CHAR_WIDTH_ESTIMATE
+            + TAB_INNER_PADDING_H * 2.0
+            + CLOSE_BUTTON_GAP
+            + CLOSE_BUTTON_SIZE
     }
 }
 
@@ -516,13 +529,13 @@ mod tests {
     #[test]
     fn t_tab_info_format_active() {
         let tab = TabInfo::new("zsh", 1, true);
-        assert_eq!(tab.format(), "zsh");
+        assert_eq!(tab.format(), "1 zsh");
     }
 
     #[test]
     fn t_tab_info_format_inactive() {
         let tab = TabInfo::new("vim", 2, false);
-        assert_eq!(tab.format(), "vim");
+        assert_eq!(tab.format(), "2 vim");
     }
 
     #[test]
@@ -538,7 +551,7 @@ mod tests {
     fn t_tab_info_dirty_marker() {
         let mut tab = TabInfo::new("logs", 3, false);
         tab.dirty = true;
-        assert_eq!(tab.format(), "logs \u{2022}");
+        assert_eq!(tab.format(), "3 logs \u{2022}");
     }
 
     #[test]
@@ -553,7 +566,7 @@ mod tests {
         let mut state = TabBarState::new();
         state.update(&["zsh", "vim", "logs"], 1);
         assert!(state.visible);
-        assert_eq!(state.format(), "zsh | vim | logs");
+        assert_eq!(state.format(), "1 zsh | 2 vim | 3 logs");
     }
 
     #[test]
@@ -595,7 +608,7 @@ mod tests {
         let mut tab = TabInfo::new("logs", 1, true);
         tab.dirty = true;
         // Should be just "logs" (no dirty dot when active)
-        assert_eq!(tab.format(), "logs");
+        assert_eq!(tab.format(), "1 logs");
     }
 
     #[test]
@@ -611,7 +624,7 @@ mod tests {
         let mut tab = TabInfo::new("server", 1, true);
         tab.bell = true;
         // Active tab suppresses bell indicator.
-        assert_eq!(tab.format(), "server");
+        assert_eq!(tab.format(), "1 server");
     }
 
     #[test]
