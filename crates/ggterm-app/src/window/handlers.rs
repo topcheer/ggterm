@@ -2302,7 +2302,16 @@ impl DesktopApp {
                     // Then try file path detection (compiler error lines).
                     let grid = self.sessions[self.active].app().grid();
                     if let Some(display_row) = grid.display_row(row as usize) {
-                        let line_text: String = display_row.cells.iter().map(|c| c.ch).collect();
+                        let mut line_text = String::new();
+                        for c in &display_row.cells {
+                            if c.is_wide_spacer() {
+                                continue;
+                            }
+                            line_text.push(c.ch);
+                            for &mc in &c.combining {
+                                line_text.push(mc);
+                            }
+                        }
                         if let Some(path) = crate::mouse::find_file_path(&line_text, col as usize) {
                             crate::mouse::open_file_path(&path);
                             self.show_toast(format!("Opening: {}", path));
@@ -2581,7 +2590,7 @@ impl DesktopApp {
 
         // Fall back to plain-text URL detection.
         if let Some(cell_row) = grid.display_row(row) {
-            let line: String = cell_row.cells.iter().map(|c| c.ch).collect();
+            let line: String = cell_row.text();
             if let Some((start, end, url)) = crate::mouse::detect_url_at_position(&line, col) {
                 self.hovered_link = Some((url, start, end, row));
                 return;
@@ -2600,7 +2609,7 @@ impl DesktopApp {
         let grid = &self.sessions[self.active].app().grid();
 
         if let Some(cell_row) = grid.display_row(row) {
-            let line: String = cell_row.cells.iter().map(|c| c.ch).collect();
+            let line: String = cell_row.text();
             let mut matches = crate::color_picker::scan_line_for_colors(&line);
             for m in &mut matches {
                 m.row = row;
@@ -2649,7 +2658,7 @@ impl DesktopApp {
         };
 
         // If the clicked cell is whitespace, select just that cell.
-        let cells: Vec<char> = display_row.cells.iter().map(|c| c.ch).collect();
+        let cells: Vec<char> = display_row.text().chars().collect();
         if col_u >= cells.len() || char_class(cells[col_u]) == 2 {
             self.selection.start(col, row);
             self.selection.extend(col, row);

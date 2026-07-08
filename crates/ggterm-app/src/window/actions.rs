@@ -899,7 +899,7 @@ impl DesktopApp {
         }
 
         // Plain-text URL detection.
-        let line: String = row_data.cells.iter().map(|c| c.ch).collect();
+        let line: String = row_data.text();
         if let Some((_, _, url)) = crate::mouse::detect_url_at_position(&line, col) {
             crate::mouse::open_url(&url);
             self.show_toast(format!("Opened: {}", &url[..url.len().min(60)]));
@@ -1446,9 +1446,7 @@ impl DesktopApp {
             && !self.window_focused
             && let Some(ref window) = self.window
         {
-            window.request_user_attention(Some(
-                winit::window::UserAttentionType::Critical,
-            ));
+            window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
         }
     }
 
@@ -1478,10 +1476,7 @@ impl DesktopApp {
         {
             let et = title.replace('\\', "\\\\").replace('"', "\\\"");
             let eb = body.replace('\\', "\\\\").replace('"', "\\\"");
-            let script = format!(
-                "display notification \"{}\" with title \"{}\"",
-                eb, et
-            );
+            let script = format!("display notification \"{}\" with title \"{}\"", eb, et);
             std::process::Command::new("osascript")
                 .args(["-e", &script])
                 .spawn()
@@ -1586,10 +1581,7 @@ impl DesktopApp {
                 let title = if succeeded {
                     "Command finished".to_string()
                 } else {
-                    format!(
-                        "Command failed (exit {})",
-                        exit_code.unwrap_or(-1)
-                    )
+                    format!("Command failed (exit {})", exit_code.unwrap_or(-1))
                 };
 
                 let body = if let Some(ref cmd) = cmd_text {
@@ -1608,9 +1600,7 @@ impl DesktopApp {
 
                 // Request dock/taskbar attention.
                 if let Some(ref window) = self.window {
-                    window.request_user_attention(Some(
-                        winit::window::UserAttentionType::Critical,
-                    ));
+                    window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
                 }
             }
             None => {
@@ -1650,10 +1640,7 @@ impl DesktopApp {
                 let cmd_text = if cmd_row < scrollback + grid_h {
                     let display_row = cmd_row.saturating_sub(scrollback);
                     grid.display_row(display_row)
-                        .map(|row| {
-                            let s: String = row.cells.iter().map(|c| c.ch).collect::<String>();
-                            s.trim().to_string()
-                        })
+                        .map(|row| row.text().trim().to_string())
                         .unwrap_or_default()
                 } else {
                     String::new()
