@@ -293,6 +293,8 @@ pub struct DesktopApp {
     shortcut_help: crate::shortcut_help::ShortcutHelpState,
     /// P29-C: Quit confirmation dialog.
     quit_confirm: bool,
+    /// Whether the "[process exited]" hold message has been shown.
+    hold_message_shown: bool,
     /// P29-C: Flag to exit event loop on next about_to_wait.
     should_quit: bool,
     /// P30-A: Scrollbar drag state (Some(start_y) when dragging).
@@ -616,6 +618,7 @@ impl DesktopApp {
             new_tab_menu: crate::new_tab_menu::NewTabMenuState::default(),
             shortcut_help: crate::shortcut_help::ShortcutHelpState::new(),
             quit_confirm: false,
+            hold_message_shown: false,
             should_quit: false,
             scrollbar_drag: None,
             renaming_tab: None,
@@ -1891,6 +1894,20 @@ impl ApplicationHandler for DesktopApp {
 
         // Check if active pane's shell has exited (e.g. Ctrl+D, `exit`).
         if !self.active_session().is_running() || !self.active_session_mut().is_alive() {
+            // --hold mode: keep terminal open after command exits.
+            // Shows a message but doesn't close the window.
+            if std::env::var("GGTERM_HOLD").as_deref() == Ok("1") {
+                // Print a hold message to the terminal if not already done.
+                if !self.hold_message_shown {
+                    let msg = "\n\r\x1b[33m[process exited \u{2014} press any key or close window]\x1b[0m\n\r";
+                    self.sessions[self.active]
+                        .app_mut()
+                        .inject_bytes(msg.as_bytes());
+                    self.hold_message_shown = true;
+                }
+                // Don't exit — just skip further processing.
+                return;
+            }
             if self.handle_pane_exit() {
                 event_loop.exit();
             }

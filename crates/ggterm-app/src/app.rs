@@ -382,6 +382,11 @@ impl App {
         std::mem::take(&mut self.pty_tee)
     }
 
+    /// Put data back into the pty_tee buffer (used when P2P is waiting).
+    pub fn restore_pty_tee(&mut self, data: Vec<u8>) {
+        self.pty_tee = data;
+    }
+
     pub fn pump(&mut self) -> bool {
         let mut had_data = false;
         while let Ok(event) = self.event_rx.try_recv() {
@@ -460,6 +465,14 @@ impl App {
     }
 
     /// Encode a key press and send to PTY (if attached).
+    /// Inject bytes directly into the terminal emulator (bypassing PTY).
+    /// Used for hold-mode messages and other UI text that should appear
+    /// as if the terminal program printed it.
+    pub fn inject_bytes(&mut self, bytes: &[u8]) {
+        self.parser.feed(bytes, &mut self.terminal);
+        self.render();
+    }
+
     pub fn send_key(&mut self, key: &crate::input::InputKey) {
         let bytes = self.input_encoder.encode(key);
         if let Some(ref mut writer) = self.pty_writer {

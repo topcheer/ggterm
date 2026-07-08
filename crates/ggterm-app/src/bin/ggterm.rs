@@ -71,6 +71,12 @@ struct Cli {
     #[arg(long)]
     p2p_share: bool,
 
+    /// Keep the terminal open after the command exits (use with -e).
+    /// Shows "[process exited with code N] — press any key to close"
+    /// before closing. Like xterm --hold or alacritty --hold.
+    #[arg(long)]
+    hold: bool,
+
     /// Execute a command instead of launching an interactive shell.
     /// Usage: ggterm -e vim file.txt  OR  ggterm -e htop
     /// All arguments after -e are passed as the command + args.
@@ -142,6 +148,15 @@ fn main() -> ExitCode {
         unsafe {
             std::env::set_var("GGTERM_EXEC", &cmd);
         }
+    }
+
+    // If --hold flag is given, keep terminal open after command exits.
+    if cli.hold {
+        // SAFETY: single-threaded before app launch.
+        unsafe {
+            std::env::set_var("GGTERM_HOLD", "1");
+        }
+        log::info!("Hold mode: terminal will stay open after command exits");
     }
 
     // Launch the terminal.
