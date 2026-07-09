@@ -269,6 +269,11 @@ pub struct DesktopApp {
     /// Whether we restored a saved session at startup.
     restored_session: bool,
 
+    // ── Cursor style tracking ──
+    /// Last applied cursor style from config. Used to detect actual changes
+    /// so config reload doesn't override program-requested DECSCUSR cursor.
+    last_applied_cursor_style: ggterm_core::CursorStyle,
+
     // ── P23-A: Cursor blink animation ──
     /// Cursor blink phase tracker for smooth blink animation.
     cursor_blink: crate::cursor_blink::CursorBlink,
@@ -661,6 +666,7 @@ impl DesktopApp {
             scroll_mode: false,
             settings_window: None,
             pending_open_settings: false,
+            last_applied_cursor_style: ggterm_core::CursorStyle::BlinkBlock,
             #[cfg(feature = "p2p")]
             p2p_share: crate::p2p_share::P2pShareState::new(),
             last_notified_cmd_duration: None,
@@ -1906,10 +1912,18 @@ impl ApplicationHandler for DesktopApp {
                         }
                     }
 
-                    // Defer scrollback + cursor style to apply to ALL sessions
-                    // after this borrow scope ends (can't iterate self.sessions here).
+                    // Defer scrollback to apply to ALL sessions.
                     pending_scrollback = Some(new_scrollback);
-                    pending_cursor_style = Some(new_cursor_style);
+
+                    // Only apply cursor style if it actually changed from
+                    // the previous config value. This prevents overriding
+                    // program-requested DECSCUSR cursor shapes (e.g., vim
+                    // setting a bar cursor) when an unrelated config setting
+                    // is modified.
+                    if new_cursor_style != self.last_applied_cursor_style {
+                        pending_cursor_style = Some(new_cursor_style);
+                        self.last_applied_cursor_style = new_cursor_style;
+                    }
 
                     // Show toast feedback for successful reload.
                     self.show_toast("Config reloaded");
