@@ -50,6 +50,26 @@ fn parse_cursor_style(s: &str) -> ggterm_core::CursorStyle {
         _ => ggterm_core::CursorStyle::BlinkBlock,
     }
 }
+
+/// Fast git branch detection by reading .git/HEAD directly.
+/// Avoids spawning a subprocess for the common case.
+/// Returns None if not in a git repo or HEAD is detached (caller
+/// should fall back to subprocess for detached HEAD display).
+fn read_git_head(cwd: &std::path::Path) -> Option<String> {
+    let head_path = cwd.join(".git").join("HEAD");
+    let head = std::fs::read_to_string(&head_path).ok()?;
+    let head = head.trim();
+    // Format: "ref: refs/heads/branchname"
+    if let Some(ref_pos) = head.find("refs/heads/") {
+        let branch = &head[ref_pos + "refs/heads/".len()..];
+        let branch = branch.trim();
+        if !branch.is_empty() {
+            return Some(branch.to_string());
+        }
+    }
+    // Detached HEAD (hash) — let caller handle with subprocess.
+    None
+}
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -1353,7 +1373,12 @@ impl ApplicationHandler for DesktopApp {
                     let cwd = self.active_session().cwd();
                     self.git_branch_cache = cwd
                         .and_then(|p| {
-                            // Try current branch name first.
+                            // Fast path: read .git/HEAD directly (no subprocess).
+                            if let Some(branch) = read_git_head(p) {
+                                return Some(branch);
+                            }
+                            // Fallback: use git command for edge cases
+                            // (worktrees, submodules, etc).
                             let output = std::process::Command::new("git")
                                 .arg("branch")
                                 .arg("--show-current")
