@@ -9,7 +9,7 @@ A GPU-accelerated, AI-native, cross-platform terminal emulator built in Rust.
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20iOS%20%7C%20Android-lightgrey.svg)](#download)
 
-> **2135+ tests passing** | 9 crates | ~70,000 lines of Rust
+> **2147+ tests passing** | 9 crates | ~66,000 lines of Rust
 
 ## Download
 
@@ -97,14 +97,15 @@ Platform Abstraction (POSIX PTY / ConPTY / SSH Transport)
 
 | Crate | LOC | Description |
 |-------|-----|-------------|
-| `ggterm-core` | ~8,000 | VTE parser, Grid model, Terminal state machine, PTY, transport trait |
-| `ggterm-render` | ~1,500 | Renderer trait, ConsoleRenderer (ANSI), Theme system (9 themes) |
-| `ggterm-render-wgpu` | ~3,500 | GPU renderer using wgpu + glyphon, SDF UI shaders |
-| `ggterm-ai` | ~2,000 | AI engine: context extraction, prompt templates, LLM streaming client |
-| `ggterm-app` | ~35,000 | Desktop app: winit event loop, window/tabs/splits, overlays, mouse, config |
-| `ggterm-ffi` | ~1,500 | C-ABI FFI bindings for Flutter mobile integration |
-| `ggterm-ssh` | ~1,000 | SSH transport via russh (password + key auth) |
-| `ggterm-plugin` | ~3,000 | Lua 5.4 + WASM plugin runtime with hook dispatch |
+| `ggterm-core` | ~11,000 | VTE parser, Grid model, Terminal state machine, PTY, transport trait |
+| `ggterm-render` | ~1,300 | Renderer trait, ConsoleRenderer (ANSI), Theme system (9 themes) |
+| `ggterm-render-wgpu` | ~2,700 | GPU renderer using wgpu + glyphon, SDF UI shaders |
+| `ggterm-ai` | ~2,300 | AI engine: context extraction, prompt templates, LLM streaming client |
+| `ggterm-app` | ~42,000 | Desktop app: winit event loop, window/tabs/splits, overlays, mouse, config |
+| `ggterm-ffi` | ~2,600 | C-ABI FFI bindings for Flutter mobile integration |
+| `ggterm-ssh` | ~600 | SSH transport via russh (password + key auth) |
+| `ggterm-plugin` | ~3,900 | Lua 5.4 + WASM plugin runtime with hook dispatch |
+| `ggterm-p2p` | ~700 | P2P terminal sharing via iroh QUIC |
 
 For detailed design docs, see:
 - [Architecture & Command Navigation](docs/command-nav.md)
