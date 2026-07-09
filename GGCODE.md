@@ -10,7 +10,7 @@
 - **Language:** Rust (edition 2024)
 - **Toolchain:** stable channel (rustfmt + clippy required)
 - **Repository:** https://github.com/topcheer/ggterm
-- **LOC:** ~55,000 lines across 8 crates
+- **LOC:** ~56,000 lines across 9 crates
 
 ## Workspace Layout
 
@@ -143,10 +143,10 @@ Key settings:
 
 ## Testing
 
-- ~1800+ tests across all crates (350+ in core, 1100+ in app, 49 in FFI)
+- ~2150+ tests across all crates (500+ in core, 1250+ in app, 56 in FFI)
 - Core tests: terminal protocol (CSI, OSC, SGR), grid operations, VTE parsing
 - App tests: config, splits, tab bar, command palette, snippets, broadcast, search
-- FFI tests: session lifecycle, echo transport, multi-session, cursor, bell
+- FFI tests: session lifecycle, echo transport, multi-session, cursor, bell, combining chars
 - Env-var tests in ggterm-ai use a shared Mutex to prevent parallel races
 
 ## Commit Convention
@@ -156,15 +156,20 @@ feat: <description>
 fix: <description>
 refactor: <description>
 docs: <description>
+improve: <description>
+test: <description>
+perf: <description>
 ```
 
 Always append: `Co-Authored-By: ggcode <noreply@ggcode.dev>`
 
 ## Current Phase Status
 
-Active development through Phase 39+. Recent work focused on:
-- Terminal protocol completeness (DECRQM, XTVERSION, OSC 4, DECRQSS, ENQ, DECSCNM, DECSET 12, SGR 58/59)
-- VTE parser robustness (DCS/SOS/PM/APC consumption)
-- Multi-pane rendering correctness (per-pane renderer state)
-- Panic safety (FFI mutex locks, renderer unwraps)
+Active development through Phase 55+. Recent work focused on:
+- Combining character correctness across all text paths (renderer, FFI, extraction, export)
+- CLI flags: -e, --hold, --config, --fullscreen, --maximize
+- Shell integration OSC 7 CWD tracking (bash/zsh/fish)
+- Performance: cached timezone offset, fast .git/HEAD read
+- UX: status bar clock, output line count, hold mode exit code display
+- Code quality: no panic-prone unwrap() in non-test code, helper function extraction
 - Code cleanup (dead code removal, duplicate comments)
