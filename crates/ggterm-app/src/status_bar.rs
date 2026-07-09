@@ -621,25 +621,30 @@ impl StatusBar {
 /// Estimate local timezone offset in hours (heuristic — not exact but
 /// close enough for a status bar clock). Uses `date +%z` on Unix.
 fn local_offset_hours() -> u64 {
-    #[cfg(unix)]
-    {
-        if let Ok(out) = std::process::Command::new("date").arg("+%z").output()
-            && out.status.success()
+    use std::sync::OnceLock;
+    static CACHED_OFFSET: OnceLock<u64> = OnceLock::new();
+
+    *CACHED_OFFSET.get_or_init(|| {
+        #[cfg(unix)]
         {
-            let s = String::from_utf8_lossy(&out.stdout);
-            if s.len() >= 5 {
-                let sign = if s.starts_with('-') { -1i64 } else { 1i64 };
-                if let Ok(h) = s[1..3].parse::<i64>() {
-                    return ((sign * h) as u64 + 24) % 24;
+            if let Ok(out) = std::process::Command::new("date").arg("+%z").output()
+                && out.status.success()
+            {
+                let s = String::from_utf8_lossy(&out.stdout);
+                if s.len() >= 5 {
+                    let sign = if s.starts_with('-') { -1i64 } else { 1i64 };
+                    if let Ok(h) = s[1..3].parse::<i64>() {
+                        return ((sign * h) as u64 + 24) % 24;
+                    }
                 }
             }
+            0
         }
-        0
-    }
-    #[cfg(not(unix))]
-    {
-        0
-    }
+        #[cfg(not(unix))]
+        {
+            0
+        }
+    })
 }
 
 /// Helper to get home directory (avoids adding a dependency to this function's scope).
