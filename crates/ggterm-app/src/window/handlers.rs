@@ -1436,6 +1436,33 @@ impl DesktopApp {
             return;
         }
 
+        // macOS: Cmd+Shift+] → next tab, Cmd+Shift+[ → prev tab (Safari/Chrome standard)
+        if cfg!(target_os = "macos") && self.mods.super_key && self.mods.shift && !self.mods.alt {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::BracketRight) => {
+                    self.next_tab();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::BracketLeft) => {
+                    self.prev_tab();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // macOS: Cmd+Q → quit (standard macOS app quit shortcut)
+        if cfg!(target_os = "macos")
+            && self.mods.super_key
+            && !self.mods.shift
+            && !self.mods.alt
+            && !self.mods.ctrl
+            && let PhysicalKey::Code(KeyCode::KeyQ) = &event.physical_key
+        {
+            self.should_quit = true;
+            return;
+        }
+
         // Ctrl+Shift+PageUp → move tab left, Ctrl+Shift+PageDown → move tab right
         if self.mods.ctrl && self.mods.shift && !self.mods.alt && self.sessions.len() > 1 {
             match &event.physical_key {
