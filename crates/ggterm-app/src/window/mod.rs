@@ -1195,6 +1195,7 @@ impl ApplicationHandler for DesktopApp {
             .as_ref()
             .map(|mgr| parse_cursor_style(&mgr.config().appearance.cursor_style))
             .unwrap_or(ggterm_core::CursorStyle::BlinkBlock);
+        self.last_applied_cursor_style = cursor_style;
         for session in &mut self.sessions {
             for pane_id in session.pane_ids() {
                 if let Some(app) = session.pane_app_mut(pane_id) {
