@@ -305,9 +305,6 @@ paste = "Ctrl+Shift+V"
 | `Ctrl+Shift+J` | Edit shell config (.bashrc/.zshrc) |
 | `Ctrl+Shift+Alt+H` | Copy selection as HTML (with colors) |
 | `Ctrl+Shift+,` | Open GGTerm config file |
-| `Ctrl+Shift+U` | Open URL at cursor |
-| `Ctrl+Shift+X` | Swap pane content |
-| `Ctrl+Shift+PageUp/Down` | Reorder tabs |
 
 ### Custom Keybindings
 
