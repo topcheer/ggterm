@@ -1928,12 +1928,12 @@ impl ApplicationHandler for DesktopApp {
                 if !self.hold_message_shown {
                     let exit_code = self.sessions[self.active].app().terminal().last_exit_code();
                     let exit_str = match exit_code {
-                        Some(0) => " (exit: 0)".to_string(),
-                        Some(code) => format!(" \x1b[31m(exit: {})\x1b[0m", code),
-                        None => String::new(),
+                        Some(0) => " (exit: 0) ".to_string(),
+                        Some(code) => format!(" \x1b[31m(exit: {})\x1b[0m ", code),
+                        None => "".to_string(),
                     };
                     let msg = format!(
-                        "\n\r\x1b[33m[process exited{}\u{2014} press any key to close]\x1b[0m\n\r",
+                        "\n\r\x1b[33m[process exited{}— press any key to close]\x1b[0m\n\r",
                         exit_str
                     );
                     self.sessions[self.active]
