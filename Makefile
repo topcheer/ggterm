@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test clippy fmt bundle macos linux windows clean install run ci-ci
+.PHONY: build release test test-ffi test-p2p clippy fmt bundle macos linux windows clean install run ci-ci
 
 # Debug build
 build:
@@ -20,6 +20,14 @@ release:
 # Run tests
 test:
 	cargo test --features "$(TAGS)" --workspace
+
+# Run FFI tests (with SSH feature for mobile)
+test-ffi:
+	cargo test -p ggterm-ffi --features ssh --lib
+
+# Run P2P tests
+test-p2p:
+	cargo test -p ggterm-p2p
 
 # Lint
 clippy:
