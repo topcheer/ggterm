@@ -364,6 +364,10 @@ impl DesktopApp {
     /// Close the active tab (keep at least 1).
     pub(super) fn close_tab(&mut self) {
         if self.sessions.len() <= 1 {
+            // Last tab: close the window instead of just returning.
+            // This matches macOS behavior (Cmd+W on last tab closes window)
+            // and is more intuitive on all platforms.
+            self.should_quit = true;
             return;
         }
         // Don't close pinned tabs.
