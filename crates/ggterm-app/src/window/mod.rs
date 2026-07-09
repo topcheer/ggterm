@@ -2336,4 +2336,61 @@ mod tests {
         );
         assert_eq!(parse_cursor_style(""), ggterm_core::CursorStyle::BlinkBlock);
     }
+
+    // ── read_git_head tests ──
+
+    #[test]
+    fn test_read_git_head_named_branch() {
+        let dir = std::env::temp_dir().join(format!("ggterm-git-test-{}", std::process::id()));
+        let git_dir = dir.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let branch = read_git_head(&dir);
+        assert_eq!(branch.as_deref(), Some("main"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_read_git_head_feature_branch() {
+        let dir = std::env::temp_dir().join(format!("ggterm-git-test2-{}", std::process::id()));
+        let git_dir = dir.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(
+            git_dir.join("HEAD"),
+            "ref: refs/heads/feature/my-cool-branch\n",
+        )
+        .unwrap();
+
+        let branch = read_git_head(&dir);
+        assert_eq!(branch.as_deref(), Some("feature/my-cool-branch"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_read_git_head_detached_returns_none() {
+        let dir = std::env::temp_dir().join(format!("ggterm-git-test3-{}", std::process::id()));
+        let git_dir = dir.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        // Detached HEAD: raw hash, not "ref: refs/heads/..."
+        std::fs::write(git_dir.join("HEAD"), "a1b2c3d4e5f6789\n").unwrap();
+
+        let branch = read_git_head(&dir);
+        assert!(branch.is_none(), "detached HEAD should return None");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_read_git_head_no_git_dir() {
+        let dir = std::env::temp_dir().join(format!("ggterm-git-test4-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let branch = read_git_head(&dir);
+        assert!(branch.is_none(), "non-git directory should return None");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
