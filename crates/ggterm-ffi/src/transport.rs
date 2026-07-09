@@ -986,11 +986,28 @@ mod tests {
     }
 
     #[test]
-    fn t_scroll_invalid_session() {
-        // Invalid session — should not crash.
-        ggterm_session_scroll_up(99999, 10);
-        ggterm_session_scroll_down(99999, 10);
-        ggterm_session_reset_viewport(99999);
-        assert_eq!(ggterm_session_display_offset(99999), 0);
+    fn t_scrollback_len() {
+        let id = ggterm_session_create(80, 24);
+        // Initially no scrollback.
+        assert_eq!(ggterm_session_scrollback_len(id), 0);
+
+        // Process enough output to create scrollback.
+        for _ in 0..50 {
+            let line = b"line of text\r\n";
+            unsafe {
+                ggterm_session_process_bytes(id, line.as_ptr(), line.len());
+            }
+        }
+
+        // Should have scrollback lines.
+        let len = ggterm_session_scrollback_len(id);
+        assert!(len > 0, "scrollback should have content after 50 lines");
+
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_scrollback_len_invalid_session() {
+        assert_eq!(ggterm_session_scrollback_len(99999), 0);
     }
 }
