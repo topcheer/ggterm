@@ -28,6 +28,14 @@ if not set -q GGTERM_SHELL_INTEGRATION_FISH
     if set -q WARP_HONOR_PS1
         set _ggterm_skip 1
     end
+    # WezTerm sends its own OSC 133 marks
+    if set -q WEZTERM_EXECUTABLE
+        set _ggterm_skip 1
+    end
+    # Ghostty terminal
+    if test "$TERM_PROGRAM" = "ghostty"
+        set _ggterm_skip 1
+    end
 
     if test "$_ggterm_skip" = 0
 

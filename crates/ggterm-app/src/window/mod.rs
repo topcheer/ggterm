@@ -502,6 +502,11 @@ impl DesktopApp {
                     mgr.config().appearance.theme,
                     mgr.config().terminal.scrollback_lines
                 );
+                // If shell integration is disabled in config, set env var to prevent injection.
+                if !mgr.config().terminal.shell_integration {
+                    // SAFETY: env var set during initialization before any threads.
+                    unsafe { std::env::set_var("GGTERM_DISABLE_INTEGRATION", "1") };
+                }
                 Some(mgr)
             }
             Err(e) => {

@@ -27,6 +27,14 @@ __ggterm_osc133_already_handled() {
     if [ -n "$WARP_HONOR_PS1" ]; then
         return 0
     fi
+    # WezTerm sends its own OSC 133 marks
+    if [ -n "$WEZTERM_EXECUTABLE" ]; then
+        return 0
+    fi
+    # Ghostty terminal
+    if [ "$TERM_PROGRAM" = "ghostty" ]; then
+        return 0
+    fi
     # Check if PROMPT_COMMAND already contains OSC 133
     if echo "$PROMPT_COMMAND" | grep -q "133;A" 2>/dev/null; then
         return 0

@@ -179,6 +179,10 @@ pub struct TerminalConfig {
     /// Commands shorter than this threshold are silently ignored.
     /// Default: 10.
     pub min_notify_duration_secs: u64,
+    /// Whether to auto-inject OSC 133 shell integration when spawning shells.
+    /// Set to false to disable automatic prompt/command markers.
+    /// Default: true.
+    pub shell_integration: bool,
 }
 
 /// AI engine configuration.
@@ -225,6 +229,7 @@ impl Default for TerminalConfig {
             word_chars: ".-/:@~+#?=&%$".to_string(),
             notify_on_complete: true,
             min_notify_duration_secs: 10,
+            shell_integration: true,
         }
     }
 }
@@ -319,6 +324,7 @@ mod raw {
         pub word_chars: Option<String>,
         pub notify_on_complete: Option<bool>,
         pub min_notify_duration_secs: Option<u64>,
+        pub shell_integration: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -443,6 +449,9 @@ impl Config {
         if let Some(v) = raw.terminal.min_notify_duration_secs {
             config.terminal.min_notify_duration_secs = v.max(1);
         }
+        if let Some(v) = raw.terminal.shell_integration {
+            config.terminal.shell_integration = v;
+        }
 
         if let Some(v) = raw.ai.enabled {
             config.ai.enabled = v;
@@ -535,6 +544,10 @@ impl Config {
         terminal.insert("bell_mode".into(), self.terminal.bell_mode.clone().into());
         terminal.insert("copy_on_select".into(), self.terminal.copy_on_select.into());
         terminal.insert("word_chars".into(), self.terminal.word_chars.clone().into());
+        terminal.insert(
+            "shell_integration".into(),
+            self.terminal.shell_integration.into(),
+        );
         root.insert("terminal".into(), terminal.into());
 
         // [ai]
@@ -2424,6 +2437,19 @@ copy_on_select = false
 
         // Default is true
         assert!(Config::default().terminal.copy_on_select);
+    }
+
+    #[test]
+    fn test_shell_integration_parse() {
+        let toml = r#"
+[terminal]
+shell_integration = false
+"#;
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(!config.terminal.shell_integration);
+
+        // Default is true
+        assert!(Config::default().terminal.shell_integration);
     }
 
     #[test]

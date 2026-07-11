@@ -79,6 +79,16 @@ impl ShellIntegrationConfig {
     /// Returns a config with `prepared = false` if the shell is unknown
     /// or writing fails (caller should fall back to plain shell).
     pub fn prepare(shell_path: &str) -> Self {
+        // Check if shell integration is disabled via config (env var set by DesktopApp).
+        if std::env::var("GGTERM_DISABLE_INTEGRATION").is_ok() {
+            return Self {
+                kind: ShellKind::Unknown,
+                shell_path: shell_path.to_string(),
+                temp_dir: PathBuf::new(),
+                prepared: false,
+            };
+        }
+
         let kind = ShellKind::from_path(shell_path);
 
         let Some(script) = kind.integration_script() else {
