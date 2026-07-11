@@ -183,6 +183,10 @@ pub struct TerminalConfig {
     /// Set to false to disable automatic prompt/command markers.
     /// Default: true.
     pub shell_integration: bool,
+    /// Search engine URL template for 'Search Web' feature.
+    /// The query replaces '%s'. Default: Google.
+    /// Examples: "https://duckduckgo.com/?q=%s", "https://www.bing.com/search?q=%s"
+    pub search_engine: String,
 }
 
 /// AI engine configuration.
@@ -230,6 +234,7 @@ impl Default for TerminalConfig {
             notify_on_complete: true,
             min_notify_duration_secs: 10,
             shell_integration: true,
+            search_engine: "https://www.google.com/search?q=%s".to_string(),
         }
     }
 }
@@ -325,6 +330,7 @@ mod raw {
         pub notify_on_complete: Option<bool>,
         pub min_notify_duration_secs: Option<u64>,
         pub shell_integration: Option<bool>,
+        pub search_engine: Option<String>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -452,6 +458,12 @@ impl Config {
         if let Some(v) = raw.terminal.shell_integration {
             config.terminal.shell_integration = v;
         }
+        if let Some(v) = raw.terminal.search_engine
+            && v.contains('%')
+            && v.contains('s')
+        {
+            config.terminal.search_engine = v;
+        }
 
         if let Some(v) = raw.ai.enabled {
             config.ai.enabled = v;
@@ -547,6 +559,10 @@ impl Config {
         terminal.insert(
             "shell_integration".into(),
             self.terminal.shell_integration.into(),
+        );
+        terminal.insert(
+            "search_engine".into(),
+            self.terminal.search_engine.clone().into(),
         );
         root.insert("terminal".into(), terminal.into());
 

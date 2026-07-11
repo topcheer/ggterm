@@ -926,7 +926,11 @@ impl DesktopApp {
                 c => format!("%{:02X}", c as u32),
             })
             .collect();
-        let url = format!("https://www.google.com/search?q={}", encoded);
+        let url = self
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.search_engine.replace("%s", &encoded))
+            .unwrap_or_else(|| format!("https://www.google.com/search?q={}", encoded));
         crate::mouse::open_url(&url);
         self.show_toast(format!("Searching: {}", &query[..query.len().min(40)]));
     }
