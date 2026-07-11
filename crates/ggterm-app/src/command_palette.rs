@@ -246,6 +246,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Alt+S".into()),
         });
         r.register(Command {
+            id: "terminal.save_selection".into(),
+            label: "Save Selection to File".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.export_html".into(),
             label: "Export Terminal as HTML".into(),
             category: "Terminal".into(),

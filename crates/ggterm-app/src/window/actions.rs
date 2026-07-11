@@ -1314,6 +1314,43 @@ impl DesktopApp {
         }
     }
 
+    /// Save the currently selected text to a file in the home directory.
+    pub(super) fn save_selection_to_file(&mut self) {
+        if !self.selection.is_active() {
+            self.show_toast("Select text to save".to_string());
+            return;
+        }
+
+        // Copy to clipboard, then read back to get the text.
+        self.copy_selection_to_clipboard();
+        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+
+        if text.trim().is_empty() {
+            self.show_toast("Selection is empty".to_string());
+            return;
+        }
+
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let filename = format!("ggterm-selection-{ts}.txt");
+
+        let path = std::env::var("HOME")
+            .map(|h| std::path::PathBuf::from(h).join(&filename))
+            .unwrap_or_else(|_| std::path::PathBuf::from(&filename));
+
+        match std::fs::write(&path, &text) {
+            Ok(_) => {
+                let lines = text.lines().count();
+                self.show_toast(format!("Saved {lines} lines to ~/{filename}"));
+            }
+            Err(e) => {
+                self.show_toast(format!("Save failed: {e}"));
+            }
+        }
+    }
+
     /// Export terminal output as a styled HTML document with ANSI colors preserved.
     ///
     /// The HTML file uses inline CSS to reproduce the terminal's colors,
@@ -2359,6 +2396,9 @@ impl DesktopApp {
             }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
+            }
+            "terminal.save_selection" => {
+                self.save_selection_to_file();
             }
             "terminal.export_html" => {
                 self.export_html();
