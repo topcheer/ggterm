@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test test-ffi test-p2p clippy fmt bundle macos linux windows clean install run ci-ci
+.PHONY: build release test test-ffi test-p2p clippy fmt bundle macos linux windows clean install run ci-ci install-shell-integration
 
 # Debug build
 build:
@@ -80,6 +80,31 @@ install: release
 	mkdir -p /usr/local/share/applications
 	cp assets/ggterm.desktop /usr/local/share/applications/ || true
 	@echo "Installed: /usr/local/bin/ggterm"
+
+# Install shell integration scripts for detected shells
+install-shell-integration:
+	@mkdir -p $(HOME)/.config/ggterm/shell
+	@cp shell/bash.sh $(HOME)/.config/ggterm/shell/
+	@cp shell/zsh.zsh $(HOME)/.config/ggterm/shell/
+	@cp shell/fish.fish $(HOME)/.config/ggterm/shell/
+	@if [ -f "$(HOME)/.bashrc" ] && ! grep -q "ggterm/shell/bash.sh" "$(HOME)/.bashrc"; then \
+		echo "" >> $(HOME)/.bashrc; \
+		echo '# GGTerm shell integration' >> $(HOME)/.bashrc; \
+		echo 'source $(HOME)/.config/ggterm/shell/bash.sh' >> $(HOME)/.bashrc; \
+		echo "Added integration to ~/.bashrc"; \
+	fi
+	@if [ -f "$(HOME)/.zshrc" ] && ! grep -q "ggterm/shell/zsh.zsh" "$(HOME)/.zshrc"; then \
+		echo "" >> $(HOME)/.zshrc; \
+		echo '# GGTerm shell integration' >> $(HOME)/.zshrc; \
+		echo 'source $(HOME)/.config/ggterm/shell/zsh.zsh' >> $(HOME)/.zshrc; \
+		echo "Added integration to ~/.zshrc"; \
+	fi
+	@if [ -d "$(HOME)/.config/fish" ]; then \
+		mkdir -p $(HOME)/.config/fish/conf.d; \
+		cp shell/fish.fish $(HOME)/.config/fish/conf.d/ggterm.fish; \
+		echo "Installed fish integration to ~/.config/fish/conf.d/ggterm.fish"; \
+	fi
+	@echo "Shell integration installed. Restart your shell or source the script."
 
 # Clean
 clean:
