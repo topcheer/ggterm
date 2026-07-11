@@ -898,6 +898,39 @@ impl DesktopApp {
         }
     }
 
+    /// Search the currently selected text on the web using the default browser.
+    /// If no text is selected, shows a toast message.
+    pub(super) fn search_web_for_selection(&mut self) {
+        if !self.selection.is_active() {
+            self.show_toast("Select text to search".to_string());
+            return;
+        }
+
+        // Extract selected text via the clipboard pipeline.
+        self.copy_selection_to_clipboard();
+        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        let query = text.trim();
+        if query.is_empty() {
+            self.show_toast("Selection is empty".to_string());
+            return;
+        }
+
+        // URL-encode the query and open in browser.
+        let encoded: String = query
+            .chars()
+            .map(|c| match c {
+                ' ' => "+".into(),
+                c if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' => {
+                    c.to_string()
+                }
+                c => format!("%{:02X}", c as u32),
+            })
+            .collect();
+        let url = format!("https://www.google.com/search?q={}", encoded);
+        crate::mouse::open_url(&url);
+        self.show_toast(format!("Searching: {}", &query[..query.len().min(40)]));
+    }
+
     #[cfg(feature = "ai")]
     pub(super) fn trigger_ai_request(&mut self, action: ggterm_ai::Action) {
         // Show overlay immediately.
@@ -1434,9 +1467,7 @@ impl DesktopApp {
         }
         // Request dock/taskbar attention when window is unfocused and any tab has a bell.
         // Also show a desktop notification so the user knows to check the terminal.
-        if any_tab_bell
-            && !self.window_focused
-        {
+        if any_tab_bell && !self.window_focused {
             if let Some(ref window) = self.window {
                 window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
             }

@@ -14,6 +14,8 @@ pub enum ContextMenuAction {
     SelectAll,
     /// Search in scrollback.
     Search,
+    /// Search selected text on the web (opens default browser).
+    SearchWeb,
     /// Open URL at cursor position in default browser.
     OpenUrl,
     /// Split current pane horizontally (left | right).
@@ -36,6 +38,7 @@ impl ContextMenuAction {
             Self::Paste => "Paste",
             Self::SelectAll => "Select All",
             Self::Search => "Search",
+            Self::SearchWeb => "Search Web",
             Self::OpenUrl => "Open URL",
             Self::SplitHorizontal => "Split Horizontal",
             Self::SplitVertical => "Split Vertical",
@@ -52,6 +55,7 @@ impl ContextMenuAction {
             Self::Paste,
             Self::SelectAll,
             Self::Search,
+            Self::SearchWeb,
             Self::OpenUrl,
             Self::SplitHorizontal,
             Self::SplitVertical,
@@ -191,8 +195,8 @@ mod tests {
     fn t_menu_height() {
         let m = ContextMenuState::default();
         let h = m.menu_height();
-        // 10 items * 32 + 2 * 10 padding = 320 + 20 = 340
-        assert_eq!(h, 340.0);
+        // 11 items * 32 + 2 * 10 padding = 352 + 20 = 372
+        assert_eq!(h, 372.0);
     }
 
     #[test]

@@ -2873,6 +2873,9 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            crate::context_menu::ContextMenuAction::SearchWeb => {
+                self.search_web_for_selection();
+            }
             crate::context_menu::ContextMenuAction::OpenUrl => {
                 self.open_url_at_cursor();
             }
