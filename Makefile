@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps
+.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps mobile-ios mobile-run mobile-analyze
 
 # Debug build
 build:
@@ -127,4 +127,19 @@ audit:
 deps:
 	@echo "=== Workspace crates ===" && cargo tree --depth 1 --workspace 2>/dev/null | head -30
 	@echo "" && echo "=== Dependency count ===" && cargo tree --workspace 2>/dev/null | grep -c "^[|+\\\\ ]*[a-z]"
+
+# Build mobile FFI library (iOS simulator)
+mobile-ios:
+	@echo "Building Rust FFI for iOS simulator..."
+	~/.cargo/bin/cargo build -p ggterm-ffi --target aarch64-apple-ios-sim --release
+	cp target/aarch64-apple-ios-sim/release/libggterm_ffi.a mobile/ios/RustLib/
+	@echo "Done. Run: cd mobile && flutter run -d <simulator-id>"
+
+# Run Flutter mobile app (iOS simulator)
+mobile-run:
+	cd mobile && flutter run --debug
+
+# Flutter analyze
+mobile-analyze:
+	cd mobile && flutter analyze
 
