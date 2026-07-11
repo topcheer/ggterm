@@ -630,6 +630,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+K".into(),
+            description: "Clear scrollback (keep screen)".into(),
+            category: ShortcutCategory::Terminal,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+R".into(),
             description: "Reset terminal (RIS)".into(),
             category: ShortcutCategory::Terminal,

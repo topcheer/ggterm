@@ -489,6 +489,14 @@ impl DesktopApp {
                 self.write_to_pty(b"\x1b[H\x1b[2J\x0c");
                 return;
             }
+            // Ctrl+Shift+Alt+K → clear scrollback only (keep visible screen)
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "k" {
+                crate::terminal_actions::clear_scrollback_only(
+                    self.active_session_mut().app_mut().grid_mut(),
+                );
+                self.show_toast("Scrollback cleared".to_string());
+                return;
+            }
             // Ctrl+Shift+Alt+H → copy selection as HTML (rich text with colors)
             if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "h" {
                 self.copy_selection_as_html();
