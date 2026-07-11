@@ -83,6 +83,15 @@ restore_session = false
 # Default: true
 # shell_integration = true
 
+# Search engine URL for Ctrl+Shift+G / right-click "Search Web".
+# %s is replaced with URL-encoded search query.
+# Default: Google
+# Examples:
+#   search_engine = "https://duckduckgo.com/?q=%s"
+#   search_engine = "https://www.bing.com/search?q=%s"
+#   search_engine = "https://github.com/search?q=%s"
+# search_engine = "https://www.google.com/search?q=%s"
+
 [ai]
 # Enable AI features at startup.
 # Also requires api_key (below) or GGTERM_AI_API_KEY env var.
