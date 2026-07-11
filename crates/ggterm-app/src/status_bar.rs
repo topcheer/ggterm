@@ -114,6 +114,8 @@ pub struct StatusBar {
     /// Number of output lines from the last completed command.
     /// Shown as "~5L" in the status bar (L = lines).
     pub last_output_lines: Option<usize>,
+    /// Hovered URL or hyperlink (OSC 8). Shown in status bar for link preview.
+    pub hovered_link: Option<String>,
 }
 
 impl Default for StatusBar {
@@ -161,6 +163,7 @@ impl StatusBar {
             theme_name: String::new(),
             dimensions: String::new(),
             last_exit_code: None,
+            hovered_link: None,
             show_clock: false,
             last_output_lines: None,
         }
@@ -596,6 +599,16 @@ impl StatusBar {
             && code != 0
         {
             seg!(format!("exit:{}", code), err_color);
+        }
+
+        // Hovered URL/hyperlink preview.
+        if let Some(ref link) = self.hovered_link {
+            let display = if link.len() > 60 {
+                format!("{}...", &link[..57])
+            } else {
+                link.clone()
+            };
+            seg!(display, accent_color);
         }
 
         // P2P sharing indicator.

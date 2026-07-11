@@ -1455,6 +1455,9 @@ impl ApplicationHandler for DesktopApp {
                         }
                     })
                     .unwrap_or_default();
+                // Hovered URL/hyperlink for status bar link preview.
+                self.status_bar.hovered_link =
+                    self.hovered_link.as_ref().map(|(url, _, _, _)| url.clone());
                 // Remote host from OSC 1337 RemoteHost=
                 self.status_bar.remote_host = self
                     .active_session()
