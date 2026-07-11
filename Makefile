@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test test-ffi test-p2p clippy fmt bundle macos linux windows clean install run ci-ci install-shell-integration audit deps
+.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps
 
 # Debug build
 build:
@@ -39,6 +39,13 @@ fmt:
 
 fmt-fix:
 	cargo fmt --all
+
+# All-in-one: fmt + clippy + test (CI gate)
+check:
+	@echo "==> Format check..." && cargo fmt --all -- --check
+	@echo "==> Clippy..." && cargo clippy --features "$(TAGS)" --workspace -- -D warnings
+	@echo "==> Tests..." && cargo test --features "$(TAGS)" --workspace --lib
+	@echo "==> All checks passed!"
 
 # ── Platform packaging ────────────────────────────────────────────────
 
