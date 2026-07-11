@@ -1438,6 +1438,7 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
                 self.status_bar.pane_zoomed = self.pane_zoomed;
+                self.status_bar.font_size = self.font_zoom.current_size();
                 self.status_bar.cursor_line = self
                     .config_mgr
                     .as_ref()

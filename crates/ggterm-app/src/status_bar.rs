@@ -73,6 +73,8 @@ pub struct StatusBar {
     pub remote_host: String,
     /// Whether pane zoom mode is active.
     pub pane_zoomed: bool,
+    /// Current font size for zoom indicator (shown when non-default).
+    pub font_size: f32,
     /// True when cursor line highlight is enabled.
     pub cursor_line: bool,
     /// True when scrollback browse mode is active (vim-style navigation).
@@ -147,6 +149,7 @@ impl StatusBar {
             cwd: String::new(),
             remote_host: String::new(),
             pane_zoomed: false,
+            font_size: 14.0,
             cursor_line: false,
             scroll_mode: false,
             progress: None,
@@ -375,6 +378,10 @@ impl StatusBar {
         if self.pane_zoomed {
             parts.push("ZOOM".to_string());
         }
+        // Font size indicator — show only when non-default.
+        if (self.font_size - 14.0).abs() > 0.1 {
+            parts.push(format!("{}px", self.font_size as u32));
+        }
         if self.cursor_line {
             parts.push("CL".to_string());
         }
@@ -544,6 +551,10 @@ impl StatusBar {
         // Pane zoom.
         if self.pane_zoomed {
             seg!("ZOOM".to_string(), accent_color);
+        }
+        // Font size indicator — show only when zoomed (non-default).
+        if (self.font_size - 14.0).abs() > 0.1 {
+            seg!(format!("{}px", self.font_size as u32), dim_color);
         }
         if self.cursor_line {
             seg!("CL".to_string(), dim_color);
