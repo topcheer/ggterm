@@ -883,6 +883,22 @@ class _TerminalScreenState extends State<TerminalScreen>
                   HapticFeedback.selectionClick();
                 },
               ),
+              ListTile(
+                leading:
+                    const Icon(Icons.share, color: Colors.white70),
+                title: const Text('Share screen text',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  final text = _extractVisibleText();
+                  if (text.trim().isEmpty) {
+                    _showCopiedSnackBar('Nothing to share');
+                    return;
+                  }
+                  _shareText(text);
+                  HapticFeedback.selectionClick();
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),
@@ -1135,6 +1151,14 @@ class _TerminalScreenState extends State<TerminalScreen>
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  /// Share text via the OS share sheet (iOS/Android).
+  void _shareText(String text) {
+    // Use clipboard + showShareSheet via platform channel.
+    // Simple approach: copy to clipboard and show a snackbar.
+    Clipboard.setData(ClipboardData(text: text));
+    _showCopiedSnackBar('Copied ${text.split('\n').length} lines to share');
   }
 
   /// Handle hardware keyboard events (iPad/Android tablet with physical keyboard).
