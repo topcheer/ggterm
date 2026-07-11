@@ -130,6 +130,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+U".into()),
         });
         r.register(Command {
+            id: "terminal.search_web".into(),
+            label: "Search Web for Selection".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+G".into()),
+        });
+        r.register(Command {
             id: "tab.move_left".into(),
             label: "Move Tab Left".into(),
             category: "Tab".into(),

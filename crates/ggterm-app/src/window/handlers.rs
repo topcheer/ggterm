@@ -681,6 +681,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+G → search web for selected text
+        if self.mods.ctrl
+            && self.mods.shift
+            && !self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyG) = &event.physical_key
+        {
+            self.search_web_for_selection();
+            return;
+        }
+
         // Ctrl+Shift+O → open config file in default editor
         if self.mods.ctrl
             && self.mods.shift

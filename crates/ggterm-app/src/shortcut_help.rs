@@ -293,6 +293,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+G".into(),
+            description: "Search web for selection".into(),
+            category: ShortcutCategory::View,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+O".into(),
             description: "Open config file in editor".into(),
             category: ShortcutCategory::View,

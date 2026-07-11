@@ -2329,6 +2329,9 @@ impl DesktopApp {
             "terminal.open_url" => {
                 self.open_url_at_cursor();
             }
+            "terminal.search_web" => {
+                self.search_web_for_selection();
+            }
             "terminal.copy" => {
                 self.copy_selection_to_clipboard();
             }
