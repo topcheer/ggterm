@@ -94,6 +94,12 @@ struct Cli {
     /// All arguments after -e are passed as the command + args.
     #[arg(short = 'e', long = "execute", num_args = 1.., allow_hyphen_values = true)]
     execute: Vec<String>,
+
+    /// Window geometry in X11 format: COLSxROWS[+X+Y].
+    /// Examples: 120x40, 80x24+100+50, 100x30-10-10
+    /// Overrides --cols/--rows if COLSxROWS is specified.
+    #[arg(short = 'g', long)]
+    geometry: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -129,9 +135,27 @@ fn main() -> ExitCode {
     }
 
     // Build desktop config from CLI args.
+    // Parse --geometry (X11 format: COLSxROWS[+X+Y]).
+    let (cols, rows) = if let Some(ref geom) = cli.geometry {
+        let parts: Vec<&str> = geom.split(['x', 'X']).collect();
+        if parts.len() >= 2 {
+            let c: u16 = parts[0].parse().unwrap_or(cli.cols);
+            let r: u16 = parts[1]
+                .split(['+', '-'])
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(cli.rows);
+            (c, r)
+        } else {
+            (cli.cols, cli.rows)
+        }
+    } else {
+        (cli.cols, cli.rows)
+    };
+
     let mut config = DesktopConfig::default()
         .with_title(&cli.title)
-        .with_size(cli.cols, cli.rows)
+        .with_size(cols, rows)
         .with_cell_size(cli.cell_width, cli.font_size);
 
     // Override title to include version info on default.
