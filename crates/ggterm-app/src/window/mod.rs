@@ -167,6 +167,8 @@ pub struct DesktopApp {
     drag_resize: Option<bool>,
     /// P27-B: Click count for double/triple-click detection.
     click_count: u8,
+    /// Drag selection mode (Char=normal, Word=after double-click, Line=after triple-click).
+    drag_select_mode: crate::mouse::DragSelectMode,
     /// P27-B: Timestamp of last left-click.
     last_click_time: Option<std::time::Instant>,
     /// P27-B: Position of last left-click (col, row).
@@ -586,6 +588,7 @@ impl DesktopApp {
             button_held: None,
             drag_resize: None,
             click_count: 0,
+            drag_select_mode: crate::mouse::DragSelectMode::Char,
             last_click_time: None,
             last_click_pos: (0, 0),
             context_menu: Default::default(),

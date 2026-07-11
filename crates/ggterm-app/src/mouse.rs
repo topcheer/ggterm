@@ -180,6 +180,18 @@ pub fn encode_mouse_event_pixel(
 //  Text Selection
 // ═════════════════════════════════════════════════════════════════════════
 
+/// How text selection extends when dragging the mouse after a multi-click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DragSelectMode {
+    /// Normal character-by-character selection (single click + drag).
+    #[default]
+    Char,
+    /// Word-by-word selection (after double-click + drag).
+    Word,
+    /// Line-by-line selection (after triple-click + drag).
+    Line,
+}
+
 /// Selection state machine for click-drag text selection.
 #[derive(Debug, Clone, Default)]
 pub struct MouseSelection {
@@ -219,6 +231,11 @@ impl MouseSelection {
     /// Finalize the selection (mouse released).
     pub fn finish(&mut self) {
         self.dragging = false;
+    }
+
+    /// Re-enable dragging state (for word-drag / line-drag after select_word_at / select_line_at).
+    pub fn resume_dragging(&mut self) {
+        self.dragging = true;
     }
 
     /// Clear the selection entirely.

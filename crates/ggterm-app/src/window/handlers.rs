@@ -2286,10 +2286,14 @@ impl DesktopApp {
                     2 => {
                         // Double-click: select word at position.
                         self.select_word_at(col, row);
+                        self.drag_select_mode = crate::mouse::DragSelectMode::Word;
+                        self.selection.resume_dragging();
                     }
                     3 => {
                         // Triple-click: select entire line.
                         self.select_line_at(row);
+                        self.drag_select_mode = crate::mouse::DragSelectMode::Line;
+                        self.selection.resume_dragging();
                     }
                     _ => {
                         // Single click: start or extend selection.
@@ -2316,6 +2320,7 @@ impl DesktopApp {
                             // Normal click: start new selection.
                             self.selection.start(col, row);
                         }
+                        self.drag_select_mode = crate::mouse::DragSelectMode::Char;
                     }
                 }
                 if let Some(ref window) = self.window {
@@ -2528,7 +2533,18 @@ impl DesktopApp {
                 self.selection_auto_scroll = 0;
             }
 
-            self.selection.extend(col, row);
+            // Extend selection using the active drag mode.
+            match self.drag_select_mode {
+                crate::mouse::DragSelectMode::Word => {
+                    self.extend_word_selection(col, row);
+                }
+                crate::mouse::DragSelectMode::Line => {
+                    self.extend_line_selection(row);
+                }
+                crate::mouse::DragSelectMode::Char => {
+                    self.selection.extend(col, row);
+                }
+            }
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }
@@ -2727,6 +2743,94 @@ impl DesktopApp {
         self.selection.start(0, row);
         self.selection.extend(width - 1, row);
         self.selection.finish();
+    }
+
+    /// Extend selection word-by-word during drag (after double-click).
+    ///
+    /// Finds word boundaries at the current cursor position and extends the
+    /// selection end to encompass the full word at that position.
+    fn extend_word_selection(&mut self, col: u16, row: u16) {
+        let grid = &self.sessions[self.active].app().grid();
+        let col_u = col as usize;
+
+        let Some(display_row) = grid.display_row(row as usize) else {
+            self.selection.extend(col, row);
+            return;
+        };
+
+        // Character classification (same logic as select_word_at).
+        let word_chars: String = self
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.word_chars.clone())
+            .unwrap_or_else(|| ".-/:@~+#?=&%$".to_string());
+        let char_class = |c: char| -> u8 {
+            if c.is_alphanumeric() || c == '_' {
+                0
+            } else if c.is_whitespace() {
+                2
+            } else if word_chars.contains(c) {
+                0
+            } else {
+                1
+            }
+        };
+
+        let cells: Vec<char> = display_row.text().chars().collect();
+        if cells.is_empty() {
+            self.selection.extend(col, row);
+            return;
+        }
+
+        // If cursor is on whitespace or past the line, just extend to cursor.
+        if col_u >= cells.len() || char_class(cells[col_u]) == 2 {
+            self.selection.extend(col, row);
+            return;
+        }
+
+        // Find word boundaries at cursor position.
+        let target_class = char_class(cells[col_u]);
+        let mut word_start = col_u;
+        while word_start > 0 && char_class(cells[word_start - 1]) == target_class {
+            word_start -= 1;
+        }
+        let mut word_end = col_u;
+        while word_end + 1 < cells.len() && char_class(cells[word_end + 1]) == target_class {
+            word_end += 1;
+        }
+
+        // Determine direction relative to the selection anchor.
+        let anchor = self.selection.start.unwrap_or((0, 0));
+        let is_forward = row > anchor.1 || (row == anchor.1 && word_end as u16 >= anchor.0);
+
+        if is_forward {
+            // Forward: extend end to the far edge of the current word.
+            self.selection.extend(word_end as u16, row);
+        } else {
+            // Backward: extend end to the near edge of the current word.
+            self.selection.extend(word_start as u16, row);
+        }
+    }
+
+    /// Extend selection line-by-line during drag (after triple-click).
+    ///
+    /// Snaps the selection to full-width lines.
+    fn extend_line_selection(&mut self, row: u16) {
+        let grid = &self.sessions[self.active].app().grid();
+        let width = grid.width() as u16;
+        if width == 0 {
+            return;
+        }
+
+        // Determine direction relative to the anchor line.
+        let anchor = self.selection.start.unwrap_or((0, 0));
+        let is_forward = row >= anchor.1;
+
+        if is_forward {
+            self.selection.extend(width - 1, row);
+        } else {
+            self.selection.extend(0, row);
+        }
     }
 
     /// P27-C: Execute a context menu action by index.
