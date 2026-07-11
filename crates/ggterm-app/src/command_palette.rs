@@ -312,6 +312,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+J".into()),
         });
         r.register(Command {
+            id: "terminal.open_config_folder".into(),
+            label: "Open Config Folder (~/.ggterm)".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.send_ctrl_c_all".into(),
             label: "Send Ctrl+C to All Panes".into(),
             category: "Terminal".into(),

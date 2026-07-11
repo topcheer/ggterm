@@ -2475,6 +2475,31 @@ impl DesktopApp {
             "terminal.open_shell_config" => {
                 self.open_shell_config();
             }
+            "terminal.open_config_folder" => {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                let config_dir = std::path::PathBuf::from(&home).join(".ggterm");
+                // Create if doesn't exist
+                if !config_dir.exists() {
+                    let _ = std::fs::create_dir_all(&config_dir);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = std::process::Command::new("open").arg(&config_dir).spawn();
+                }
+                #[cfg(all(unix, not(target_os = "macos")))]
+                {
+                    let _ = std::process::Command::new("xdg-open")
+                        .arg(&config_dir)
+                        .spawn();
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = std::process::Command::new("explorer")
+                        .arg(&config_dir)
+                        .spawn();
+                }
+                self.show_toast("Opened ~/.ggterm".to_string());
+            }
             "terminal.send_ctrl_c_all" => {
                 self.send_ctrl_c_all_panes();
             }
