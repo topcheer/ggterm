@@ -1094,6 +1094,32 @@ impl DesktopApp {
         }
     }
 
+    /// Copy the text of the last entered command (not its output).
+    pub(super) fn copy_last_command(&mut self) {
+        let (scrollback, width) = {
+            let grid = self.active_session().app().grid();
+            (grid.scrollback_len(), grid.width())
+        };
+
+        let blocks = self.active_session().app().terminal().command_blocks();
+
+        // Find the last block with a command_row.
+        let last_block = blocks.iter().rev().find(|b| b.command_row.is_some());
+
+        if let Some(block) = last_block
+            && let Some(cmd_row) = block.command_row
+        {
+            let display_row = cmd_row.saturating_sub(scrollback);
+            if display_row < self.active_session().app().grid().height() {
+                self.selection.start(0, display_row as u16);
+                self.selection.extend(width as u16, display_row as u16);
+                self.selection.finish();
+                self.selection_auto_scroll = 0;
+                self.copy_selection_to_clipboard();
+            }
+        }
+    }
+
     pub(super) fn copy_selection_to_clipboard(&mut self) {
         // Block (rectangular) selection: copy column-by-column.
         if self.selection.block_mode
@@ -2408,6 +2434,10 @@ impl DesktopApp {
             }
             "terminal.copy_last_output" => {
                 self.copy_last_command_output();
+            }
+            "terminal.copy_last_command" => {
+                self.copy_last_command();
+                self.show_toast("Copied last command".to_string());
             }
             "terminal.copy_visible" => {
                 let text = self.active_session().app().grid().export_visible_text();
