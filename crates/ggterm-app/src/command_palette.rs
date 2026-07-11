@@ -246,6 +246,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.rerun".into(),
+            label: "Re-run Last Command".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.paste".into(),
             label: "Paste".into(),
             category: "Terminal".into(),

@@ -1120,6 +1120,25 @@ impl DesktopApp {
         }
     }
 
+    /// Re-execute the last entered command.
+    pub(super) fn rerun_last_command(&mut self) {
+        // First, extract command text via selection → clipboard.
+        self.copy_last_command();
+        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+
+        if text.trim().is_empty() {
+            self.show_toast("No previous command to rerun".to_string());
+            return;
+        }
+
+        // Clear selection and send the command + Enter.
+        self.selection.clear();
+        let mut bytes = text.into_bytes();
+        bytes.push(b'\n');
+        self.write_to_pty(&bytes);
+        self.show_toast("Re-running last command".to_string());
+    }
+
     pub(super) fn copy_selection_to_clipboard(&mut self) {
         // Block (rectangular) selection: copy column-by-column.
         if self.selection.block_mode
@@ -2438,6 +2457,9 @@ impl DesktopApp {
             "terminal.copy_last_command" => {
                 self.copy_last_command();
                 self.show_toast("Copied last command".to_string());
+            }
+            "terminal.rerun" => {
+                self.rerun_last_command();
             }
             "terminal.copy_visible" => {
                 let text = self.active_session().app().grid().export_visible_text();
