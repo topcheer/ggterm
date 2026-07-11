@@ -77,6 +77,12 @@ restore_session = false
 # Default: ".-/:@~+#?=&%$" (includes path separators, URL chars)
 # word_chars = ".-/:@~+#?=&%$_-"
 
+# Auto-inject OSC 133 shell integration (prompt/command markers).
+# Enables command history navigation, exit code display, and more.
+# Set to false if you prefer manual shell setup or experience conflicts.
+# Default: true
+# shell_integration = true
+
 [ai]
 # Enable AI features at startup.
 # Also requires api_key (below) or GGTERM_AI_API_KEY env var.
