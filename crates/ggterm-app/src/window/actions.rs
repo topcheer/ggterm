@@ -1433,11 +1433,23 @@ impl DesktopApp {
             log::debug!("Bell triggered (mode: {})", bell_mode);
         }
         // Request dock/taskbar attention when window is unfocused and any tab has a bell.
+        // Also show a desktop notification so the user knows to check the terminal.
         if any_tab_bell
             && !self.window_focused
-            && let Some(ref window) = self.window
         {
-            window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
+            if let Some(ref window) = self.window {
+                window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
+            }
+            // Show a system notification for the bell.
+            let tab_title = self
+                .sessions
+                .get(self.active)
+                .and_then(|s| {
+                    let title = s.title().to_string();
+                    if title.is_empty() { None } else { Some(title) }
+                })
+                .unwrap_or_else(|| "GGTerm".to_string());
+            self.show_desktop_notification("Terminal Bell", &format!("Bell in: {}", tab_title));
         }
     }
 
