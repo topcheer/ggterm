@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test test-ffi test-p2p clippy fmt bundle macos linux windows clean install run ci-ci install-shell-integration
+.PHONY: build release test test-ffi test-p2p clippy fmt bundle macos linux windows clean install run ci-ci install-shell-integration audit deps
 
 # Debug build
 build:
@@ -110,3 +110,14 @@ install-shell-integration:
 clean:
 	cargo clean
 	rm -rf AppDir *.AppImage
+
+# Security audit (checks dependencies for known vulnerabilities)
+audit:
+	@command -v cargo-audit >/dev/null 2>&1 || { echo "Installing cargo-audit..."; cargo install cargo-audit; }
+	cargo audit
+
+# Show dependency tree summary
+deps:
+	@echo "=== Workspace crates ===" && cargo tree --depth 1 --workspace 2>/dev/null | head -30
+	@echo "" && echo "=== Dependency count ===" && cargo tree --workspace 2>/dev/null | grep -c "^[|+\\\\ ]*[a-z]"
+
