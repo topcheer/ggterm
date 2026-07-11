@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps mobile-ios mobile-run mobile-analyze
+.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps mobile-ios mobile-run mobile-analyze loc
 
 # Debug build
 build:
@@ -142,4 +142,10 @@ mobile-run:
 # Flutter analyze
 mobile-analyze:
 	cd mobile && flutter analyze
+
+# Count lines of code
+loc:
+	@echo "=== Rust ===" && find crates -name "*.rs" | xargs wc -l 2>/dev/null | tail -1
+	@echo "=== Dart ===" && find mobile/lib -name "*.dart" | xargs wc -l 2>/dev/null | tail -1
+	@echo "=== Shell scripts ===" && find shell -name "*.sh" -o -name "*.zsh" -o -name "*.fish" | xargs wc -l 2>/dev/null | tail -1
 
