@@ -2571,6 +2571,30 @@ impl DesktopApp {
                 );
                 self.show_toast(info);
             }
+            "terminal.jump_first" => {
+                let blocks = self.active_session().app().terminal().command_blocks();
+                if let Some(first) = blocks.first() {
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_to_grid_row(first.prompt_row);
+                    self.show_toast("Jumped to first command".to_string());
+                } else {
+                    self.show_toast("No commands in history".to_string());
+                }
+            }
+            "terminal.jump_last" => {
+                let blocks = self.active_session().app().terminal().command_blocks();
+                if let Some(last) = blocks.last() {
+                    self.active_session_mut()
+                        .app_mut()
+                        .grid_mut()
+                        .scroll_to_grid_row(last.prompt_row);
+                    self.show_toast("Jumped to latest command".to_string());
+                } else {
+                    self.show_toast("No commands in history".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
