@@ -2629,6 +2629,28 @@ impl DesktopApp {
                     }
                 }
             }
+            "terminal.copy_as_json" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let json_escaped: String = text
+                        .chars()
+                        .map(|c| match c {
+                            '\\' => "\\\\".into(),
+                            '"' => "\\\"".into(),
+                            '\n' => "\\n".into(),
+                            '\r' => "\\r".into(),
+                            '\t' => "\\t".into(),
+                            c if (c as u32) < 0x20 => format!("\\u{:04x}", c as u32),
+                            c => c.to_string(),
+                        })
+                        .collect();
+                    crate::clipboard::set_clipboard_bytes(format!("\"{json_escaped}\"").as_bytes());
+                    self.show_toast("Copied as JSON string".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
