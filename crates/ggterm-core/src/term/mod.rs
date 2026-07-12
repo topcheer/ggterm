@@ -963,6 +963,34 @@ impl Terminal {
             .and_then(|b| b.output_line_count())
     }
 
+    /// Extract the text output of the most recent completed command.
+    ///
+    /// Uses OSC 133 marks to identify the output region (from OutputStart
+    /// to CommandEnd). Returns `None` if no completed command exists or
+    /// the output region cannot be determined.
+    pub fn last_command_output_text(&self) -> Option<String> {
+        let block = self.command_blocks().into_iter().last()?;
+        if !block.is_complete() {
+            return None;
+        }
+        let start = block.output_row?;
+        let end = block.end_row?;
+        if start >= end {
+            return None;
+        }
+        let mut lines = Vec::new();
+        for row in start..end {
+            let text = self.extract_row_text(row);
+            // Trim trailing whitespace but keep the line.
+            lines.push(text.trim_end().to_string());
+        }
+        // Remove trailing empty lines.
+        while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
+            lines.pop();
+        }
+        Some(lines.join("\n"))
+    }
+
     /// Returns true if a command is currently running (CommandStart received, no CommandEnd yet).
     pub fn is_command_running(&self) -> bool {
         self.command_start_time.is_some()
@@ -4706,6 +4734,36 @@ mod tests {
         assert_eq!(blocks.len(), 2);
         assert!(blocks[0].is_success());
         assert!(blocks[1].is_failure());
+    }
+
+    #[test]
+    fn t_last_command_output_text_basic() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart
+        feed(&mut t, b"\x1b]133;B\x07"); // CommandStart
+        feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
+        feed(&mut t, b"hello world\nfoo bar\n");
+        feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd
+        let text = t.last_command_output_text();
+        assert!(text.is_some(), "should have output text");
+        let text = text.unwrap();
+        assert!(text.contains("hello world"), "should contain first line: {text}");
+        assert!(text.contains("foo bar"), "should contain second line: {text}");
+    }
+
+    #[test]
+    fn t_last_command_output_text_none_running() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07");
+        feed(&mut t, b"\x1b]133;C\x07");
+        // No CommandEnd — command still running.
+        assert!(t.last_command_output_text().is_none());
+    }
+
+    #[test]
+    fn t_last_command_output_text_none_no_marks() {
+        let t = Terminal::new(80, 24);
+        assert!(t.last_command_output_text().is_none());
     }
 
     #[test]
