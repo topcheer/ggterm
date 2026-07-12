@@ -2811,6 +2811,19 @@ impl DesktopApp {
                     self.show_toast(format!("URL-encoded {} chars", encoded.len()));
                 }
             }
+            "terminal.reverse_lines" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut lines: Vec<&str> = input.lines().collect();
+                    lines.reverse();
+                    let reversed = lines.join("\n");
+                    crate::clipboard::set_clipboard_bytes(reversed.as_bytes());
+                    self.show_toast(format!("Reversed {} lines", lines.len()));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
