@@ -2878,6 +2878,18 @@ impl DesktopApp {
                     self.show_toast(format!("Sorted {} lines", lines.len()));
                 }
             }
+            "terminal.copy_reversed" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut lines: Vec<&str> = text.lines().collect();
+                    lines.reverse();
+                    crate::clipboard::set_clipboard_bytes(lines.join("\n").as_bytes());
+                    self.show_toast(format!("Reversed {} lines", lines.len()));
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
