@@ -29,7 +29,43 @@ impl DesktopApp {
         result
     }
 
-    /// Compute SHA-256 hash of data and return as hex string.
+    /// Base64-decode a string, returning None on invalid input.
+    fn base64_decode(input: &str) -> Option<Vec<u8>> {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let input = input.trim();
+        // Remove newlines/whitespace within base64.
+        let input: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+        if input.is_empty() {
+            return Some(Vec::new());
+        }
+        if !input.len().is_multiple_of(4) {
+            return None;
+        }
+        let mut result = Vec::with_capacity(input.len() / 4 * 3);
+        for chunk in input.as_bytes().chunks(4) {
+            let mut vals = [0u8; 4];
+            let mut pad = 0;
+            for (i, &b) in chunk.iter().enumerate() {
+                if b == b'=' {
+                    vals[i] = 0;
+                    pad += 1;
+                } else {
+                    vals[i] = TABLE.iter().position(|&t| t == b)? as u8;
+                }
+            }
+            let triple =
+                ((vals[0] as u32) << 18) | ((vals[1] as u32) << 12) | ((vals[2] as u32) << 6) | (vals[3] as u32);
+            result.push((triple >> 16) as u8);
+            if pad < 2 {
+                result.push((triple >> 8) as u8);
+            }
+            if pad < 1 {
+                result.push(triple as u8);
+            }
+        }
+        Some(result)
+    }
     fn sha256_hex(data: &[u8]) -> String {
         use std::fmt::Write;
         let hash = Self::sha256(data);
@@ -2679,6 +2715,42 @@ impl DesktopApp {
                     let words = text.split_whitespace().count();
                     let chars = text.chars().count();
                     self.show_toast(format!("{lines}L {words}W {chars}C"));
+                }
+            }
+            "terminal.decode_base64" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let input = input.trim();
+                    if input.is_empty() {
+                        self.show_toast("Selection is empty".to_string());
+                    } else {
+                        match Self::base64_decode(input) {
+                            Some(decoded) => {
+                                let text = String::from_utf8_lossy(&decoded);
+                                crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                                self.show_toast(format!("Decoded {} chars", text.len()));
+                            }
+                            None => self.show_toast("Invalid Base64".to_string()),
+                        }
+                    }
+                }
+            }
+            "terminal.encode_base64" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    if input.is_empty() {
+                        self.show_toast("Selection is empty".to_string());
+                    } else {
+                        let encoded = Self::base64_encode(input.as_bytes());
+                        crate::clipboard::set_clipboard_bytes(encoded.as_bytes());
+                        self.show_toast(format!("Encoded {} chars", encoded.len()));
+                    }
                 }
             }
             "terminal.save_scrollback" => {

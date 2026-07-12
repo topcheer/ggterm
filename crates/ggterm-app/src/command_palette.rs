@@ -510,6 +510,18 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.decode_base64".into(),
+            label: "Decode Base64 from Selection".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "terminal.encode_base64".into(),
+            label: "Encode Selection as Base64".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
