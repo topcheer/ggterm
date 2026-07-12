@@ -2589,6 +2589,12 @@ impl DesktopApp {
             "terminal.reset" => {
                 self.active_session_mut().app_mut().terminal_mut().ris();
             }
+            "terminal.clear_and_reset" => {
+                // Clear scrollback + screen, then full RIS reset.
+                self.active_session_mut().app_mut().terminal_mut().grid_mut().clear_scrollback();
+                self.active_session_mut().app_mut().terminal_mut().ris();
+                self.show_toast("Terminal cleared and reset".to_string());
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
