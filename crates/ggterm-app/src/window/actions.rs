@@ -3140,6 +3140,23 @@ impl DesktopApp {
                     self.show_toast("Converted to kebab-case".to_string());
                 }
             }
+            "terminal.to_json_array" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let escaped: Vec<String> = input
+                        .lines()
+                        .map(|l| Self::json_escape(l.trim()))
+                        .filter(|l| !l.is_empty())
+                        .map(|l| format!("\"{l}\""))
+                        .collect();
+                    let json = format!("[\n  {}\n]", escaped.join(",\n  "));
+                    crate::clipboard::set_clipboard_bytes(json.as_bytes());
+                    self.show_toast(format!("JSON array: {} elements", escaped.len()));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
