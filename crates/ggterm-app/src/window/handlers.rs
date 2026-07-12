@@ -822,6 +822,11 @@ impl DesktopApp {
                 self.copy_selection_as_html();
                 return;
             }
+            // Ctrl+Shift+Alt+C → copy current working directory path to clipboard
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "c" {
+                self.execute_command_palette_action("terminal.copy_cwd_path");
+                return;
+            }
             // Ctrl+Shift+J → open shell rc file (.zshrc/.bashrc) in editor
             if self.mods.ctrl && self.mods.shift && !self.mods.alt && key_name == "j" {
                 self.open_shell_config();

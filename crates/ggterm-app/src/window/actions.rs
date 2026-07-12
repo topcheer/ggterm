@@ -2618,6 +2618,18 @@ impl DesktopApp {
                     }
                 }
             }
+            "terminal.copy_cwd_path" => {
+                let cwd = self.active_session().cwd().map(std::path::PathBuf::from);
+                match cwd {
+                    Some(path) => {
+                        crate::clipboard::set_clipboard_bytes(path.to_string_lossy().as_bytes());
+                        self.show_toast(format!("Copied: {}", path.display()));
+                    }
+                    None => {
+                        self.show_toast("No working directory known".to_string());
+                    }
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
