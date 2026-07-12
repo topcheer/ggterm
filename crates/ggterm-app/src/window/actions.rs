@@ -2852,6 +2852,20 @@ impl DesktopApp {
                     self.show_toast("Copied trimmed".to_string());
                 }
             }
+            "terminal.copy_dedup" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut seen = std::collections::HashSet::new();
+                    let deduped: Vec<&str> = text.lines().filter(|l| seen.insert(*l)).collect();
+                    let result = deduped.join("\n");
+                    let removed = text.lines().count() - deduped.len();
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast(format!("Removed {removed} duplicate lines"));
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
