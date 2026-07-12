@@ -2840,6 +2840,18 @@ impl DesktopApp {
                     self.show_toast("Copied lowercase".to_string());
                 }
             }
+            "terminal.copy_trimmed" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    // Trim each line individually, then join
+                    let trimmed: Vec<&str> = text.lines().map(|l| l.trim()).collect();
+                    crate::clipboard::set_clipboard_bytes(trimmed.join("\n").as_bytes());
+                    self.show_toast("Copied trimmed".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
