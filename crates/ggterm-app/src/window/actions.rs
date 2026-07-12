@@ -1158,6 +1158,24 @@ impl DesktopApp {
         self.show_toast("Re-running in new tab".to_string());
     }
 
+    /// Re-execute the last command in a new split pane.
+    pub(super) fn rerun_in_split(&mut self) {
+        self.copy_last_command();
+        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+
+        if text.trim().is_empty() {
+            self.show_toast("No previous command to rerun".to_string());
+            return;
+        }
+
+        let mut bytes = text.into_bytes();
+        bytes.push(b'\n');
+        self.selection.clear();
+        self.split_pane_horizontal();
+        self.write_to_pty(&bytes);
+        self.show_toast("Re-running in split".to_string());
+    }
+
     pub(super) fn copy_selection_to_clipboard(&mut self) {
         // Block (rectangular) selection: copy column-by-column.
         if self.selection.block_mode
@@ -2482,6 +2500,9 @@ impl DesktopApp {
             }
             "terminal.rerun_new_tab" => {
                 self.rerun_in_new_tab();
+            }
+            "terminal.rerun_split" => {
+                self.rerun_in_split();
             }
             "terminal.copy_visible" => {
                 let text = self.active_session().app().grid().export_visible_text();

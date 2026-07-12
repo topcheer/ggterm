@@ -258,6 +258,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.rerun_split".into(),
+            label: "Re-run Last Command in Split Pane".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.paste".into(),
             label: "Paste".into(),
             category: "Terminal".into(),
