@@ -2904,6 +2904,38 @@ impl DesktopApp {
                     self.show_toast(format!("Removed {removed} blank lines"));
                 }
             }
+            "terminal.copy_as_csv" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let csv_lines: Vec<String> = text
+                        .lines()
+                        .map(|line| {
+                            // Split on 2+ consecutive spaces or tabs (common column separators)
+                            let fields: Vec<&str> = line
+                                .split(|c: char| c.is_whitespace())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            // Quote fields containing commas, quotes, or newlines
+                            let quoted: Vec<String> = fields
+                                .iter()
+                                .map(|f| {
+                                    if f.contains(',') || f.contains('"') || f.contains('\n') {
+                                        format!("\"{}\"", f.replace('"', "\"\""))
+                                    } else {
+                                        f.to_string()
+                                    }
+                                })
+                                .collect();
+                            quoted.join(",")
+                        })
+                        .collect();
+                    crate::clipboard::set_clipboard_bytes(csv_lines.join("\n").as_bytes());
+                    self.show_toast(format!("Copied {} lines as CSV", csv_lines.len()));
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
