@@ -2888,6 +2888,36 @@ impl DesktopApp {
                     self.show_toast("Converted to Title Case".to_string());
                 }
             }
+            "terminal.trim_lines" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result: String = input
+                        .lines()
+                        .map(|l| l.trim())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Trimmed whitespace".to_string());
+                }
+            }
+            "terminal.remove_blank_lines" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result: String = input
+                        .lines()
+                        .filter(|l| !l.trim().is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Removed blank lines".to_string());
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
