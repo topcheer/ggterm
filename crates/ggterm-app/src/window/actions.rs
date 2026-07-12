@@ -2944,6 +2944,35 @@ impl DesktopApp {
                     self.show_toast(format!("Sorted {} lines (Z-A)", lines.len()));
                 }
             }
+            "terminal.hex_dump" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let bytes = input.as_bytes();
+                    let mut hex = String::new();
+                    for (i, chunk) in bytes.chunks(16).enumerate() {
+                        hex.push_str(&format!("{:08x}  ", i * 16));
+                        for (j, &b) in chunk.iter().enumerate() {
+                            hex.push_str(&format!("{:02x} ", b));
+                            if j == 7 {
+                                hex.push(' ');
+                            }
+                        }
+                        for _ in chunk.len()..16 {
+                            hex.push_str("   ");
+                        }
+                        hex.push_str("  |");
+                        for &b in chunk {
+                            hex.push(if (32..=126).contains(&b) { b as char } else { '.' });
+                        }
+                        hex.push_str("|\n");
+                    }
+                    crate::clipboard::set_clipboard_bytes(hex.as_bytes());
+                    self.show_toast(format!("Hex dump: {} bytes", bytes.len()));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
