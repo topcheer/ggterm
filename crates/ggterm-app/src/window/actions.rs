@@ -2801,6 +2801,18 @@ impl DesktopApp {
                     self.show_toast(format!("{chars} chars | {words} words | {lines} lines"));
                 }
             }
+            "terminal.copy_as_hex" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let hex: Vec<String> =
+                        text.as_bytes().iter().map(|b| format!("{b:02x}")).collect();
+                    crate::clipboard::set_clipboard_bytes(hex.join(" ").as_bytes());
+                    self.show_toast(format!("Copied {} bytes as hex", text.len()));
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
