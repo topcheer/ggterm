@@ -2604,6 +2604,23 @@ impl DesktopApp {
             "terminal.copy_last_output" => {
                 self.copy_last_command_output();
             }
+            "terminal.copy_command_with_output" => {
+                let text = self
+                    .active_session()
+                    .app()
+                    .terminal()
+                    .last_command_with_output_text();
+                match text {
+                    Some(t) if !t.is_empty() => {
+                        crate::clipboard::set_clipboard_bytes(t.as_bytes());
+                        let lines = t.lines().count();
+                        self.show_toast(format!("Copied command + {lines} lines"));
+                    }
+                    _ => {
+                        self.show_toast("No command output available".to_string());
+                    }
+                }
+            }
             "terminal.copy_last_command" => {
                 self.copy_last_command();
                 self.show_toast("Copied last command".to_string());

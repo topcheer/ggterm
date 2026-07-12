@@ -991,7 +991,40 @@ impl Terminal {
         Some(lines.join("\n"))
     }
 
-    /// Returns true if a command is currently running (CommandStart received, no CommandEnd yet).
+    /// Extract the command text AND its output for the most recent completed command.
+    ///
+    /// Returns a string like "$ ls -la\nfile1\nfile2\n" — useful for sharing
+    /// error reports or command results.
+    pub fn last_command_with_output_text(&self) -> Option<String> {
+        let block = self.command_blocks().into_iter().last()?;
+        if !block.is_complete() {
+            return None;
+        }
+        let cmd_row = block.command_row?;
+        let end_row = block.end_row?;
+        if cmd_row >= end_row {
+            return None;
+        }
+        let mut lines = Vec::new();
+        // Command line (from command_row to output_row)
+        let output_row = block.output_row.unwrap_or(cmd_row + 1);
+        for row in cmd_row..output_row {
+            let text = self.extract_row_text(row);
+            let trimmed = text.trim_end();
+            if !trimmed.is_empty() {
+                lines.push(format!("$ {trimmed}"));
+            }
+        }
+        // Output lines
+        for row in output_row..end_row {
+            let text = self.extract_row_text(row);
+            lines.push(text.trim_end().to_string());
+        }
+        while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
+            lines.pop();
+        }
+        Some(lines.join("\n"))
+    }
     pub fn is_command_running(&self) -> bool {
         self.command_start_time.is_some()
     }
@@ -4764,6 +4797,22 @@ mod tests {
     fn t_last_command_output_text_none_no_marks() {
         let t = Terminal::new(80, 24);
         assert!(t.last_command_output_text().is_none());
+    }
+
+    #[test]
+    fn t_last_command_with_output_text_basic() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart
+        feed(&mut t, b"ls -la"); // command text on row 0
+        feed(&mut t, b"\x1b]133;B\x07"); // CommandStart
+        feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
+        feed(&mut t, b"file1\nfile2\n");
+        feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd
+        let text = t.last_command_with_output_text();
+        assert!(text.is_some(), "should have command+output text");
+        let text = text.unwrap();
+        assert!(text.contains("file1"), "should contain output: {text}");
+        assert!(text.contains("file2"), "should contain output: {text}");
     }
 
     #[test]
