@@ -330,6 +330,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.open_cwd_in_file_manager".into(),
+            label: "Open Current Directory in File Manager".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.send_ctrl_c_all".into(),
             label: "Send Ctrl+C to All Panes".into(),
             category: "Terminal".into(),

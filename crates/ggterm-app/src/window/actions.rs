@@ -2639,6 +2639,26 @@ impl DesktopApp {
                 }
                 self.show_toast("Opened ~/.ggterm".to_string());
             }
+            "terminal.open_cwd_in_file_manager" => {
+                let cwd = self.active_session().cwd().map(std::path::PathBuf::from);
+                if let Some(ref path) = cwd {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = std::process::Command::new("open").arg(path).spawn();
+                    }
+                    #[cfg(all(unix, not(target_os = "macos")))]
+                    {
+                        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+                    }
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = std::process::Command::new("explorer").arg(path).spawn();
+                    }
+                    self.show_toast(format!("Opened {}", path.display()));
+                } else {
+                    self.show_toast("No working directory known".to_string());
+                }
+            }
             "terminal.send_ctrl_c_all" => {
                 self.send_ctrl_c_all_panes();
             }

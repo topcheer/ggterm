@@ -1012,6 +1012,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+O → open current working directory in file manager
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyO) = &event.physical_key
+        {
+            self.execute_command_palette_action("terminal.open_cwd_in_file_manager");
+            return;
+        }
+
         // Ctrl+Shift+I → rename current tab
         if self.mods.ctrl
             && self.mods.shift
