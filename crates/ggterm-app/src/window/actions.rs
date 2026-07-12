@@ -66,6 +66,42 @@ impl DesktopApp {
         }
         Some(result)
     }
+
+    /// URL-encode a string (percent-encoding for unreserved chars kept).
+    fn url_encode(input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        for &b in input.as_bytes() {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                result.push(b as char);
+            } else {
+                result.push_str(&format!("%{b:02X}"));
+            }
+        }
+        result
+    }
+
+    /// URL-decode a percent-encoded string. Invalid sequences are left as-is.
+    fn url_decode(input: &str) -> String {
+        let bytes = input.as_bytes();
+        let mut result = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' && i + 2 < bytes.len()
+                && bytes[i + 1].is_ascii_hexdigit()
+                && bytes[i + 2].is_ascii_hexdigit()
+            {
+                let h = (bytes[i + 1] as char).to_digit(16).unwrap_or(0);
+                let l = (bytes[i + 2] as char).to_digit(16).unwrap_or(0);
+                result.push(((h << 4) | l) as u8);
+                i += 3;
+            } else {
+                result.push(bytes[i]);
+                i += 1;
+            }
+        }
+        String::from_utf8_lossy(&result).into_owned()
+    }
+
     fn sha256_hex(data: &[u8]) -> String {
         use std::fmt::Write;
         let hash = Self::sha256(data);
@@ -2751,6 +2787,28 @@ impl DesktopApp {
                         crate::clipboard::set_clipboard_bytes(encoded.as_bytes());
                         self.show_toast(format!("Encoded {} chars", encoded.len()));
                     }
+                }
+            }
+            "terminal.url_decode" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let decoded = Self::url_decode(&input);
+                    crate::clipboard::set_clipboard_bytes(decoded.as_bytes());
+                    self.show_toast(format!("URL-decoded {} chars", decoded.len()));
+                }
+            }
+            "terminal.url_encode" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let encoded = Self::url_encode(&input);
+                    crate::clipboard::set_clipboard_bytes(encoded.as_bytes());
+                    self.show_toast(format!("URL-encoded {} chars", encoded.len()));
                 }
             }
             "terminal.save_scrollback" => {

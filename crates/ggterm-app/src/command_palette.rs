@@ -522,6 +522,18 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.url_decode".into(),
+            label: "URL-Decode Selection".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "terminal.url_encode".into(),
+            label: "URL-Encode Selection".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
