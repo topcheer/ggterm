@@ -2813,6 +2813,13 @@ impl DesktopApp {
                     self.show_toast(format!("Copied {} bytes as hex", text.len()));
                 }
             }
+            "terminal.interrupt_all" => {
+                let count = self.sessions.len();
+                for session in &mut self.sessions {
+                    session.write_to_all_panes(&[0x03]); // Ctrl+C
+                }
+                self.show_toast(format!("Sent Ctrl+C to all panes ({count} tabs)"));
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
