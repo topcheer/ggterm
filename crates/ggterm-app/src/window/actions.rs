@@ -2630,6 +2630,45 @@ impl DesktopApp {
                     }
                 }
             }
+            "terminal.open_selection_in_editor" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    // Copy to clipboard, then read back.
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    if text.trim().is_empty() {
+                        self.show_toast("Selection is empty".to_string());
+                    } else {
+                        let editor = std::env::var("EDITOR")
+                            .or_else(|_| std::env::var("VISUAL"))
+                            .unwrap_or_else(|_| "vi".to_string());
+                        let tmp = std::env::temp_dir().join(format!(
+                            "ggterm-selection-{}.txt",
+                            std::process::id()
+                        ));
+                        if std::fs::write(&tmp, &text).is_ok() {
+                            let cwd = self
+                                .active_session()
+                                .cwd()
+                                .map(std::path::PathBuf::from);
+                            let mut cmd = std::process::Command::new(&editor);
+                            cmd.arg(&tmp);
+                            if let Some(ref dir) = cwd {
+                                cmd.current_dir(dir);
+                            }
+                            match cmd.spawn() {
+                                Ok(_) => self.show_toast(format!("Opened in {editor}")),
+                                Err(_) => {
+                                    self.show_toast(format!("Failed to launch {editor}"))
+                                }
+                            }
+                        } else {
+                            self.show_toast("Failed to write temp file".to_string());
+                        }
+                    }
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
