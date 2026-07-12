@@ -3028,6 +3028,41 @@ impl DesktopApp {
             "terminal.paste_and_run" => {
                 self.paste_and_run();
             }
+            "terminal.open_terminal_in_cwd" => {
+                let cwd = self.active_session().cwd().map(std::path::PathBuf::from);
+                if let Some(ref path) = cwd {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = std::process::Command::new("open")
+                            .arg("-a")
+                            .arg("Terminal")
+                            .arg(path)
+                            .spawn();
+                    }
+                    #[cfg(all(unix, not(target_os = "macos")))]
+                    {
+                        let term = std::env::var("TERMINAL")
+                            .unwrap_or_else(|_| "x-terminal-emulator".to_string());
+                        let _ = std::process::Command::new(&term)
+                            .arg("--working-directory")
+                            .arg(path)
+                            .spawn();
+                    }
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = std::process::Command::new("cmd")
+                            .arg("/C")
+                            .arg("start")
+                            .arg("cmd")
+                            .arg("/K")
+                            .arg(format!("cd /d {}", path.display()))
+                            .spawn();
+                    }
+                    self.show_toast(format!("Opened terminal at {}", path.display()));
+                } else {
+                    self.show_toast("No working directory known".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
