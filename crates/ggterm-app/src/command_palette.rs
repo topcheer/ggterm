@@ -360,6 +360,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.export_commands".into(),
+            label: "Export Command History to File".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),

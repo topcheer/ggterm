@@ -2595,6 +2595,40 @@ impl DesktopApp {
                     self.show_toast("No commands in history".to_string());
                 }
             }
+            "terminal.export_commands" => {
+                let blocks = self.active_session().app().terminal().command_blocks();
+                let grid = self.active_session().app().grid();
+                let scrollback = grid.scrollback_len();
+                let mut lines = Vec::new();
+                for block in &blocks {
+                    if let Some(cmd_row) = block.command_row {
+                        let display_row = cmd_row.saturating_sub(scrollback);
+                        if let Some(row) = grid.display_row(display_row) {
+                            lines.push(row.text());
+                        }
+                    }
+                }
+                if lines.is_empty() {
+                    self.show_toast("No commands to export".to_string());
+                } else {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let filename = format!("ggterm-commands-{ts}.txt");
+                    let path = std::env::var("HOME")
+                        .map(|h| std::path::PathBuf::from(h).join(&filename))
+                        .unwrap_or_else(|_| std::path::PathBuf::from(&filename));
+                    let content = lines.join("\n");
+                    match std::fs::write(&path, &content) {
+                        Ok(_) => self.show_toast(format!(
+                            "Exported {} commands to ~/{filename}",
+                            lines.len()
+                        )),
+                        Err(e) => self.show_toast(format!("Export failed: {e}")),
+                    }
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
