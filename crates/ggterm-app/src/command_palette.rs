@@ -372,6 +372,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.copy_as_base64".into(),
+            label: "Copy Selection as Base64".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),

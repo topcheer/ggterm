@@ -2651,6 +2651,17 @@ impl DesktopApp {
                     self.show_toast("Copied as JSON string".to_string());
                 }
             }
+            "terminal.copy_as_base64" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let b64 = Self::base64_encode(text.as_bytes());
+                    crate::clipboard::set_clipboard_bytes(b64.as_bytes());
+                    self.show_toast("Copied as Base64".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
