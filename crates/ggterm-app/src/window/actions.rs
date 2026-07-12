@@ -2845,6 +2845,49 @@ impl DesktopApp {
                     ));
                 }
             }
+            "terminal.to_uppercase" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input.to_uppercase();
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Converted to UPPERCASE".to_string());
+                }
+            }
+            "terminal.to_lowercase" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input.to_lowercase();
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Converted to lowercase".to_string());
+                }
+            }
+            "terminal.to_title_case" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result: String = input
+                        .split_whitespace()
+                        .map(|w| {
+                            let mut chars = w.chars();
+                            match chars.next() {
+                                Some(c) => c.to_uppercase().chain(chars.flat_map(|c| c.to_lowercase())).collect::<String>(),
+                                None => String::new(),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Converted to Title Case".to_string());
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }

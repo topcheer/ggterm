@@ -546,6 +546,24 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.to_uppercase".into(),
+            label: "Convert Selection to UPPERCASE".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "terminal.to_lowercase".into(),
+            label: "Convert Selection to lowercase".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "terminal.to_title_case".into(),
+            label: "Convert Selection to Title Case".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
