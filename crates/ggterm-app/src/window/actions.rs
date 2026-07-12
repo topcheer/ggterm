@@ -3157,6 +3157,39 @@ impl DesktopApp {
                     self.show_toast(format!("JSON array: {} elements", escaped.len()));
                 }
             }
+            "terminal.html_escape" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input
+                        .replace('&', "&amp;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;")
+                        .replace('"', "&quot;")
+                        .replace('\'', "&#x27;");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("HTML-escaped".to_string());
+                }
+            }
+            "terminal.html_unescape" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&quot;", "\"")
+                        .replace("&#x27;", "'")
+                        .replace("&#39;", "'");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("HTML-unescaped".to_string());
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
