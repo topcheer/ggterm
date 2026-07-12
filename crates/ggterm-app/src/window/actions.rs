@@ -2824,6 +2824,27 @@ impl DesktopApp {
                     self.show_toast(format!("Reversed {} lines", lines.len()));
                 }
             }
+            "terminal.dedup_lines" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut seen = std::collections::HashSet::new();
+                    let result: Vec<&str> = input
+                        .lines()
+                        .filter(|l| seen.insert(*l))
+                        .collect();
+                    let deduped = result.join("\n");
+                    let removed = input.lines().count() - result.len();
+                    crate::clipboard::set_clipboard_bytes(deduped.as_bytes());
+                    self.show_toast(format!(
+                        "{} unique ({} removed)",
+                        result.len(),
+                        removed
+                    ));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
