@@ -2789,6 +2789,18 @@ impl DesktopApp {
                     self.show_toast(format!("SHA-256: {}...", &hash[..16]));
                 }
             }
+            "terminal.count_words" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let chars = text.chars().count();
+                    let words = text.split_whitespace().count();
+                    let lines = text.lines().count();
+                    self.show_toast(format!("{chars} chars | {words} words | {lines} lines"));
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
