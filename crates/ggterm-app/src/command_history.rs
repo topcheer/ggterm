@@ -36,6 +36,10 @@ pub struct CommandHistoryState {
     pub selected: Option<usize>,
     /// Current timestamp counter (incremented on each add).
     tick_counter: u64,
+    /// Search filter query (empty = show all).
+    pub search_query: String,
+    /// Whether the search input is active (typing filters history).
+    pub search_active: bool,
 }
 
 impl Default for CommandHistoryState {
@@ -46,6 +50,8 @@ impl Default for CommandHistoryState {
             entries: VecDeque::with_capacity(MAX_ENTRIES),
             selected: None,
             tick_counter: 0,
+            search_query: String::new(),
+            search_active: false,
         }
     }
 }
@@ -103,6 +109,50 @@ impl CommandHistoryState {
         self.entries.iter().rev()
     }
 
+    /// Get filtered entries (newest first), matching search query.
+    pub fn filtered_entries_rev(&self) -> Vec<&CommandHistoryEntry> {
+        if self.search_query.is_empty() {
+            return self.entries.iter().rev().collect();
+        }
+        let q = self.search_query.to_lowercase();
+        self.entries
+            .iter()
+            .rev()
+            .filter(|e| e.command.to_lowercase().contains(&q))
+            .collect()
+    }
+
+    /// Append a character to the search query.
+    pub fn search_push(&mut self, c: char) {
+        self.search_query.push(c);
+        self.selected = None;
+        self.scroll_offset = 0;
+    }
+
+    /// Remove the last character from the search query.
+    pub fn search_backspace(&mut self) {
+        self.search_query.pop();
+        self.selected = None;
+        self.scroll_offset = 0;
+    }
+
+    /// Clear the search query.
+    pub fn search_clear(&mut self) {
+        self.search_query.clear();
+        self.selected = None;
+        self.scroll_offset = 0;
+    }
+
+    /// Toggle search input mode.
+    pub fn toggle_search(&mut self) {
+        self.search_active = !self.search_active;
+        if !self.search_active {
+            self.search_query.clear();
+            self.selected = None;
+            self.scroll_offset = 0;
+        }
+    }
+
     /// Get all entries (oldest first).
     pub fn entries(&self) -> impl Iterator<Item = &CommandHistoryEntry> {
         self.entries.iter()
@@ -128,6 +178,7 @@ impl CommandHistoryState {
         self.entries.clear();
         self.selected = None;
         self.scroll_offset = 0;
+        self.search_query.clear();
     }
 
     /// Move selection up (newer entries).
@@ -446,5 +497,62 @@ mod tests {
         assert_eq!(rev[0].command, "third");
         assert_eq!(rev[1].command, "second");
         assert_eq!(rev[2].command, "first");
+    }
+
+    #[test]
+    fn t_search_filter_basic() {
+        let mut state = CommandHistoryState::new();
+        state.add("ls -la".to_string(), 0);
+        state.add("grep foo".to_string(), 1);
+        state.add("ls -lh".to_string(), 2);
+        state.search_query = "ls".to_string();
+        let filtered = state.filtered_entries_rev();
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].command, "ls -lh");
+        assert_eq!(filtered[1].command, "ls -la");
+    }
+
+    #[test]
+    fn t_search_filter_case_insensitive() {
+        let mut state = CommandHistoryState::new();
+        state.add("LS -la".to_string(), 0);
+        state.add("grep FOO".to_string(), 1);
+        state.search_query = "foo".to_string();
+        let filtered = state.filtered_entries_rev();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].command, "grep FOO");
+    }
+
+    #[test]
+    fn t_search_filter_empty_shows_all() {
+        let mut state = CommandHistoryState::new();
+        state.add("a".to_string(), 0);
+        state.add("b".to_string(), 1);
+        let filtered = state.filtered_entries_rev();
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn t_search_push_backspace_clear() {
+        let mut state = CommandHistoryState::new();
+        state.search_push('l');
+        state.search_push('s');
+        assert_eq!(state.search_query, "ls");
+        state.search_backspace();
+        assert_eq!(state.search_query, "l");
+        state.search_clear();
+        assert_eq!(state.search_query, "");
+    }
+
+    #[test]
+    fn t_toggle_search() {
+        let mut state = CommandHistoryState::new();
+        assert!(!state.search_active);
+        state.toggle_search();
+        assert!(state.search_active);
+        state.search_push('x');
+        state.toggle_search();
+        assert!(!state.search_active);
+        assert_eq!(state.search_query, "");
     }
 }

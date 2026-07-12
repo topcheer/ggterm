@@ -2,6 +2,317 @@
 
 use super::*;
 
+/// Convert a KeyCode to a character, respecting shift for letters.
+fn keycode_to_char(code: &winit::keyboard::KeyCode, shift: bool) -> Option<char> {
+    use winit::keyboard::KeyCode::*;
+    let c = match code {
+        KeyA => {
+            if shift {
+                'A'
+            } else {
+                'a'
+            }
+        }
+        KeyB => {
+            if shift {
+                'B'
+            } else {
+                'b'
+            }
+        }
+        KeyC => {
+            if shift {
+                'C'
+            } else {
+                'c'
+            }
+        }
+        KeyD => {
+            if shift {
+                'D'
+            } else {
+                'd'
+            }
+        }
+        KeyE => {
+            if shift {
+                'E'
+            } else {
+                'e'
+            }
+        }
+        KeyF => {
+            if shift {
+                'F'
+            } else {
+                'f'
+            }
+        }
+        KeyG => {
+            if shift {
+                'G'
+            } else {
+                'g'
+            }
+        }
+        KeyH => {
+            if shift {
+                'H'
+            } else {
+                'h'
+            }
+        }
+        KeyI => {
+            if shift {
+                'I'
+            } else {
+                'i'
+            }
+        }
+        KeyJ => {
+            if shift {
+                'J'
+            } else {
+                'j'
+            }
+        }
+        KeyK => {
+            if shift {
+                'K'
+            } else {
+                'k'
+            }
+        }
+        KeyL => {
+            if shift {
+                'L'
+            } else {
+                'l'
+            }
+        }
+        KeyM => {
+            if shift {
+                'M'
+            } else {
+                'm'
+            }
+        }
+        KeyN => {
+            if shift {
+                'N'
+            } else {
+                'n'
+            }
+        }
+        KeyO => {
+            if shift {
+                'O'
+            } else {
+                'o'
+            }
+        }
+        KeyP => {
+            if shift {
+                'P'
+            } else {
+                'p'
+            }
+        }
+        KeyQ => {
+            if shift {
+                'Q'
+            } else {
+                'q'
+            }
+        }
+        KeyR => {
+            if shift {
+                'R'
+            } else {
+                'r'
+            }
+        }
+        KeyS => {
+            if shift {
+                'S'
+            } else {
+                's'
+            }
+        }
+        KeyT => {
+            if shift {
+                'T'
+            } else {
+                't'
+            }
+        }
+        KeyU => {
+            if shift {
+                'U'
+            } else {
+                'u'
+            }
+        }
+        KeyV => {
+            if shift {
+                'V'
+            } else {
+                'v'
+            }
+        }
+        KeyW => {
+            if shift {
+                'W'
+            } else {
+                'w'
+            }
+        }
+        KeyX => {
+            if shift {
+                'X'
+            } else {
+                'x'
+            }
+        }
+        KeyY => {
+            if shift {
+                'Y'
+            } else {
+                'y'
+            }
+        }
+        KeyZ => {
+            if shift {
+                'Z'
+            } else {
+                'z'
+            }
+        }
+        Digit0 => {
+            if shift {
+                ')'
+            } else {
+                '0'
+            }
+        }
+        Digit1 => {
+            if shift {
+                '!'
+            } else {
+                '1'
+            }
+        }
+        Digit2 => {
+            if shift {
+                '@'
+            } else {
+                '2'
+            }
+        }
+        Digit3 => {
+            if shift {
+                '#'
+            } else {
+                '3'
+            }
+        }
+        Digit4 => {
+            if shift {
+                '$'
+            } else {
+                '4'
+            }
+        }
+        Digit5 => {
+            if shift {
+                '%'
+            } else {
+                '5'
+            }
+        }
+        Digit6 => {
+            if shift {
+                '^'
+            } else {
+                '6'
+            }
+        }
+        Digit7 => {
+            if shift {
+                '&'
+            } else {
+                '7'
+            }
+        }
+        Digit8 => {
+            if shift {
+                '*'
+            } else {
+                '8'
+            }
+        }
+        Digit9 => {
+            if shift {
+                '('
+            } else {
+                '9'
+            }
+        }
+        Space => ' ',
+        Minus => {
+            if shift {
+                '_'
+            } else {
+                '-'
+            }
+        }
+        Equal => {
+            if shift {
+                '+'
+            } else {
+                '='
+            }
+        }
+        Period => {
+            if shift {
+                '>'
+            } else {
+                '.'
+            }
+        }
+        Comma => {
+            if shift {
+                '<'
+            } else {
+                ','
+            }
+        }
+        Semicolon => {
+            if shift {
+                ':'
+            } else {
+                ';'
+            }
+        }
+        Quote => {
+            if shift {
+                '"'
+            } else {
+                '\''
+            }
+        }
+        Backslash => {
+            if shift {
+                '|'
+            } else {
+                '\\'
+            }
+        }
+        _ => return None,
+    };
+    Some(c)
+}
+
 impl DesktopApp {
     /// Handle window resize: store pending dimensions for debounced apply.
     ///
@@ -910,6 +1221,59 @@ impl DesktopApp {
                     return;
                 }
                 _ => {}
+            }
+        }
+
+        // Command history sidebar keyboard navigation
+        if self.cmd_history.visible {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    if self.cmd_history.search_active {
+                        self.cmd_history.toggle_search();
+                    } else {
+                        self.cmd_history.toggle();
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowUp) => {
+                    self.cmd_history.select_up();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::ArrowDown) => {
+                    self.cmd_history.select_down();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Backspace) => {
+                    if self.cmd_history.search_active {
+                        self.cmd_history.search_backspace();
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Enter) => {
+                    // Re-run selected command
+                    if let Some(idx) = self.cmd_history.selected {
+                        let filtered = self.cmd_history.filtered_entries_rev();
+                        if let Some(entry) = filtered.get(idx) {
+                            let cmd = format!("{}\n", entry.command);
+                            self.write_to_pty(cmd.as_bytes());
+                            self.cmd_history.toggle();
+                        }
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Slash) => {
+                    self.cmd_history.toggle_search();
+                    return;
+                }
+                _ => {}
+            }
+            // If search is active, printable characters go to search query
+            if self.cmd_history.search_active
+                && let PhysicalKey::Code(code) = &event.physical_key
+                && let Some(c) = keycode_to_char(code, self.mods.shift)
+            {
+                self.cmd_history.search_push(c);
+                return;
             }
         }
 
