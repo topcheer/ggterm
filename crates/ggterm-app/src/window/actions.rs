@@ -2528,6 +2528,28 @@ impl DesktopApp {
             "terminal.reset_all" => {
                 self.reset_all_tabs();
             }
+            "terminal.info" => {
+                let session = self.active_session();
+                let grid = session.app().grid();
+                let term = session.app().terminal();
+                let cwd = session
+                    .cwd()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let remote = term
+                    .remote_host()
+                    .map(|h| format!(" | SSH:{h}"))
+                    .unwrap_or_default();
+                let info = format!(
+                    "{}x{} | scrollback: {} | cwd: {}{}",
+                    grid.width(),
+                    grid.height(),
+                    grid.scrollback_len(),
+                    cwd,
+                    remote
+                );
+                self.show_toast(info);
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
