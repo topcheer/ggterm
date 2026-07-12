@@ -156,6 +156,53 @@ impl DesktopApp {
         result
     }
 
+    /// Split input into words on spaces, underscores, hyphens, and camelCase boundaries.
+    fn split_words(input: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut current = String::new();
+        for c in input.chars() {
+            if c == ' ' || c == '_' || c == '-' {
+                if !current.is_empty() {
+                    words.push(std::mem::take(&mut current));
+                }
+            } else if c.is_uppercase() && !current.is_empty() && !current.ends_with(|c: char| c.is_uppercase()) {
+                words.push(std::mem::take(&mut current));
+                current.push(c.to_lowercase().next().unwrap_or(c));
+            } else {
+                current.push(c.to_lowercase().next().unwrap_or(c));
+            }
+        }
+        if !current.is_empty() {
+            words.push(current);
+        }
+        words
+    }
+
+    /// Convert to camelCase (first word lowercase, rest capitalized).
+    fn to_camel_case(input: &str) -> String {
+        let words = Self::split_words(input);
+        let mut result = String::new();
+        for (i, word) in words.iter().enumerate() {
+            if i == 0 {
+                result.push_str(word);
+            } else if let Some(first) = word.chars().next() {
+                result.push(first.to_uppercase().next().unwrap_or(first));
+                result.push_str(&word[first.len_utf8()..]);
+            }
+        }
+        result
+    }
+
+    /// Convert to snake_case (all lowercase, underscore-separated).
+    fn to_snake_case(input: &str) -> String {
+        Self::split_words(input).join("_")
+    }
+
+    /// Convert to kebab-case (all lowercase, hyphen-separated).
+    fn to_kebab_case(input: &str) -> String {
+        Self::split_words(input).join("-")
+    }
+
     fn sha256_hex(data: &[u8]) -> String {
         use std::fmt::Write;
         let hash = Self::sha256(data);
@@ -3058,6 +3105,39 @@ impl DesktopApp {
                     let unescaped = Self::json_unescape(&input);
                     crate::clipboard::set_clipboard_bytes(unescaped.as_bytes());
                     self.show_toast("Unescaped JSON string".to_string());
+                }
+            }
+            "terminal.to_camel_case" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = Self::to_camel_case(&input);
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Converted to camelCase".to_string());
+                }
+            }
+            "terminal.to_snake_case" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = Self::to_snake_case(&input);
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Converted to snake_case".to_string());
+                }
+            }
+            "terminal.to_kebab_case" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = Self::to_kebab_case(&input);
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Converted to kebab-case".to_string());
                 }
             }
             "terminal.save_scrollback" => {
