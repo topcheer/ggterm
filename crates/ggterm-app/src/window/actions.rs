@@ -1461,7 +1461,24 @@ impl DesktopApp {
         self.write_to_pty(&bytes);
     }
 
-    /// Save the entire terminal scrollback + visible screen to a timestamped file.
+    /// Paste clipboard content and press Enter to immediately execute.
+    /// Strips trailing newlines so only one Enter is sent.
+    pub(super) fn paste_and_run(&mut self) {
+        let Some(text) = crate::clipboard::read_clipboard() else {
+            self.show_toast("Clipboard empty".to_string());
+            return;
+        };
+        let text = text.trim_end_matches(['\n', '\r']);
+        if text.is_empty() {
+            self.show_toast("Clipboard empty".to_string());
+            return;
+        }
+        let bracketed = self.active_session().app().terminal().bracketed_paste();
+        let bytes = crate::clipboard::bracket_paste(text, bracketed);
+        self.write_to_pty(&bytes);
+        self.write_to_pty(b"\n");
+        self.show_toast("Pasted and executed".to_string());
+    }
     ///
     /// Writes to `~/ggterm-export-{unix_timestamp}.txt`.
     /// Shows a toast with the file path on success.
@@ -3007,6 +3024,9 @@ impl DesktopApp {
                         self.show_toast(format!("Copied {} rows as Markdown table", rows.len()));
                     }
                 }
+            }
+            "terminal.paste_and_run" => {
+                self.paste_and_run();
             }
             "config.reload" => {
                 self.reload_configuration();

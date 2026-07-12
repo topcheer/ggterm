@@ -752,6 +752,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+V".into(),
+            description: "Paste and execute (paste + Enter)".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+X".into(),
             description: "Swap active pane with next".into(),
             category: ShortcutCategory::Split,

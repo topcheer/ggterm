@@ -768,6 +768,15 @@ impl DesktopApp {
                 self.paste_from_clipboard();
                 return;
             }
+            // Ctrl+Shift+Alt+V → paste and execute (paste + Enter)
+            if self.mods.ctrl
+                && self.mods.shift
+                && self.mods.alt
+                && key_name == "v"
+            {
+                self.paste_and_run();
+                return;
+            }
             // Ctrl+Shift+C → copy (also Cmd+C on macOS, Ctrl+Insert on Linux/Windows)
             if (self.check_keybinding(
                 "copy",
