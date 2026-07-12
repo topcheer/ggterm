@@ -2820,6 +2820,26 @@ impl DesktopApp {
                 }
                 self.show_toast(format!("Sent Ctrl+C to all panes ({count} tabs)"));
             }
+            "terminal.copy_uppercase" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    crate::clipboard::set_clipboard_bytes(text.to_uppercase().as_bytes());
+                    self.show_toast("Copied uppercase".to_string());
+                }
+            }
+            "terminal.copy_lowercase" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    crate::clipboard::set_clipboard_bytes(text.to_lowercase().as_bytes());
+                    self.show_toast("Copied lowercase".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
