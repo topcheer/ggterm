@@ -1319,6 +1319,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Alt+R → re-run last command (quick shortcut)
+        if self.mods.ctrl
+            && self.mods.alt
+            && !self.mods.shift
+            && let PhysicalKey::Code(KeyCode::KeyR) = &event.physical_key
+        {
+            self.rerun_last_command();
+            return;
+        }
+
         // P33: Ctrl+Shift+Alt+R → reset config to defaults
         if self.mods.ctrl
             && self.mods.shift

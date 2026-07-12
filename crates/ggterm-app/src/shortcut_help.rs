@@ -740,6 +740,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Alt+R".into(),
+            description: "Re-run last command".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+X".into(),
             description: "Swap active pane with next".into(),
             category: ShortcutCategory::Split,
