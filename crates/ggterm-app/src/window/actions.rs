@@ -2973,6 +2973,17 @@ impl DesktopApp {
                     self.show_toast(format!("Hex dump: {} bytes", bytes.len()));
                 }
             }
+            "terminal.sha256" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let hash = Self::sha256_hex(input.as_bytes());
+                    crate::clipboard::set_clipboard_bytes(hash.as_bytes());
+                    self.show_toast(format!("SHA-256: {hash}"));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }

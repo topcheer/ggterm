@@ -594,6 +594,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.sha256".into(),
+            label: "SHA-256 Hash of Selection".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
