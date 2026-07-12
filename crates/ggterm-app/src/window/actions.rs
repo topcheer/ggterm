@@ -2669,6 +2669,18 @@ impl DesktopApp {
                     }
                 }
             }
+            "terminal.selection_stats" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let lines = text.lines().count();
+                    let words = text.split_whitespace().count();
+                    let chars = text.chars().count();
+                    self.show_toast(format!("{lines}L {words}W {chars}C"));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
