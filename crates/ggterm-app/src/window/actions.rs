@@ -2918,6 +2918,32 @@ impl DesktopApp {
                     self.show_toast("Removed blank lines".to_string());
                 }
             }
+            "terminal.sort_lines" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut lines: Vec<&str> = input.lines().collect();
+                    lines.sort();
+                    let result = lines.join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast(format!("Sorted {} lines (A-Z)", lines.len()));
+                }
+            }
+            "terminal.sort_lines_desc" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut lines: Vec<&str> = input.lines().collect();
+                    lines.sort_by(|a, b| b.cmp(a));
+                    let result = lines.join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast(format!("Sorted {} lines (Z-A)", lines.len()));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }

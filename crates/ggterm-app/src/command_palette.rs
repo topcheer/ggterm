@@ -576,6 +576,18 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.sort_lines".into(),
+            label: "Sort Selection Lines Alphabetically".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "terminal.sort_lines_desc".into(),
+            label: "Sort Selection Lines (Descending)".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
