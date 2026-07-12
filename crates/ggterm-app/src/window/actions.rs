@@ -2890,6 +2890,20 @@ impl DesktopApp {
                     self.show_toast(format!("Reversed {} lines", lines.len()));
                 }
             }
+            "terminal.copy_no_blank" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let original = text.lines().count();
+                    let filtered: Vec<&str> =
+                        text.lines().filter(|l| !l.trim().is_empty()).collect();
+                    let removed = original - filtered.len();
+                    crate::clipboard::set_clipboard_bytes(filtered.join("\n").as_bytes());
+                    self.show_toast(format!("Removed {removed} blank lines"));
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
