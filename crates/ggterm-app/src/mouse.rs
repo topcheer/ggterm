@@ -411,7 +411,7 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
 }
 
 /// Characters that are valid inside a URL path.
-fn is_url_char(c: char) -> bool {
+pub(crate) fn is_url_char(c: char) -> bool {
     c.is_alphanumeric()
         || matches!(
             c,

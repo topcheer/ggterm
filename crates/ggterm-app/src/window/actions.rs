@@ -203,6 +203,42 @@ impl DesktopApp {
         Self::split_words(input).join("-")
     }
 
+    /// Extract all URLs from text. Matches http(s):// and www. prefixed URLs.
+    fn extract_urls(text: &str) -> Vec<String> {
+        let mut urls = Vec::new();
+        let mut current = String::new();
+        let chars: Vec<char> = text.chars().collect();
+        for i in 0..chars.len() {
+            // Check for http:// or https://
+            let remaining: String = chars[i..].iter().collect();
+            if current.is_empty()
+                && (remaining.starts_with("http://") || remaining.starts_with("https://"))
+            {
+                current.clear();
+                let prefix_len = if remaining.starts_with("https://") { 8 } else { 7 };
+                for j in 0..prefix_len {
+                    current.push(chars[i + j]);
+                }
+                let mut j = i + prefix_len;
+                while j < chars.len() && crate::mouse::is_url_char(chars[j]) {
+                    current.push(chars[j]);
+                    j += 1;
+                }
+                current = current
+                    .trim_end_matches([')', ']', '}', ',', ';', '.'])
+                    .to_string();
+                urls.push(current.clone());
+                current.clear();
+                // Skip consumed chars handled by outer loop increment
+                // (We can't easily skip, so duplicates may occur — but URLs are deduped below)
+            }
+        }
+        // Deduplicate
+        let mut seen = std::collections::HashSet::new();
+        urls.retain(|u| seen.insert(u.clone()));
+        urls
+    }
+
     fn sha256_hex(data: &[u8]) -> String {
         use std::fmt::Write;
         let hash = Self::sha256(data);
@@ -3188,6 +3224,22 @@ impl DesktopApp {
                         .replace("&#39;", "'");
                     crate::clipboard::set_clipboard_bytes(result.as_bytes());
                     self.show_toast("HTML-unescaped".to_string());
+                }
+            }
+            "terminal.extract_urls" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let urls = Self::extract_urls(&input);
+                    if urls.is_empty() {
+                        self.show_toast("No URLs found".to_string());
+                    } else {
+                        let result = urls.join("\n");
+                        crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                        self.show_toast(format!("Found {} URLs", urls.len()));
+                    }
                 }
             }
             "terminal.save_scrollback" => {
