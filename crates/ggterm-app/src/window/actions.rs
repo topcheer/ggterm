@@ -2936,6 +2936,58 @@ impl DesktopApp {
                     self.show_toast(format!("Copied {} lines as CSV", csv_lines.len()));
                 }
             }
+            "terminal.copy_as_markdown" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let rows: Vec<Vec<String>> = text
+                        .lines()
+                        .map(|line| {
+                            line.split(|c: char| c.is_whitespace())
+                                .filter(|s| !s.is_empty())
+                                .map(|f| {
+                                    if f.contains('|') || f.contains('\n') {
+                                        format!("{}|", f.replace('|', "\\|"))
+                                    } else {
+                                        f.to_string()
+                                    }
+                                })
+                                .collect()
+                        })
+                        .filter(|r: &Vec<String>| !r.is_empty())
+                        .collect();
+                    if rows.is_empty() {
+                        self.show_toast("No table data found".to_string());
+                    } else {
+                        let ncol = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+                        let mut md = String::new();
+                        // Header row (first data row)
+                        md.push('|');
+                        for c in &rows[0] {
+                            md.push_str(&format!(" {} |", c));
+                        }
+                        md.push('\n');
+                        // Separator
+                        md.push('|');
+                        for _ in 0..ncol {
+                            md.push_str(" --- |");
+                        }
+                        md.push('\n');
+                        // Data rows
+                        for row in rows.iter().skip(1) {
+                            md.push('|');
+                            for c in row {
+                                md.push_str(&format!(" {} |", c));
+                            }
+                            md.push('\n');
+                        }
+                        crate::clipboard::set_clipboard_bytes(md.as_bytes());
+                        self.show_toast(format!("Copied {} rows as Markdown table", rows.len()));
+                    }
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
