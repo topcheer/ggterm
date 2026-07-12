@@ -2595,6 +2595,29 @@ impl DesktopApp {
                 self.active_session_mut().app_mut().terminal_mut().ris();
                 self.show_toast("Terminal cleared and reset".to_string());
             }
+            "terminal.copy_output_numbered" => {
+                let text = self
+                    .active_session()
+                    .app()
+                    .terminal()
+                    .last_command_output_text();
+                match text {
+                    Some(t) if !t.is_empty() => {
+                        let numbered: String = t
+                            .lines()
+                            .enumerate()
+                            .map(|(i, line)| format!("{:4}: {}", i + 1, line))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        crate::clipboard::set_clipboard_bytes(numbered.as_bytes());
+                        let count = numbered.lines().count();
+                        self.show_toast(format!("Copied {count} numbered lines"));
+                    }
+                    _ => {
+                        self.show_toast("No command output available".to_string());
+                    }
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
