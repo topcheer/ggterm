@@ -2662,6 +2662,26 @@ impl DesktopApp {
                     self.show_toast("Copied as Base64".to_string());
                 }
             }
+            "terminal.copy_as_url" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let text = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let encoded: String = text
+                        .chars()
+                        .map(|c| match c {
+                            c if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') => {
+                                c.to_string()
+                            }
+                            ' ' => "%20".into(),
+                            c => format!("%{:02X}", c as u32),
+                        })
+                        .collect();
+                    crate::clipboard::set_clipboard_bytes(encoded.as_bytes());
+                    self.show_toast("Copied as URL-encoded".to_string());
+                }
+            }
             "config.reload" => {
                 self.reload_configuration();
             }
