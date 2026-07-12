@@ -102,6 +102,60 @@ impl DesktopApp {
         String::from_utf8_lossy(&result).into_owned()
     }
 
+    /// Escape a string for use as a JSON string literal (without surrounding quotes).
+    fn json_escape(input: &str) -> String {
+        let mut result = String::with_capacity(input.len() + 8);
+        for c in input.chars() {
+            match c {
+                '"' => result.push_str("\\\""),
+                '\\' => result.push_str("\\\\"),
+                '\n' => result.push_str("\\n"),
+                '\r' => result.push_str("\\r"),
+                '\t' => result.push_str("\\t"),
+                '\u{08}' => result.push_str("\\b"),
+                '\u{0c}' => result.push_str("\\f"),
+                c if (c as u32) < 0x20 => {
+                    result.push_str(&format!("\\u{:04x}", c as u32));
+                }
+                c => result.push(c),
+            }
+        }
+        result
+    }
+
+    /// Unescape a JSON string literal (input without surrounding quotes).
+    fn json_unescape(input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        let mut chars = input.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('"') => result.push('"'),
+                    Some('\\') => result.push('\\'),
+                    Some('/') => result.push('/'),
+                    Some('n') => result.push('\n'),
+                    Some('r') => result.push('\r'),
+                    Some('t') => result.push('\t'),
+                    Some('b') => result.push('\u{08}'),
+                    Some('f') => result.push('\u{0c}'),
+                    Some('u') => {
+                        let hex: String = chars.by_ref().take(4).collect();
+                        if let Ok(n) = u32::from_str_radix(&hex, 16)
+                            && let Some(ch) = char::from_u32(n)
+                        {
+                            result.push(ch);
+                        }
+                    }
+                    Some(c) => result.push(c),
+                    None => {}
+                }
+            } else {
+                result.push(c);
+            }
+        }
+        result
+    }
+
     fn sha256_hex(data: &[u8]) -> String {
         use std::fmt::Write;
         let hash = Self::sha256(data);
@@ -2982,6 +3036,28 @@ impl DesktopApp {
                     let hash = Self::sha256_hex(input.as_bytes());
                     crate::clipboard::set_clipboard_bytes(hash.as_bytes());
                     self.show_toast(format!("SHA-256: {hash}"));
+                }
+            }
+            "terminal.json_escape" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let escaped = Self::json_escape(&input);
+                    crate::clipboard::set_clipboard_bytes(escaped.as_bytes());
+                    self.show_toast("Escaped as JSON string".to_string());
+                }
+            }
+            "terminal.json_unescape" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let unescaped = Self::json_unescape(&input);
+                    crate::clipboard::set_clipboard_bytes(unescaped.as_bytes());
+                    self.show_toast("Unescaped JSON string".to_string());
                 }
             }
             "terminal.save_scrollback" => {
