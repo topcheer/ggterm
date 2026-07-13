@@ -296,6 +296,8 @@ pub struct DesktopApp {
     // ── P25: Power user features ──
     /// P25-B: Command palette state (Ctrl+Shift+P).
     command_palette: crate::command_palette::CommandPaletteState,
+    /// Cached command registry (avoids re-allocating on every frame/keystroke).
+    command_registry: crate::command_palette::CommandRegistry,
     /// P25-D: Broadcast input state (Ctrl+Shift+Alt+B).
     broadcast: crate::broadcast_input::BroadcastState,
     /// P25-E: Session recorder (None when not recording).
@@ -649,6 +651,7 @@ impl DesktopApp {
             restored_session: false,
             cursor_blink: crate::cursor_blink::CursorBlink::new(),
             command_palette: crate::command_palette::CommandPaletteState::default(),
+            command_registry: crate::command_palette::CommandRegistry::defaults(),
             broadcast: crate::broadcast_input::BroadcastState::default(),
             recorder: None,
             animations: crate::animations::AnimationManager::default(),

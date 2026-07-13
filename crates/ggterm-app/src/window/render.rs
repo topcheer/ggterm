@@ -2620,8 +2620,7 @@ impl DesktopApp {
 
         // ── Command Palette overlay ──────────────────────────────────
         if self.command_palette.visible {
-            let registry = crate::command_palette::CommandRegistry::defaults();
-            let results = self.command_palette.results(&registry);
+            let results = self.command_palette.results(&self.command_registry);
             let palette_w = 520.0;
             let palette_h = 360.0;
             let palette_x = (screen_w - palette_w) / 2.0;

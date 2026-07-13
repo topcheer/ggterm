@@ -1539,8 +1539,8 @@ impl DesktopApp {
                     return;
                 }
                 PhysicalKey::Code(KeyCode::Enter) => {
-                    let registry = crate::command_palette::CommandRegistry::defaults();
-                    let results = self.command_palette.results(&registry);
+                    let registry = &self.command_registry;
+                    let results = self.command_palette.results(registry);
                     self.command_palette.confirm(&results);
                     // Execute the pending action.
                     if let Some(action_id) = self.command_palette.take_action() {
@@ -1550,15 +1550,11 @@ impl DesktopApp {
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowUp) => {
-                    let registry = crate::command_palette::CommandRegistry::defaults();
-                    let results = self.command_palette.results(&registry);
-                    self.command_palette.move_up(results.len());
+                    self.command_palette.move_up(self.command_palette.results(&self.command_registry).len());
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowDown) => {
-                    let registry = crate::command_palette::CommandRegistry::defaults();
-                    let results = self.command_palette.results(&registry);
-                    self.command_palette.move_down(results.len());
+                    self.command_palette.move_down(self.command_palette.results(&self.command_registry).len());
                     return;
                 }
                 PhysicalKey::Code(KeyCode::Backspace) => {
