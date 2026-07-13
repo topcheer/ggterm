@@ -1798,13 +1798,32 @@ impl ApplicationHandler for DesktopApp {
 
         // Update tab bar state — syncs tab titles, bell flags, and
         // sets visible = (tabs.len() > 1) for single-tab title bar mode.
-        let tab_titles: Vec<String> = self
-            .sessions
-            .iter()
-            .map(|s| s.title().to_string())
-            .collect();
-        let tab_refs: Vec<&str> = tab_titles.iter().map(|s| s.as_str()).collect();
-        self.tab_bar.update(&tab_refs, self.active);
+        // Avoids Vec allocation by updating visible flag directly and
+        // only rebuilding tabs when count changes.
+        let session_count = self.sessions.len();
+        if self.tab_bar.tabs.len() != session_count {
+            // Tab count changed — full rebuild.
+            let tab_refs: Vec<&str> = self
+                .sessions
+                .iter()
+                .map(|s| s.title())
+                .collect();
+            self.tab_bar.update(&tab_refs, self.active);
+        } else {
+            // Same count — just update titles and active index in-place.
+            for (i, session) in self.sessions.iter().enumerate() {
+                let title = session.title();
+                if i < self.tab_bar.tabs.len() {
+                    let tab = &mut self.tab_bar.tabs[i];
+                    if tab.title != title {
+                        tab.title = title.to_string();
+                    }
+                    tab.active = i == self.active;
+                    tab.index = i + 1;
+                }
+            }
+            self.tab_bar.visible = session_count > 1;
+        }
 
         // P10-C: Poll AI bridge for results.
         #[cfg(feature = "ai")]
