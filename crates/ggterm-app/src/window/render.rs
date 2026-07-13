@@ -457,7 +457,7 @@ impl DesktopApp {
                 radius: tab_radius,
                 stroke_width: 0.0,
             });
-            let plus_scale = (layout.new_tab_button.size / cell_w).clamp(1.5, 4.0);
+            let plus_scale = (layout.new_tab_button.size / cell_w * 0.55).clamp(1.0, 2.5);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
                 left: layout.new_tab_button.cx - cell_w * plus_scale / 2.0,
@@ -476,7 +476,7 @@ impl DesktopApp {
                 self.cursor_pos.0 as f32,
                 self.cursor_pos.1 as f32,
             );
-            let gear_scale = (layout.settings_button.size / cell_w).clamp(1.5, 4.0);
+            let gear_scale = (layout.settings_button.size / cell_w * 0.55).clamp(1.0, 2.5);
             let gear_bg = if gear_hovered {
                 (0.35, 0.42, 0.55, 0.8)
             } else {
@@ -668,7 +668,7 @@ impl DesktopApp {
                 radius: 8.0,
                 stroke_width: 0.0,
             });
-            let plus_scale = (btn_size / cell_w).clamp(1.5, 4.0);
+            let plus_scale = (btn_size / cell_w * 0.55).clamp(1.0, 2.5);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
                 left: plus_x + btn_size / 2.0 - cell_w * plus_scale / 2.0,
@@ -700,7 +700,7 @@ impl DesktopApp {
                 radius: 8.0,
                 stroke_width: 0.0,
             });
-            let gear_scale = (btn_size / cell_w).clamp(1.5, 4.0);
+            let gear_scale = (btn_size / cell_w * 0.55).clamp(1.0, 2.5);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "⚙".to_string(),
                 left: gear_x + btn_size / 2.0 - cell_w * gear_scale / 2.0,
