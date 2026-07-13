@@ -397,8 +397,7 @@ impl Default for SearchState {
 struct SimpleRegex {
     /// Compiled AST of the pattern.
     pattern: RegexNode,
-    /// Case-insensitive matching (stored for future use, currently handled in char_eq).
-    #[allow(dead_code)]
+    /// Case-insensitive matching.
     case_insensitive: bool,
 }
 
@@ -440,7 +439,6 @@ impl SimpleRegex {
         let mut parser = RegexParser {
             chars,
             pos: 0,
-            case_insensitive,
         };
         let nodes = parser.parse_alternation()?;
         if parser.pos != parser.chars.len() {
@@ -657,8 +655,6 @@ impl SimpleRegex {
 struct RegexParser {
     chars: Vec<char>,
     pos: usize,
-    #[allow(dead_code)]
-    case_insensitive: bool,
 }
 
 impl RegexParser {
