@@ -2153,9 +2153,7 @@ impl DesktopApp {
                 if grid.display_offset() > 0 {
                     grid.reset_viewport();
                 }
-                // Reset cursor blink on user input — keeps cursor visible
-                // during active typing (matches mobile behavior).
-                self.cursor_blink.reset();
+                // cursor_blink.reset() is called inside write_to_pty().
                 self.write_to_pty(&bytes);
             }
         }

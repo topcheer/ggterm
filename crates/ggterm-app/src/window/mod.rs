@@ -228,6 +228,8 @@ pub struct DesktopApp {
     git_check_counter: u32,
     /// Last time spinner frame was advanced (for ~12fps throttle).
     last_spinner_tick: std::time::Instant,
+    /// Cached idle seconds to avoid per-frame String allocation for idle timer.
+    last_idle_secs: u64,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -640,6 +642,7 @@ impl DesktopApp {
             git_branch_cache: String::new(),
             git_check_counter: 0,
             last_spinner_tick: std::time::Instant::now(),
+            last_idle_secs: 0,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
@@ -1370,9 +1373,17 @@ impl ApplicationHandler for DesktopApp {
                     let last = self.active_session().app().terminal().last_output_time();
                     if let Some(t) = last {
                         let idle = std::time::Instant::now().duration_since(t);
-                        if idle.as_secs() >= 5 {
-                            self.status_bar.command_timer =
-                                crate::status_bar::format_duration(idle);
+                        let idle_secs = idle.as_secs();
+                        if idle_secs >= 5 {
+                            // Only reformat when the second changes — avoids
+                            // per-frame String allocation for the idle timer.
+                            if idle_secs != self.last_idle_secs {
+                                self.last_idle_secs = idle_secs;
+                                self.status_bar.command_timer =
+                                    crate::status_bar::format_duration(idle);
+                            }
+                        } else {
+                            self.last_idle_secs = 0;
                         }
                     }
                 }
@@ -1711,7 +1722,7 @@ impl ApplicationHandler for DesktopApp {
                         if grid.display_offset() > 0 {
                             grid.reset_viewport();
                         }
-                        self.cursor_blink.reset();
+                        // cursor_blink.reset() is called inside write_to_pty().
                         self.write_to_pty(text.as_bytes());
                         self.ime_preedit = None;
                     }
