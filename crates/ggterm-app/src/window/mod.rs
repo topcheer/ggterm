@@ -232,6 +232,9 @@ pub struct DesktopApp {
     last_idle_secs: u64,
     /// Cached command elapsed tenths-of-seconds for timer throttling.
     last_cmd_tenths: u128,
+    /// Cached grid dimensions to avoid per-frame format! allocation.
+    cached_grid_w: usize,
+    cached_grid_h: usize,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -646,6 +649,8 @@ impl DesktopApp {
             last_spinner_tick: std::time::Instant::now(),
             last_idle_secs: 0,
             last_cmd_tenths: 0,
+            cached_grid_w: 0,
+            cached_grid_h: 0,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
@@ -1482,8 +1487,12 @@ impl ApplicationHandler for DesktopApp {
                 }
                 // Terminal dimensions — only reformat when size changes.
                 let grid = self.active_session().app().grid();
-                let dims = format!("{}×{}", grid.width(), grid.height());
-                if dims != self.cached_dims {
+                let gw = grid.width();
+                let gh = grid.height();
+                if gw != self.cached_grid_w || gh != self.cached_grid_h {
+                    self.cached_grid_w = gw;
+                    self.cached_grid_h = gh;
+                    let dims = format!("{}×{}", gw, gh);
                     self.cached_dims = dims.clone();
                     self.status_bar.dimensions = dims;
                 }
