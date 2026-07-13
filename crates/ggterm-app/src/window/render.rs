@@ -457,18 +457,17 @@ impl DesktopApp {
                 radius: tab_radius,
                 stroke_width: 0.0,
             });
+            let plus_scale = (layout.new_tab_button.size / cell_w).clamp(1.5, 4.0);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
-                left: layout.new_tab_button.cx
-                    - cell_w * (layout.new_tab_button.size / cell_w / 2.0),
-                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0
-                    - cell_h * (layout.new_tab_button.size / cell_h / 2.0),
+                left: layout.new_tab_button.cx - cell_w * plus_scale / 2.0,
+                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0 - cell_h * plus_scale / 2.0,
                 color: if btn_hovered {
                     (255, 255, 255)
                 } else {
                     (180, 185, 200)
                 },
-                scale: (layout.new_tab_button.size / cell_w).clamp(1.5, 4.0),
+                scale: plus_scale,
             });
 
             // Settings gear button at the far right.
@@ -477,6 +476,7 @@ impl DesktopApp {
                 self.cursor_pos.0 as f32,
                 self.cursor_pos.1 as f32,
             );
+            let gear_scale = (layout.settings_button.size / cell_w).clamp(1.5, 4.0);
             let gear_bg = if gear_hovered {
                 (0.35, 0.42, 0.55, 0.8)
             } else {
@@ -495,16 +495,14 @@ impl DesktopApp {
             // If it doesn't render, fallback to a colon-like icon.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "\u{2699}".to_string(), // ⚙ gear symbol
-                left: layout.settings_button.cx
-                    - cell_w * (layout.settings_button.size / cell_w / 2.0),
-                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0
-                    - cell_h * (layout.settings_button.size / cell_h / 2.0),
+                left: layout.settings_button.cx - cell_w * gear_scale / 2.0,
+                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0 - cell_h * gear_scale / 2.0,
                 color: if gear_hovered {
                     (255, 255, 255)
                 } else {
                     (180, 185, 200)
                 },
-                scale: (layout.settings_button.size / cell_w).clamp(1.5, 4.0),
+                scale: gear_scale,
             });
 
             // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
@@ -656,27 +654,31 @@ impl DesktopApp {
                 && self.cursor_pos.0 as f32 <= plus_x + btn_size
                 && self.cursor_pos.1 as f32 >= btn_y
                 && self.cursor_pos.1 as f32 <= btn_y + btn_size;
-            if plus_hovered {
-                ui_rects.push(ggterm_render_wgpu::UiRect {
-                    x: plus_x,
-                    y: btn_y,
-                    w: btn_size,
-                    h: btn_size,
-                    color: (0.35, 0.42, 0.55, 0.7),
-                    radius: 8.0,
-                    stroke_width: 0.0,
-                });
-            }
+            // Always show button background for visibility.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: plus_x,
+                y: btn_y,
+                w: btn_size,
+                h: btn_size,
+                color: if plus_hovered {
+                    (0.35, 0.42, 0.55, 0.8)
+                } else {
+                    (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
+                },
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            let plus_scale = (btn_size / cell_w).clamp(1.5, 4.0);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
-                left: plus_x + btn_size / 2.0 - cell_w * (btn_size / cell_w / 2.0),
-                top: btn_y + btn_size / 2.0 - cell_h * (btn_size / cell_h / 2.0),
+                left: plus_x + btn_size / 2.0 - cell_w * plus_scale / 2.0,
+                top: btn_y + btn_size / 2.0 - cell_h * plus_scale / 2.0,
                 color: if plus_hovered {
                     (240, 240, 250)
                 } else {
-                    (160, 165, 180)
+                    (200, 205, 220)
                 },
-                scale: (btn_size / cell_w).clamp(1.5, 4.0),
+                scale: plus_scale,
             });
 
             // Settings gear button.
@@ -684,27 +686,31 @@ impl DesktopApp {
                 && self.cursor_pos.0 as f32 <= gear_x + btn_size
                 && self.cursor_pos.1 as f32 >= btn_y
                 && self.cursor_pos.1 as f32 <= btn_y + btn_size;
-            if gear_hovered {
-                ui_rects.push(ggterm_render_wgpu::UiRect {
-                    x: gear_x,
-                    y: btn_y,
-                    w: btn_size,
-                    h: btn_size,
-                    color: (0.35, 0.42, 0.55, 0.7),
-                    radius: 8.0,
-                    stroke_width: 0.0,
-                });
-            }
+            // Always show button background for visibility.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: gear_x,
+                y: btn_y,
+                w: btn_size,
+                h: btn_size,
+                color: if gear_hovered {
+                    (0.35, 0.42, 0.55, 0.8)
+                } else {
+                    (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
+                },
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            let gear_scale = (btn_size / cell_w).clamp(1.5, 4.0);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "⚙".to_string(),
-                left: gear_x + btn_size / 2.0 - cell_w * (btn_size / cell_w / 2.0),
-                top: btn_y + btn_size / 2.0 - cell_h * (btn_size / cell_h / 2.0),
+                left: gear_x + btn_size / 2.0 - cell_w * gear_scale / 2.0,
+                top: btn_y + btn_size / 2.0 - cell_h * gear_scale / 2.0,
                 color: if gear_hovered {
                     (240, 240, 250)
                 } else {
-                    (160, 165, 180)
+                    (200, 205, 220)
                 },
-                scale: (btn_size / cell_w).clamp(1.5, 4.0),
+                scale: gear_scale,
             });
         }
 
