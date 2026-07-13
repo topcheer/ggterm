@@ -340,6 +340,10 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// to avoid 60fps setState storms on idle terminals.
   int _computeFrameHash(ScreenSnapshot snap) {
     var h = snap.cursorCol ^ (snap.cursorRow << 16);
+    // Include title and cwd in hash so AppBar updates when OSC 0/2 title
+    // or OSC 7 working directory changes, even if cell content is identical.
+    h = (h * 31 + snap.title.hashCode) & 0x7FFFFFFF;
+    h = (h * 31 + snap.cwd.hashCode) & 0x7FFFFFFF;
     for (var i = 0; i < snap.cells.length; i++) {
       final c = snap.cells[i];
       h = (h * 31 + c.charCode ^ (c.flags << 8) ^ c.fg ^ (c.bg << 16)) & 0x7FFFFFFF;
