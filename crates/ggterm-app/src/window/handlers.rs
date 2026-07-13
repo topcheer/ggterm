@@ -2324,7 +2324,7 @@ impl DesktopApp {
         };
 
         let tab_bar_h = if self.tab_bar.visible {
-            ((cell_h + 8.0).max(28.0) + 6.0) as u32
+            ((cell_h + 16.0).max(38.0) + 4.0) as u32
         } else if !self.tab_bar.tabs.is_empty() {
             // Single-tab mode: taller bar with larger buttons.
             ((cell_h + 16.0).max(38.0) + 4.0) as u32

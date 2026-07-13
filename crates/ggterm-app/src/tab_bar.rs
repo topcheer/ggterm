@@ -26,7 +26,7 @@ const CLOSE_BUTTON_SIZE: f32 = 16.0;
 /// Gap between tab text and close button.
 const CLOSE_BUTTON_GAP: f32 = 4.0;
 /// Size of the "+" new tab button.
-const NEW_TAB_BUTTON_SIZE: f32 = 28.0;
+const NEW_TAB_BUTTON_SIZE: f32 = 40.0;
 /// Estimated average character width in pixels (at 14px monospace).
 const CHAR_WIDTH_ESTIMATE: f32 = 8.4;
 /// Maximum characters to show in a tab title before truncation.

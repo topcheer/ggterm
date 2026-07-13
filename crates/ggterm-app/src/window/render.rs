@@ -183,8 +183,8 @@ impl DesktopApp {
 
         // ── Tab bar: auto-fill width like browser tabs ─────────────────
         if self.tab_bar.visible {
-            let tab_h = (cell_h + 8.0).max(28.0);
-            let bar_h = tab_h + 6.0;
+            let tab_h = (cell_h + 16.0).max(38.0);
+            let bar_h = tab_h + 4.0;
             let tab_radius = 6.0_f32;
             let cell_w = renderer.cell_width() as f32;
 
@@ -447,7 +447,7 @@ impl DesktopApp {
             };
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: btn_x,
-                y: 4.0,
+                y: (bar_h - tab_h) / 2.0,
                 w: layout.new_tab_button.size,
                 h: tab_h,
                 color: btn_bg,
@@ -478,7 +478,7 @@ impl DesktopApp {
             };
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: layout.settings_button.cx - layout.settings_button.size / 2.0,
-                y: 4.0,
+                y: (bar_h - tab_h) / 2.0,
                 w: layout.settings_button.size,
                 h: tab_h,
                 color: gear_bg,
