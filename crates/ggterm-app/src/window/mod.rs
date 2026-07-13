@@ -255,6 +255,8 @@ pub struct DesktopApp {
     last_applied_font_family: String,
     /// Cached terminal dimensions "WxH" — only reformat on resize.
     cached_dims: String,
+    /// Cached uptime in minutes — avoids per-frame format! when minute hasn't changed.
+    cached_uptime_mins: u64,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -655,6 +657,7 @@ impl DesktopApp {
                 .map(|m| m.config().appearance.font_family.clone())
                 .unwrap_or_default(),
             cached_dims: String::new(),
+            cached_uptime_mins: 0,
             status_bar_visible: true,
             hovered_link: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
@@ -1388,19 +1391,23 @@ impl ApplicationHandler for DesktopApp {
                 self.status_bar.locked = self.locked;
 
                 // Session uptime (only show after 1 minute).
+                // Only reformat when the minute changes to avoid per-frame allocation.
                 let uptime = self.active_session().uptime();
-                self.status_bar.uptime = if uptime.as_secs() >= 60 {
-                    let total_secs = uptime.as_secs();
-                    let h = total_secs / 3600;
-                    let m = (total_secs % 3600) / 60;
-                    if h > 0 {
-                        format!("{}h{}m", h, m)
+                let uptime_mins = uptime.as_secs() / 60;
+                if uptime_mins != self.cached_uptime_mins {
+                    self.cached_uptime_mins = uptime_mins;
+                    self.status_bar.uptime = if uptime_mins >= 1 {
+                        let h = uptime_mins / 60;
+                        let m = uptime_mins % 60;
+                        if h > 0 {
+                            format!("{}h{}m", h, m)
+                        } else {
+                            format!("{}m", m)
+                        }
                     } else {
-                        format!("{}m", m)
-                    }
-                } else {
-                    String::new()
-                };
+                        String::new()
+                    };
+                }
 
                 // Git branch (throttled: check every ~5s / 300 frames).
                 self.git_check_counter = self.git_check_counter.wrapping_add(1);
@@ -1496,8 +1503,7 @@ impl ApplicationHandler for DesktopApp {
                     self.status_bar.cwd = new_cwd;
                 }
                 // Hovered URL/hyperlink for status bar link preview.
-                let new_link =
-                    self.hovered_link.as_ref().map(|(url, _, _, _)| url.clone());
+                let new_link = self.hovered_link.as_ref().map(|(url, _, _, _)| url.clone());
                 if self.status_bar.hovered_link != new_link {
                     self.status_bar.hovered_link = new_link;
                 }
@@ -1803,11 +1809,7 @@ impl ApplicationHandler for DesktopApp {
         let session_count = self.sessions.len();
         if self.tab_bar.tabs.len() != session_count {
             // Tab count changed — full rebuild.
-            let tab_refs: Vec<&str> = self
-                .sessions
-                .iter()
-                .map(|s| s.title())
-                .collect();
+            let tab_refs: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
             self.tab_bar.update(&tab_refs, self.active);
         } else {
             // Same count — just update titles and active index in-place.
