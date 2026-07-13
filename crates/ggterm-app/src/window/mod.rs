@@ -1461,7 +1461,11 @@ impl ApplicationHandler for DesktopApp {
                 }
 
                 // P28: Update Phase 28 status bar indicators.
-                self.status_bar.workspace_name = self.workspaces.active_name().to_string();
+                // Only allocate when values actually change.
+                let ws_name = self.workspaces.active_name().to_string();
+                if self.status_bar.workspace_name != ws_name {
+                    self.status_bar.workspace_name = ws_name;
+                }
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
                 self.status_bar.pane_zoomed = self.pane_zoomed;
@@ -1472,7 +1476,7 @@ impl ApplicationHandler for DesktopApp {
                     .is_some_and(|m| m.config().appearance.cursor_line_highlight);
                 self.status_bar.scroll_mode = self.scroll_mode;
                 // CWD from OSC 7 (pane-level cwd tracking) — abbreviate $HOME to ~.
-                self.status_bar.cwd = self
+                let new_cwd = self
                     .active_session()
                     .cwd()
                     .map(|p| {
@@ -1488,9 +1492,15 @@ impl ApplicationHandler for DesktopApp {
                         }
                     })
                     .unwrap_or_default();
+                if self.status_bar.cwd != new_cwd {
+                    self.status_bar.cwd = new_cwd;
+                }
                 // Hovered URL/hyperlink for status bar link preview.
-                self.status_bar.hovered_link =
+                let new_link =
                     self.hovered_link.as_ref().map(|(url, _, _, _)| url.clone());
+                if self.status_bar.hovered_link != new_link {
+                    self.status_bar.hovered_link = new_link;
+                }
                 // Remote host from OSC 1337 RemoteHost=
                 self.status_bar.remote_host = self
                     .active_session()
