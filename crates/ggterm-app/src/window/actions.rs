@@ -1623,6 +1623,40 @@ impl DesktopApp {
     ///
     /// On macOS, uses `osascript` to display a notification.
     /// On other platforms, logs the notification.
+    /// Poll for background pipe-selection command result. If the thread
+    /// has finished, copy stdout to clipboard and show toast.
+    pub(super) fn poll_pipe_result(&mut self) {
+        if let Some(result) = self.pending_pipe_result.take() {
+            if result.handle.is_finished() {
+                match result.handle.join() {
+                    Ok(Ok((stdout, stderr))) => {
+                        let text = String::from_utf8_lossy(&stdout);
+                        crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                        if !stderr.is_empty() {
+                            let err = String::from_utf8_lossy(&stderr);
+                            self.show_toast(format!("Error: {}", err.trim()));
+                        } else {
+                            self.show_toast(format!(
+                                "Piped through '{}': {} bytes",
+                                result.command,
+                                text.len()
+                            ));
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        self.show_toast(format!("Failed: {e}"));
+                    }
+                    Err(_) => {
+                        self.show_toast("Pipe command thread panicked".to_string());
+                    }
+                }
+            } else {
+                // Thread still running — put it back and keep polling.
+                self.pending_pipe_result = Some(result);
+            }
+        }
+    }
+
     pub(super) fn poll_notification(&mut self) {
         if let Some((title, body)) = self
             .active_session_mut()

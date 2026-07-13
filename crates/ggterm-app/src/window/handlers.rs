@@ -2016,7 +2016,7 @@ impl DesktopApp {
                     if cmd.is_empty() {
                         return;
                     }
-                    // Copy selection, pipe through shell command, put result in clipboard.
+                    // Copy selection, pipe through shell command in background thread.
                     self.copy_selection_to_clipboard();
                     let input = crate::clipboard::read_clipboard().unwrap_or_default();
                     let shell =
@@ -2034,37 +2034,20 @@ impl DesktopApp {
                             if let Some(stdin) = child.stdin.as_mut() {
                                 let _ = stdin.write_all(input.as_bytes());
                             }
-                            // Close stdin so commands like `cat` don't hang forever.
                             child.stdin.take();
-                            // Wait with 10s timeout to prevent UI freeze.
-                            let wait_result =
-                                std::thread::scope(|s| {
-                                    let h = s.spawn(|| child.wait_with_output());
-                                    match h.join() {
-                                        Ok(r) => r,
-                                        Err(_) => {
-                                            Err(std::io::Error::other("thread panicked"))
-                                        }
-                                    }
-                                });
-                            match wait_result {
-                                Ok(o) => {
-                                    let text = String::from_utf8_lossy(&o.stdout);
-                                    crate::clipboard::set_clipboard_bytes(text.as_bytes());
-                                    if !o.stderr.is_empty() {
-                                        let err = String::from_utf8_lossy(&o.stderr);
-                                        self.show_toast(format!("Error: {}", err.trim()));
-                                    } else {
-                                        self.show_toast(format!(
-                                            "Piped through '{cmd}': {} bytes",
-                                            text.len()
-                                        ));
-                                    }
+                            // Spawn background thread — result polled in about_to_wait.
+                            let handle = std::thread::spawn(move || {
+                                let output = child.wait_with_output();
+                                match output {
+                                    Ok(o) => Ok((o.stdout, o.stderr)),
+                                    Err(e) => Err(e.to_string()),
                                 }
-                                Err(e) => {
-                                    self.show_toast(format!("Failed: {e}"));
-                                }
-                            }
+                            });
+                            self.pending_pipe_result = Some(super::PipeCommandResult {
+                                handle,
+                                command: cmd.clone(),
+                            });
+                            self.show_toast(format!("Running '{cmd}'..."));
                         }
                         Err(e) => {
                             self.show_toast(format!("Failed to run '{cmd}': {e}"));

@@ -112,6 +112,13 @@ impl From<ModsState> for crate::input::KeyModifiers {
 /// Implements winit's `ApplicationHandler` trait to receive OS events.
 /// GPU resources (surface, device, renderer) are lazily initialized in
 /// `resumed()`.
+/// Background result for pipe-selection-to-shell-command.
+#[allow(clippy::type_complexity)]
+pub(super) struct PipeCommandResult {
+    handle: std::thread::JoinHandle<Result<(Vec<u8>, Vec<u8>), String>>,
+    command: String,
+}
+
 pub struct DesktopApp {
     /// Terminal sessions (one per tab).
     sessions: Vec<TabSession>,
@@ -348,6 +355,8 @@ pub struct DesktopApp {
     pub pipe_command_active: bool,
     /// Pipe-selection command input text.
     pub pipe_command_input: String,
+    /// Background pipe command result (thread handle + command name for toast).
+    pending_pipe_result: Option<PipeCommandResult>,
     /// P31: Saved window position from previous session.
     saved_window_pos: Option<(i32, i32)>,
     /// P31: Saved window size from previous session.
@@ -676,6 +685,7 @@ impl DesktopApp {
             toast: None,
             pipe_command_active: false,
             pipe_command_input: String::new(),
+            pending_pipe_result: None,
             saved_window_pos: None,
             saved_window_size: None,
             dragging_tab: None,
@@ -1764,6 +1774,9 @@ impl ApplicationHandler for DesktopApp {
         // P11-E: Poll for bell events.
         self.poll_bell();
 
+        // Poll for background pipe-selection command result.
+        self.poll_pipe_result();
+
         // P24-E: Poll for desktop notifications.
         self.poll_notification();
 
@@ -2080,6 +2093,7 @@ impl ApplicationHandler for DesktopApp {
             || self.pending_resize.is_some()
             || self.pipe_command_active
             || self.command_palette.visible
+            || self.pending_pipe_result.is_some()
             || self
                 .active_session_mut()
                 .app_mut()
