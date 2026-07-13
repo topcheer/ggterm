@@ -2599,8 +2599,8 @@ impl DesktopApp {
                 color: (100, 200, 120),
             });
 
-            // Command input with cursor.
-            let cmd_display = format!("{}_", self.pipe_command_input);
+            // Command input with block cursor.
+            let cmd_display = format!("{}▎", self.pipe_command_input);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: cmd_display,
                 left: bar_x + 36.0,
@@ -2666,8 +2666,8 @@ impl DesktopApp {
                 color: (100, 140, 200),
             });
 
-            // Query text with cursor.
-            let query_display = format!("{}_", self.command_palette.query);
+            // Query text with block cursor.
+            let query_display = format!("{}▎", self.command_palette.query);
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: query_display,
                 left: palette_x + 32.0,
