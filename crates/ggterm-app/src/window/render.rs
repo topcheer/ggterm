@@ -540,7 +540,8 @@ impl DesktopApp {
             // tab labels. Shows the current tab title on the left and "+"/"⚙"
             // buttons on the right. Taller bar and larger buttons for usability.
             let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
-            let btn_size = (bar_h - 8.0).max(32.0); // fit within bar with 4px padding
+            let tab_h = (cell_h + 26.0).max(48.0); // matches multi-tab tab height
+            let btn_size = tab_h.max(28.0); // same formula as multi-tab compute_layout
             let btn_gap = 8.0_f32;
             let cell_w = renderer.cell_width() as f32;
 
