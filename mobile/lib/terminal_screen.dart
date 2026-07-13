@@ -435,8 +435,10 @@ class _TerminalScreenState extends State<TerminalScreen>
   void _onInputChanged(String newText) {
     final oldText = _lastInputText;
 
-    // Detect backspace (text got shorter).
-    if (newText.length < oldText.length) {
+    // Detect backspace (text got shorter AND is a prefix truncation of old text).
+    // The prefix check is critical for IME: when a Chinese IME replaces "ni"
+    // with "你", the text gets shorter but is NOT a simple backspace.
+    if (newText.length < oldText.length && oldText.startsWith(newText)) {
       final deletedCount = oldText.length - newText.length;
       for (var i = 0; i < deletedCount; i++) {
         _sendInput([0x7F]); // DEL
@@ -445,8 +447,8 @@ class _TerminalScreenState extends State<TerminalScreen>
       return;
     }
 
-    // Detect new characters typed.
-    if (newText.length > oldText.length) {
+    // Detect new characters typed at the end (simple append).
+    if (newText.length > oldText.length && newText.startsWith(oldText)) {
       final added = newText.substring(oldText.length);
       final codes = <int>[];
 
@@ -474,6 +476,18 @@ class _TerminalScreenState extends State<TerminalScreen>
         widget.sessionManager.flush(widget.sessionId);
       }
       _modifiers.releaseAll();
+    } else if (newText != oldText) {
+      // IME replacement: text changed but is neither a simple append nor
+      // a simple backspace (e.g. Chinese pinyin "ni" → "你").
+      // Send the entire new text as UTF-8 bytes.
+      final codes = <int>[];
+      for (final char in newText.characters) {
+        codes.addAll(utf8.encode(char));
+      }
+      if (codes.isNotEmpty) {
+        _sendInput(codes);
+        widget.sessionManager.flush(widget.sessionId);
+      }
     }
 
     _lastInputText = newText;
