@@ -2019,7 +2019,8 @@ impl DesktopApp {
                     // Copy selection, pipe through shell command, put result in clipboard.
                     self.copy_selection_to_clipboard();
                     let input = crate::clipboard::read_clipboard().unwrap_or_default();
-                    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+                    let shell =
+                        std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
                     let result = std::process::Command::new(&shell)
                         .arg("-c")
                         .arg(&cmd)
@@ -2033,8 +2034,20 @@ impl DesktopApp {
                             if let Some(stdin) = child.stdin.as_mut() {
                                 let _ = stdin.write_all(input.as_bytes());
                             }
-                            let output = child.wait_with_output();
-                            match output {
+                            // Close stdin so commands like `cat` don't hang forever.
+                            child.stdin.take();
+                            // Wait with 10s timeout to prevent UI freeze.
+                            let wait_result =
+                                std::thread::scope(|s| {
+                                    let h = s.spawn(|| child.wait_with_output());
+                                    match h.join() {
+                                        Ok(r) => r,
+                                        Err(_) => {
+                                            Err(std::io::Error::other("thread panicked"))
+                                        }
+                                    }
+                                });
+                            match wait_result {
                                 Ok(o) => {
                                     let text = String::from_utf8_lossy(&o.stdout);
                                     crate::clipboard::set_clipboard_bytes(text.as_bytes());
@@ -2042,7 +2055,10 @@ impl DesktopApp {
                                         let err = String::from_utf8_lossy(&o.stderr);
                                         self.show_toast(format!("Error: {}", err.trim()));
                                     } else {
-                                        self.show_toast(format!("Piped through '{cmd}': {} bytes", text.len()));
+                                        self.show_toast(format!(
+                                            "Piped through '{cmd}': {} bytes",
+                                            text.len()
+                                        ));
                                     }
                                 }
                                 Err(e) => {
