@@ -555,77 +555,131 @@ impl DesktopApp {
             }
             // Close of `if self.tab_bar.visible` block.
         } else if !self.tab_bar.tabs.is_empty() {
-            // Single-tab mode: render a minimal floating toolbar in the
-            // top-right corner with just "+" and settings gear buttons.
-            // This saves ~34px of vertical space compared to the full tab bar.
-            let btn_size = 26.0_f32;
+            // Single-tab mode: keep the title bar background strip (same style
+            // as the full tab bar) but without tab labels. Shows the current
+            // tab title on the left and "+"/"⚙" buttons on the right.
+            // This maintains visual consistency with the multi-tab title bar.
+            let bar_h = (cell_h + 8.0).max(28.0) + 6.0;
+            let btn_size = 20.0_f32;
             let btn_gap = 4.0_f32;
-            let gear_w = btn_size;
-            let plus_w = btn_size;
-            let total_w = plus_w + btn_gap + gear_w;
-            let right_x = screen_w - total_w - 4.0;
-            let top_y = 3.0_f32;
-
             let cell_w = renderer.cell_width() as f32;
 
-            // "+" new-tab button.
-            let plus_x = right_x;
-            let plus_hovered = self.cursor_pos.0 as f32 >= plus_x
-                && self.cursor_pos.0 as f32 <= plus_x + plus_w
-                && self.cursor_pos.1 as f32 >= top_y
-                && self.cursor_pos.1 as f32 <= top_y + btn_size;
+            // Title bar background — same theme-aware style as full tab bar.
             ui_rects.push(ggterm_render_wgpu::UiRect {
-                x: plus_x,
-                y: top_y,
-                w: plus_w,
-                h: btn_size,
-                color: if plus_hovered {
-                    (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
-                } else {
-                    (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.5)
-                },
-                radius: 6.0,
+                x: 0.0,
+                y: 0.0,
+                w: screen_w,
+                h: bar_h,
+                color: (theme_bg.0 * 1.15, theme_bg.1 * 1.15, theme_bg.2 * 1.15, 0.95),
+                radius: 0.0,
                 stroke_width: 0.0,
             });
+
+            // Bottom border separator — same as full tab bar.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: 0.0,
+                y: bar_h - 1.0,
+                w: screen_w,
+                h: 1.0,
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.5),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+
+            // macOS: subtle vertical divider after traffic lights.
+            #[cfg(target_os = "macos")]
+            {
+                let tl_width = crate::titlebar::TRAFFIC_LIGHT_WIDTH;
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: tl_width - 1.0,
+                    y: 6.0,
+                    w: 1.0,
+                    h: bar_h - 12.0,
+                    color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.3),
+                    radius: 0.0,
+                    stroke_width: 0.0,
+                });
+            }
+
+            // Tab title on the left side (after traffic lights on macOS).
+            #[cfg(target_os = "macos")]
+            let title_x = crate::titlebar::TRAFFIC_LIGHT_WIDTH + 8.0;
+            #[cfg(not(target_os = "macos"))]
+            let title_x = 12.0;
+
+            let title = self
+                .tab_bar
+                .tabs
+                .first()
+                .map(|t| t.title.as_str())
+                .unwrap_or("ggterm");
+            let display_title = if title.len() > 50 {
+                format!("{}…", &title[..title.ceil_char_boundary(49)])
+            } else {
+                title.to_string()
+            };
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: display_title,
+                left: title_x,
+                top: (bar_h - cell_h) / 2.0,
+                color: (200, 205, 220),
+            });
+
+            // "+" and "⚙" buttons on the right side.
+            // On Linux/Windows, leave space for window control buttons.
+            #[cfg(not(target_os = "macos"))]
+            let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0; // window controls + gap
+            #[cfg(target_os = "macos")]
+            let right_margin = 8.0;
+
+            let gear_x = screen_w - btn_size - right_margin;
+            let plus_x = gear_x - btn_size - btn_gap;
+            let btn_y = (bar_h - btn_size) / 2.0;
+
+            // "+" new-tab button.
+            let plus_hovered = self.cursor_pos.0 as f32 >= plus_x
+                && self.cursor_pos.0 as f32 <= plus_x + btn_size
+                && self.cursor_pos.1 as f32 >= btn_y
+                && self.cursor_pos.1 as f32 <= btn_y + btn_size;
+            if plus_hovered {
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: plus_x,
+                    y: btn_y,
+                    w: btn_size,
+                    h: btn_size,
+                    color: (0.35, 0.42, 0.55, 0.7),
+                    radius: 4.0,
+                    stroke_width: 0.0,
+                });
+            }
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
-                left: plus_x + plus_w / 2.0 - cell_w * 0.5,
-                top: top_y + 5.0,
-                color: if plus_hovered {
-                    (255, 255, 255)
-                } else {
-                    (180, 185, 200)
-                },
+                left: plus_x + btn_size / 2.0 - cell_w * 0.5,
+                top: btn_y + 3.0,
+                color: if plus_hovered { (240, 240, 250) } else { (160, 165, 180) },
             });
 
             // Settings gear button.
-            let gear_x = right_x + plus_w + btn_gap;
             let gear_hovered = self.cursor_pos.0 as f32 >= gear_x
-                && self.cursor_pos.0 as f32 <= gear_x + gear_w
-                && self.cursor_pos.1 as f32 >= top_y
-                && self.cursor_pos.1 as f32 <= top_y + btn_size;
-            ui_rects.push(ggterm_render_wgpu::UiRect {
-                x: gear_x,
-                y: top_y,
-                w: gear_w,
-                h: btn_size,
-                color: if gear_hovered {
-                    (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
-                } else {
-                    (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.5)
-                },
-                radius: 6.0,
-                stroke_width: 0.0,
-            });
+                && self.cursor_pos.0 as f32 <= gear_x + btn_size
+                && self.cursor_pos.1 as f32 >= btn_y
+                && self.cursor_pos.1 as f32 <= btn_y + btn_size;
+            if gear_hovered {
+                ui_rects.push(ggterm_render_wgpu::UiRect {
+                    x: gear_x,
+                    y: btn_y,
+                    w: btn_size,
+                    h: btn_size,
+                    color: (0.35, 0.42, 0.55, 0.7),
+                    radius: 4.0,
+                    stroke_width: 0.0,
+                });
+            }
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "⚙".to_string(),
-                left: gear_x + gear_w / 2.0 - cell_w * 0.5,
-                top: top_y + 5.0,
-                color: if gear_hovered {
-                    (255, 255, 255)
-                } else {
-                    (180, 185, 200)
-                },
+                left: gear_x + btn_size / 2.0 - cell_w * 0.5,
+                top: btn_y + 3.0,
+                color: if gear_hovered { (240, 240, 250) } else { (160, 165, 180) },
             });
         }
 

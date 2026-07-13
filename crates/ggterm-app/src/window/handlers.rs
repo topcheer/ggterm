@@ -2325,6 +2325,9 @@ impl DesktopApp {
 
         let tab_bar_h = if self.tab_bar.visible {
             ((cell_h + 8.0).max(28.0) + 6.0) as u32
+        } else if !self.tab_bar.tabs.is_empty() {
+            // Single-tab mode: same height as full tab bar (title bar strip).
+            ((cell_h + 8.0).max(28.0) + 6.0) as u32
         } else {
             0
         };
@@ -2664,23 +2667,33 @@ impl DesktopApp {
                         }
                     }
 
-                    // Floating toolbar (single-tab mode): check + and gear buttons.
+                    // Single-tab title bar: check + and gear buttons.
                     if !self.tab_bar.visible && !self.tab_bar.tabs.is_empty() {
-                        let btn_size = 26.0_f32;
+                        let btn_size = 20.0_f32;
                         let btn_gap = 4.0_f32;
-                        let total_w = btn_size * 2.0 + btn_gap;
                         let screen_w = if let Some(ref r) = self.renderer {
                             r.resolution_width() as f32
                         } else {
                             self.config.cols as f32 * self.config.cell_width
                         };
-                        let right_x = screen_w - total_w - 4.0;
-                        let top_y = 3.0_f32;
+                        let cell_h = if let Some(ref r) = self.renderer {
+                            r.cell_height() as f32
+                        } else {
+                            self.config.cell_height
+                        };
+                        let bar_h = (cell_h + 8.0).max(28.0) + 6.0;
+                        #[cfg(not(target_os = "macos"))]
+                        let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
+                        #[cfg(target_os = "macos")]
+                        let right_margin = 8.0;
+                        let gear_x = screen_w - btn_size - right_margin;
+                        let plus_x = gear_x - btn_size - btn_gap;
+                        let btn_y = (bar_h - btn_size) / 2.0;
                         // "+" button.
-                        if px >= right_x
-                            && px <= right_x + btn_size
-                            && py >= top_y
-                            && py <= top_y + btn_size
+                        if px >= plus_x
+                            && px <= plus_x + btn_size
+                            && py >= btn_y
+                            && py <= btn_y + btn_size
                         {
                             self.open_tab();
                             if let Some(ref window) = self.window {
@@ -2689,11 +2702,10 @@ impl DesktopApp {
                             return;
                         }
                         // Settings gear button.
-                        let gear_x = right_x + btn_size + btn_gap;
                         if px >= gear_x
                             && px <= gear_x + btn_size
-                            && py >= top_y
-                            && py <= top_y + btn_size
+                            && py >= btn_y
+                            && py <= btn_y + btn_size
                         {
                             self.pending_open_settings = true;
                             return;
@@ -3614,26 +3626,35 @@ impl DesktopApp {
         if self.tab_bar.visible || self.tab_bar.tabs.is_empty() {
             return false;
         }
-        let btn_size = 26.0_f32;
+        let btn_size = 20.0_f32;
         let btn_gap = 4.0_f32;
-        let total_w = btn_size * 2.0 + btn_gap;
         let screen_w = if let Some(ref r) = self.renderer {
             r.resolution_width() as f32
         } else {
             self.config.cols as f32 * self.config.cell_width
         };
-        let right_x = screen_w - total_w - 4.0;
-        let top_y = 3.0_f32;
+        let cell_h = if let Some(ref r) = self.renderer {
+            r.cell_height() as f32
+        } else {
+            self.config.cell_height
+        };
+        let bar_h = (cell_h + 8.0).max(28.0) + 6.0;
+        #[cfg(not(target_os = "macos"))]
+        let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
+        #[cfg(target_os = "macos")]
+        let right_margin = 8.0;
+        let gear_x = screen_w - btn_size - right_margin;
+        let plus_x = gear_x - btn_size - btn_gap;
+        let btn_y = (bar_h - btn_size) / 2.0;
         let px = self.cursor_pos.0 as f32;
-        let on_plus = px >= right_x
-            && px <= right_x + btn_size
-            && py >= top_y
-            && py <= top_y + btn_size;
-        let gear_x = right_x + btn_size + btn_gap;
+        let on_plus = px >= plus_x
+            && px <= plus_x + btn_size
+            && py >= btn_y
+            && py <= btn_y + btn_size;
         let on_gear = px >= gear_x
             && px <= gear_x + btn_size
-            && py >= top_y
-            && py <= top_y + btn_size;
+            && py >= btn_y
+            && py <= btn_y + btn_size;
         on_plus || on_gear
     }
 }
