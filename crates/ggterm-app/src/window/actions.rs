@@ -3302,6 +3302,22 @@ impl DesktopApp {
                     self.show_toast("Dedented".to_string());
                 }
             }
+            "terminal.number_lines" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input
+                        .lines()
+                        .enumerate()
+                        .map(|(i, l)| format!("{:>4}: {l}", i + 1))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Added line numbers".to_string());
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }

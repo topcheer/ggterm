@@ -672,6 +672,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.number_lines".into(),
+            label: "Add Line Numbers to Selection".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
