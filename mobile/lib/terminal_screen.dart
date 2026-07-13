@@ -910,67 +910,50 @@ class _TerminalScreenState extends State<TerminalScreen>
     );
   }
 
-  /// Extract all visible terminal text as a string.
-  String _extractVisibleText() {
-    final buf = StringBuffer();
-    for (var row = 0; row < _screen.rows; row++) {
-      var lineText = '';
-      for (var col = 0; col < _screen.cols; col++) {
-        final idx = row * _screen.cols + col;
-        if (idx < _screen.cells.length) {
-          final cell = _screen.cells[idx];
-          lineText += cell.char;
-        }
-      }
-      // Trim trailing spaces but keep the line.
-      buf.writeln(lineText.trimRight());
-    }
-    return buf.toString().trimRight();
-  }
-
-  /// Extract text from the current visible terminal screen and copy to clipboard.
-  /// Useful for sharing terminal output without a selection.
-  Future<void> _copyScreenText() async {
-    final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
-    if (snap.cells.isEmpty) {
-      _showCopiedSnackBar('Screen is empty');
-      return;
-    }
-
-    // Build text from cell data, row by row.
+  /// Extract all visible terminal text from a screen snapshot.
+  /// Skips wide-char spacers (second half of CJK/emoji) and trims trailing whitespace.
+  /// Shared by copy, share, and long-press menu actions.
+  String _extractScreenText(ScreenSnapshot snap) {
+    if (snap.cells.isEmpty) return '';
     final lines = <String>[];
     for (var row = 0; row < snap.rows; row++) {
       final sb = StringBuffer();
       for (var col = 0; col < snap.cols; col++) {
         final idx = row * snap.cols + col;
-        if (idx < snap.cells.length) {
-          final cell = snap.cells[idx];
-          // Skip wide-char spacers (second half of CJK/emoji)
-          if (cell.flags & 0x100 != 0) continue; // WIDE_SPACER flag
-          if (cell.charCode != 0) {
-            sb.writeCharCode(cell.charCode);
-          } else {
-            sb.write(' ');
-          }
+        if (idx >= snap.cells.length) break;
+        final cell = snap.cells[idx];
+        // Skip wide-char spacers (second half of CJK/emoji).
+        if (cell.flags & 0x100 != 0) continue; // WIDE_SPACER flag
+        if (cell.charCode != 0) {
+          sb.write(cell.charWithCombining);
+        } else {
+          sb.write(' ');
         }
       }
-      final line = sb.toString().trimRight();
-      lines.add(line);
+      lines.add(sb.toString().trimRight());
     }
-
-    // Trim trailing empty lines
+    // Trim trailing empty lines.
     while (lines.isNotEmpty && lines.last.isEmpty) {
       lines.removeLast();
     }
+    return lines.join('\n');
+  }
 
-    if (lines.isEmpty) {
+  /// Extract text from the current screen state (for long-press menu).
+  String _extractVisibleText() => _extractScreenText(_screen);
+
+  /// Extract text from the current visible terminal screen and copy to clipboard.
+  /// Useful for sharing terminal output without a selection.
+  Future<void> _copyScreenText() async {
+    final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
+    final text = _extractScreenText(snap);
+    if (text.isEmpty) {
       _showCopiedSnackBar('Screen is empty');
       return;
     }
-
-    final text = lines.join('\n');
+    final lineCount = '\n'.allMatches(text).length + 1;
     await Clipboard.setData(ClipboardData(text: text));
-    _showCopiedSnackBar('Copied ${text.length} chars (${lines.length} lines)');
+    _showCopiedSnackBar('Copied ${text.length} chars ($lineCount lines)');
     HapticFeedback.selectionClick();
   }
 
@@ -978,44 +961,15 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Useful for pasting terminal output into Slack, Discord, GitHub, etc.
   Future<void> _copyScreenAsMarkdown() async {
     final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
-    if (snap.cells.isEmpty) {
+    final text = _extractScreenText(snap);
+    if (text.isEmpty) {
       _showCopiedSnackBar('Screen is empty');
       return;
     }
-
-    final lines = <String>[];
-    for (var row = 0; row < snap.rows; row++) {
-      final sb = StringBuffer();
-      for (var col = 0; col < snap.cols; col++) {
-        final idx = row * snap.cols + col;
-        if (idx < snap.cells.length) {
-          final cell = snap.cells[idx];
-          if (cell.flags & 0x100 != 0) continue; // WIDE_SPACER flag
-          if (cell.charCode != 0) {
-            sb.writeCharCode(cell.charCode);
-          } else {
-            sb.write(' ');
-          }
-        }
-      }
-      final line = sb.toString().trimRight();
-      lines.add(line);
-    }
-
-    while (lines.isNotEmpty && lines.last.isEmpty) {
-      lines.removeLast();
-    }
-
-    if (lines.isEmpty) {
-      _showCopiedSnackBar('Screen is empty');
-      return;
-    }
-
-    final text = lines.join('\n');
+    final lineCount = '\n'.allMatches(text).length + 1;
     final markdown = '```\n$text\n```';
     await Clipboard.setData(ClipboardData(text: markdown));
-    _showCopiedSnackBar(
-        'Copied ${lines.length} lines as Markdown code block');
+    _showCopiedSnackBar('Copied $lineCount lines as Markdown code block');
     HapticFeedback.selectionClick();
   }
 
