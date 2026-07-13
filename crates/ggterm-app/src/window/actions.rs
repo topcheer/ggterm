@@ -1627,32 +1627,32 @@ impl DesktopApp {
     /// has finished, copy stdout to clipboard and show toast.
     pub(super) fn poll_pipe_result(&mut self) {
         if let Some(result) = self.pending_pipe_result.take() {
-            if result.handle.is_finished() {
-                match result.handle.join() {
-                    Ok(Ok((stdout, stderr))) => {
-                        let text = String::from_utf8_lossy(&stdout);
-                        crate::clipboard::set_clipboard_bytes(text.as_bytes());
-                        if !stderr.is_empty() {
-                            let err = String::from_utf8_lossy(&stderr);
-                            self.show_toast(format!("Error: {}", err.trim()));
-                        } else {
-                            self.show_toast(format!(
-                                "Piped through '{}': {} bytes",
-                                result.command,
-                                text.len()
-                            ));
-                        }
-                    }
-                    Ok(Err(e)) => {
-                        self.show_toast(format!("Failed: {e}"));
-                    }
-                    Err(_) => {
-                        self.show_toast("Pipe command thread panicked".to_string());
+            match result.rx.try_recv() {
+                Ok(Ok((stdout, stderr))) => {
+                    let text = String::from_utf8_lossy(&stdout);
+                    crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                    if !stderr.is_empty() {
+                        let err = String::from_utf8_lossy(&stderr);
+                        self.show_toast(format!("Error: {}", err.trim()));
+                    } else {
+                        self.show_toast(format!(
+                            "Piped through '{}': {} bytes",
+                            result.command,
+                            text.len()
+                        ));
                     }
                 }
-            } else {
-                // Thread still running — put it back and keep polling.
-                self.pending_pipe_result = Some(result);
+                Ok(Err(e)) => {
+                    self.show_toast(format!("Failed: {e}"));
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // Thread still running — put it back, refresh toast.
+                    self.show_toast(format!("Running '{}'...", result.command));
+                    self.pending_pipe_result = Some(result);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.show_toast("Pipe command thread failed".to_string());
+                }
             }
         }
     }
@@ -2524,7 +2524,11 @@ impl DesktopApp {
             }
             "terminal.clear_and_reset" => {
                 // Clear scrollback + screen, then full RIS reset.
-                self.active_session_mut().app_mut().terminal_mut().grid_mut().clear_scrollback();
+                self.active_session_mut()
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut()
+                    .clear_scrollback();
                 self.active_session_mut().app_mut().terminal_mut().ris();
                 self.show_toast("Terminal cleared and reset".to_string());
             }
@@ -3178,7 +3182,6 @@ impl DesktopApp {
         }
     }
 }
-
 
 /// Truncate a string for toast display (max 40 chars).
 fn truncate_for_toast(s: &str) -> String {

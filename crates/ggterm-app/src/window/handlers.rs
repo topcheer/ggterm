@@ -769,11 +769,7 @@ impl DesktopApp {
                 return;
             }
             // Ctrl+Shift+Alt+V → paste and execute (paste + Enter)
-            if self.mods.ctrl
-                && self.mods.shift
-                && self.mods.alt
-                && key_name == "v"
-            {
+            if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "v" {
                 self.paste_and_run();
                 return;
             }
@@ -1550,11 +1546,13 @@ impl DesktopApp {
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowUp) => {
-                    self.command_palette.move_up(self.command_palette.results(&self.command_registry).len());
+                    self.command_palette
+                        .move_up(self.command_palette.results(&self.command_registry).len());
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowDown) => {
-                    self.command_palette.move_down(self.command_palette.results(&self.command_registry).len());
+                    self.command_palette
+                        .move_down(self.command_palette.results(&self.command_registry).len());
                     return;
                 }
                 PhysicalKey::Code(KeyCode::Backspace) => {
@@ -2019,8 +2017,7 @@ impl DesktopApp {
                     // Copy selection, pipe through shell command in background thread.
                     self.copy_selection_to_clipboard();
                     let input = crate::clipboard::read_clipboard().unwrap_or_default();
-                    let shell =
-                        std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+                    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
                     let result = std::process::Command::new(&shell)
                         .arg("-c")
                         .arg(&cmd)
@@ -2035,16 +2032,19 @@ impl DesktopApp {
                                 let _ = stdin.write_all(input.as_bytes());
                             }
                             child.stdin.take();
-                            // Spawn background thread — result polled in about_to_wait.
-                            let handle = std::thread::spawn(move || {
+                            // Spawn background thread — result sent via channel.
+                            let (tx, rx) =
+                                std::sync::mpsc::channel::<Result<(Vec<u8>, Vec<u8>), String>>();
+                            std::thread::spawn(move || {
                                 let output = child.wait_with_output();
-                                match output {
+                                let result = match output {
                                     Ok(o) => Ok((o.stdout, o.stderr)),
                                     Err(e) => Err(e.to_string()),
-                                }
+                                };
+                                let _ = tx.send(result);
                             });
                             self.pending_pipe_result = Some(super::PipeCommandResult {
-                                handle,
+                                rx,
                                 command: cmd.clone(),
                             });
                             self.show_toast(format!("Running '{cmd}'..."));

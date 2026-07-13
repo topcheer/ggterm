@@ -115,7 +115,7 @@ impl From<ModsState> for crate::input::KeyModifiers {
 /// Background result for pipe-selection-to-shell-command.
 #[allow(clippy::type_complexity)]
 pub(super) struct PipeCommandResult {
-    handle: std::thread::JoinHandle<Result<(Vec<u8>, Vec<u8>), String>>,
+    rx: std::sync::mpsc::Receiver<Result<(Vec<u8>, Vec<u8>), String>>,
     command: String,
 }
 
