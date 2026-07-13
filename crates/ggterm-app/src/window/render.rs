@@ -157,7 +157,6 @@ impl DesktopApp {
         let cell_w = renderer.cell_width() as f32;
         let screen_w = renderer.resolution_width() as f32;
         let screen_h = renderer.resolution_height() as f32;
-        let overlay_rects: Vec<ggterm_render_wgpu::OverlayRect> = Vec::new();
         let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::new();
         let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::new();
 
@@ -2961,7 +2960,6 @@ impl DesktopApp {
         }
 
         renderer.set_ui_rects(ui_rects);
-        renderer.set_overlay_rects(overlay_rects);
         renderer.set_overlay_text(overlay_texts);
 
         // IME preedit text overlay — show in-progress CJK composition text
@@ -2989,6 +2987,10 @@ impl DesktopApp {
                 top: ime_top + crow as f32 * cell_h,
                 color: (255, 255, 255),
             }]);
+        } else {
+            // Clear IME overlay rects when preedit is not active,
+            // preventing stale underline bars from persisting on screen.
+            renderer.set_overlay_rects(Vec::new());
         }
 
         // P20-A: Multi-pane viewport rendering.
