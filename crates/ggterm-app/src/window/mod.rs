@@ -1510,11 +1510,14 @@ impl ApplicationHandler for DesktopApp {
 
                 // Update window title: show tab bar when multiple tabs, otherwise
                 // show terminal title (OSC 0/2).
-                let title = self.active_session().app().terminal().title().to_string();
-                if title != self.last_title || self.sessions.len() > 1 {
+                // Optimized: compare &str first, only allocate when changed.
+                let term_title = self.active_session().app().terminal().title();
+                let multi_tab = self.sessions.len() > 1;
+                if term_title != self.last_title.as_str() || multi_tab {
+                    let title = term_title.to_string();
                     self.last_title = title;
                     if let Some(ref window) = self.window {
-                        let display = if self.sessions.len() > 1 {
+                        let display = if multi_tab {
                             // Multi-tab: show tab bar in title bar.
                             let titles: Vec<String> = self
                                 .sessions
