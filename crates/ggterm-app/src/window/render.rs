@@ -602,7 +602,7 @@ impl DesktopApp {
 
             // Tab title on the left side (after traffic lights on macOS).
             #[cfg(target_os = "macos")]
-            let title_x = crate::titlebar::TRAFFIC_LIGHT_WIDTH + 12.0;
+            let title_x = crate::titlebar::TRAFFIC_LIGHT_WIDTH + 30.0;
             #[cfg(not(target_os = "macos"))]
             let title_x = 16.0;
 
