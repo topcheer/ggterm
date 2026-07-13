@@ -235,10 +235,11 @@ impl TabBarState {
                 bell: bell_flags.get(i).copied().unwrap_or(false),
             })
             .collect();
-        // Always show tab bar (even with 1 tab) so the "+" new-tab button
-        // is always accessible. Modern terminals (iTerm2, Windows Terminal)
-        // always show the tab bar.
-        self.visible = !self.tabs.is_empty();
+        // Hide tab bar when only 1 tab — saves vertical space for terminal
+        // content. The "+" new-tab button and settings gear are rendered as
+        // a floating toolbar in the top-right corner instead.
+        // User can also use Ctrl+T to open a new tab.
+        self.visible = self.tabs.len() > 1;
     }
 
     /// Format the entire tab bar as a single string: `1:zsh* | 2:vim | 3:logs`.
@@ -561,7 +562,7 @@ mod tests {
     fn t_tab_bar_state_single_tab_visible() {
         let mut state = TabBarState::new();
         state.update(&["zsh"], 0);
-        assert!(state.visible); // Always visible now (for "+" button access)
+        assert!(!state.visible); // Single tab: tab bar hidden, floating toolbar shown
     }
 
     #[test]
@@ -701,7 +702,7 @@ mod tests {
         let mut state = TabBarState::new();
         state.update(&["zsh"], 0);
         let layout = state.compute_layout(800.0, 14.0);
-        assert!(layout.visible); // Always visible now
+        assert!(!layout.visible); // Single tab: tab bar hidden
     }
 
     #[test]

@@ -2664,6 +2664,42 @@ impl DesktopApp {
                         }
                     }
 
+                    // Floating toolbar (single-tab mode): check + and gear buttons.
+                    if !self.tab_bar.visible && !self.tab_bar.tabs.is_empty() {
+                        let btn_size = 26.0_f32;
+                        let btn_gap = 4.0_f32;
+                        let total_w = btn_size * 2.0 + btn_gap;
+                        let screen_w = if let Some(ref r) = self.renderer {
+                            r.resolution_width() as f32
+                        } else {
+                            self.config.cols as f32 * self.config.cell_width
+                        };
+                        let right_x = screen_w - total_w - 4.0;
+                        let top_y = 3.0_f32;
+                        // "+" button.
+                        if px >= right_x
+                            && px <= right_x + btn_size
+                            && py >= top_y
+                            && py <= top_y + btn_size
+                        {
+                            self.open_tab();
+                            if let Some(ref window) = self.window {
+                                window.request_redraw();
+                            }
+                            return;
+                        }
+                        // Settings gear button.
+                        let gear_x = right_x + btn_size + btn_gap;
+                        if px >= gear_x
+                            && px <= gear_x + btn_size
+                            && py >= top_y
+                            && py <= top_y + btn_size
+                        {
+                            self.pending_open_settings = true;
+                            return;
+                        }
+                    }
+
                     if py < bounds.y as f32 {
                         let layout = self
                             .tab_bar
@@ -3093,7 +3129,11 @@ impl DesktopApp {
                 } else {
                     CursorIcon::RowResize
                 }
-            } else if self.hovered_link.is_some() {
+            } else if self.hovered_link.is_some()
+                || (!self.tab_bar.visible
+                    && !self.tab_bar.tabs.is_empty()
+                    && self.is_on_floating_toolbar(py))
+            {
                 CursorIcon::Pointer
             } else if py > content_top || self.selection.dragging {
                 CursorIcon::Text
@@ -3566,6 +3606,35 @@ impl DesktopApp {
         if let Some(ref window) = self.window {
             window.request_redraw();
         }
+    }
+
+    /// Check if the cursor is hovering over the floating toolbar (single-tab mode).
+    /// The toolbar is in the top-right corner: "+" and settings gear buttons.
+    pub(super) fn is_on_floating_toolbar(&self, py: f32) -> bool {
+        if self.tab_bar.visible || self.tab_bar.tabs.is_empty() {
+            return false;
+        }
+        let btn_size = 26.0_f32;
+        let btn_gap = 4.0_f32;
+        let total_w = btn_size * 2.0 + btn_gap;
+        let screen_w = if let Some(ref r) = self.renderer {
+            r.resolution_width() as f32
+        } else {
+            self.config.cols as f32 * self.config.cell_width
+        };
+        let right_x = screen_w - total_w - 4.0;
+        let top_y = 3.0_f32;
+        let px = self.cursor_pos.0 as f32;
+        let on_plus = px >= right_x
+            && px <= right_x + btn_size
+            && py >= top_y
+            && py <= top_y + btn_size;
+        let gear_x = right_x + btn_size + btn_gap;
+        let on_gear = px >= gear_x
+            && px <= gear_x + btn_size
+            && py >= top_y
+            && py <= top_y + btn_size;
+        on_plus || on_gear
     }
 }
 

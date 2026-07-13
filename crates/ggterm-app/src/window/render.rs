@@ -554,6 +554,79 @@ impl DesktopApp {
                 }
             }
             // Close of `if self.tab_bar.visible` block.
+        } else if !self.tab_bar.tabs.is_empty() {
+            // Single-tab mode: render a minimal floating toolbar in the
+            // top-right corner with just "+" and settings gear buttons.
+            // This saves ~34px of vertical space compared to the full tab bar.
+            let btn_size = 26.0_f32;
+            let btn_gap = 4.0_f32;
+            let gear_w = btn_size;
+            let plus_w = btn_size;
+            let total_w = plus_w + btn_gap + gear_w;
+            let right_x = screen_w - total_w - 4.0;
+            let top_y = 3.0_f32;
+
+            let cell_w = renderer.cell_width() as f32;
+
+            // "+" new-tab button.
+            let plus_x = right_x;
+            let plus_hovered = self.cursor_pos.0 as f32 >= plus_x
+                && self.cursor_pos.0 as f32 <= plus_x + plus_w
+                && self.cursor_pos.1 as f32 >= top_y
+                && self.cursor_pos.1 as f32 <= top_y + btn_size;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: plus_x,
+                y: top_y,
+                w: plus_w,
+                h: btn_size,
+                color: if plus_hovered {
+                    (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
+                } else {
+                    (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.5)
+                },
+                radius: 6.0,
+                stroke_width: 0.0,
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "+".to_string(),
+                left: plus_x + plus_w / 2.0 - cell_w * 0.5,
+                top: top_y + 5.0,
+                color: if plus_hovered {
+                    (255, 255, 255)
+                } else {
+                    (180, 185, 200)
+                },
+            });
+
+            // Settings gear button.
+            let gear_x = right_x + plus_w + btn_gap;
+            let gear_hovered = self.cursor_pos.0 as f32 >= gear_x
+                && self.cursor_pos.0 as f32 <= gear_x + gear_w
+                && self.cursor_pos.1 as f32 >= top_y
+                && self.cursor_pos.1 as f32 <= top_y + btn_size;
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: gear_x,
+                y: top_y,
+                w: gear_w,
+                h: btn_size,
+                color: if gear_hovered {
+                    (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.7)
+                } else {
+                    (theme_bg.0 * 1.3, theme_bg.1 * 1.3, theme_bg.2 * 1.3, 0.5)
+                },
+                radius: 6.0,
+                stroke_width: 0.0,
+            });
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "⚙".to_string(),
+                left: gear_x + gear_w / 2.0 - cell_w * 0.5,
+                top: top_y + 5.0,
+                color: if gear_hovered {
+                    (255, 255, 255)
+                } else {
+                    (180, 185, 200)
+                },
+            });
         }
 
         // ── Cursor line highlight (rendered if enabled) ───────────────
