@@ -1442,8 +1442,13 @@ impl ApplicationHandler for DesktopApp {
                         })
                         .unwrap_or_default();
                 }
-                self.status_bar.git_branch = self.git_branch_cache.clone();
-                self.status_bar.theme_name = self.last_applied_theme.clone();
+                // Only clone when changed — avoids per-frame String allocation.
+                if self.status_bar.git_branch != self.git_branch_cache {
+                    self.status_bar.git_branch = self.git_branch_cache.clone();
+                }
+                if self.status_bar.theme_name != self.last_applied_theme {
+                    self.status_bar.theme_name = self.last_applied_theme.clone();
+                }
                 self.status_bar.dimensions = format!(
                     "{}×{}",
                     self.active_session().app().grid().width(),
