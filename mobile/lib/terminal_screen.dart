@@ -290,21 +290,24 @@ class _TerminalScreenState extends State<TerminalScreen>
       // Apply inertial scrolling (continues scrolling after finger lift).
       _applyInertialScroll();
 
-      // Get screen snapshot (needed for bell check even when idle).
-      final snapshot = mgr.getScreenSnapshot(id);
-
-      // Skip hash comparison when no data was pumped AND no state change.
-      // This avoids the expensive _computeFrameHash() + setState() on idle
-      // terminals, saving CPU and battery at 60fps.
+      // Fast idle path: when no data was pumped AND no state change,
+      // skip the expensive getScreenSnapshot() + _computeFrameHash() entirely.
+      // Bell is always consumed by the frame that pumped the data (since
+      // sessionTakeBell is a take, not a peek), so idle bell check is a no-op.
       final scrolledUp = widget.sessionManager.displayOffset(id) > 0;
       if (bytesPumped == 0 &&
           alive == _transportAlive &&
           scrolledUp == _isScrolledUp) {
-        if (snapshot.hasBell) {
-          HapticFeedback.mediumImpact();
+        // Decay bell flash counter during idle.
+        if (_bellFlashFrames > 0) {
+          _bellFlashFrames--;
+          _lastFrameHash = 0;
         }
         return;
       }
+
+      // Active path: fetch screen snapshot for change detection + bell.
+      final snapshot = mgr.getScreenSnapshot(id);
 
       // Only rebuild if content changed (cursor blink handled separately).
       final hash = _computeFrameHash(snapshot);
@@ -1842,6 +1845,12 @@ class _TerminalPainter extends CustomPainter {
   static final _cursorBorderPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.5;
+  static final _bgPaint = Paint();
+
+  // Reusable TextPainter — avoids allocation per text run (~50+ per frame).
+  // TextPainter.layout() is the expensive call; reusing the instance
+  // avoids repeated constructor + GC pressure at 60fps.
+  static final _textPainter = TextPainter(textDirection: TextDirection.ltr);
 
   _TerminalPainter({
     required this.screen,
@@ -1868,9 +1877,9 @@ class _TerminalPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Fill background.
-    final bgPaint = Paint()..color = theme.background;
-    canvas.drawRect(Offset.zero & size, bgPaint);
+    // Fill background (reuse static paint to avoid per-frame allocation).
+    _bgPaint.color = theme.background;
+    canvas.drawRect(Offset.zero & size, _bgPaint);
 
     if (screen.cells.isEmpty) return;
 
@@ -2018,6 +2027,7 @@ class _TerminalPainter extends CustomPainter {
   }
 
   /// Paint a run of text at the given column.
+  /// Reuses a static TextPainter to avoid per-run allocation.
   void _paintRun(
     Canvas canvas,
     String text,
@@ -2051,13 +2061,12 @@ class _TerminalPainter extends CustomPainter {
       ]),
     );
 
-    final tp = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    // Reuse static TextPainter — avoids constructor + GC per text run.
+    _textPainter.text = TextSpan(text: text, style: style);
+    _textPainter.layout();
 
     final x = startCol * cellW;
-    final dy = rowY + (cellH - tp.height) / 2;
-    tp.paint(canvas, Offset(x, dy));
+    final dy = rowY + (cellH - _textPainter.height) / 2;
+    _textPainter.paint(canvas, Offset(x, dy));
   }
 }
