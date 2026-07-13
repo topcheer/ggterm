@@ -1711,6 +1711,7 @@ impl ApplicationHandler for DesktopApp {
                         if grid.display_offset() > 0 {
                             grid.reset_viewport();
                         }
+                        self.cursor_blink.reset();
                         self.write_to_pty(text.as_bytes());
                         self.ime_preedit = None;
                     }
