@@ -3242,6 +3242,28 @@ impl DesktopApp {
                     }
                 }
             }
+            "terminal.word_freq" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let mut freq: std::collections::HashMap<&str, usize> =
+                        std::collections::HashMap::new();
+                    for word in input.split_whitespace() {
+                        *freq.entry(word).or_insert(0) += 1;
+                    }
+                    let mut sorted: Vec<(&str, usize)> = freq.into_iter().collect();
+                    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                    let result = sorted
+                        .iter()
+                        .map(|(word, count)| format!("{count:4}  {word}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast(format!("{} unique words", sorted.len()));
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
