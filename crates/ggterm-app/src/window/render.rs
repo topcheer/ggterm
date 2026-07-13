@@ -437,38 +437,25 @@ impl DesktopApp {
             }
 
             // "+" multi-function button at the end.
-            let btn_x = layout.new_tab_button.cx - layout.new_tab_button.size / 2.0;
             let btn_hovered = self.tab_bar.is_new_tab_button_at(
                 &layout,
                 self.cursor_pos.0 as f32,
                 self.cursor_pos.1 as f32,
             );
-            let btn_bg = if btn_hovered {
-                (0.35, 0.42, 0.55, 0.8)
-            } else {
-                (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.7)
-            };
-            ui_rects.push(ggterm_render_wgpu::UiRect {
-                x: btn_x,
-                y: (bar_h - tab_h) / 2.0,
-                w: layout.new_tab_button.size,
-                h: tab_h,
-                color: btn_bg,
-                radius: tab_radius,
-                stroke_width: 0.0,
-            });
-            let plus_scale = (layout.new_tab_button.size / cell_w * 0.55).clamp(1.0, 2.5);
-            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "+".to_string(),
-                left: layout.new_tab_button.cx - cell_w * plus_scale / 2.0,
-                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0 - cell_h * plus_scale / 2.0,
-                color: if btn_hovered {
-                    (255, 255, 255)
-                } else {
-                    (180, 185, 200)
-                },
-                scale: plus_scale,
-            });
+            push_titlebar_button(
+                &mut ui_rects,
+                &mut overlay_texts,
+                layout.new_tab_button.cx - layout.new_tab_button.size / 2.0,
+                (bar_h - tab_h) / 2.0,
+                layout.new_tab_button.size,
+                "+",
+                btn_hovered,
+                (0.35, 0.42, 0.55, 0.8),
+                theme_bg,
+                cell_w,
+                cell_h,
+                tab_radius,
+            );
 
             // Settings gear button at the far right.
             let gear_hovered = self.tab_bar.is_settings_button_at(
@@ -476,34 +463,20 @@ impl DesktopApp {
                 self.cursor_pos.0 as f32,
                 self.cursor_pos.1 as f32,
             );
-            let gear_scale = (layout.settings_button.size / cell_w * 0.55).clamp(1.0, 2.5);
-            let gear_bg = if gear_hovered {
-                (0.35, 0.42, 0.55, 0.8)
-            } else {
-                (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.7)
-            };
-            ui_rects.push(ggterm_render_wgpu::UiRect {
-                x: layout.settings_button.cx - layout.settings_button.size / 2.0,
-                y: (bar_h - tab_h) / 2.0,
-                w: layout.settings_button.size,
-                h: tab_h,
-                color: gear_bg,
-                radius: tab_radius,
-                stroke_width: 0.0,
-            });
-            // Use a simple gear-like symbol: we use the Unicode gear character.
-            // If it doesn't render, fallback to a colon-like icon.
-            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "\u{2699}".to_string(), // ⚙ gear symbol
-                left: layout.settings_button.cx - cell_w * gear_scale / 2.0,
-                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0 - cell_h * gear_scale / 2.0,
-                color: if gear_hovered {
-                    (255, 255, 255)
-                } else {
-                    (180, 185, 200)
-                },
-                scale: gear_scale,
-            });
+            push_titlebar_button(
+                &mut ui_rects,
+                &mut overlay_texts,
+                layout.settings_button.cx - layout.settings_button.size / 2.0,
+                (bar_h - tab_h) / 2.0,
+                layout.settings_button.size,
+                "\u{2699}", // ⚙ gear symbol
+                gear_hovered,
+                (0.35, 0.42, 0.55, 0.8),
+                theme_bg,
+                cell_w,
+                cell_h,
+                tab_radius,
+            );
 
             // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
             #[cfg(not(target_os = "macos"))]
@@ -654,64 +627,40 @@ impl DesktopApp {
                 && self.cursor_pos.0 as f32 <= plus_x + btn_size
                 && self.cursor_pos.1 as f32 >= btn_y
                 && self.cursor_pos.1 as f32 <= btn_y + btn_size;
-            // Always show button background for visibility.
-            ui_rects.push(ggterm_render_wgpu::UiRect {
-                x: plus_x,
-                y: btn_y,
-                w: btn_size,
-                h: btn_size,
-                color: if plus_hovered {
-                    (0.35, 0.42, 0.55, 0.8)
-                } else {
-                    (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
-                },
-                radius: 8.0,
-                stroke_width: 0.0,
-            });
-            let plus_scale = (btn_size / cell_w * 0.55).clamp(1.0, 2.5);
-            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "+".to_string(),
-                left: plus_x + btn_size / 2.0 - cell_w * plus_scale / 2.0,
-                top: btn_y + btn_size / 2.0 - cell_h * plus_scale / 2.0,
-                color: if plus_hovered {
-                    (240, 240, 250)
-                } else {
-                    (200, 205, 220)
-                },
-                scale: plus_scale,
-            });
+            push_titlebar_button(
+                &mut ui_rects,
+                &mut overlay_texts,
+                plus_x,
+                btn_y,
+                btn_size,
+                "+",
+                plus_hovered,
+                (0.35, 0.42, 0.55, 0.8),
+                theme_bg,
+                cell_w,
+                cell_h,
+                8.0,
+            );
 
             // Settings gear button.
             let gear_hovered = self.cursor_pos.0 as f32 >= gear_x
                 && self.cursor_pos.0 as f32 <= gear_x + btn_size
                 && self.cursor_pos.1 as f32 >= btn_y
                 && self.cursor_pos.1 as f32 <= btn_y + btn_size;
-            // Always show button background for visibility.
-            ui_rects.push(ggterm_render_wgpu::UiRect {
-                x: gear_x,
-                y: btn_y,
-                w: btn_size,
-                h: btn_size,
-                color: if gear_hovered {
-                    (0.35, 0.42, 0.55, 0.8)
-                } else {
-                    (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
-                },
-                radius: 8.0,
-                stroke_width: 0.0,
-            });
-            let gear_scale = (btn_size / cell_w * 0.55).clamp(1.0, 2.5);
-            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "⚙".to_string(),
-                left: gear_x + btn_size / 2.0 - cell_w * gear_scale / 2.0,
-                top: btn_y + btn_size / 2.0 - cell_h * gear_scale / 2.0,
-                color: if gear_hovered {
-                    (240, 240, 250)
-                } else {
-                    (200, 205, 220)
-                },
-                scale: gear_scale,
-            });
+            push_titlebar_button(
+                &mut ui_rects,
+                &mut overlay_texts,
+                gear_x,
+                btn_y,
+                btn_size,
+                "\u{2699}", // ⚙ gear symbol
+                gear_hovered,
+                (0.35, 0.42, 0.55, 0.8),
+                theme_bg,
+                cell_w,
+                cell_h,
+                8.0,
+            );
         }
 
         // ── Cursor line highlight (rendered if enabled) ───────────────
@@ -3371,6 +3320,53 @@ impl DesktopApp {
             log::debug!("settings: {}", self.settings.format_summary());
         }
     }
+}
+
+/// Render a title bar button with background container and centered icon.
+/// Pushes a UiRect for the background and an OverlayTextSpec for the icon.
+#[allow(clippy::too_many_arguments)]
+fn push_titlebar_button(
+    ui_rects: &mut Vec<ggterm_render_wgpu::UiRect>,
+    overlay_texts: &mut Vec<ggterm_render_wgpu::OverlayTextSpec>,
+    x: f32,
+    y: f32,
+    size: f32,
+    icon: &str,
+    hovered: bool,
+    hover_color: (f32, f32, f32, f32),
+    theme_bg: (f32, f32, f32),
+    cell_w: f32,
+    cell_h: f32,
+    radius: f32,
+) {
+    // Background container.
+    ui_rects.push(ggterm_render_wgpu::UiRect {
+        x,
+        y,
+        w: size,
+        h: size,
+        color: if hovered {
+            hover_color
+        } else {
+            (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
+        },
+        radius,
+        stroke_width: 0.0,
+    });
+
+    // Centered icon.
+    let scale = (size / cell_w * 0.55).clamp(1.0, 2.5);
+    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+        text: icon.to_string(),
+        left: x + size / 2.0 - cell_w * scale / 2.0,
+        top: y + size / 2.0 - cell_h * scale / 2.0,
+        color: if hovered {
+            (240, 240, 250)
+        } else {
+            (200, 205, 220)
+        },
+        scale,
+    });
 }
 
 /// Word-wrap a string to fit within `max_chars` characters per line.
