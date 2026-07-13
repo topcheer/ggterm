@@ -2618,6 +2618,117 @@ impl DesktopApp {
             });
         }
 
+        // ── Command Palette overlay ──────────────────────────────────
+        if self.command_palette.visible {
+            let registry = crate::command_palette::CommandRegistry::defaults();
+            let results = self.command_palette.results(&registry);
+            let palette_w = 520.0;
+            let palette_h = 360.0;
+            let palette_x = (screen_w - palette_w) / 2.0;
+            let palette_y = 60.0;
+
+            // Background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: palette_x,
+                y: palette_y,
+                w: palette_w,
+                h: palette_h,
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
+                radius: 12.0,
+                stroke_width: 0.0,
+            });
+            // Accent border.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: palette_x,
+                y: palette_y,
+                w: palette_w,
+                h: palette_h,
+                color: (0.35, 0.45, 0.65, 0.8),
+                radius: 12.0,
+                stroke_width: 1.5,
+            });
+
+            // Query input row background.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: palette_x + 8.0,
+                y: palette_y + 8.0,
+                w: palette_w - 16.0,
+                h: 36.0,
+                color: (theme_bg.0 * 2.0, theme_bg.1 * 2.0, theme_bg.2 * 2.0, 0.5),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+
+            // ">" prompt icon.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: ">".to_string(),
+                left: palette_x + 16.0,
+                top: palette_y + 16.0,
+                color: (100, 140, 200),
+            });
+
+            // Query text with cursor.
+            let query_display = format!("{}_", self.command_palette.query);
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: query_display,
+                left: palette_x + 32.0,
+                top: palette_y + 16.0,
+                color: (230, 230, 240),
+            });
+
+            // Result items.
+            let item_h = 28.0;
+            let list_y = palette_y + 52.0;
+            for (i, (cmd, _score)) in results.iter().enumerate().take(10) {
+                let item_y = list_y + i as f32 * item_h;
+                let is_selected = i == self.command_palette.selected;
+
+                if is_selected {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: palette_x + 8.0,
+                        y: item_y,
+                        w: palette_w - 16.0,
+                        h: item_h - 2.0,
+                        color: (0.3, 0.45, 0.7, 0.3),
+                        radius: 6.0,
+                        stroke_width: 0.0,
+                    });
+                }
+
+                let label_color = if is_selected {
+                    (255, 255, 255)
+                } else {
+                    (200, 200, 210)
+                };
+
+                // Command label.
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: cmd.label.clone(),
+                    left: palette_x + 20.0,
+                    top: item_y + 5.0,
+                    color: label_color,
+                });
+
+                // Shortcut on the right (if any).
+                if let Some(ref shortcut) = cmd.shortcut {
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: shortcut.clone(),
+                        left: palette_x + palette_w - shortcut.len() as f32 * 8.0 - 20.0,
+                        top: item_y + 5.0,
+                        color: (100, 140, 200),
+                    });
+                }
+            }
+
+            // Hint at bottom.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "↑↓ navigate  Enter: run  Esc: close".to_string(),
+                left: palette_x + 16.0,
+                top: palette_y + palette_h - 22.0,
+                color: (110, 110, 130),
+            });
+        }
+
         // ── P33: URL hover tooltip + underline ────────────────────────
         if let Some((ref url, start_col, end_col, link_row)) = self.hovered_link {
             // Draw background highlight beneath the URL text.

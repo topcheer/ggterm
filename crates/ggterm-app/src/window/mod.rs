@@ -2076,6 +2076,7 @@ impl ApplicationHandler for DesktopApp {
         let need_redraw = content_dirty
             || self.pending_resize.is_some()
             || self.pipe_command_active
+            || self.command_palette.visible
             || self
                 .active_session_mut()
                 .app_mut()
