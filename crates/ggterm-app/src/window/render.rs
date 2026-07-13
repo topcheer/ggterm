@@ -2563,6 +2563,61 @@ impl DesktopApp {
             });
         }
 
+        // ── Pipe Selection to Shell Command input overlay ────────────
+        if self.pipe_command_active {
+            let bar_w = 480.0;
+            let bar_h = 40.0;
+            let bar_x = (screen_w - bar_w) / 2.0;
+            let bar_y = 8.0;
+
+            // Background — theme-aware.
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: bar_x,
+                y: bar_y,
+                w: bar_w,
+                h: bar_h,
+                color: (theme_bg.0 * 1.6, theme_bg.1 * 1.6, theme_bg.2 * 1.6, 0.97),
+                radius: 10.0,
+                stroke_width: 0.0,
+            });
+            // Accent border — green to distinguish from search (blue).
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: bar_x,
+                y: bar_y,
+                w: bar_w,
+                h: bar_h,
+                color: (0.25, 0.60, 0.35, 0.8),
+                radius: 10.0,
+                stroke_width: 1.5,
+            });
+
+            // Prompt icon "$ |"
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "$ |".to_string(),
+                left: bar_x + 12.0,
+                top: bar_y + 10.0,
+                color: (100, 200, 120),
+            });
+
+            // Command input with cursor.
+            let cmd_display = format!("{}_", self.pipe_command_input);
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: cmd_display,
+                left: bar_x + 36.0,
+                top: bar_y + 10.0,
+                color: (230, 230, 240),
+            });
+
+            // Hint text at bottom.
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: "Enter: run  Esc: cancel  (selection piped to stdin, result to clipboard)"
+                    .to_string(),
+                left: bar_x + 12.0,
+                top: bar_y + bar_h + 4.0,
+                color: (110, 110, 130),
+            });
+        }
+
         // ── P33: URL hover tooltip + underline ────────────────────────
         if let Some((ref url, start_col, end_col, link_row)) = self.hovered_link {
             // Draw background highlight beneath the URL text.
