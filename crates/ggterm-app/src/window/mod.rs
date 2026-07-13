@@ -1023,7 +1023,7 @@ impl ApplicationHandler for DesktopApp {
             .with_inner_size(winit::dpi::LogicalSize::new(win_w as f64, win_h as f64))
             .with_min_inner_size(winit::dpi::LogicalSize::new(
                 crate::desktop_config::MIN_COLS as f64 * 8.0,
-                crate::desktop_config::MIN_ROWS as f64 * 16.0 + 60.0, // +60 for tab bar + status bar
+                crate::desktop_config::MIN_ROWS as f64 * 16.0 + 100.0, // +100 for title bar + status bar
             ))
             .with_transparent(true);
 
