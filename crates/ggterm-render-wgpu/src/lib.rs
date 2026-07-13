@@ -197,7 +197,7 @@ pub struct UiRect {
 }
 
 /// P19-G: Overlay text specification for tab bar / settings / about rendering.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OverlayTextSpec {
     /// Text content.
     pub text: String,
@@ -209,6 +209,18 @@ pub struct OverlayTextSpec {
     pub color: (u8, u8, u8),
     /// Font scale multiplier (1.0 = default font size). Larger = bigger text.
     pub scale: f32,
+}
+
+impl Default for OverlayTextSpec {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            left: 0.0,
+            top: 0.0,
+            color: (255, 255, 255),
+            scale: 1.0,
+        }
+    }
 }
 
 /// P19-G: Overlay rectangle specification for UI backgrounds and panels.
@@ -1219,7 +1231,8 @@ impl GlyphonRenderer {
             let mut text_area_specs: Vec<(usize, f32, f32, (u8, u8, u8), f32)> = Vec::new();
 
             for ot in &overlay_texts {
-                let scaled_font = self.font_size * ot.scale;
+                let scale = ot.scale.max(0.1); // clamp to prevent 0-font panic
+                let scaled_font = self.font_size * scale;
                 let metrics = Metrics::new(scaled_font, scaled_font);
                 let attrs = Attrs::new()
                     .family(Family::Name(&self.font_family))
@@ -1235,7 +1248,7 @@ impl GlyphonRenderer {
                 buffer.shape_until_scroll(&mut self.font_system, false);
                 let buf_idx = buffers.len();
                 buffers.push(buffer);
-                text_area_specs.push((buf_idx, ot.left, ot.top, ot.color, ot.scale));
+                text_area_specs.push((buf_idx, ot.left, ot.top, ot.color, scale));
             }
 
             let text_areas: Vec<TextArea> = text_area_specs
