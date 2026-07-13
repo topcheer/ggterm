@@ -2014,6 +2014,13 @@ impl DesktopApp {
                     if cmd.is_empty() {
                         return;
                     }
+                    // Guard: require an active selection to pipe.
+                    // Without this, read_clipboard() would feed stale clipboard
+                    // contents into the shell command — a potential data leak.
+                    if self.selection.normalized().is_none() {
+                        self.show_toast("Nothing selected — select text first");
+                        return;
+                    }
                     // Copy selection, pipe through shell command in background thread.
                     self.copy_selection_to_clipboard();
                     let input = crate::clipboard::read_clipboard().unwrap_or_default();
