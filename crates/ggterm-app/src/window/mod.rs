@@ -342,6 +342,10 @@ pub struct DesktopApp {
     rename_text: String,
     /// P30-C: Toast notification (message + remaining frames).
     toast: Option<(String, u32)>,
+    /// Pipe-selection command input state.
+    pub pipe_command_active: bool,
+    /// Pipe-selection command input text.
+    pub pipe_command_input: String,
     /// P31: Saved window position from previous session.
     saved_window_pos: Option<(i32, i32)>,
     /// P31: Saved window size from previous session.
@@ -667,6 +671,8 @@ impl DesktopApp {
             renaming_tab: None,
             rename_text: String::new(),
             toast: None,
+            pipe_command_active: false,
+            pipe_command_input: String::new(),
             saved_window_pos: None,
             saved_window_size: None,
             dragging_tab: None,

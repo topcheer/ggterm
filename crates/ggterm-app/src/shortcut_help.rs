@@ -758,6 +758,12 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+P".into(),
+            description: "Pipe selection to shell command".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+Alt+C".into(),
             description: "Copy current directory path".into(),
             category: ShortcutCategory::Effects,

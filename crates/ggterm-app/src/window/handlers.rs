@@ -1353,6 +1353,16 @@ impl DesktopApp {
             return;
         }
 
+        // Ctrl+Shift+Alt+P → Pipe selection to shell command
+        if self.mods.ctrl
+            && self.mods.shift
+            && self.mods.alt
+            && let PhysicalKey::Code(KeyCode::KeyP) = &event.physical_key
+        {
+            self.execute_command_palette_action("terminal.pipe_selection");
+            return;
+        }
+
         // P33: Ctrl+Shift+Alt+R → reset config to defaults
         if self.mods.ctrl
             && self.mods.shift
@@ -1993,6 +2003,75 @@ impl DesktopApp {
         // P10-D: When search bar is open, intercept all keyboard input.
         if self.search.visible {
             self.handle_search_input(event);
+            return;
+        }
+
+        // Pipe-selection command input mode
+        if self.pipe_command_active {
+            match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    self.pipe_command_active = false;
+                    self.pipe_command_input.clear();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Enter) => {
+                    let cmd = std::mem::take(&mut self.pipe_command_input);
+                    self.pipe_command_active = false;
+                    if cmd.is_empty() {
+                        return;
+                    }
+                    // Copy selection, pipe through shell command, put result in clipboard.
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+                    let result = std::process::Command::new(&shell)
+                        .arg("-c")
+                        .arg(&cmd)
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn();
+                    match result {
+                        Ok(mut child) => {
+                            use std::io::Write;
+                            if let Some(stdin) = child.stdin.as_mut() {
+                                let _ = stdin.write_all(input.as_bytes());
+                            }
+                            let output = child.wait_with_output();
+                            match output {
+                                Ok(o) => {
+                                    let text = String::from_utf8_lossy(&o.stdout);
+                                    crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                                    if !o.stderr.is_empty() {
+                                        let err = String::from_utf8_lossy(&o.stderr);
+                                        self.show_toast(format!("Error: {}", err.trim()));
+                                    } else {
+                                        self.show_toast(format!("Piped through '{cmd}': {} bytes", text.len()));
+                                    }
+                                }
+                                Err(e) => {
+                                    self.show_toast(format!("Failed: {e}"));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.show_toast(format!("Failed to run '{cmd}': {e}"));
+                        }
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Backspace) => {
+                    self.pipe_command_input.pop();
+                    return;
+                }
+                _ => {}
+            }
+            // Printable characters go to command input.
+            if let PhysicalKey::Code(code) = &event.physical_key
+                && let Some(c) = keycode_to_char(code, self.mods.shift)
+            {
+                self.pipe_command_input.push(c);
+            }
             return;
         }
 

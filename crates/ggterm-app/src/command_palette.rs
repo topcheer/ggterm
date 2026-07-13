@@ -366,110 +366,20 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
-            id: "terminal.copy_as_json".into(),
-            label: "Copy Selection as JSON String".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_as_base64".into(),
-            label: "Copy Selection as Base64".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_as_url".into(),
-            label: "Copy Selection as URL-Encoded".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_as_sha256".into(),
-            label: "Copy Selection SHA-256 Hash".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.count_words".into(),
-            label: "Count Selection Words".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_as_hex".into(),
-            label: "Copy Selection as Hex Dump".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
             id: "terminal.interrupt_all".into(),
             label: "Send Ctrl+C to All Panes".into(),
             category: "Terminal".into(),
             shortcut: None,
         });
         r.register(Command {
-            id: "terminal.copy_uppercase".into(),
-            label: "Copy Selection Uppercase".into(),
+            id: "terminal.pipe_selection".into(),
+            label: "Pipe Selection to Shell Command...".into(),
             category: "Terminal".into(),
-            shortcut: None,
+            shortcut: Some("Ctrl+Shift+Alt+P".into()),
         });
         r.register(Command {
-            id: "terminal.copy_lowercase".into(),
-            label: "Copy Selection Lowercase".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_trimmed".into(),
-            label: "Copy Selection Trimmed".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_dedup".into(),
-            label: "Copy Selection Deduplicated".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_sorted".into(),
-            label: "Copy Selection Sorted".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_reversed".into(),
-            label: "Copy Selection Reversed".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_no_blank".into(),
-            label: "Copy Selection Without Blank Lines".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_as_csv".into(),
-            label: "Copy Selection as CSV".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.copy_as_markdown".into(),
-            label: "Copy Selection as Markdown Table".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.paste_and_run".into(),
-            label: "Paste and Execute".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.open_terminal_in_cwd".into(),
-            label: "Open System Terminal in Current Directory".into(),
+            id: "terminal.copy_last_output".into(),
+            label: "Copy Last Command Output".into(),
             category: "Terminal".into(),
             shortcut: None,
         });
@@ -486,198 +396,24 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
-            id: "terminal.copy_output_numbered".into(),
-            label: "Copy Last Output with Line Numbers".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
             id: "terminal.copy_cwd_path".into(),
             label: "Copy Current Directory Path".into(),
             category: "Terminal".into(),
-            shortcut: None,
+            shortcut: Some("Ctrl+Shift+Alt+C".into()),
         });
         r.register(Command {
-            id: "terminal.open_selection_in_editor".into(),
-            label: "Open Selection in $EDITOR".into(),
+            id: "terminal.paste_and_run".into(),
+            label: "Paste and Execute".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+V".into()),
+        });
+        r.register(Command {
+            id: "terminal.open_terminal_in_cwd".into(),
+            label: "Open System Terminal in Current Directory".into(),
             category: "Terminal".into(),
             shortcut: None,
         });
-        r.register(Command {
-            id: "terminal.selection_stats".into(),
-            label: "Show Selection Statistics (lines/words/chars)".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.decode_base64".into(),
-            label: "Decode Base64 from Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.encode_base64".into(),
-            label: "Encode Selection as Base64".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.url_decode".into(),
-            label: "URL-Decode Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.url_encode".into(),
-            label: "URL-Encode Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.reverse_lines".into(),
-            label: "Reverse Selection Lines".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.dedup_lines".into(),
-            label: "Remove Duplicate Lines from Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_uppercase".into(),
-            label: "Convert Selection to UPPERCASE".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_lowercase".into(),
-            label: "Convert Selection to lowercase".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_title_case".into(),
-            label: "Convert Selection to Title Case".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.trim_lines".into(),
-            label: "Trim Whitespace from Selection Lines".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.remove_blank_lines".into(),
-            label: "Remove Blank Lines from Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.sort_lines".into(),
-            label: "Sort Selection Lines Alphabetically".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.sort_lines_desc".into(),
-            label: "Sort Selection Lines (Descending)".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.hex_dump".into(),
-            label: "Hex Dump Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.sha256".into(),
-            label: "SHA-256 Hash of Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.json_escape".into(),
-            label: "Escape Selection as JSON String".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.json_unescape".into(),
-            label: "Unescape JSON String in Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_camel_case".into(),
-            label: "Convert Selection to camelCase".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_snake_case".into(),
-            label: "Convert Selection to snake_case".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_kebab_case".into(),
-            label: "Convert Selection to kebab-case".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.to_json_array".into(),
-            label: "Convert Selection Lines to JSON Array".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.html_escape".into(),
-            label: "HTML-Escape Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.html_unescape".into(),
-            label: "HTML-Unescape Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.extract_urls".into(),
-            label: "Extract URLs from Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.word_freq".into(),
-            label: "Word Frequency in Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.indent".into(),
-            label: "Indent Selection (4 spaces)".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.dedent".into(),
-            label: "Dedent Selection (remove 4 spaces)".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
-            id: "terminal.number_lines".into(),
-            label: "Add Line Numbers to Selection".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
+                r.register(Command {
             id: "config.reload".into(),
             label: "Reload Configuration".into(),
             category: "Terminal".into(),
