@@ -230,6 +230,8 @@ pub struct DesktopApp {
     last_spinner_tick: std::time::Instant,
     /// Cached idle seconds to avoid per-frame String allocation for idle timer.
     last_idle_secs: u64,
+    /// Cached command elapsed tenths-of-seconds for timer throttling.
+    last_cmd_tenths: u128,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -643,6 +645,7 @@ impl DesktopApp {
             git_check_counter: 0,
             last_spinner_tick: std::time::Instant::now(),
             last_idle_secs: 0,
+            last_cmd_tenths: 0,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
@@ -1357,7 +1360,14 @@ impl ApplicationHandler for DesktopApp {
                         .terminal()
                         .running_command_elapsed()
                     {
-                        self.status_bar.command_timer = crate::status_bar::format_duration(elapsed);
+                        // Throttle format_duration to ~10fps (100ms granularity)
+                        // to avoid per-frame String allocation.
+                        let tenths = elapsed.as_millis() / 100;
+                        if tenths != self.last_cmd_tenths {
+                            self.last_cmd_tenths = tenths;
+                            self.status_bar.command_timer =
+                                crate::status_bar::format_duration(elapsed);
+                        }
                     }
                     // Throttle spinner to ~12fps so it doesn't spin out of control
                     // during resize/mouse-move (which call about_to_wait in a tight loop).
