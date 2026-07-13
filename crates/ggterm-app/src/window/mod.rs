@@ -1796,6 +1796,16 @@ impl ApplicationHandler for DesktopApp {
             }
         }
 
+        // Update tab bar state — syncs tab titles, bell flags, and
+        // sets visible = (tabs.len() > 1) for single-tab title bar mode.
+        let tab_titles: Vec<String> = self
+            .sessions
+            .iter()
+            .map(|s| s.title().to_string())
+            .collect();
+        let tab_refs: Vec<&str> = tab_titles.iter().map(|s| s.as_str()).collect();
+        self.tab_bar.update(&tab_refs, self.active);
+
         // P10-C: Poll AI bridge for results.
         #[cfg(feature = "ai")]
         self.poll_ai_bridge();
