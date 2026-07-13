@@ -555,13 +555,12 @@ impl DesktopApp {
             }
             // Close of `if self.tab_bar.visible` block.
         } else if !self.tab_bar.tabs.is_empty() {
-            // Single-tab mode: keep the title bar background strip (same style
-            // as the full tab bar) but without tab labels. Shows the current
-            // tab title on the left and "+"/"⚙" buttons on the right.
-            // This maintains visual consistency with the multi-tab title bar.
-            let bar_h = (cell_h + 8.0).max(28.0) + 6.0;
-            let btn_size = 20.0_f32;
-            let btn_gap = 4.0_f32;
+            // Single-tab mode: keep the title bar background strip but without
+            // tab labels. Shows the current tab title on the left and "+"/"⚙"
+            // buttons on the right. Taller bar and larger buttons for usability.
+            let bar_h = (cell_h + 16.0).max(38.0) + 4.0;
+            let btn_size = 40.0_f32; // 2x larger for touch/click usability
+            let btn_gap = 8.0_f32;
             let cell_w = renderer.cell_width() as f32;
 
             // Title bar background — same theme-aware style as full tab bar.
@@ -603,9 +602,9 @@ impl DesktopApp {
 
             // Tab title on the left side (after traffic lights on macOS).
             #[cfg(target_os = "macos")]
-            let title_x = crate::titlebar::TRAFFIC_LIGHT_WIDTH + 8.0;
+            let title_x = crate::titlebar::TRAFFIC_LIGHT_WIDTH + 12.0;
             #[cfg(not(target_os = "macos"))]
-            let title_x = 12.0;
+            let title_x = 16.0;
 
             let title = self
                 .tab_bar
@@ -648,14 +647,14 @@ impl DesktopApp {
                     w: btn_size,
                     h: btn_size,
                     color: (0.35, 0.42, 0.55, 0.7),
-                    radius: 4.0,
+                    radius: 8.0,
                     stroke_width: 0.0,
                 });
             }
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
                 left: plus_x + btn_size / 2.0 - cell_w * 0.5,
-                top: btn_y + 3.0,
+                top: btn_y + 8.0,
                 color: if plus_hovered { (240, 240, 250) } else { (160, 165, 180) },
             });
 
@@ -671,14 +670,14 @@ impl DesktopApp {
                     w: btn_size,
                     h: btn_size,
                     color: (0.35, 0.42, 0.55, 0.7),
-                    radius: 4.0,
+                    radius: 8.0,
                     stroke_width: 0.0,
                 });
             }
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "⚙".to_string(),
                 left: gear_x + btn_size / 2.0 - cell_w * 0.5,
-                top: btn_y + 3.0,
+                top: btn_y + 8.0,
                 color: if gear_hovered { (240, 240, 250) } else { (160, 165, 180) },
             });
         }

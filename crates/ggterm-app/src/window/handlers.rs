@@ -2326,8 +2326,8 @@ impl DesktopApp {
         let tab_bar_h = if self.tab_bar.visible {
             ((cell_h + 8.0).max(28.0) + 6.0) as u32
         } else if !self.tab_bar.tabs.is_empty() {
-            // Single-tab mode: same height as full tab bar (title bar strip).
-            ((cell_h + 8.0).max(28.0) + 6.0) as u32
+            // Single-tab mode: taller bar with larger buttons.
+            ((cell_h + 16.0).max(38.0) + 4.0) as u32
         } else {
             0
         };
@@ -2669,8 +2669,8 @@ impl DesktopApp {
 
                     // Single-tab title bar: check + and gear buttons.
                     if !self.tab_bar.visible && !self.tab_bar.tabs.is_empty() {
-                        let btn_size = 20.0_f32;
-                        let btn_gap = 4.0_f32;
+                        let btn_size = 40.0_f32;
+                        let btn_gap = 8.0_f32;
                         let screen_w = if let Some(ref r) = self.renderer {
                             r.resolution_width() as f32
                         } else {
@@ -2681,7 +2681,7 @@ impl DesktopApp {
                         } else {
                             self.config.cell_height
                         };
-                        let bar_h = (cell_h + 8.0).max(28.0) + 6.0;
+                        let bar_h = (cell_h + 16.0).max(38.0) + 4.0;
                         #[cfg(not(target_os = "macos"))]
                         let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
                         #[cfg(target_os = "macos")]
@@ -3626,8 +3626,8 @@ impl DesktopApp {
         if self.tab_bar.visible || self.tab_bar.tabs.is_empty() {
             return false;
         }
-        let btn_size = 20.0_f32;
-        let btn_gap = 4.0_f32;
+        let btn_size = 40.0_f32;
+        let btn_gap = 8.0_f32;
         let screen_w = if let Some(ref r) = self.renderer {
             r.resolution_width() as f32
         } else {
@@ -3638,7 +3638,7 @@ impl DesktopApp {
         } else {
             self.config.cell_height
         };
-        let bar_h = (cell_h + 8.0).max(28.0) + 6.0;
+        let bar_h = (cell_h + 16.0).max(38.0) + 4.0;
         #[cfg(not(target_os = "macos"))]
         let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
         #[cfg(target_os = "macos")]
