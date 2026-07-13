@@ -2062,9 +2062,10 @@ impl DesktopApp {
                 }
                 _ => {}
             }
-            // Printable characters go to command input.
-            if let PhysicalKey::Code(code) = &event.physical_key
-                && let Some(c) = keycode_to_char(code, self.mods.shift)
+            // Printable characters go to command input (use winit text event
+            // for proper Unicode support — same pattern as command palette).
+            if let Some(c) = event.text.as_ref().and_then(|t| t.chars().next())
+                && !c.is_control()
             {
                 self.pipe_command_input.push(c);
             }
