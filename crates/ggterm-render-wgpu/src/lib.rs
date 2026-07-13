@@ -1514,6 +1514,7 @@ mod tests {
             left: 10.0,
             top: 0.0,
             color: (220, 220, 220),
+            scale: 1.0,
         };
         assert_eq!(spec.text, "1:zsh*");
         assert_eq!(spec.left, 10.0);

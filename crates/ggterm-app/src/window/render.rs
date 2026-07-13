@@ -274,8 +274,8 @@ impl DesktopApp {
                         } else {
                             (130, 135, 150) // subtle gray
                         },
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -431,8 +431,8 @@ impl DesktopApp {
                         } else {
                             (80, 85, 100)
                         },
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -467,7 +467,6 @@ impl DesktopApp {
                     (180, 185, 200)
                 },
                 scale: 3.0,
-                ..Default::default()
             });
 
             // Settings gear button at the far right.
@@ -502,7 +501,6 @@ impl DesktopApp {
                     (180, 185, 200)
                 },
                 scale: 3.0,
-                ..Default::default()
             });
 
             // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
@@ -557,8 +555,8 @@ impl DesktopApp {
                         left: bx,
                         top: by,
                         color: if hovered { hover_color } else { normal_color },
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
             // Close of `if self.tab_bar.visible` block.
@@ -577,7 +575,12 @@ impl DesktopApp {
                 y: 0.0,
                 w: screen_w,
                 h: bar_h,
-                color: (theme_bg.0 * 1.15, theme_bg.1 * 1.15, theme_bg.2 * 1.15, 0.95),
+                color: (
+                    theme_bg.0 * 1.15,
+                    theme_bg.1 * 1.15,
+                    theme_bg.2 * 1.15,
+                    0.95,
+                ),
                 radius: 0.0,
                 stroke_width: 0.0,
             });
@@ -630,8 +633,8 @@ impl DesktopApp {
                 left: title_x,
                 top: (bar_h - cell_h) / 2.0,
                 color: (200, 205, 220),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // "+" and "⚙" buttons on the right side.
             // On Linux/Windows, leave space for window control buttons.
@@ -664,9 +667,12 @@ impl DesktopApp {
                 text: "+".to_string(),
                 left: plus_x + btn_size / 2.0 - cell_w * 1.5,
                 top: btn_y + btn_size / 2.0 - cell_h * 1.5,
-                color: if plus_hovered { (240, 240, 250) } else { (160, 165, 180) },
+                color: if plus_hovered {
+                    (240, 240, 250)
+                } else {
+                    (160, 165, 180)
+                },
                 scale: 3.0,
-                ..Default::default()
             });
 
             // Settings gear button.
@@ -689,9 +695,12 @@ impl DesktopApp {
                 text: "⚙".to_string(),
                 left: gear_x + btn_size / 2.0 - cell_w * 1.5,
                 top: btn_y + btn_size / 2.0 - cell_h * 1.5,
-                color: if gear_hovered { (240, 240, 250) } else { (160, 165, 180) },
+                color: if gear_hovered {
+                    (240, 240, 250)
+                } else {
+                    (160, 165, 180)
+                },
                 scale: 3.0,
-                ..Default::default()
             });
         }
 
@@ -993,8 +1002,8 @@ impl DesktopApp {
                 left: px + 20.0,
                 top: py + 18.0,
                 color: (240, 240, 250),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Build field rows from SettingsState.
             let rows = self.settings.field_rows();
@@ -1011,8 +1020,8 @@ impl DesktopApp {
                         left: px + 20.0,
                         top: y_offset,
                         color: (90, 160, 230),
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                     y_offset += cell_h;
                 }
 
@@ -1099,8 +1108,8 @@ impl DesktopApp {
                 left: px + 20.0,
                 top: y_offset,
                 color: (120, 120, 140),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Error message if present.
             if let Some(err) = self.settings.error_text() {
@@ -1164,8 +1173,8 @@ impl DesktopApp {
                 left: px + 20.0,
                 top: py + 16.0,
                 color: (103, 232, 249), // cyan,
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
             let about_text = self.about.format_text();
             for (i, line) in about_text.lines().enumerate() {
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
@@ -1257,8 +1266,8 @@ impl DesktopApp {
                 left: px + panel_pad,
                 top: py + 20.0,
                 color: (122, 162, 247),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Status text.
             let status_text = match p2p.status {
@@ -1278,8 +1287,8 @@ impl DesktopApp {
                 left: px + panel_pad,
                 top: py + 20.0 + cell_h,
                 color: status_color,
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Error message (if any) — wrap to fit panel width.
             if let Some(ref err) = p2p.error {
@@ -1290,8 +1299,8 @@ impl DesktopApp {
                         left: px + panel_pad,
                         top: py + 20.0 + cell_h * (2.0 + i as f32),
                         color: (248, 113, 113),
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -1340,15 +1349,15 @@ impl DesktopApp {
                 left: px + panel_pad,
                 top: inst_y,
                 color: (180, 180, 190),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "or copy ticket manually:".to_string(),
                 left: px + panel_pad,
                 top: inst_y + cell_h,
                 color: (180, 180, 190),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Ticket string — wrap to fit panel width to prevent overflow.
             let ticket = p2p.ticket();
@@ -1371,8 +1380,8 @@ impl DesktopApp {
                 left: px + panel_pad,
                 top: hint_y,
                 color: (120, 120, 130),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // P26: Status bar overlay — modern rounded bottom bar with UiRect.
@@ -1627,8 +1636,8 @@ impl DesktopApp {
                 left: pm_x + 8.0,
                 top: pm_y + 4.0,
                 color: (100, 200, 255),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P28-H: Shell switcher dropdown ────────────────────────────
@@ -1759,8 +1768,8 @@ impl DesktopApp {
                 left: sb_x + 12.0,
                 top: sb_y + 8.0,
                 color: (120, 200, 255),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             let total = self.cmd_history.len();
             let failed = self.cmd_history.failed_count();
@@ -1769,8 +1778,8 @@ impl DesktopApp {
                 left: sb_x + 12.0,
                 top: sb_y + cell_h + 12.0,
                 color: (120, 120, 140),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Separator.
             ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -1912,8 +1921,8 @@ impl DesktopApp {
                 left: card_x + 12.0,
                 top: card_y + 12.0,
                 color: (cr, cg, cb),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // File name.
             let name_display = if preview.name.len() > 30 {
@@ -1926,8 +1935,8 @@ impl DesktopApp {
                 left: card_x + 68.0,
                 top: card_y + 12.0,
                 color: (240, 240, 250),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // File info: size + category.
             let size_str = preview
@@ -1940,8 +1949,8 @@ impl DesktopApp {
                 left: card_x + 68.0,
                 top: card_y + 12.0 + cell_h + 4.0,
                 color: (150, 150, 165),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Drop hint.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
@@ -1949,8 +1958,8 @@ impl DesktopApp {
                 left: card_x + 12.0,
                 top: card_y + card_h - cell_h - 8.0,
                 color: (100, 180, 255),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P28-B: Color picker hover swatch ──────────────────────────
@@ -1988,8 +1997,8 @@ impl DesktopApp {
                 left: swatch_x + swatch_size + 6.0,
                 top: swatch_y + 4.0,
                 color: (r, g, b),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P28-F: Cursor particle effects ────────────────────────────
@@ -2101,8 +2110,8 @@ impl DesktopApp {
                         } else {
                             (120, 120, 140)
                         },
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -2239,8 +2248,8 @@ impl DesktopApp {
                 left: px + 20.0,
                 top: py + 16.0,
                 color: (240, 240, 250),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Search field background.
             let search_y = py + 44.0;
@@ -2270,8 +2279,8 @@ impl DesktopApp {
                 left: px + 24.0,
                 top: search_y + 5.0,
                 color: search_color,
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Shortcut entries.
             let entries = self.shortcut_help.filtered();
@@ -2351,8 +2360,8 @@ impl DesktopApp {
                 left: px + 20.0,
                 top: py + panel_h - 24.0,
                 color: (120, 120, 140),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P29-C: Quit confirmation dialog ───────────────────────────
@@ -2403,8 +2412,8 @@ impl DesktopApp {
                 left: dx + 24.0,
                 top: dy + 20.0,
                 color: (255, 180, 100),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Message.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
@@ -2412,15 +2421,15 @@ impl DesktopApp {
                 left: dx + 24.0,
                 top: dy + 52.0,
                 color: (200, 200, 210),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "terminated. Session state will be saved.".to_string(),
                 left: dx + 24.0,
                 top: dy + 70.0,
                 color: (200, 200, 210),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Options.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
@@ -2428,16 +2437,16 @@ impl DesktopApp {
                 left: dx + 24.0,
                 top: dy + 110.0,
                 color: (140, 180, 255),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "Press Esc to cancel".to_string(),
                 left: dx + 24.0,
                 top: dy + 132.0,
                 color: (120, 120, 140),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P30-C: Toast notification ─────────────────────────────────
@@ -2471,8 +2480,8 @@ impl DesktopApp {
                 left: tx + 12.0,
                 top: ty + 7.0,
                 color: (200, 220, 255),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P30-B: Tab rename input field ─────────────────────────────
@@ -2666,8 +2675,8 @@ impl DesktopApp {
                 left: bar_x + 12.0,
                 top: bar_y + 10.0,
                 color: (100, 140, 200),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Mode indicator: "Aa" = case-insensitive, "AA" = case-sensitive.
             let mode_label = if self.search.case_insensitive {
@@ -2685,8 +2694,8 @@ impl DesktopApp {
                 left: bar_x + 30.0,
                 top: bar_y + 10.0,
                 color: mode_color,
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Regex mode indicator: ".*" = regex on (green), "Ab" = literal (dim).
             let regex_label = if self.search.regex_mode { ".*" } else { "Ab" };
@@ -2700,8 +2709,8 @@ impl DesktopApp {
                 left: bar_x + 48.0,
                 top: bar_y + 10.0,
                 color: regex_color,
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Search query text with cursor (red if no matches).
             let query_display = format!("{}_", self.search.query);
@@ -2715,8 +2724,8 @@ impl DesktopApp {
                 left: bar_x + 72.0,
                 top: bar_y + 10.0,
                 color: query_color,
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Match count — right-aligned.
             let match_info = self.search.match_count();
@@ -2750,8 +2759,8 @@ impl DesktopApp {
                 left: bar_x + 12.0,
                 top: bar_y + bar_h + 4.0,
                 color: (110, 110, 130),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── Pipe Selection to Shell Command input overlay ────────────
@@ -2788,8 +2797,8 @@ impl DesktopApp {
                 left: bar_x + 12.0,
                 top: bar_y + 10.0,
                 color: (100, 200, 120),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Command input with block cursor.
             let cmd_display = format!("{}▎", self.pipe_command_input);
@@ -2798,8 +2807,8 @@ impl DesktopApp {
                 left: bar_x + 36.0,
                 top: bar_y + 10.0,
                 color: (230, 230, 240),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Hint text at bottom.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
@@ -2808,8 +2817,8 @@ impl DesktopApp {
                 left: bar_x + 12.0,
                 top: bar_y + bar_h + 4.0,
                 color: (110, 110, 130),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── Command Palette overlay ──────────────────────────────────
@@ -2858,8 +2867,8 @@ impl DesktopApp {
                 left: palette_x + 16.0,
                 top: palette_y + 16.0,
                 color: (100, 140, 200),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Query text with block cursor.
             let query_display = format!("{}▎", self.command_palette.query);
@@ -2868,8 +2877,8 @@ impl DesktopApp {
                 left: palette_x + 32.0,
                 top: palette_y + 16.0,
                 color: (230, 230, 240),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Result items.
             let item_h = 28.0;
@@ -2912,8 +2921,8 @@ impl DesktopApp {
                         left: palette_x + palette_w - shortcut.len() as f32 * 8.0 - 20.0,
                         top: item_y + 5.0,
                         color: (100, 140, 200),
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -2923,8 +2932,8 @@ impl DesktopApp {
                 left: palette_x + 16.0,
                 top: palette_y + palette_h - 22.0,
                 color: (110, 110, 130),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── P33: URL hover tooltip + underline ────────────────────────
@@ -2983,8 +2992,8 @@ impl DesktopApp {
                 left: px + 10.0,
                 top: py + 5.0,
                 color: (100, 180, 255),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // AI overlay panel — bottom of screen, shows AI responses.
@@ -3037,8 +3046,8 @@ impl DesktopApp {
                 left: panel_x + 16.0,
                 top: panel_y + 12.0,
                 color: (122, 162, 247),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Close hint on the right.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
@@ -3046,8 +3055,8 @@ impl DesktopApp {
                 left: panel_x + panel_w - 40.0,
                 top: panel_y + 12.0,
                 color: (100, 100, 110),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Content area.
             let content_y = panel_y + 14.0 + cell_h;
@@ -3145,8 +3154,8 @@ impl DesktopApp {
                         left: panel_x + 16.0,
                         top: content_y + cell_h * i as f32,
                         color,
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -3163,8 +3172,8 @@ impl DesktopApp {
                 left: (screen_w - 52.0 * cell_w) * 0.5,
                 top: hint_y,
                 color: (100, 110, 125),
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         renderer.set_ui_rects(ui_rects);
@@ -3194,8 +3203,8 @@ impl DesktopApp {
                 left: ccol as f32 * cell_w,
                 top: ime_top + crow as f32 * cell_h,
                 color: (255, 255, 255),
-                    ..Default::default()
-                }]);
+                ..Default::default()
+            }]);
         } else {
             // Clear IME overlay rects when preedit is not active,
             // preventing stale underline bars from persisting on screen.
