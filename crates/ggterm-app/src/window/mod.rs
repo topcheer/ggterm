@@ -1672,6 +1672,16 @@ impl ApplicationHandler for DesktopApp {
                 match ime {
                     Ime::Commit(text) => {
                         // Send committed IME text to PTY as UTF-8 bytes.
+                        // Same side effects as regular keypress: clear selection
+                        // and scroll to bottom (standard terminal behavior).
+                        self.selection.clear();
+                        let grid = self.sessions[self.active]
+                            .app_mut()
+                            .terminal_mut()
+                            .grid_mut();
+                        if grid.display_offset() > 0 {
+                            grid.reset_viewport();
+                        }
                         self.write_to_pty(text.as_bytes());
                         self.ime_preedit = None;
                     }
