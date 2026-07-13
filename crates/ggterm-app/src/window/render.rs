@@ -459,14 +459,16 @@ impl DesktopApp {
             });
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
-                left: layout.new_tab_button.cx - cell_w * 1.5,
-                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0 - cell_h * 1.5,
+                left: layout.new_tab_button.cx
+                    - cell_w * (layout.new_tab_button.size / cell_w / 2.0),
+                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0
+                    - cell_h * (layout.new_tab_button.size / cell_h / 2.0),
                 color: if btn_hovered {
                     (255, 255, 255)
                 } else {
                     (180, 185, 200)
                 },
-                scale: 3.0,
+                scale: (layout.new_tab_button.size / cell_w).clamp(1.5, 4.0),
             });
 
             // Settings gear button at the far right.
@@ -493,14 +495,16 @@ impl DesktopApp {
             // If it doesn't render, fallback to a colon-like icon.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "\u{2699}".to_string(), // ⚙ gear symbol
-                left: layout.settings_button.cx - cell_w * 1.5,
-                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0 - cell_h * 1.5,
+                left: layout.settings_button.cx
+                    - cell_w * (layout.settings_button.size / cell_w / 2.0),
+                top: (bar_h - tab_h) / 2.0 + tab_h / 2.0
+                    - cell_h * (layout.settings_button.size / cell_h / 2.0),
                 color: if gear_hovered {
                     (255, 255, 255)
                 } else {
                     (180, 185, 200)
                 },
-                scale: 3.0,
+                scale: (layout.settings_button.size / cell_w).clamp(1.5, 4.0),
             });
 
             // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
@@ -565,7 +569,7 @@ impl DesktopApp {
             // tab labels. Shows the current tab title on the left and "+"/"⚙"
             // buttons on the right. Taller bar and larger buttons for usability.
             let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
-            let btn_size = 80.0_f32; // 2x larger for touch/click usability
+            let btn_size = (bar_h - 8.0).max(32.0); // fit within bar with 4px padding
             let btn_gap = 8.0_f32;
             let cell_w = renderer.cell_width() as f32;
 
@@ -665,14 +669,14 @@ impl DesktopApp {
             }
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "+".to_string(),
-                left: plus_x + btn_size / 2.0 - cell_w * 1.5,
-                top: btn_y + btn_size / 2.0 - cell_h * 1.5,
+                left: plus_x + btn_size / 2.0 - cell_w * (btn_size / cell_w / 2.0),
+                top: btn_y + btn_size / 2.0 - cell_h * (btn_size / cell_h / 2.0),
                 color: if plus_hovered {
                     (240, 240, 250)
                 } else {
                     (160, 165, 180)
                 },
-                scale: 3.0,
+                scale: (btn_size / cell_w).clamp(1.5, 4.0),
             });
 
             // Settings gear button.
@@ -693,14 +697,14 @@ impl DesktopApp {
             }
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "⚙".to_string(),
-                left: gear_x + btn_size / 2.0 - cell_w * 1.5,
-                top: btn_y + btn_size / 2.0 - cell_h * 1.5,
+                left: gear_x + btn_size / 2.0 - cell_w * (btn_size / cell_w / 2.0),
+                top: btn_y + btn_size / 2.0 - cell_h * (btn_size / cell_h / 2.0),
                 color: if gear_hovered {
                     (240, 240, 250)
                 } else {
                     (160, 165, 180)
                 },
-                scale: 3.0,
+                scale: (btn_size / cell_w).clamp(1.5, 4.0),
             });
         }
 

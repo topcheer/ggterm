@@ -2642,13 +2642,12 @@ impl DesktopApp {
                 // Single-tab title bar: check + and gear buttons.
                 // This must be OUTSIDE the `if self.tab_bar.visible` block
                 // because visible=false in single-tab mode.
-                if !self.tab_bar.visible && !self.tab_bar.tabs.is_empty()
+                if !self.tab_bar.visible
+                    && !self.tab_bar.tabs.is_empty()
                     && state == ElementState::Pressed
                     && button == winit::event::MouseButton::Left
                 {
                     let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                    let btn_size = 80.0_f32;
-                    let btn_gap = 8.0_f32;
                     let screen_w = if let Some(ref r) = self.renderer {
                         r.resolution_width() as f32
                     } else {
@@ -2660,6 +2659,8 @@ impl DesktopApp {
                         self.config.cell_height
                     };
                     let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
+                    let btn_size = (bar_h - 8.0).max(32.0);
+                    let btn_gap = 8.0_f32;
                     #[cfg(not(target_os = "macos"))]
                     let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
                     #[cfg(target_os = "macos")]
@@ -3632,19 +3633,19 @@ impl DesktopApp {
         if self.tab_bar.visible || self.tab_bar.tabs.is_empty() {
             return false;
         }
-        let btn_size = 80.0_f32;
-        let btn_gap = 8.0_f32;
-        let screen_w = if let Some(ref r) = self.renderer {
-            r.resolution_width() as f32
-        } else {
-            self.config.cols as f32 * self.config.cell_width
-        };
         let cell_h = if let Some(ref r) = self.renderer {
             r.cell_height() as f32
         } else {
             self.config.cell_height
         };
         let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
+        let btn_size = (bar_h - 8.0).max(32.0);
+        let btn_gap = 8.0_f32;
+        let screen_w = if let Some(ref r) = self.renderer {
+            r.resolution_width() as f32
+        } else {
+            self.config.cols as f32 * self.config.cell_width
+        };
         #[cfg(not(target_os = "macos"))]
         let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
         #[cfg(target_os = "macos")]
@@ -3653,14 +3654,10 @@ impl DesktopApp {
         let plus_x = gear_x - btn_size - btn_gap;
         let btn_y = (bar_h - btn_size) / 2.0;
         let px = self.cursor_pos.0 as f32;
-        let on_plus = px >= plus_x
-            && px <= plus_x + btn_size
-            && py >= btn_y
-            && py <= btn_y + btn_size;
-        let on_gear = px >= gear_x
-            && px <= gear_x + btn_size
-            && py >= btn_y
-            && py <= btn_y + btn_size;
+        let on_plus =
+            px >= plus_x && px <= plus_x + btn_size && py >= btn_y && py <= btn_y + btn_size;
+        let on_gear =
+            px >= gear_x && px <= gear_x + btn_size && py >= btn_y && py <= btn_y + btn_size;
         on_plus || on_gear
     }
 }

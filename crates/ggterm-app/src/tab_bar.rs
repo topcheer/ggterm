@@ -26,7 +26,7 @@ const CLOSE_BUTTON_SIZE: f32 = 16.0;
 /// Gap between tab text and close button.
 const CLOSE_BUTTON_GAP: f32 = 4.0;
 /// Size of the "+" new tab button.
-const NEW_TAB_BUTTON_SIZE: f32 = 80.0;
+const NEW_TAB_BUTTON_SIZE: f32 = 28.0;
 /// Estimated average character width in pixels (at 14px monospace).
 const CHAR_WIDTH_ESTIMATE: f32 = 8.4;
 /// Maximum characters to show in a tab title before truncation.
@@ -283,7 +283,8 @@ impl TabBarState {
         let right_margin = TAB_BAR_PADDING_H;
 
         // Available width = surface - left margin - right area - buttons
-        let buttons_width = NEW_TAB_BUTTON_SIZE * 2.0   // + button + gear button
+        let button_size = tab_height.max(28.0);
+        let buttons_width = button_size * 2.0   // + button + gear button
             + TAB_GAP * 3.0;
         let available_width = surface_width - left_margin - right_margin - buttons_width;
         let tab_count = self.tabs.len() as f32;
@@ -330,12 +331,13 @@ impl TabBarState {
         }
 
         // "+" button after the last tab.
-        let new_tab_x = x + NEW_TAB_BUTTON_SIZE / 2.0;
+        // Button size matches tab height for consistent visual proportions.
+        let button_size = tab_height.max(28.0);
+        let new_tab_x = x + button_size / 2.0;
         let new_tab_y = tab_y + tab_height / 2.0;
 
         // Settings gear button — separated from "+" by a gap.
-        let settings_x =
-            new_tab_x + NEW_TAB_BUTTON_SIZE / 2.0 + TAB_GAP + NEW_TAB_BUTTON_SIZE / 2.0;
+        let settings_x = new_tab_x + button_size / 2.0 + TAB_GAP + button_size / 2.0;
         let settings_y = tab_y + tab_height / 2.0;
 
         TabBarLayout {
@@ -343,12 +345,12 @@ impl TabBarState {
             new_tab_button: CloseButtonRect {
                 cx: new_tab_x,
                 cy: new_tab_y,
-                size: NEW_TAB_BUTTON_SIZE,
+                size: button_size,
             },
             settings_button: CloseButtonRect {
                 cx: settings_x,
                 cy: settings_y,
-                size: NEW_TAB_BUTTON_SIZE,
+                size: button_size,
             },
             bar_height,
             visible: true,
