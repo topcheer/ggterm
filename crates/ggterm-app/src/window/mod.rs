@@ -2075,6 +2075,7 @@ impl ApplicationHandler for DesktopApp {
         let content_dirty = self.active_session().any_pane_dirty();
         let need_redraw = content_dirty
             || self.pending_resize.is_some()
+            || self.pipe_command_active
             || self
                 .active_session_mut()
                 .app_mut()
