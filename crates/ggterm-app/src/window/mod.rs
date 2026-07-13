@@ -1765,10 +1765,11 @@ impl ApplicationHandler for DesktopApp {
         // Sync terminal OSC 0/2 titles to tab sessions so the tab bar
         // shows the current program name (e.g. "vim", "zsh") instead of
         // the static initial title.
+        // Optimized: compare references first, only allocate String on change.
         for session in &mut self.sessions {
-            let term_title = session.app().terminal().title().to_string();
+            let term_title = session.app().terminal().title();
             if !term_title.is_empty() && term_title != session.title() {
-                session.set_title(term_title);
+                session.set_title(term_title.to_string());
             }
         }
 
