@@ -3264,6 +3264,44 @@ impl DesktopApp {
                     self.show_toast(format!("{} unique words", sorted.len()));
                 }
             }
+            "terminal.indent" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input
+                        .lines()
+                        .map(|l| format!("    {l}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Indented 4 spaces".to_string());
+                }
+            }
+            "terminal.dedent" => {
+                if !self.selection.is_active() {
+                    self.show_toast("Select text first".to_string());
+                } else {
+                    self.copy_selection_to_clipboard();
+                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    let result = input
+                        .lines()
+                        .map(|l| {
+                            if let Some(stripped) = l.strip_prefix("    ") {
+                                stripped
+                            } else if let Some(stripped) = l.strip_prefix('\t') {
+                                stripped
+                            } else {
+                                l
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    crate::clipboard::set_clipboard_bytes(result.as_bytes());
+                    self.show_toast("Dedented".to_string());
+                }
+            }
             "terminal.save_scrollback" => {
                 self.save_scrollback_to_file();
             }
