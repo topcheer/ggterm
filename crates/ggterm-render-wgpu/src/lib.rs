@@ -197,7 +197,7 @@ pub struct UiRect {
 }
 
 /// P19-G: Overlay text specification for tab bar / settings / about rendering.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct OverlayTextSpec {
     /// Text content.
     pub text: String,
@@ -207,6 +207,8 @@ pub struct OverlayTextSpec {
     pub top: f32,
     /// Text color (r, g, b).
     pub color: (u8, u8, u8),
+    /// Font scale multiplier (1.0 = default font size). Larger = bigger text.
+    pub scale: f32,
 }
 
 /// P19-G: Overlay rectangle specification for UI backgrounds and panels.
@@ -1212,12 +1214,13 @@ impl GlyphonRenderer {
         // on top of the UI backgrounds.
         let overlay_texts = std::mem::take(&mut self.overlay_text);
         if !overlay_texts.is_empty() {
-            let metrics = Metrics::new(self.font_size, self.font_size);
             let mut buffers: Vec<Buffer> = Vec::new();
             #[allow(clippy::type_complexity)]
-            let mut text_area_specs: Vec<(usize, f32, f32, (u8, u8, u8))> = Vec::new();
+            let mut text_area_specs: Vec<(usize, f32, f32, (u8, u8, u8), f32)> = Vec::new();
 
             for ot in &overlay_texts {
+                let scaled_font = self.font_size * ot.scale;
+                let metrics = Metrics::new(scaled_font, scaled_font);
                 let attrs = Attrs::new()
                     .family(Family::Name(&self.font_family))
                     .color(GlyphonColor::rgb(ot.color.0, ot.color.1, ot.color.2));
@@ -1232,16 +1235,16 @@ impl GlyphonRenderer {
                 buffer.shape_until_scroll(&mut self.font_system, false);
                 let buf_idx = buffers.len();
                 buffers.push(buffer);
-                text_area_specs.push((buf_idx, ot.left, ot.top, ot.color));
+                text_area_specs.push((buf_idx, ot.left, ot.top, ot.color, ot.scale));
             }
 
             let text_areas: Vec<TextArea> = text_area_specs
                 .iter()
-                .map(|&(buf_idx, x, y, fg)| TextArea {
+                .map(|&(buf_idx, x, y, fg, sc)| TextArea {
                     buffer: &buffers[buf_idx],
                     left: x,
                     top: y,
-                    scale: 1.0,
+                    scale: sc,
                     bounds: TextBounds {
                         left: 0,
                         top: 0,

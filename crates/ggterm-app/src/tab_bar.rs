@@ -26,7 +26,7 @@ const CLOSE_BUTTON_SIZE: f32 = 16.0;
 /// Gap between tab text and close button.
 const CLOSE_BUTTON_GAP: f32 = 4.0;
 /// Size of the "+" new tab button.
-const NEW_TAB_BUTTON_SIZE: f32 = 40.0;
+const NEW_TAB_BUTTON_SIZE: f32 = 80.0;
 /// Estimated average character width in pixels (at 14px monospace).
 const CHAR_WIDTH_ESTIMATE: f32 = 8.4;
 /// Maximum characters to show in a tab title before truncation.
@@ -269,10 +269,10 @@ impl TabBarState {
         let tab_y = TAB_BAR_PADDING_V;
 
         // macOS: reserve space for traffic light buttons on the left.
-        // Matches titlebar::TRAFFIC_LIGHT_WIDTH (92px) — inlined here so
-        // tab_bar compiles without the desktop feature.
+        // Matches titlebar::TRAFFIC_LIGHT_WIDTH (92px) + 60px gap so the
+        // first tab title is not blocked by the traffic light buttons.
         #[cfg(target_os = "macos")]
-        let left_margin = 92.0_f32;
+        let left_margin = 92.0_f32 + 60.0;
         #[cfg(not(target_os = "macos"))]
         let left_margin = TAB_BAR_PADDING_H;
 

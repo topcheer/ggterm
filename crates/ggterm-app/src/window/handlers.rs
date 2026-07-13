@@ -2324,10 +2324,10 @@ impl DesktopApp {
         };
 
         let tab_bar_h = if self.tab_bar.visible {
-            ((cell_h + 16.0).max(38.0) + 4.0) as u32
+            ((cell_h + 26.0).max(48.0) + 4.0) as u32
         } else if !self.tab_bar.tabs.is_empty() {
             // Single-tab mode: taller bar with larger buttons.
-            ((cell_h + 16.0).max(38.0) + 4.0) as u32
+            ((cell_h + 26.0).max(48.0) + 4.0) as u32
         } else {
             0
         };
@@ -2647,7 +2647,7 @@ impl DesktopApp {
                     && button == winit::event::MouseButton::Left
                 {
                     let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                    let btn_size = 40.0_f32;
+                    let btn_size = 80.0_f32;
                     let btn_gap = 8.0_f32;
                     let screen_w = if let Some(ref r) = self.renderer {
                         r.resolution_width() as f32
@@ -2659,7 +2659,7 @@ impl DesktopApp {
                     } else {
                         self.config.cell_height
                     };
-                    let bar_h = (cell_h + 16.0).max(38.0) + 4.0;
+                    let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
                     #[cfg(not(target_os = "macos"))]
                     let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
                     #[cfg(target_os = "macos")]
@@ -3632,7 +3632,7 @@ impl DesktopApp {
         if self.tab_bar.visible || self.tab_bar.tabs.is_empty() {
             return false;
         }
-        let btn_size = 40.0_f32;
+        let btn_size = 80.0_f32;
         let btn_gap = 8.0_f32;
         let screen_w = if let Some(ref r) = self.renderer {
             r.resolution_width() as f32
@@ -3644,7 +3644,7 @@ impl DesktopApp {
         } else {
             self.config.cell_height
         };
-        let bar_h = (cell_h + 16.0).max(38.0) + 4.0;
+        let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
         #[cfg(not(target_os = "macos"))]
         let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
         #[cfg(target_os = "macos")]
