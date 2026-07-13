@@ -4149,6 +4149,28 @@ mod tests {
     }
 
     #[test]
+    fn t_osc133_command_end_non_numeric_exit_code() {
+        // Some shells may emit non-numeric exit codes — must not panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;abc\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::CommandEnd);
+        assert_eq!(marks[0].exit_code, None, "non-numeric exit code → None");
+    }
+
+    #[test]
+    fn t_osc133_command_end_st_terminated() {
+        // ST-terminated (ESC \) instead of BEL — both must work.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;0\x1b\\");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(marks[0].kind, CommandMarkKind::CommandEnd);
+        assert_eq!(marks[0].exit_code, Some(0));
+    }
+
+    #[test]
     fn t_osc133_command_end_with_error_code() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b]133;D;127\x07");
