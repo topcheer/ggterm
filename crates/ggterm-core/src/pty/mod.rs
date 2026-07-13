@@ -450,7 +450,14 @@ mod tests {
         // This test is timing-sensitive: under parallel test load the shell
         // may take longer to start and process. Use a retry loop to avoid
         // false negatives.
-        let mut pty = PtySession::open(80, 24).expect("open pty");
+        let mut pty = (0..3)
+            .find_map(|attempt| {
+                if attempt > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                PtySession::open(80, 24).ok()
+            })
+            .expect("open pty after retries");
 
         // Give the shell a moment to start.
         std::thread::sleep(std::time::Duration::from_millis(500));
