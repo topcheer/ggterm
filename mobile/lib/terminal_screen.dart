@@ -479,8 +479,17 @@ class _TerminalScreenState extends State<TerminalScreen>
     } else if (newText != oldText) {
       // IME replacement: text changed but is neither a simple append nor
       // a simple backspace (e.g. Chinese pinyin "ni" → "你").
-      // Send the entire new text as UTF-8 bytes.
+      // The old preedit text was already sent character-by-character to the
+      // terminal during the preedit phase. Now we need to:
+      // 1. Send backspaces to erase the old preedit chars from the terminal
+      // 2. Send the committed text as UTF-8 bytes.
+      final oldChars = oldText.characters.length;
       final codes = <int>[];
+      // Erase old preedit characters with DEL.
+      for (var i = 0; i < oldChars; i++) {
+        codes.add(0x7F); // DEL
+      }
+      // Append committed text.
       for (final char in newText.characters) {
         codes.addAll(utf8.encode(char));
       }
