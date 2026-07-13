@@ -1637,6 +1637,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                             cellWidth: _cellWidth,
                             cellHeight: _cellHeight,
                             cursorVisible: _cursorVisible,
+                            blinkVisible: _cursorVisible, // blink text (SGR 5) follows cursor blink phase
                           ),
                           child: Container(),
                         ),
@@ -1819,6 +1820,7 @@ class _TerminalPainter extends CustomPainter {
   final double cellWidth;
   final double cellHeight;
   final bool cursorVisible;
+  final bool blinkVisible;
 
   // Reusable Paint objects to avoid per-frame allocation.
   static final _cellBgPaint = Paint();
@@ -1839,20 +1841,17 @@ class _TerminalPainter extends CustomPainter {
     required this.cellWidth,
     required this.cellHeight,
     this.cursorVisible = true,
+    this.blinkVisible = true,
   });
 
   @override
   bool shouldRepaint(covariant _TerminalPainter old) {
-    // Fast path: if dimensions and cursor state are the same, only
-    // repaint if the screen snapshot identity changed.
-    // The render timer already checks content hash before calling
-    // setState, so identical(screen) is a reliable cheap check.
     if (cellWidth != old.cellWidth ||
         cellHeight != old.cellHeight ||
-        cursorVisible != old.cursorVisible) {
+        cursorVisible != old.cursorVisible ||
+        blinkVisible != old.blinkVisible) {
       return true;
     }
-    // Screen is a different object each frame; compare by reference.
     return !identical(screen, old.screen);
   }
 
@@ -1917,7 +1916,9 @@ class _TerminalPainter extends CustomPainter {
             ? screen.cells[idx]
             : null;
 
-        final isEmpty = cell == null || cell.charCode == 0 || cell.hidden;
+        // Skip blink cells when blink phase is off (SGR 5).
+        final isEmpty = cell == null || cell.charCode == 0 || cell.hidden ||
+            (cell.blink && !blinkVisible);
 
         if (!isEmpty) {
           // For reverse video, use bg color as text color.
