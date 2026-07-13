@@ -253,6 +253,8 @@ pub struct DesktopApp {
     last_applied_font_size: f32,
     /// Last applied font family from config (for change detection on hot-reload).
     last_applied_font_family: String,
+    /// Cached terminal dimensions "WxH" — only reformat on resize.
+    cached_dims: String,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -652,6 +654,7 @@ impl DesktopApp {
                 .as_ref()
                 .map(|m| m.config().appearance.font_family.clone())
                 .unwrap_or_default(),
+            cached_dims: String::new(),
             status_bar_visible: true,
             hovered_link: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
@@ -1449,11 +1452,13 @@ impl ApplicationHandler for DesktopApp {
                 if self.status_bar.theme_name != self.last_applied_theme {
                     self.status_bar.theme_name = self.last_applied_theme.clone();
                 }
-                self.status_bar.dimensions = format!(
-                    "{}×{}",
-                    self.active_session().app().grid().width(),
-                    self.active_session().app().grid().height()
-                );
+                // Terminal dimensions — only reformat when size changes.
+                let grid = self.active_session().app().grid();
+                let dims = format!("{}×{}", grid.width(), grid.height());
+                if dims != self.cached_dims {
+                    self.cached_dims = dims.clone();
+                    self.status_bar.dimensions = dims;
+                }
 
                 // P28: Update Phase 28 status bar indicators.
                 self.status_bar.workspace_name = self.workspaces.active_name().to_string();
