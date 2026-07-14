@@ -310,8 +310,7 @@ impl SettingsWindowState {
                 if increase {
                     self.draft.scrollback_lines = (self.draft.scrollback_lines + 1000).min(100000);
                 } else {
-                    self.draft.scrollback_lines =
-                        self.draft.scrollback_lines.saturating_sub(1000);
+                    self.draft.scrollback_lines = self.draft.scrollback_lines.saturating_sub(1000);
                 }
             }
             SettingsField::Shell => {
