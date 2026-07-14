@@ -46,8 +46,8 @@ impl SoundType {
         }
     }
 
-    /// Get a description string (for logging on non-macOS).
-    #[cfg(not(target_os = "macos"))]
+    /// Get a description string (for logging on unsupported platforms).
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     fn description(self) -> &'static str {
         match self {
             SoundType::Bell => "bell",
@@ -126,10 +126,10 @@ impl SoundPlayer {
 }
 
 /// Play a system sound (blocking).
-fn play_system_sound(sound: SoundType) {
+fn play_system_sound(_sound: SoundType) {
     #[cfg(target_os = "macos")]
     {
-        let name = sound.macos_sound();
+        let name = _sound.macos_sound();
         // Use afplay or the system sound via NSSound
         // We use `afplay /System/Library/Sounds/<name>.aiff` as a simple approach
         let path = format!("/System/Library/Sounds/{}.aiff", name);
@@ -164,7 +164,7 @@ fn play_system_sound(sound: SoundType) {
     {
         log::debug!(
             "sound playback not supported on this platform: {}",
-            sound.description()
+            _sound.description()
         );
     }
 }

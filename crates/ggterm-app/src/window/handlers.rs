@@ -2760,9 +2760,7 @@ impl DesktopApp {
                                 use crate::titlebar::WindowControlButton;
                                 match btn {
                                     WindowControlButton::Close => {
-                                        if let Some(ref window) = self.window {
-                                            window.close();
-                                        }
+                                        self.should_quit = true;
                                     }
                                     WindowControlButton::Minimize => {
                                         if let Some(ref window) = self.window {

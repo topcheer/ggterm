@@ -780,7 +780,7 @@ impl CommandPaletteState {
             })
             .filter(|(_, score)| *score > 0)
             .collect();
-        results.sort_by(|a, b| b.1.cmp(&a.1));
+        results.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
         results
     }
 }

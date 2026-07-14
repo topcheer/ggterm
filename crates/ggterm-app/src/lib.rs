@@ -74,7 +74,7 @@ pub mod theme;
 pub mod titlebar;
 pub mod ui_theme;
 pub mod version_info;
-#[cfg(all(feature = "macos", target_os = "macos"))]
+#[cfg(all(feature = "desktop", target_os = "macos"))]
 pub mod vibrancy;
 
 #[cfg(feature = "ai")]

@@ -20,9 +20,6 @@ desktop = [
     "dep:env_logger",
     "dep:clap",
     "dep:image",
-]
-# macOS-only features (vibrancy, NSWindow integration)
-macos = [
     "dep:objc2",
     "dep:objc2-foundation",
     "dep:objc2-app-kit",
@@ -52,9 +49,9 @@ thiserror.workspace = true
 
 # Desktop-only dependencies (optional — enabled by `desktop` feature)
 winit = { workspace = true, optional = true }
-objc2 = { workspace = true, optional = true }
-objc2-foundation = { workspace = true, optional = true }
-objc2-app-kit = { workspace = true, optional = true }
+objc2 = { workspace = true, optional = true, target = "apple" }
+objc2-foundation = { workspace = true, optional = true, target = "apple" }
+objc2-app-kit = { workspace = true, optional = true, target = "apple" }
 wgpu = { workspace = true, optional = true }
 ggterm-render-wgpu = { path = "../ggterm-render-wgpu", optional = true }
 pollster = { workspace = true, optional = true }

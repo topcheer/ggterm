@@ -257,7 +257,7 @@ impl DesktopApp {
                         w: size + 6.0,
                         h: size + 6.0,
                         color: if is_hovered {
-                            (hover_color, 0.85)
+                            (hover_color.0, hover_color.1, hover_color.2, 0.85)
                         } else {
                             (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
                         },
