@@ -1355,8 +1355,17 @@ impl ApplicationHandler for DesktopApp {
                     .map(crate::status_bar::format_duration)
                     .unwrap_or_default();
                 // Running command indicator.
+                let was_running = self.status_bar.command_running;
                 self.status_bar.command_running =
                     self.active_session().app().terminal().is_command_running();
+                // When a new command starts, clear stale exit code and duration
+                // from the previous command so the status bar doesn't show
+                // misleading "exit:0" / "5.7s" while the new command runs.
+                if self.status_bar.command_running && !was_running {
+                    self.status_bar.set_exit_code(None);
+                    self.status_bar.command_duration.clear();
+                    self.last_cmd_tenths = 0;
+                }
                 if self.status_bar.command_running {
                     // Live timer: show elapsed seconds next to the spinner.
                     if let Some(elapsed) = self
