@@ -2514,6 +2514,10 @@ impl Perform for Terminal {
                         // PromptStart (A) always means we're back at the prompt,
                         // so any running command must have finished.
                         self.command_start_time = None;
+                        // Clear last command duration so the status bar
+                        // doesn't show stale timing from the previous command
+                        // while the user is at a new prompt.
+                        self.last_command_duration = None;
                     }
                     _ => {}
                 }
