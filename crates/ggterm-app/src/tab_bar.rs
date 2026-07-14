@@ -8,7 +8,9 @@
 
 // ── Layout constants ───────────────────────────────────────────────────
 
-/// Total height of the tab bar in pixels (used by render/handlers/IME).
+/// DEPRECATED: The tab bar height is now dynamic: `(cell_h + 26).max(48) + 4`.
+/// This constant is no longer used in production code. Do not use for layout calculations.
+#[deprecated(note = "Use dynamic (cell_h + 26.0).max(48.0) + 4.0 instead")]
 pub const TAB_BAR_HEIGHT: f32 = 30.0;
 
 /// Padding inside the tab bar strip (top and bottom).

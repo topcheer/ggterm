@@ -29,7 +29,9 @@ pub const TAB_BAR_PADDING_X: f32 = 8.0;
 /// Padding around the terminal content area (all four sides).
 pub const CONTENT_PADDING: f32 = 8.0;
 
-/// Height of the bottom status bar in physical pixels.
+/// DEPRECATED: The status bar height is now dynamic: `cell_h + 8.0`.
+/// This constant is no longer used in production code. Do not use for layout calculations.
+#[deprecated(note = "Use dynamic cell_h + 8.0 instead")]
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
 
 /// Gap between split panes in physical pixels.
