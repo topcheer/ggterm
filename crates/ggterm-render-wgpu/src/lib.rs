@@ -544,12 +544,16 @@ impl GlyphonRenderer {
         let mut text_area_specs: Vec<AreaSpec> = Vec::new();
 
         for row_idx in row_start..row_end {
-            let row_highlights: Vec<(usize, usize)> = self
-                .highlights
-                .iter()
-                .filter(|&&(r, _, _)| r == row_idx)
-                .map(|&(_, s, e)| (s, e))
-                .collect();
+            // Only allocate highlights Vec when highlights exist.
+            let row_highlights: Vec<(usize, usize)> = if self.highlights.is_empty() {
+                Vec::new()
+            } else {
+                self.highlights
+                    .iter()
+                    .filter(|&&(r, _, _)| r == row_idx)
+                    .map(|&(_, s, e)| (s, e))
+                    .collect()
+            };
 
             let runs = converter::row_to_runs(
                 grid,
