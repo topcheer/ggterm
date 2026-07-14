@@ -984,7 +984,16 @@ impl GlyphonRenderer {
         self.overlay_verts_buf.clear();
 
         for r in &self.overlay_rects {
-            push_rect(&mut self.overlay_verts_buf, r.x, r.y, r.w, r.h, r.color, screen_w, screen_h);
+            push_rect(
+                &mut self.overlay_verts_buf,
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                r.color,
+                screen_w,
+                screen_h,
+            );
         }
 
         upload_vertices(

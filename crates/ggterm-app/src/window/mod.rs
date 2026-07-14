@@ -1580,7 +1580,7 @@ impl ApplicationHandler for DesktopApp {
                             true
                         }
                     }) || self.visual_bell_frames > 0
-                    || self.last_title.is_empty()
+                        || self.last_title.is_empty()
                 };
                 if term_title != self.last_title.as_str() || need_rebuild {
                     let title = term_title.to_string();
@@ -1925,7 +1925,11 @@ impl ApplicationHandler for DesktopApp {
             static P2P_TICK: std::sync::atomic::AtomicBool =
                 std::sync::atomic::AtomicBool::new(false);
             let tick = P2P_TICK.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
-            log::debug!("P2P active, status={}, tick={}", self.p2p_share.status as u8, tick);
+            log::debug!(
+                "P2P active, status={}, tick={}",
+                self.p2p_share.status as u8,
+                tick
+            );
             let p2p_status = self.p2p_share.status;
             let tee_len = self.active_session_mut().app_mut().take_pty_tee();
             if p2p_status == crate::p2p_share::P2pShareStatus::Connected {

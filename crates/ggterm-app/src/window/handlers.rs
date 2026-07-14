@@ -2442,7 +2442,8 @@ impl DesktopApp {
                     let in_btn = self.is_in_share_button();
                     log::debug!(
                         "mouse click: status_bar_visible={}, in_share_button={}",
-                        self.status_bar_visible, in_btn
+                        self.status_bar_visible,
+                        in_btn
                     );
                     if in_btn {
                         self.toggle_p2p_share();
