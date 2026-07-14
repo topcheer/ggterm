@@ -1544,11 +1544,10 @@ impl DesktopApp {
                 // Show "↓ N" for small offsets, "↓ N%" for larger ones.
                 let scrollback_len = grid.scrollback_len();
                 let total_lines = scrollback_len + grid.height();
-                let pct = if total_lines > 0 {
-                    (offset * 100 / total_lines).min(100)
-                } else {
-                    0
-                };
+                let pct = (offset * 100)
+                    .checked_div(total_lines.max(1))
+                    .map(|v| v.min(100))
+                    .unwrap_or(0);
                 let pill_w = if pct > 0 {
                     cell_w * 5.0 // "↓ 42%" needs more room
                 } else {
