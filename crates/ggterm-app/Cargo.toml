@@ -20,9 +20,6 @@ desktop = [
     "dep:env_logger",
     "dep:clap",
     "dep:image",
-    "dep:objc2",
-    "dep:objc2-foundation",
-    "dep:objc2-app-kit",
 ]
 # AI integration: enables ggterm-ai engine bridge
 ai = ["dep:ggterm-ai", "ggterm-ai/http"]
@@ -49,9 +46,6 @@ thiserror.workspace = true
 
 # Desktop-only dependencies (optional — enabled by `desktop` feature)
 winit = { workspace = true, optional = true }
-objc2 = { workspace = true, optional = true, target = "apple" }
-objc2-foundation = { workspace = true, optional = true, target = "apple" }
-objc2-app-kit = { workspace = true, optional = true, target = "apple" }
 wgpu = { workspace = true, optional = true }
 ggterm-render-wgpu = { path = "../ggterm-render-wgpu", optional = true }
 pollster = { workspace = true, optional = true }
@@ -63,9 +57,15 @@ notify = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 
-# P2P sharing (optional — enabled by `p2p` feature)
+# P2P
 ggterm-p2p = { path = "../ggterm-p2p", optional = true }
 qrcode = { version = "0.14", optional = true }
+
+# macOS-only dependencies (automatically activated on Apple platforms)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true }
+objc2-app-kit = { workspace = true }
 
 [dev-dependencies]
 ggterm-plugin = { path = "../ggterm-plugin" }

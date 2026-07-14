@@ -47,7 +47,7 @@ impl SoundType {
     }
 
     /// Get a description string (for logging on unsupported platforms).
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    #[allow(dead_code)]
     fn description(self) -> &'static str {
         match self {
             SoundType::Bell => "bell",
