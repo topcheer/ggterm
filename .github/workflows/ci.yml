@@ -79,7 +79,7 @@ jobs:
       - name: Test (default features)
         run: cargo test --workspace
       - name: Test (full features)
-        run: cargo test --workspace --features "${{ env.FEATURES }}${{ runner.os == 'macOS' && ' macos' || '' }}"
+        run: cargo test --workspace --features "${{ env.FEATURES }}"
 
   # ─────────────────────────────────────────────────────────────────────
   # FFI tests — verify mobile FFI bridge compiles and tests pass
@@ -134,7 +134,7 @@ jobs:
             libxcb-dri3-dev \
             libegl1-mesa-dev
       - name: Build release
-        run: cargo build --release --features "${{ env.FEATURES }}${{ runner.os == 'macOS' && ' macos' || '' }}" --target ${{ matrix.target }}
+        run: cargo build --release --features "${{ env.FEATURES }}" --target ${{ matrix.target }}
 
   # ─────────────────────────────────────────────────────────────────────
   # Flutter analyze — check mobile Dart code
