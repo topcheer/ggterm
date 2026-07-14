@@ -149,6 +149,11 @@ pub struct GlyphonRenderer {
     overlay_vertex_count: u32,
     /// Reusable vertex buffer for overlay rendering (avoids per-frame Vec allocation).
     overlay_verts_buf: Vec<f32>,
+    /// Reusable vertex buffer for UI rendering (avoids per-frame Vec allocation).
+    ui_verts_buf: Vec<f32>,
+    /// Reusable vertex buffers for underline/strikethrough decoration rendering.
+    underline_verts_buf: Vec<f32>,
+    strike_verts_buf: Vec<f32>,
     // ── P20-A: Multi-pane viewport offset ──
     /// Pixel offset applied to grid text + decoration positions for
     /// rendering into a sub-region of the surface (split panes).
@@ -336,6 +341,9 @@ impl GlyphonRenderer {
             overlay_vertex_buffer: None,
             overlay_vertex_count: 0,
             overlay_verts_buf: Vec::new(),
+            ui_verts_buf: Vec::new(),
+            underline_verts_buf: Vec::new(),
+            strike_verts_buf: Vec::new(),
             viewport_offset: (0.0, 0.0),
             ui_rects: Vec::new(),
             ui_vertex_buffer: None,
@@ -737,8 +745,8 @@ impl GlyphonRenderer {
         let screen_w = self.resolution.width as f32;
         let screen_h = self.resolution.height as f32;
 
-        let mut underline_verts: Vec<f32> = Vec::with_capacity(512);
-        let mut strike_verts: Vec<f32> = Vec::with_capacity(128);
+        self.underline_verts_buf.clear();
+        self.strike_verts_buf.clear();
         let underline_y = cell_h - 2.0;
         let strike_y = cell_h * 0.5; // mid-line for strikethrough
         let thickness = 1.0;
@@ -800,7 +808,7 @@ impl GlyphonRenderer {
                                     (nx1, y1),
                                     (nx0, y1),
                                 ] {
-                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                                 }
                             }
                         } else if has_dashed {
@@ -822,7 +830,7 @@ impl GlyphonRenderer {
                                     (nx1, y1),
                                     (nx0, y1),
                                 ] {
-                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                                 }
                             }
                         } else if has_curly {
@@ -849,7 +857,7 @@ impl GlyphonRenderer {
                                     (nx1, y1),
                                     (nx0, y1),
                                 ] {
-                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                                 }
                             }
                         } else {
@@ -860,7 +868,7 @@ impl GlyphonRenderer {
                             for &(x, y) in
                                 &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
                             {
-                                underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                             }
                             // Double underline: second line above the first.
                             if has_double {
@@ -871,7 +879,7 @@ impl GlyphonRenderer {
                                 for &(x, y) in
                                     &[(x0, y2), (x1, y2), (x0, y3), (x1, y2), (x1, y3), (x0, y3)]
                                 {
-                                    underline_verts.extend_from_slice(&[x, y, r, g, b]);
+                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                                 }
                             }
                         }
@@ -884,7 +892,7 @@ impl GlyphonRenderer {
                         let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
                         for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
                         {
-                            strike_verts.extend_from_slice(&[x, y, r, g, b]);
+                            self.strike_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                         }
                     }
 
@@ -895,7 +903,7 @@ impl GlyphonRenderer {
                         let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
                         for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
                         {
-                            strike_verts.extend_from_slice(&[x, y, r, g, b]);
+                            self.strike_verts_buf.extend_from_slice(&[x, y, r, g, b]);
                         }
                     }
                 }
@@ -905,7 +913,7 @@ impl GlyphonRenderer {
         // Upload underline vertices
         upload_vertices(
             device,
-            &underline_verts,
+            &self.underline_verts_buf,
             &mut self.underline_vertex_buffer,
             &mut self.underline_vertex_count,
             "underline",
@@ -915,7 +923,7 @@ impl GlyphonRenderer {
         // Upload strikethrough vertices
         upload_vertices(
             device,
-            &strike_verts,
+            &self.strike_verts_buf,
             &mut self.strike_vertex_buffer,
             &mut self.strike_vertex_count,
             "strikethrough",
@@ -1073,11 +1081,11 @@ impl GlyphonRenderer {
     fn prepare_ui(&mut self, device: &wgpu::Device) {
         let screen_w = self.resolution.width as f32;
         let screen_h = self.resolution.height as f32;
-        let mut verts: Vec<f32> = Vec::new();
+        self.ui_verts_buf.clear();
 
         for r in &self.ui_rects {
             push_ui_rect(
-                &mut verts,
+                &mut self.ui_verts_buf,
                 r.x,
                 r.y,
                 r.w,
@@ -1092,7 +1100,7 @@ impl GlyphonRenderer {
 
         upload_vertices(
             device,
-            &verts,
+            &self.ui_verts_buf,
             &mut self.ui_vertex_buffer,
             &mut self.ui_vertex_count,
             "ui overlay",
