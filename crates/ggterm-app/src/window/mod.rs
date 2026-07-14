@@ -1559,7 +1559,21 @@ impl ApplicationHandler for DesktopApp {
                 // Optimized: compare &str first, only allocate when changed.
                 let term_title = self.active_session().app().terminal().title();
                 let multi_tab = self.sessions.len() > 1;
-                if term_title != self.last_title.as_str() || multi_tab {
+                // In multi-tab mode, only rebuild title if any tab title or
+                // bell/alt state actually changed. This avoids per-frame
+                // String allocation for each tab when nothing changed.
+                let need_rebuild = multi_tab && {
+                    // Check if any tab's title differs from cached tab_bar title.
+                    self.sessions.iter().enumerate().any(|(i, s)| {
+                        if i < self.tab_bar.tabs.len() {
+                            s.title() != self.tab_bar.tabs[i].title
+                        } else {
+                            true
+                        }
+                    }) || self.visual_bell_frames > 0
+                    || self.last_title.is_empty()
+                };
+                if term_title != self.last_title.as_str() || need_rebuild {
                     let title = term_title.to_string();
                     self.last_title = title;
                     if let Some(ref window) = self.window {
