@@ -1388,7 +1388,11 @@ impl Terminal {
                 }
                 // SGR 58 — set underline color (extended: 5 = palette, 2 = RGB)
                 58 => {
-                    match (params.get(i + 1).copied(), i + 2 < params.len(), i + 4 < params.len()) {
+                    match (
+                        params.get(i + 1).copied(),
+                        i + 2 < params.len(),
+                        i + 4 < params.len(),
+                    ) {
                         (Some(5), true, _) => {
                             self.underline_color = Color::Indexed(params[i + 2] as u8);
                             i += 2;
