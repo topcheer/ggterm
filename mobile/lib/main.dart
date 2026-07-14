@@ -164,6 +164,18 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
       connected = _sessionManager.localShellConnect(sessionId);
       title = 'Local Shell';
     } else {
+      // Show connecting indicator — SSH connect is a synchronous FFI call
+      // that can take several seconds (DNS, TCP, SSH handshake).
+      // We show an overlay before the blocking call.
+      final overlay = OverlayEntry(
+        builder: (context) => _ConnectingOverlay(host: params.host),
+      );
+      if (mounted) {
+        Overlay.of(context).insert(overlay);
+      }
+      // Give Flutter one frame to render the overlay before the blocking call.
+      await Future.delayed(const Duration(milliseconds: 50));
+
       // SSH connect — use key auth if key file is provided, otherwise password.
       final sshParams = SshConnectionParams(
         host: params.host,
@@ -178,6 +190,9 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
         connected = _sessionManager.sshConnect(sessionId, sshParams);
       }
       title = '${params.username}@${params.host}';
+
+      // Remove overlay — must happen before navigation.
+      overlay.remove();
     }
 
     if (connected && mounted) {
@@ -247,6 +262,46 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
       // Share Terminal (P2P host) only makes sense with a local terminal.
       // iOS has no local shell, so only show on Android.
       onShare: (_p2p.isAvailable && Platform.isAndroid) ? _onShare : null,
+    );
+  }
+}
+
+/// Full-screen overlay shown during SSH connection. The FFI connect call
+/// is synchronous and blocks the UI thread, so this overlay must be rendered
+/// before the blocking call and removed after.
+class _ConnectingOverlay extends StatelessWidget {
+  final String host;
+  const _ConnectingOverlay({required this.host});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Material(
+        color: Colors.black54,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(
+                  color: Colors.white70,
+                  strokeWidth: 3,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Connecting to $host...',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
