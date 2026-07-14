@@ -488,6 +488,8 @@ pub struct Terminal {
     /// Duration of the most recently completed command.
     /// `None` when no command has completed yet.
     pub(crate) last_command_duration: Option<std::time::Duration>,
+    /// Cached last exit code, cleared on new prompt (PromptStart).
+    pub(crate) last_exit_code_cache: Option<i32>,
     /// Instant of the last received output from the PTY.
     /// Used for idle detection in the status bar.
     pub(crate) last_output_time: Option<std::time::Instant>,
@@ -650,6 +652,7 @@ impl Terminal {
             cell_dimensions: None,
             command_start_time: None,
             last_command_duration: None,
+            last_exit_code_cache: None,
             last_output_time: None,
         }
     }
@@ -936,11 +939,7 @@ impl Terminal {
     ///
     /// Returns `None` if no commands have completed yet.
     pub fn last_exit_code(&self) -> Option<i32> {
-        self.command_marks
-            .iter()
-            .rev()
-            .find(|m| m.kind == CommandMarkKind::CommandEnd)
-            .and_then(|m| m.exit_code)
+        self.last_exit_code_cache
     }
 
     /// Return true if the most recent completed command succeeded (exit code 0).
@@ -2506,6 +2505,8 @@ impl Perform for Terminal {
                         if let Some(start) = self.command_start_time.take() {
                             self.last_command_duration = Some(start.elapsed());
                         }
+                        // Cache exit code from the mark for status bar display.
+                        self.last_exit_code_cache = exit_code;
                     }
                     CommandMarkKind::PromptStart => {
                         // Safety: clear any stale command_start_time.
@@ -2518,6 +2519,9 @@ impl Perform for Terminal {
                         // doesn't show stale timing from the previous command
                         // while the user is at a new prompt.
                         self.last_command_duration = None;
+                        // Clear cached exit code so status bar doesn't show
+                        // "exit:0" from the previous command at the new prompt.
+                        self.last_exit_code_cache = None;
                     }
                     _ => {}
                 }
