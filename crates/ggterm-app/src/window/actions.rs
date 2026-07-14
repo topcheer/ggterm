@@ -3088,10 +3088,10 @@ impl DesktopApp {
             let share_top = bar_y + 3.0;
             let share_bot = bar_y + bar_h - 3.0;
 
-            crate::p2p_share::log_to_file(&format!(
+            log::debug!(
                 "is_in_share_button: cursor=({mx},{my}), share_btn=[{share_x:.0}-{:.0}, {share_top:.0}-{share_bot:.0}]",
                 share_x + share_w
-            ));
+            );
 
             mx >= share_x as f64
                 && mx <= (share_x + share_w) as f64
@@ -3105,7 +3105,7 @@ impl DesktopApp {
     /// P2P: Toggle terminal sharing overlay.
     #[cfg(feature = "p2p")]
     pub(super) fn toggle_p2p_share(&mut self) {
-        crate::p2p_share::log_to_file("toggle_p2p_share() called");
+        log::debug!("toggle_p2p_share() called");
         self.p2p_share.toggle();
         if self.p2p_share.is_active() {
             match self.p2p_share.status {
@@ -3152,10 +3152,10 @@ impl DesktopApp {
 
             // Send accumulated PTY output (the raw bytes from the shell).
             let screen_data = self.active_session_mut().app_mut().take_pty_tee();
-            crate::p2p_share::log_to_file(&format!(
+            log::debug!(
                 "poll_p2p: sending {} bytes of accumulated PTY data",
                 screen_data.len()
-            ));
+            );
             self.p2p_share.tee_output(&screen_data);
 
             // Send Ctrl+L to the shell. This clears the screen and redraws

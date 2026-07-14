@@ -2440,10 +2440,10 @@ impl DesktopApp {
                 #[cfg(feature = "p2p")]
                 if self.status_bar_visible {
                     let in_btn = self.is_in_share_button();
-                    crate::p2p_share::log_to_file(&format!(
+                    log::debug!(
                         "mouse click: status_bar_visible={}, in_share_button={}",
                         self.status_bar_visible, in_btn
-                    ));
+                    );
                     if in_btn {
                         self.toggle_p2p_share();
                         return;

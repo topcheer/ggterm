@@ -89,9 +89,13 @@ impl P2pShareState {
         self.transport = None;
         self.tee_buffer.clear();
 
+        log::debug!("start() called");
         match P2pHost::start() {
             Ok(host) => {
                 let ticket = host.ticket().to_string();
+                log::debug!("host started, ticket len={}", ticket.len());
+                // Write ticket to file for automation/testing.
+                let _ = std::fs::write("/tmp/ggterm_p2p_ticket", &ticket);
 
                 // Generate QR code from the ticket.
                 let qr = generate_qr(&ticket);
@@ -108,23 +112,26 @@ impl P2pShareState {
                     std::thread::Builder::new()
                         .name("p2p-accept".into())
                         .spawn(move || {
-                            // We need the host to accept. The host is moved into the thread.
-                            // After accept succeeds, the transport is sent via channel.
-                            // The host stays alive in the thread until it's consumed.
                             let mut host = host;
+                            log::debug!("accept thread: waiting...");
                             match host.accept() {
                                 Ok(transport) => {
+                                    log::debug!("accept thread: connection received!");
+                                    // host.accept() takes runtime + endpoint out of host.
+                                    // host is now empty, safe to drop.
                                     if let Ok(guard) = accept_tx.lock()
                                         && let Some(_rx) = guard.as_ref()
                                     {
                                         let _ = tx.send(transport);
+                                        log::debug!("accept thread: transport sent");
+                                    } else {
+                                        log::debug!("accept thread: rx gone!");
                                     }
-                                    // Keep host alive in the thread — it will be dropped when
-                                    // the thread exits, but the runtime was consumed by accept().
-                                    std::mem::forget(host);
+                                    // Drop host normally — it has no runtime/endpoint left.
+                                    drop(host);
                                 }
                                 Err(e) => {
-                                    log::warn!("P2P accept failed: {e}");
+                                    log::debug!("accept thread: FAILED: {e}");
                                 }
                             }
                         })
@@ -188,9 +195,10 @@ impl P2pShareState {
 
         match rx.flatten() {
             Some(transport) => {
+                log::debug!("poll_connection: got transport!");
                 self.transport = Some(transport);
                 self.status = P2pShareStatus::Connected;
-                log::info!("P2P: mobile device connected");
+                log::debug!("poll_connection: status=Connected");
                 true
             }
             None => false,
@@ -245,7 +253,7 @@ impl P2pShareState {
 
     /// Check if sharing is active (host is running).
     pub fn is_active(&self) -> bool {
-        self.visible
+        self.visible || self.status == P2pShareStatus::Connected
     }
 }
 

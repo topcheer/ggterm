@@ -1777,7 +1777,7 @@ impl ApplicationHandler for DesktopApp {
         if std::path::Path::new("/tmp/ggterm_auto_share").exists() && !self.p2p_share.is_active() {
             let _ = std::fs::remove_file("/tmp/ggterm_auto_share");
             self.toggle_p2p_share();
-            crate::p2p_share::log_to_file("auto-share triggered");
+            log::debug!("auto-share triggered");
         }
 
         // P29-C: Check if we should quit after confirmation.
