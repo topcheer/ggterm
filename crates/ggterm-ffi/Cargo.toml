@@ -13,6 +13,7 @@ crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
 ggterm-core = { path = "../ggterm-core" }
+log.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 libc = "0.2"

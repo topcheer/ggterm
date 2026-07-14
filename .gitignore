@@ -52,3 +52,13 @@ mobile/android/.gradle/
 mobile/android/app/release/
 mobile/android/app/debug/
 mobile/build/
+.ggcode/
+*.so
+*.a
+session.json
+*.dmg
+*.deb
+*.apk
+*.ipa
+# ggcode agent workspace
+.ggcode/

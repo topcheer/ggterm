@@ -4,6 +4,7 @@
 /// Each triggers an AI request via the session manager and displays
 /// the response in a dismissible overlay panel.
 
+library;
 import 'package:flutter/material.dart';
 
 /// AI action types matching the desktop `ggterm_ai::Action` enum.
@@ -162,7 +163,7 @@ class _AiToolbarState extends State<AiToolbar> {
             decoration: BoxDecoration(
               color: Colors.grey.shade800,
               border: Border(
-                top: BorderSide(color: Colors.blue.withOpacity(0.3)),
+                top: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
               ),
             ),
             child: Column(

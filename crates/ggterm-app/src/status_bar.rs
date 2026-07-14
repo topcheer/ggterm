@@ -425,7 +425,7 @@ impl StatusBar {
         let err_color: (u8, u8, u8) = (230, 80, 80);
         let ok_color: (u8, u8, u8) = (100, 200, 120);
 
-        let mut segs: Vec<(String, (u8, u8, u8))> = Vec::new();
+        let mut segs: Vec<(String, (u8, u8, u8))> = Vec::with_capacity(24);
 
         macro_rules! seg {
             ($text:expr, $color:expr) => {{

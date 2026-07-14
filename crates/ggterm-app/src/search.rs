@@ -436,10 +436,7 @@ impl SimpleRegex {
     /// Compile a regex pattern. Returns None if the pattern is invalid.
     fn compile(pattern: &str, case_insensitive: bool) -> Option<Self> {
         let chars: Vec<char> = pattern.chars().collect();
-        let mut parser = RegexParser {
-            chars,
-            pos: 0,
-        };
+        let mut parser = RegexParser { chars, pos: 0 };
         let nodes = parser.parse_alternation()?;
         if parser.pos != parser.chars.len() {
             return None; // Unexpected trailing characters.

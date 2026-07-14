@@ -61,16 +61,25 @@ mod imp {
     struct HostEntry {
         host: Option<P2pHost>,
         ticket: String,
-        /// Background thread result: Some(Ok(transport)) when client connected.
         accepted: Arc<Mutex<Option<Result<P2pTransport, String>>>>,
         accept_started: AtomicBool,
     }
 
+    /// Pending client connect result.
+    struct PendingConnect {
+        result: Arc<Mutex<Option<Result<(), String>>>>,
+    }
+
     static P2P_HOSTS: OnceLock<Mutex<HashMap<u32, HostEntry>>> = OnceLock::new();
     static P2P_HOST_SESSION: OnceLock<Mutex<u32>> = OnceLock::new();
+    static PENDING_CONNECTS: OnceLock<Mutex<HashMap<u32, PendingConnect>>> = OnceLock::new();
 
     fn p2p_hosts() -> &'static Mutex<HashMap<u32, HostEntry>> {
         P2P_HOSTS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    fn pending_connects() -> &'static Mutex<HashMap<u32, PendingConnect>> {
+        PENDING_CONNECTS.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
     pub(super) fn host_session_id() -> u32 {
@@ -92,7 +101,6 @@ mod imp {
 
     // ── Host lifecycle ─────────────────────────────────────────────────
 
-    /// Start a P2P host linked to an existing session.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn ggterm_p2p_host_start(session_id: u32) -> u32 {
         match P2pHost::start() {
@@ -115,7 +123,6 @@ mod imp {
         }
     }
 
-    /// Get the host ticket string for QR code display.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn ggterm_p2p_host_ticket(session_id: u32) -> *mut c_char {
         let hosts = p2p_hosts().lock().unwrap_or_else(|e| e.into_inner());
@@ -125,12 +132,8 @@ mod imp {
         to_c_string(&entry.ticket)
     }
 
-    /// Poll whether a mobile client has connected (non-blocking).
-    ///
-    /// Returns: 1 = connected, 0 = waiting, -1 = error.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn ggterm_p2p_host_accept(session_id: u32) -> i32 {
-        // Start accept thread on first call
         let accept_arc = {
             let hosts = p2p_hosts().lock().unwrap_or_else(|e| e.into_inner());
             let Some(state) = hosts.get(&session_id) else {
@@ -138,8 +141,6 @@ mod imp {
             };
             if !state.accept_started.load(Ordering::Relaxed) {
                 drop(hosts);
-
-                // Re-lock and take the host out
                 let mut hosts = p2p_hosts().lock().unwrap_or_else(|e| e.into_inner());
                 let Some(state) = hosts.get_mut(&session_id) else {
                     return -1;
@@ -152,38 +153,25 @@ mod imp {
                 state.accept_started.store(true, Ordering::Relaxed);
                 drop(hosts);
 
-                // Spawn background thread
                 std::thread::spawn(move || {
                     let result = host.accept();
                     let mut guard = accepted.lock().unwrap_or_else(|e| e.into_inner());
                     *guard = Some(result.map_err(|e| e.to_string()));
                 });
-                return 0; // just started, still waiting
+                return 0;
             }
             state.accepted.clone()
         };
 
-        // Check if accept completed
         let mut guard = accept_arc.lock().unwrap_or_else(|e| e.into_inner());
         match guard.take() {
             None => 0,
             Some(Ok(transport)) => {
-                // Install transport into the FFI session registry
                 let mut map = transport::sessions()
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
                 if let Some(s) = map.get_mut(&session_id) {
                     s.transport = Some(Box::new(transport));
-                } else {
-                    // Session doesn't exist — create one
-                    drop(map);
-                    let new_id = transport::create_session(80, 24);
-                    let mut map = transport::sessions()
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
-                    if let Some(s) = map.get_mut(&new_id) {
-                        s.transport = Some(Box::new(transport));
-                    }
                 }
                 1
             }
@@ -194,30 +182,25 @@ mod imp {
         }
     }
 
-    /// Generate a standalone host ticket (creates a session internally).
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn ggterm_p2p_generate_ticket() -> *mut c_char {
-        // Create a session for this host
         let session_id = transport::create_session(80, 24);
         set_host_session_id(session_id);
-
-        // Call host_start internally
         let result = unsafe { ggterm_p2p_host_start(session_id) };
         if result == 0 {
             return std::ptr::null_mut();
         }
-
-        // Return ticket
         unsafe { ggterm_p2p_host_ticket(session_id) }
     }
 
-    // ── Client connect ─────────────────────────────────────────────────
+    // ── Client connect (NON-BLOCKING) ─────────────────────────────────
 
-    /// Connect to a P2P host using a scanned ticket string.
+    /// NON-BLOCKING: Returns session_id immediately. Connection happens
+    /// in background. Poll `ggterm_p2p_connect_status` to check.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn ggterm_p2p_connect(ticket: *const c_char) -> u32 {
         if ticket.is_null() {
-            transport::set_error("null ticket to ggterm_p2p_connect");
+            transport::set_error("null ticket");
             return 0;
         }
 
@@ -229,27 +212,96 @@ mod imp {
             }
         };
 
-        match P2pClient::connect(&ticket_str) {
-            Ok(transport) => {
-                let session_id = transport::create_session(80, 24);
-                let mut map = transport::sessions()
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                if let Some(s) = map.get_mut(&session_id) {
-                    s.transport = Some(Box::new(transport));
+        // Create session immediately.
+        let session_id = transport::create_session(80, 24);
+        if session_id == 0 {
+            transport::set_error("failed to create session");
+            return 0;
+        }
+
+        // Set up pending result tracking.
+        let result = Arc::new(Mutex::new(None::<Result<(), String>>));
+        {
+            let mut pending = pending_connects().lock().unwrap_or_else(|e| e.into_inner());
+            pending.insert(
+                session_id,
+                PendingConnect {
+                    result: result.clone(),
+                },
+            );
+        }
+
+        // Spawn background thread — does NOT block the caller.
+        let _ = std::thread::Builder::new()
+            .name("p2p-connect".into())
+            .spawn(move || {
+                match P2pClient::connect(&ticket_str) {
+                    Ok(transport) => {
+                        // Install transport into session.
+                        let mut map = transport::sessions()
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        if let Some(s) = map.get_mut(&session_id) {
+                            s.transport = Some(Box::new(transport));
+                        }
+                        if let Ok(mut g) = result.lock() {
+                            *g = Some(Ok(()));
+                        }
+                    }
+                    Err(e) => {
+                        let msg = format!("{e}");
+                        if let Ok(mut g) = result.lock() {
+                            *g = Some(Err(msg));
+                        }
+                    }
                 }
-                session_id
+            });
+
+        session_id
+    }
+
+    /// Check connection status: 0=connecting, 1=connected, -1=failed.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn ggterm_p2p_connect_status(session_id: u32) -> i32 {
+        let sid = if session_id == 0 {
+            let host_sid = host_session_id();
+            if host_sid == 0 {
+                return -1;
             }
-            Err(e) => {
-                transport::set_error(format!("P2P connect failed: {e}"));
-                0
+            host_sid
+        } else {
+            session_id
+        };
+
+        // Check pending connects first.
+        {
+            let pending = pending_connects().lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(pc) = pending.get(&sid) {
+                let r = pc.result.lock().unwrap_or_else(|e| e.into_inner());
+                return match &*r {
+                    None => 0,
+                    Some(Ok(())) => 1,
+                    Some(Err(msg)) => {
+                        transport::set_error(msg.clone());
+                        -1
+                    }
+                };
             }
         }
+
+        // No pending — check installed transport.
+        let mut map = transport::sessions()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let connected = match map.get_mut(&sid) {
+            Some(s) => s.transport.as_mut().map(|t| t.is_alive()).unwrap_or(false),
+            None => return -1,
+        };
+        if connected { 1 } else { 0 }
     }
 
     // ── Status & cleanup ───────────────────────────────────────────────
 
-    /// Check if a P2P session is connected.
     #[unsafe(no_mangle)]
     pub extern "C" fn ggterm_p2p_is_connected(session_id: u32) -> bool {
         let sid = if session_id == 0 {
@@ -271,12 +323,15 @@ mod imp {
         s.transport.as_mut().is_some_and(|t| t.is_alive())
     }
 
-    /// Close a P2P connection and clean up host state.
     #[unsafe(no_mangle)]
     pub extern "C" fn ggterm_p2p_close(session_id: u32) {
         let mut hosts = p2p_hosts().lock().unwrap_or_else(|e| e.into_inner());
         hosts.remove(&session_id);
         drop(hosts);
+
+        let mut pending = pending_connects().lock().unwrap_or_else(|e| e.into_inner());
+        pending.remove(&session_id);
+        drop(pending);
 
         let mut map = transport::sessions()
             .lock()

@@ -514,8 +514,8 @@ impl SettingsWindowState {
             left: margin,
             top: margin * 0.6,
             color: header_color,
-                    ..Default::default()
-                });
+            ..Default::default()
+        });
 
         // Accent bar under header.
         rects.push(UiRect {
@@ -559,8 +559,8 @@ impl SettingsWindowState {
                 } else {
                     label_color
                 },
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
 
             // Value (right side).
             let value = self.field_value_str(field);
@@ -594,8 +594,8 @@ impl SettingsWindowState {
                         left: ax,
                         top: y + 8.0 * scale,
                         color: (100, 130, 180),
-                    ..Default::default()
-                });
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -608,8 +608,8 @@ impl SettingsWindowState {
                 } else {
                     value_color
                 },
-                    ..Default::default()
-                });
+                ..Default::default()
+            });
         }
 
         // ── Footer ──
@@ -619,8 +619,8 @@ impl SettingsWindowState {
             left: margin,
             top: footer_y,
             color: footer_color,
-                    ..Default::default()
-                });
+            ..Default::default()
+        });
 
         (rects, texts)
     }

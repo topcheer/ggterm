@@ -3,6 +3,7 @@
 /// Mirrors the 9 built-in themes from the desktop renderer
 /// (`crates/ggterm-render/src/theme.rs`).
 
+library;
 import 'dart:ui';
 
 /// A complete terminal color theme.
@@ -24,7 +25,7 @@ class TerminalTheme {
 
 // ── Color helper ──────────────────────────────────────────────────────
 
-Color _rgb(int r, int g, int b) => Color.fromARGB(255, r, g, b);
+// _rgb removed — unused
 
 // ── 9 built-in themes ────────────────────────────────────────────────
 

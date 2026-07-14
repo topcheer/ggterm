@@ -235,10 +235,8 @@ unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellErro
             .expect("HOME path should not contain null bytes");
         libc::setenv(b"HOME\0".as_ptr() as *const _, home_c.as_ptr(), 1);
 
-        let path = CString::new(
-            "/system/bin:/system/xbin:/data/data/com.ggterm.ggterm/files/bin",
-        )
-        .expect("PATH literal should not contain null bytes");
+        let path = CString::new("/system/bin:/system/xbin:/data/data/com.ggterm.ggterm/files/bin")
+            .expect("PATH literal should not contain null bytes");
         libc::setenv(b"PATH\0".as_ptr() as *const _, path.as_ptr(), 1);
 
         let term = CString::new("xterm-256color").expect("TERM literal is valid");

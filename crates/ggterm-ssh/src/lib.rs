@@ -31,10 +31,10 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use russh::client::Msg;
 use russh::client::{self};
 use russh::keys::{PrivateKey, PrivateKeyWithHashAlg};
 use russh::{ChannelMsg, Disconnect};
-use russh::client::Msg;
 use tokio::sync::mpsc;
 
 // ─────────────────────────────────────────────────────────────────
@@ -210,16 +210,14 @@ impl SshSession {
 
             // Authenticate.
             let auth_ok = match auth {
-                AuthMethod::Password(pw) => {
-                    tokio::time::timeout(
-                        std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
-                        handle.authenticate_password(username, &pw),
-                    )
-                    .await
-                    .map_err(|_| SshError::Auth("auth timeout (15s)".into()))?
-                    .map_err(|e| SshError::Auth(e.to_string()))?
-                    .success()
-                }
+                AuthMethod::Password(pw) => tokio::time::timeout(
+                    std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
+                    handle.authenticate_password(username, &pw),
+                )
+                .await
+                .map_err(|_| SshError::Auth("auth timeout (15s)".into()))?
+                .map_err(|e| SshError::Auth(e.to_string()))?
+                .success(),
                 AuthMethod::PublicKey(key) => {
                     let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(*key), None);
                     tokio::time::timeout(

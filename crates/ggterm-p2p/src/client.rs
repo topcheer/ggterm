@@ -1,5 +1,7 @@
 //! Client-side P2P — mobile scans QR code, connects to desktop host.
 
+use std::sync::Arc;
+
 use iroh::Endpoint;
 use iroh::endpoint::presets;
 
@@ -31,28 +33,36 @@ impl P2pClient {
         let runtime =
             tokio::runtime::Runtime::new().map_err(|e| P2pError::Runtime(e.to_string()))?;
 
-        let conn = runtime.block_on(async {
+        let (conn, endpoint) = runtime.block_on(async {
             let endpoint = Endpoint::builder(presets::N0)
                 .alpns(vec![ALPN.to_vec()])
                 .bind()
                 .await
                 .map_err(|e| P2pError::EndpointCreate(e.to_string()))?;
+            let endpoint = Arc::new(endpoint);
 
-            let conn = endpoint
-                .connect(addr, ALPN)
-                .await
-                .map_err(|e| P2pError::Connect(e.to_string()))?;
+            let conn = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                endpoint.connect(addr, ALPN),
+            )
+            .await
+            .map_err(|_| P2pError::Connect("connection timed out after 30s".into()))?
+            .map_err(|e| P2pError::Connect(e.to_string()))?;
 
-            Ok::<_, P2pError>(conn)
+            Ok::<_, P2pError>((conn, endpoint))
         })?;
 
         // Open a bidirectional stream.
-        let (mut send, recv) = runtime
-            .block_on(conn.open_bi())
-            .map_err(|e| P2pError::Stream(e.to_string()))?;
+        let (mut send, recv) = runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(10), conn.open_bi())
+                .await
+                .map_err(|_| P2pError::Stream("open_bi timed out".into()))?
+                .map_err(|e| P2pError::Stream(e.to_string()))
+        })?;
 
-        // Send an initial byte so the host's accept_bi() returns immediately.
-        // QUIC streams are lazy — accept_bi won't complete until data is sent.
+        // QUIC streams are lazily opened. We need to send at least one byte
+        // so the host's accept_bi() returns. We'll send a single 0x00.
+        // The host transport will skip this byte on the first read.
         let init_result: Result<(), P2pError> = runtime.block_on(async {
             use tokio::io::AsyncWriteExt;
             send.write_all(b"\x00")
@@ -63,8 +73,9 @@ impl P2pClient {
         });
         init_result?;
 
-        // Create transport — takes ownership of the runtime.
-        Ok(P2pTransport::from_streams(send, recv, runtime))
+        Ok(P2pTransport::from_streams(
+            send, recv, conn, endpoint, runtime,
+        ))
     }
 }
 

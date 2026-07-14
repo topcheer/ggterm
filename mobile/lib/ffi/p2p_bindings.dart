@@ -22,6 +22,7 @@
 /// final ticket = p2p.generateTicket();
 /// // Display ticket as QR code...
 /// ```
+library;
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
@@ -43,6 +44,12 @@ typedef _P2pGenerateTicketDart = Pointer<Utf8> Function();
 typedef _P2pFreeStringC = Void Function(Pointer<Utf8> ptr);
 typedef _P2pFreeStringDart = void Function(Pointer<Utf8> ptr);
 
+typedef _P2pConnectStatusC = Int32 Function(Uint32 sessionId);
+typedef _P2pConnectStatusDart = int Function(int sessionId);
+
+typedef _LastErrorC = Pointer<Utf8> Function();
+typedef _LastErrorDart = Pointer<Utf8> Function();
+
 // ── P2P bindings class ────────────────────────────────────────────────
 
 /// Provides bindings to the P2P C-ABI functions in ggterm_ffi.
@@ -61,6 +68,8 @@ class P2pBindings {
   late final bool Function(int) _p2pIsConnected;
   late final Pointer<Utf8> Function() _p2pGenerateTicket;
   late final void Function(Pointer<Utf8>)? _p2pFreeString;
+  late final Pointer<Utf8> Function() _lastError;
+  late final int Function(int) _p2pConnectStatus;
 
   /// Load P2P bindings from the given [DynamicLibrary].
   ///
@@ -149,6 +158,20 @@ class P2pBindings {
     } catch (_) {
       _p2pFreeString = null;
     }
+
+    try {
+      _lastError = _lib
+          .lookupFunction<_LastErrorC, _LastErrorDart>('ggterm_last_error');
+    } catch (_) {
+      _lastError = () => nullptr;
+    }
+
+    try {
+      _p2pConnectStatus = _lib.lookupFunction<_P2pConnectStatusC, _P2pConnectStatusDart>(
+          'ggterm_p2p_connect_status');
+    } catch (_) {
+      _p2pConnectStatus = (_) => -1;
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────
@@ -159,6 +182,7 @@ class P2pBindings {
   /// obtained by scanning a QR code.
   ///
   /// Returns a session ID (> 0) on success, or 0 on failure.
+  /// Call [lastError] after a 0 return to get the error message.
   int connect(String ticket) {
     if (!isAvailable) return 0;
     final ticketPtr = ticket.toNativeUtf8();
@@ -167,6 +191,19 @@ class P2pBindings {
     } finally {
       malloc.free(ticketPtr);
     }
+  }
+
+  /// Get the last error message from the FFI layer.
+  String? lastError() {
+    final ptr = _lastError();
+    if (ptr == nullptr) return null;
+    return ptr.toDartString();
+  }
+
+  /// Check connection status: 0=connecting, 1=connected, -1=failed.
+  int connectStatus(int sessionId) {
+    if (!isAvailable) return -1;
+    return _p2pConnectStatus(sessionId);
   }
 
   /// Generate a host ticket for a given session.

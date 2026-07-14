@@ -80,7 +80,7 @@ impl P2pHost {
         let endpoint = self.endpoint.as_ref().ok_or(P2pError::ConnectionClosed)?;
         let endpoint = endpoint.clone();
 
-        // Accept incoming connection.
+        // Accept incoming connection (with timeout).
         let conn = runtime.block_on(async move {
             let incoming = endpoint
                 .accept()
@@ -94,10 +94,17 @@ impl P2pHost {
             .block_on(conn.accept_bi())
             .map_err(|e| P2pError::Stream(e.to_string()))?;
 
-        // Take ownership of the runtime so the background task stays alive.
+        // Take ownership of runtime and endpoint so they live as long as the transport.
         let owned_runtime = self.runtime.take().ok_or(P2pError::ConnectionClosed)?;
+        let owned_endpoint = self.endpoint.take().ok_or(P2pError::ConnectionClosed)?;
 
-        Ok(P2pTransport::from_streams(send, recv, owned_runtime))
+        Ok(P2pTransport::from_streams(
+            send,
+            recv,
+            conn,
+            owned_endpoint,
+            owned_runtime,
+        ))
     }
 
     /// Shut down the host and close the endpoint.

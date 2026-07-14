@@ -162,19 +162,8 @@ pub(crate) fn spawn_io_task(
                     return;
                 }
                 Ok(Ok(Some(n))) => {
-                    // Skip the initial handshake byte (0x00) if present.
-                    let start = if n > 0
-                        && buf[0] == 0x00
-                        && read_buf.lock().map(|r| r.is_empty()).unwrap_or(true)
-                    {
-                        1 // Skip the client's initial handshake byte
-                    } else {
-                        0
-                    };
-                    if n > start
-                        && let Ok(mut rb) = read_buf.lock()
-                    {
-                        rb.extend_from_slice(&buf[start..n]);
+                    if let Ok(mut rb) = read_buf.lock() {
+                        rb.extend_from_slice(&buf[..n]);
                     }
                 }
                 Ok(Ok(None)) => {

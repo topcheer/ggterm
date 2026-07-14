@@ -45,7 +45,7 @@ pub fn serialize_ticket(addr: &EndpointAddr) -> String {
 /// Deserialize a ticket string back into an `EndpointAddr`.
 pub fn deserialize_ticket(s: &str) -> Result<EndpointAddr, P2pError> {
     let bytes = BASE32
-        .decode(s.to_lowercase().as_bytes())
+        .decode(s.to_uppercase().as_bytes())
         .map_err(|e| P2pError::InvalidTicket(e.to_string()))?;
     postcard::from_bytes::<EndpointAddr>(&bytes).map_err(|e| P2pError::InvalidTicket(e.to_string()))
 }

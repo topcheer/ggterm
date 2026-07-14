@@ -9,6 +9,7 @@
 /// 3. Poll `ggterm_p2p_is_connected()` to show connection status
 /// 4. On connection, optionally navigate to terminal or show status
 
+library;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -166,7 +167,7 @@ class _ShareScreenState extends State<ShareScreen> {
         Text(
           'Setting up Iroh endpoint for P2P connection',
           style: TextStyle(
-            color: widget.theme.foreground.withOpacity(0.5),
+            color: widget.theme.foreground.withValues(alpha: 0.5),
             fontSize: 13,
             decoration: TextDecoration.none,
           ),
@@ -187,7 +188,7 @@ class _ShareScreenState extends State<ShareScreen> {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -246,7 +247,7 @@ class _ShareScreenState extends State<ShareScreen> {
         Text(
           'Scan this QR code from another GGTerm instance',
           style: TextStyle(
-            color: widget.theme.foreground.withOpacity(0.5),
+            color: widget.theme.foreground.withValues(alpha: 0.5),
             fontSize: 13,
             decoration: TextDecoration.none,
           ),
@@ -255,18 +256,18 @@ class _ShareScreenState extends State<ShareScreen> {
         const SizedBox(height: 32),
 
         // ── Ticket info (for manual entry fallback) ──
-        if (_ticket != null && _ticket!.length > 0)
+        if (_ticket != null && _ticket!.isNotEmpty)
           ExpansionTile(
             title: Text(
               'Manual ticket (${_ticket!.length} chars)',
               style: TextStyle(
-                color: widget.theme.foreground.withOpacity(0.7),
+                color: widget.theme.foreground.withValues(alpha: 0.7),
                 fontSize: 13,
               ),
             ),
             leading: Icon(
               Icons.info_outline,
-              color: widget.theme.foreground.withOpacity(0.5),
+              color: widget.theme.foreground.withValues(alpha: 0.5),
               size: 20,
             ),
             childrenPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -275,13 +276,13 @@ class _ShareScreenState extends State<ShareScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: widget.theme.foreground.withOpacity(0.05),
+                  color: widget.theme.foreground.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SelectableText(
                   _ticket!,
                   style: TextStyle(
-                    color: widget.theme.foreground.withOpacity(0.6),
+                    color: widget.theme.foreground.withValues(alpha: 0.6),
                     fontSize: 11,
                     fontFamily: 'monospace',
                     height: 1.4,
@@ -326,7 +327,7 @@ class _ShareScreenState extends State<ShareScreen> {
         Text(
           'A peer has connected to your terminal',
           style: TextStyle(
-            color: widget.theme.foreground.withOpacity(0.6),
+            color: widget.theme.foreground.withValues(alpha: 0.6),
             fontSize: 14,
             decoration: TextDecoration.none,
           ),
@@ -368,7 +369,7 @@ class _ShareScreenState extends State<ShareScreen> {
           _errorMessage ?? 'Unknown error',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: widget.theme.foreground.withOpacity(0.6),
+            color: widget.theme.foreground.withValues(alpha: 0.6),
             fontSize: 14,
             height: 1.5,
             decoration: TextDecoration.none,
