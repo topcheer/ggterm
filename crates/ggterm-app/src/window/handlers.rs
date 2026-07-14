@@ -3123,11 +3123,7 @@ impl DesktopApp {
         if let Some(ref window) = self.window {
             use winit::window::CursorIcon;
             let py = self.cursor_pos.1 as f32;
-            let content_top = if self.tab_bar.visible {
-                crate::tab_bar::TAB_BAR_HEIGHT
-            } else {
-                0.0
-            };
+            let content_top = self.content_area_bounds().y as f32;
             // Check if hovering over a pane separator.
             let on_separator = if let Some(is_horizontal) = self.drag_resize {
                 Some(is_horizontal)
