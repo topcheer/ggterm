@@ -448,6 +448,7 @@ impl DesktopApp {
                 layout.new_tab_button.cx - layout.new_tab_button.size / 2.0,
                 (bar_h - tab_h) / 2.0,
                 layout.new_tab_button.size,
+                tab_h,
                 "+",
                 btn_hovered,
                 (0.35, 0.42, 0.55, 0.8),
@@ -469,6 +470,7 @@ impl DesktopApp {
                 layout.settings_button.cx - layout.settings_button.size / 2.0,
                 (bar_h - tab_h) / 2.0,
                 layout.settings_button.size,
+                tab_h,
                 "\u{2699}", // ⚙ gear symbol
                 gear_hovered,
                 (0.35, 0.42, 0.55, 0.8),
@@ -541,7 +543,7 @@ impl DesktopApp {
             // buttons on the right. Taller bar and larger buttons for usability.
             let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
             let tab_h = (cell_h + 26.0).max(48.0); // matches multi-tab tab height
-            let btn_size = tab_h.max(28.0); // same formula as multi-tab compute_layout
+            let btn_size = (tab_h * 0.65).max(24.0); // 65% of tab height, min 24px
             let btn_gap = 8.0_f32;
             let cell_w = renderer.cell_width() as f32;
 
@@ -621,7 +623,11 @@ impl DesktopApp {
 
             let gear_x = screen_w - btn_size - right_margin;
             let plus_x = gear_x - btn_size - btn_gap;
-            let btn_y = (bar_h - btn_size) / 2.0;
+            // Match multi-tab button vertical position: (bar_h - tab_h) / 2.0
+            let btn_y = (bar_h - tab_h) / 2.0;
+            // Button container height matches tab height, not btn_size —
+            // this makes the button fill the tab bar height like multi-tab.
+            let btn_h = tab_h;
 
             // "+" new-tab button.
             let plus_hovered = self.cursor_pos.0 as f32 >= plus_x
@@ -634,6 +640,7 @@ impl DesktopApp {
                 plus_x,
                 btn_y,
                 btn_size,
+                btn_h,
                 "+",
                 plus_hovered,
                 (0.35, 0.42, 0.55, 0.8),
@@ -654,6 +661,7 @@ impl DesktopApp {
                 gear_x,
                 btn_y,
                 btn_size,
+                btn_h,
                 "\u{2699}", // ⚙ gear symbol
                 gear_hovered,
                 (0.35, 0.42, 0.55, 0.8),
@@ -1558,11 +1566,11 @@ impl DesktopApp {
                     radius: 4.0,
                     stroke_width: 0.0,
                 });
-                // Show "↓ N" for small offsets, "↓ PCT%" for larger ones.
-                let label = if offset < 100 {
-                    format!("\u{2193} {}", offset) // ↓ N
+                // Show "↓ N%" when scrolled up, "↓ Bottom" when at bottom.
+                let label = if pct > 0 {
+                    format!("\u{2193} {}%", pct)
                 } else {
-                    format!("\u{2193} {}%", pct) // ↓ N%
+                    "\u{2193} Bottom".to_string()
                 };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: label,
@@ -3329,7 +3337,8 @@ fn push_titlebar_button(
     overlay_texts: &mut Vec<ggterm_render_wgpu::OverlayTextSpec>,
     x: f32,
     y: f32,
-    size: f32,
+    w: f32,
+    h: f32,
     icon: &str,
     hovered: bool,
     hover_color: (f32, f32, f32, f32),
@@ -3342,8 +3351,8 @@ fn push_titlebar_button(
     ui_rects.push(ggterm_render_wgpu::UiRect {
         x,
         y,
-        w: size,
-        h: size,
+        w,
+        h,
         color: if hovered {
             hover_color
         } else {
@@ -3354,11 +3363,11 @@ fn push_titlebar_button(
     });
 
     // Centered icon.
-    let scale = (size / cell_w * 0.55).clamp(1.0, 2.5);
+    let scale = (w.min(h) / cell_w * 0.55).clamp(1.0, 2.5);
     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
         text: icon.to_string(),
-        left: x + size / 2.0 - cell_w * scale / 2.0,
-        top: y + size / 2.0 - cell_h * scale / 2.0,
+        left: x + w / 2.0 - cell_w * scale / 2.0,
+        top: y + h / 2.0 - cell_h * scale / 2.0,
         color: if hovered {
             (240, 240, 250)
         } else {

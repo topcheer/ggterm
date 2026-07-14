@@ -285,7 +285,7 @@ impl TabBarState {
         let right_margin = TAB_BAR_PADDING_H;
 
         // Available width = surface - left margin - right area - buttons
-        let button_size = tab_height.max(28.0);
+        let button_size = (tab_height * 0.65).max(24.0);
         let buttons_width = button_size * 2.0   // + button + gear button
             + TAB_GAP * 3.0;
         let available_width = surface_width - left_margin - right_margin - buttons_width;
@@ -334,7 +334,7 @@ impl TabBarState {
 
         // "+" button after the last tab.
         // Button size matches tab height for consistent visual proportions.
-        let button_size = tab_height.max(28.0);
+        let button_size = (tab_height * 0.65).max(24.0);
         let new_tab_x = x + button_size / 2.0;
         let new_tab_y = tab_y + tab_height / 2.0;
 

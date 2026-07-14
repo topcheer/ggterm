@@ -3638,7 +3638,7 @@ impl DesktopApp {
         };
         let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
         let tab_h = (cell_h + 26.0).max(48.0);
-        let btn_size = tab_h.max(28.0); // same formula as render.rs
+        let btn_size = (tab_h * 0.65).max(24.0); // matches render.rs
         let btn_gap = 8.0_f32;
         let screen_w = if let Some(ref r) = self.renderer {
             r.resolution_width() as f32
