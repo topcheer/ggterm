@@ -430,7 +430,7 @@ impl StatusBar {
         macro_rules! seg {
             ($text:expr, $color:expr) => {{
                 if !segs.is_empty() {
-                    segs.push((" | ".to_string(), dim_color));
+                    segs.push((String::from(" | "), dim_color));
                 }
                 segs.push(($text, $color));
             }};
