@@ -3119,6 +3119,16 @@ impl DesktopApp {
         } else {
             self.show_toast("P2P: Sharing stopped");
         }
+        // Enable PTY tee only when P2P is active to avoid per-event Vec allocation.
+        let tee_enabled = self.p2p_share.is_active();
+        for session in &mut self.sessions {
+            let ids: Vec<_> = session.pane_ids();
+            for id in ids {
+                if let Some(app) = session.pane_app_mut(id) {
+                    app.set_pty_tee_enabled(tee_enabled);
+                }
+            }
+        }
         if let Some(ref window) = self.window {
             window.request_redraw();
         }

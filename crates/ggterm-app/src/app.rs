@@ -52,6 +52,8 @@ pub struct App {
     command_nav: CommandNavState,
     /// PTY output tee buffer — captures PTY bytes for P2P forwarding.
     pty_tee: Vec<u8>,
+    /// Whether to capture PTY output into pty_tee. Only enabled when P2P is active.
+    pty_tee_enabled: bool,
 }
 
 impl App {
@@ -76,6 +78,7 @@ impl App {
             config: None,
             command_nav: CommandNavState::new(),
             pty_tee: Vec::new(),
+            pty_tee_enabled: false,
         };
 
         (app, tx)
@@ -153,8 +156,10 @@ impl App {
     pub fn handle_event(&mut self, event: AppEvent) -> bool {
         match event {
             AppEvent::PtyBytes(bytes) => {
-                // Capture bytes for P2P tee.
-                self.pty_tee.extend_from_slice(&bytes);
+                // Capture bytes for P2P tee — only when enabled (P2P active).
+                if self.pty_tee_enabled {
+                    self.pty_tee.extend_from_slice(&bytes);
+                }
 
                 #[cfg(feature = "plugin")]
                 let marks_before = self.terminal.command_marks().len();
@@ -380,6 +385,15 @@ impl App {
     /// Take and clear the PTY tee buffer (for P2P output forwarding).
     pub fn take_pty_tee(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.pty_tee)
+    }
+
+    /// Enable/disable PTY tee capture. Only enable when P2P is active
+    /// to avoid per-event Vec allocation when not needed.
+    pub fn set_pty_tee_enabled(&mut self, enabled: bool) {
+        self.pty_tee_enabled = enabled;
+        if !enabled {
+            self.pty_tee.clear();
+        }
     }
 
     /// Put data back into the pty_tee buffer (used when P2P is waiting).
