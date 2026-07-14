@@ -317,12 +317,10 @@ impl Parser {
             0x1b => {
                 self.state = State::OscEsc;
             }
-            c if c >= 0x20 => {
+            c if c >= 0x20 && self.string_buffer.len() < 65536 => {
                 // Cap OSC string at 64KB to prevent memory exhaustion from
                 // malformed/malicious sequences without a terminator.
-                if self.string_buffer.len() < 65536 {
-                    self.string_buffer.push(byte);
-                }
+                self.string_buffer.push(byte);
             }
             _ => {}
         }
@@ -437,11 +435,9 @@ impl Parser {
                 self.dispatch_dcs(perform);
                 self.state = State::Ground;
             }
-            c if c >= 0x20 => {
+            c if c >= 0x20 && self.string_buffer.len() < 1048576 => {
                 // Cap DCS string at 1MB — Sixel images can be large.
-                if self.string_buffer.len() < 1048576 {
-                    self.string_buffer.push(byte);
-                }
+                self.string_buffer.push(byte);
             }
             _ => {}
         }

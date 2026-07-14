@@ -504,10 +504,8 @@ fn parse_osc7_cwd(payload: &str) -> Option<std::path::PathBuf> {
     // Strip the `file://` scheme prefix.
     let rest = payload.strip_prefix("file://")?;
     // Skip the hostname (everything up to the first `/`).
-    let path = match rest.find('/') {
-        Some(idx) => &rest[idx..],
-        None => return None, // No path component.
-    };
+    let idx = rest.find('/')?;
+    let path = &rest[idx..];
     // Percent-decode common sequences (%20 → space, etc).
     let decoded = percent_decode(path);
     Some(std::path::PathBuf::from(decoded))
@@ -1392,21 +1390,17 @@ impl Terminal {
                 58 => {
                     if i + 1 < params.len() {
                         match params[i + 1] {
-                            5 => {
-                                if i + 2 < params.len() {
-                                    self.underline_color = Color::Indexed(params[i + 2] as u8);
-                                    i += 2;
-                                }
+                            5 if i + 2 < params.len() => {
+                                self.underline_color = Color::Indexed(params[i + 2] as u8);
+                                i += 2;
                             }
-                            2 => {
-                                if i + 4 < params.len() {
-                                    self.underline_color = Color::Rgb(
-                                        params[i + 2] as u8,
-                                        params[i + 3] as u8,
-                                        params[i + 4] as u8,
-                                    );
-                                    i += 4;
-                                }
+                            2 if i + 4 < params.len() => {
+                                self.underline_color = Color::Rgb(
+                                    params[i + 2] as u8,
+                                    params[i + 3] as u8,
+                                    params[i + 4] as u8,
+                                );
+                                i += 4;
                             }
                             _ => {}
                         }
@@ -1865,10 +1859,8 @@ impl Perform for Terminal {
             b'g' => {
                 let m = params.first().copied().unwrap_or(0);
                 match m {
-                    0 => {
-                        if self.cursor.x < self.tab_stops.len() {
-                            self.tab_stops[self.cursor.x] = false;
-                        }
+                    0 if self.cursor.x < self.tab_stops.len() => {
+                        self.tab_stops[self.cursor.x] = false;
                     }
                     3 => {
                         for s in &mut self.tab_stops {
@@ -2396,10 +2388,8 @@ impl Perform for Terminal {
                 self.cursor.pending_wrap = false;
             }
             b'M' => self.reverse_line_feed(),
-            b'H' => {
-                if self.cursor.x < self.tab_stops.len() {
-                    self.tab_stops[self.cursor.x] = true;
-                }
+            b'H' if self.cursor.x < self.tab_stops.len() => {
+                self.tab_stops[self.cursor.x] = true;
             }
             _ => {}
         }
