@@ -2489,6 +2489,13 @@ impl Perform for Terminal {
                     row: self.cursor.y,
                     exit_code: if has_exit { exit_code } else { None },
                 });
+                // Prevent unbounded growth: keep at most 2000 marks (~500 commands).
+                // Command marks reference absolute row numbers that become stale
+                // when scrollback is trimmed, so old marks are useless anyway.
+                if self.command_marks.len() > 2000 {
+                    let drain_count = self.command_marks.len() - 2000;
+                    self.command_marks.drain(0..drain_count);
+                }
                 // Track command execution time.
                 match kind {
                     CommandMarkKind::CommandStart => {
@@ -4802,8 +4809,14 @@ mod tests {
         let text = t.last_command_output_text();
         assert!(text.is_some(), "should have output text");
         let text = text.unwrap();
-        assert!(text.contains("hello world"), "should contain first line: {text}");
-        assert!(text.contains("foo bar"), "should contain second line: {text}");
+        assert!(
+            text.contains("hello world"),
+            "should contain first line: {text}"
+        );
+        assert!(
+            text.contains("foo bar"),
+            "should contain second line: {text}"
+        );
     }
 
     #[test]
