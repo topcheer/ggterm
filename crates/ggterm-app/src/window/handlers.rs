@@ -2333,7 +2333,8 @@ impl DesktopApp {
             0
         };
         let status_bar_h = if self.status_bar_visible {
-            crate::desktop_config::STATUS_BAR_HEIGHT as u32
+            // Must match render.rs: bar_h = cell_h + 8.0
+            (cell_h + 8.0) as u32
         } else {
             0
         };
