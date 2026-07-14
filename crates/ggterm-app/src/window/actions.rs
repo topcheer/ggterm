@@ -1663,9 +1663,20 @@ impl DesktopApp {
         log::info!("Desktop notification: {} — {}", title, body);
         #[cfg(target_os = "macos")]
         {
-            let et = title.replace('\\', "\\\\").replace('"', "\\\"");
-            let eb = body.replace('\\', "\\\\").replace('"', "\\\"");
-            let script = format!("display notification \"{}\" with title \"{}\"", eb, et);
+            // Escape all special AppleScript characters to prevent injection.
+            // Terminal output (OSC 9/777) can contain arbitrary text from
+            // remote programs — must not allow AppleScript code injection.
+            fn esc(s: &str) -> String {
+                s.replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('{', "\\{")
+                    .replace('}', "\\}")
+            }
+            let script = format!(
+                "display notification \"{}\" with title \"{}\"",
+                esc(body),
+                esc(title)
+            );
             std::process::Command::new("osascript")
                 .args(["-e", &script])
                 .spawn()
