@@ -147,6 +147,8 @@ pub struct GlyphonRenderer {
     overlay_vertex_buffer: Option<wgpu::Buffer>,
     /// Number of overlay vertices.
     overlay_vertex_count: u32,
+    /// Reusable vertex buffer for overlay rendering (avoids per-frame Vec allocation).
+    overlay_verts_buf: Vec<f32>,
     // ── P20-A: Multi-pane viewport offset ──
     /// Pixel offset applied to grid text + decoration positions for
     /// rendering into a sub-region of the surface (split panes).
@@ -333,6 +335,7 @@ impl GlyphonRenderer {
             overlay_rects: Vec::new(),
             overlay_vertex_buffer: None,
             overlay_vertex_count: 0,
+            overlay_verts_buf: Vec::new(),
             viewport_offset: (0.0, 0.0),
             ui_rects: Vec::new(),
             ui_vertex_buffer: None,
@@ -970,15 +973,15 @@ impl GlyphonRenderer {
     fn prepare_overlay(&mut self, device: &wgpu::Device) {
         let screen_w = self.resolution.width as f32;
         let screen_h = self.resolution.height as f32;
-        let mut verts: Vec<f32> = Vec::new();
+        self.overlay_verts_buf.clear();
 
         for r in &self.overlay_rects {
-            push_rect(&mut verts, r.x, r.y, r.w, r.h, r.color, screen_w, screen_h);
+            push_rect(&mut self.overlay_verts_buf, r.x, r.y, r.w, r.h, r.color, screen_w, screen_h);
         }
 
         upload_vertices(
             device,
-            &verts,
+            &self.overlay_verts_buf,
             &mut self.overlay_vertex_buffer,
             &mut self.overlay_vertex_count,
             "overlay",
