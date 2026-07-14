@@ -240,7 +240,7 @@ impl DesktopApp {
                 let (cur_x, cur_y) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
 
                 // Render in order: close, minimize, maximize (matches x11::compute_layout).
-                for (glyph, &(x, y, size), hover_color) in [
+                for (glyph, &(x, y, size), &(hr, hg, hb)) in [
                     ("\u{00d7}", ctrl.close, (0.90_f32, 0.30, 0.30)), // × red
                     ("\u{2013}", ctrl.minimize, (0.95_f32, 0.75, 0.25)), // ─ yellow
                     ("\u{25a1}", ctrl.maximize, (0.25_f32, 0.70, 0.35)), // □ green
@@ -257,7 +257,7 @@ impl DesktopApp {
                         w: size + 6.0,
                         h: size + 6.0,
                         color: if is_hovered {
-                            (hover_color.0, hover_color.1, hover_color.2, 0.85)
+                            (hr, hg, hb, 0.85)
                         } else {
                             (theme_bg.0 * 1.8, theme_bg.1 * 1.8, theme_bg.2 * 1.8, 0.5)
                         },
