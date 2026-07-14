@@ -453,8 +453,12 @@ pub fn open_url(url: &str) {
 
     #[cfg(windows)]
     {
+        // Quote the URL to prevent cmd.exe injection via & or | characters.
+        // URL detection allows & (query params) which cmd interprets as
+        // command separator — wrapping in quotes prevents this.
+        let quoted = format!("\"{}\"", url.replace('"', ""));
         let _ = std::process::Command::new(program)
-            .args(["/C", "start", url])
+            .args(["/C", "start", "", &quoted])
             .spawn();
     }
     #[cfg(not(windows))]
