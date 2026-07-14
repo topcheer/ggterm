@@ -1902,27 +1902,18 @@ impl ApplicationHandler for DesktopApp {
             static P2P_TICK: std::sync::atomic::AtomicBool =
                 std::sync::atomic::AtomicBool::new(false);
             let tick = P2P_TICK.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
-            crate::p2p_share::log_to_file(&format!(
-                "about_to_wait: P2P active, status={}, tick={}",
-                self.p2p_share.status as u8, tick
-            ));
+            log::debug!("P2P active, status={}, tick={}", self.p2p_share.status as u8, tick);
             let p2p_status = self.p2p_share.status;
             let tee_len = self.active_session_mut().app_mut().take_pty_tee();
             if p2p_status == crate::p2p_share::P2pShareStatus::Connected {
                 if !tee_len.is_empty() {
-                    crate::p2p_share::log_to_file(&format!(
-                        "about_to_wait: tee {} bytes to mobile",
-                        tee_len.len()
-                    ));
+                    log::debug!("P2P tee {} bytes to mobile", tee_len.len());
                     self.p2p_share.tee_output(&tee_len);
                 }
             } else {
                 // Waiting: put data back into pty_tee so it's available on connect.
                 if !tee_len.is_empty() {
-                    crate::p2p_share::log_to_file(&format!(
-                        "about_to_wait: Waiting, preserving {} bytes in pty_tee",
-                        tee_len.len()
-                    ));
+                    log::debug!("P2P waiting, preserving {} bytes in pty_tee", tee_len.len());
                     self.active_session_mut().app_mut().restore_pty_tee(tee_len);
                 }
             }
