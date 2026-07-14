@@ -1286,6 +1286,7 @@ class _TerminalScreenState extends State<TerminalScreen>
           return;
         }
         // Otherwise, disconnect and go back.
+        widget.sessionManager.destroySession(widget.sessionId);
         Navigator.of(context).pop();
       },
       child: Focus(
