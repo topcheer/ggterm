@@ -772,6 +772,8 @@ impl DesktopApp {
     ///
     /// Creates a new PTY + App for the new pane.
     pub(super) fn split_pane_horizontal(&mut self) {
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         let cols = self.config.cols;
         let rows = self.config.rows;
         let shell = self.shell().to_string();
@@ -792,6 +794,8 @@ impl DesktopApp {
     ///
     /// Creates a new PTY + App for the new pane.
     pub(super) fn split_pane_vertical(&mut self) {
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         let cols = self.config.cols;
         let rows = self.config.rows;
         let shell = self.shell().to_string();
@@ -834,6 +838,8 @@ impl DesktopApp {
             self.show_toast("Need 2+ panes to swap");
             return;
         }
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         self.active_session_mut()
             .split_tree_mut()
             .swap_active_with_next();
