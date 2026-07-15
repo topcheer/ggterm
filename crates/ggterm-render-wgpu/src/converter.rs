@@ -242,7 +242,11 @@ pub fn row_to_text(grid: &Grid, row: usize) -> String {
             }
         }
     }
-    text.trim_end_matches(' ').to_string()
+    // Truncate trailing spaces in place — avoids a new String allocation.
+    while text.ends_with(' ') {
+        text.pop();
+    }
+    text
 }
 
 #[cfg(test)]
