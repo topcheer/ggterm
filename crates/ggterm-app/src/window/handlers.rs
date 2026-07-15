@@ -1918,8 +1918,11 @@ impl DesktopApp {
                 self.search.history_next(grid2);
             }
             _ => {
-                if let Key::Character(s) = &event.logical_key
-                    && let Some(c) = s.chars().next()
+                // Use event.text for layout-aware input; ignore Ctrl/Alt
+                // (they're shortcuts, not text input).
+                if !self.mods.ctrl
+                    && !self.mods.alt
+                    && let Some(c) = event.text.as_ref().and_then(|t| t.chars().next())
                     && !c.is_control()
                 {
                     search.type_char(c, grid);
@@ -1945,9 +1948,10 @@ impl DesktopApp {
                 self.ai_overlay.nl2cmd_backspace();
             }
             _ => {
-                // Type printable characters.
-                if let Key::Character(s) = &event.logical_key
-                    && let Some(c) = s.chars().next()
+                // Type printable characters (layout-aware, ignore Ctrl/Alt).
+                if !self.mods.ctrl
+                    && !self.mods.alt
+                    && let Some(c) = event.text.as_ref().and_then(|t| t.chars().next())
                     && !c.is_control()
                 {
                     self.ai_overlay.nl2cmd_append(c);
