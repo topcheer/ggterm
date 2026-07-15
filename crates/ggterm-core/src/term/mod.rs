@@ -1230,6 +1230,7 @@ impl Terminal {
         } else if self.cursor.y > 0 {
             self.cursor.y -= 1;
         }
+        self.cursor.pending_wrap = false;
     }
 
     fn set_cursor(&mut self, x: usize, y: usize) {
