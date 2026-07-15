@@ -373,6 +373,8 @@ impl DesktopApp {
         // Save the cwd of the active pane for "reopen closed tab".
         self.last_closed_cwd = self.sessions[self.active].cwd().map(|p| p.to_path_buf());
         self.sessions.remove(self.active);
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         if self.active >= self.sessions.len() {
             self.active = self.sessions.len() - 1;
         }
@@ -2319,6 +2321,8 @@ impl DesktopApp {
 
     /// Send RIS (full reset, ESC c) to all panes in all tabs.
     pub(super) fn reset_all_tabs(&mut self) {
+        self.selection.clear();
+        self.selection_auto_scroll = 0;
         let ris = b"\x1bc"; // RIS — Reset to Initial State
         let tab_count = self.sessions.len();
         for i in 0..tab_count {
