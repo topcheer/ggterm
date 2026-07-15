@@ -29,6 +29,7 @@ pub struct Cursor {
 /// - Character set designation (G0, G1, active set)
 /// - Autowrap (DECAWM) mode
 /// - Origin (DECOM) mode
+/// - Character protection (DECSCA) attribute
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DecscState {
     pub(crate) cursor: Cursor,
@@ -41,6 +42,7 @@ pub(crate) struct DecscState {
     pub(crate) active_g1: bool,
     pub(crate) auto_wrap: bool,
     pub(crate) origin: bool,
+    pub(crate) protected_attr: bool,
 }
 
 /// OSC 133 command mark kind (Shell Integration protocol).
@@ -2434,6 +2436,7 @@ impl Perform for Terminal {
                     active_g1: self.active_g1,
                     auto_wrap: self.modes.auto_wrap,
                     origin: self.modes.origin,
+                    protected_attr: self.protected_attr,
                 });
             }
             // DECRC — restore cursor and terminal state (ESC 8).
@@ -2449,6 +2452,7 @@ impl Perform for Terminal {
                     self.active_g1 = state.active_g1;
                     self.modes.auto_wrap = state.auto_wrap;
                     self.modes.origin = state.origin;
+                    self.protected_attr = state.protected_attr;
                 } else {
                     // No saved state — restore defaults (VT220 spec).
                     self.cursor = Cursor::default();
@@ -6761,6 +6765,22 @@ mod tests {
         // Restore — should be enabled again
         feed(&mut t, b"\x1b8");
         assert!(t.modes.origin);
+    }
+
+    #[test]
+    fn t_decsc_restores_protected_attr() {
+        let mut t = Terminal::new(80, 24);
+        // Enable protected attribute (DECSCA 1) — CSI 1 " q
+        feed(&mut t, b"\x1b[1\"q");
+        assert!(t.protected_attr);
+        // Save
+        feed(&mut t, b"\x1b7");
+        // Disable protected attribute (DECSCA 2) — CSI 2 " q
+        feed(&mut t, b"\x1b[2\"q");
+        assert!(!t.protected_attr);
+        // Restore — should be enabled again
+        feed(&mut t, b"\x1b8");
+        assert!(t.protected_attr);
     }
 
     // ===== Robustness / edge case tests =====
