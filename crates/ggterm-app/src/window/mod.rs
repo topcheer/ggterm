@@ -271,6 +271,8 @@ pub struct DesktopApp {
     cached_cwd_raw: Option<std::path::PathBuf>,
     /// Cached raw shell path — compare before rebuilding display label.
     cached_shell_raw: String,
+    /// Cached last command Duration — skip format! when unchanged.
+    cached_cmd_duration: Option<std::time::Duration>,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -679,6 +681,7 @@ impl DesktopApp {
             cached_uptime_mins: 0,
             cached_cwd_raw: None,
             cached_shell_raw: String::new(),
+            cached_cmd_duration: None,
             status_bar_visible: true,
             hovered_link: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
@@ -1356,14 +1359,19 @@ impl ApplicationHandler for DesktopApp {
                     .app()
                     .terminal()
                     .last_command_output_lines();
-                // Command execution duration.
-                self.status_bar.command_duration = self
+                // Command execution duration — only format when the
+                // underlying Duration changes (new command completes).
+                let cmd_dur = self
                     .active_session()
                     .app()
                     .terminal()
-                    .last_command_duration()
-                    .map(crate::status_bar::format_duration)
-                    .unwrap_or_default();
+                    .last_command_duration();
+                if cmd_dur != self.cached_cmd_duration {
+                    self.cached_cmd_duration = cmd_dur;
+                    self.status_bar.command_duration = cmd_dur
+                        .map(crate::status_bar::format_duration)
+                        .unwrap_or_default();
+                }
                 // Running command indicator.
                 let was_running = self.status_bar.command_running;
                 self.status_bar.command_running =
