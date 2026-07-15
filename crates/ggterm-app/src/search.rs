@@ -693,7 +693,7 @@ impl RegexParser {
             }
 
             let atom = self.parse_atom()?;
-            let atom = self.parse_quantifier(atom)?;
+            let atom = self.parse_quantifier(atom);
             nodes.push(atom);
         }
 
@@ -701,21 +701,21 @@ impl RegexParser {
     }
 
     /// Parse a quantifier (*, +, ?) after an atom.
-    fn parse_quantifier(&mut self, node: RegexNode) -> Option<RegexNode> {
+    fn parse_quantifier(&mut self, node: RegexNode) -> RegexNode {
         match self.peek() {
             Some('*') => {
                 self.next();
-                Some(RegexNode::Star(Box::new(node)))
+                RegexNode::Star(Box::new(node))
             }
             Some('+') => {
                 self.next();
-                Some(RegexNode::Plus(Box::new(node)))
+                RegexNode::Plus(Box::new(node))
             }
             Some('?') => {
                 self.next();
-                Some(RegexNode::Optional(Box::new(node)))
+                RegexNode::Optional(Box::new(node))
             }
-            _ => Some(node),
+            _ => node,
         }
     }
 

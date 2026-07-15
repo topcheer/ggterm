@@ -1503,7 +1503,7 @@ impl Terminal {
     }
 
     /// Simple base64 decoder for OSC 52 payloads.
-    fn decode_base64(input: &str) -> Option<Vec<u8>> {
+    fn decode_base64(input: &str) -> Vec<u8> {
         let bytes = input.as_bytes();
         let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
         let mut buf: u32 = 0;
@@ -1526,7 +1526,7 @@ impl Terminal {
                 buf &= (1 << bits) - 1;
             }
         }
-        Some(out)
+        out
     }
 }
 
@@ -2464,7 +2464,8 @@ impl Perform for Terminal {
                         let base64_data = parts2.get(1).copied().unwrap_or("");
                         if base64_data.is_empty() {
                             self.pending_clipboard_set = Some(Vec::new());
-                        } else if let Some(decoded) = Self::decode_base64(base64_data) {
+                        } else {
+                            let decoded = Self::decode_base64(base64_data);
                             self.pending_clipboard_set = Some(decoded);
                         }
                     }
@@ -2477,7 +2478,8 @@ impl Perform for Terminal {
                     };
                     if base64_data.is_empty() {
                         self.pending_clipboard_set = Some(Vec::new());
-                    } else if let Some(decoded) = Self::decode_base64(base64_data) {
+                    } else {
+                        let decoded = Self::decode_base64(base64_data);
                         self.pending_clipboard_set = Some(decoded);
                     }
                 }
@@ -3393,20 +3395,20 @@ mod tests {
 
     #[test]
     fn t_base64_decode_basic() {
-        assert_eq!(Terminal::decode_base64("aGVsbG8=").unwrap(), b"hello");
-        assert_eq!(Terminal::decode_base64("d29ybGQ=").unwrap(), b"world");
-        assert_eq!(Terminal::decode_base64("Zm9v").unwrap(), b"foo");
+        assert_eq!(Terminal::decode_base64("aGVsbG8="), b"hello");
+        assert_eq!(Terminal::decode_base64("d29ybGQ="), b"world");
+        assert_eq!(Terminal::decode_base64("Zm9v"), b"foo");
     }
 
     #[test]
     fn t_base64_decode_empty() {
-        assert_eq!(Terminal::decode_base64("").unwrap(), b"");
+        assert_eq!(Terminal::decode_base64(""), b"");
     }
 
     #[test]
     fn t_base64_decode_padding() {
-        assert_eq!(Terminal::decode_base64("Zg==").unwrap(), b"f");
-        assert_eq!(Terminal::decode_base64("Zm8=").unwrap(), b"fo");
+        assert_eq!(Terminal::decode_base64("Zg=="), b"f");
+        assert_eq!(Terminal::decode_base64("Zm8="), b"fo");
     }
 
     #[test]

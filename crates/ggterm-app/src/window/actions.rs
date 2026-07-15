@@ -698,7 +698,7 @@ impl DesktopApp {
     ///
     /// Converts the file path to a quoted string and writes it to the
     /// active pane's PTY.
-    pub(super) fn handle_dropped_file(&mut self, path: std::path::PathBuf) {
+    pub(super) fn handle_dropped_file(&mut self, path: &std::path::Path) {
         let path_str = path.to_string_lossy();
         let quoted = quote_shell_path(&path_str);
         let bytes = format!("{quoted}\n").into_bytes();
