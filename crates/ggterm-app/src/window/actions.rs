@@ -1201,52 +1201,48 @@ impl DesktopApp {
             return;
         };
 
-        // Helper: get cell text including combining characters.
-        // Uses display_cell to correctly handle scrollback scroll position.
-        let cell_text = |x: u16, y: u16, grid: &ggterm_core::Grid| -> String {
-            if let Some(cell) = grid.display_cell(x as usize, y as usize) {
-                // Skip wide-character spacer cells (continuation of a 2-cell-wide char).
-                // The lead cell already contains the full character; the spacer is empty.
-                if cell.is_wide_spacer() {
-                    return String::new();
-                }
-                let mut s = String::new();
-                s.push(cell.ch);
-                for &c in &cell.combining {
-                    s.push(c);
-                }
-                s
-            } else {
-                String::new()
-            }
-        };
-
         let grid = self.active_session().app().grid();
+        let width = grid.width();
+
+        // Helper: append cell text directly into the output buffer
+        // (avoids per-cell String allocation for large selections).
+        macro_rules! push_cell {
+            ($x:expr, $y:expr, $out:expr) => {
+                if let Some(cell) = grid.display_cell($x as usize, $y as usize) {
+                    if !cell.is_wide_spacer() {
+                        $out.push(cell.ch);
+                        for &c in &cell.combining {
+                            $out.push(c);
+                        }
+                    }
+                }
+            };
+        }
+
         let mut text = String::new();
 
         if sy == ey {
             // Single-line selection.
             for x in sx..=ex {
-                text.push_str(&cell_text(x, sy, grid));
+                push_cell!(x, sy, &mut text);
             }
         } else {
             // Multi-line selection.
             // First line: from sx to end of row.
-            let width = grid.width();
             for x in sx..width as u16 {
-                text.push_str(&cell_text(x, sy, grid));
+                push_cell!(x, sy, &mut text);
             }
             text.push('\n');
             // Middle lines: full rows.
             for y in (sy + 1)..ey {
                 for x in 0..width as u16 {
-                    text.push_str(&cell_text(x, y, grid));
+                    push_cell!(x, y, &mut text);
                 }
                 text.push('\n');
             }
             // Last line: from start of row to ex.
             for x in 0..=ex {
-                text.push_str(&cell_text(x, ey, grid));
+                push_cell!(x, ey, &mut text);
             }
         }
 
