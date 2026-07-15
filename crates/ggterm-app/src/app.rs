@@ -165,7 +165,8 @@ impl App {
                 let marks_before = self.terminal.command_marks().len();
 
                 self.parser.feed(&bytes, &mut self.terminal);
-                self.render();
+                // Note: render() is deferred to pump() to avoid
+                // redundant renders when multiple events are batched.
 
                 // Phase 6: dispatch OnOutput hook (read-only)
                 #[cfg(feature = "plugin")]
@@ -406,6 +407,11 @@ impl App {
         while let Ok(event) = self.event_rx.try_recv() {
             self.handle_event(event);
             had_data = true;
+        }
+        // Single render after all events are processed — avoids redundant
+        // renders when multiple PtyBytes events arrive in the same frame.
+        if had_data {
+            self.render();
         }
         had_data
     }
