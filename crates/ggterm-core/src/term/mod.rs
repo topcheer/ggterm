@@ -2183,10 +2183,10 @@ impl Perform for Terminal {
             }
             // XTVERSION — query terminal identification (CSI > Ps q)
             // Programs like tmux use this to detect the terminal type.
-            // We respond: DCS >| ggterm(1.0) ST
+            // We respond: DCS >| ggterm(<version>) ST
             b'q' if intermediates.contains(&b'>') => {
-                self.response_buffer
-                    .extend_from_slice(b"\x1bP>|ggterm(1.0)\x1b\\");
+                let resp = format!("\x1bP>|ggterm({})\x1b\\", env!("CARGO_PKG_VERSION"));
+                self.response_buffer.extend_from_slice(resp.as_bytes());
             }
             // DECRQM — request mode (CSI ? Pm $ p for DEC private modes)
             // Programs query whether a mode is set. We respond with:
