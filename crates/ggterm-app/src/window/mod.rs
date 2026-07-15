@@ -1515,9 +1515,9 @@ impl ApplicationHandler for DesktopApp {
 
                 // P28: Update Phase 28 status bar indicators.
                 // Only allocate when values actually change.
-                let ws_name = self.workspaces.active_name().to_string();
+                let ws_name = self.workspaces.active_name();
                 if self.status_bar.workspace_name != ws_name {
-                    self.status_bar.workspace_name = ws_name;
+                    self.status_bar.workspace_name = ws_name.to_string();
                 }
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
                 self.status_bar.shell_name = self.shell_switcher.status_bar_label();
