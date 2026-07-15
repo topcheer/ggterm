@@ -168,6 +168,9 @@ pub struct DesktopApp {
     last_auto_scroll: std::time::Instant,
     /// Last known cursor position in pixels (for mouse wheel / drag).
     cursor_pos: (f64, f64),
+    /// Cached IME cursor area position — avoids redundant platform calls
+    /// when the terminal cursor hasn't moved between frames.
+    last_ime_cursor_area: Option<(f64, f64, f64, f64)>,
     /// Mouse button currently held (for drag tracking).
     button_held: Option<crate::mouse::MouseButton>,
     /// P21-A: Active split separator drag (None = not dragging).
@@ -616,6 +619,7 @@ impl DesktopApp {
             selection_auto_scroll: 0,
             last_auto_scroll: std::time::Instant::now(),
             cursor_pos: (0.0, 0.0),
+            last_ime_cursor_area: None,
             button_held: None,
             drag_resize: None,
             click_count: 0,
@@ -1902,6 +1906,7 @@ impl ApplicationHandler for DesktopApp {
 
         // Position IME cursor area near the terminal cursor so the input
         // method popup appears at the right location (CJK input).
+        // Optimized: only call set_ime_cursor_area when position changes.
         if self.window_focused
             && let Some(ref window) = self.window
             && let Some(ref renderer) = self.renderer
@@ -1910,13 +1915,18 @@ impl ApplicationHandler for DesktopApp {
             let cell_w = renderer.cell_width() as f64;
             let cell_h = renderer.cell_height() as f64;
             let content_top = self.content_area_bounds().y as f64;
-            let px = cursor_col as f64 * cell_w;
-            let py = content_top + cursor_row as f64 * cell_h;
             let scale = self.scale_factor;
-            window.set_ime_cursor_area(
-                winit::dpi::PhysicalPosition::new(px * scale, py * scale),
-                winit::dpi::PhysicalSize::new(cell_w * scale, cell_h * scale),
-            );
+            let px = cursor_col as f64 * cell_w * scale;
+            let py = (content_top + cursor_row as f64 * cell_h) * scale;
+            let w = cell_w * scale;
+            let h = cell_h * scale;
+            if self.last_ime_cursor_area != Some((px, py, w, h)) {
+                self.last_ime_cursor_area = Some((px, py, w, h));
+                window.set_ime_cursor_area(
+                    winit::dpi::PhysicalPosition::new(px, py),
+                    winit::dpi::PhysicalSize::new(w, h),
+                );
+            }
         }
 
         // P2P: Poll for connections and forward mobile input/output.
