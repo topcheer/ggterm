@@ -294,6 +294,18 @@ impl TabSession {
             .any(|pane| pane.app.terminal().grid().content_dirty())
     }
 
+    /// Take bell from any pane (checks all panes, not just the active one).
+    /// Returns true if at least one pane had a pending bell.
+    pub fn take_any_bell(&mut self) -> bool {
+        let mut had_bell = false;
+        for pane in self.panes.iter_mut().flatten() {
+            if pane.app.terminal_mut().take_bell() {
+                had_bell = true;
+            }
+        }
+        had_bell
+    }
+
     /// Clear unread status and bell indicator (called when tab becomes active).
     pub fn clear_unread(&mut self) {
         self.has_unread_output = false;

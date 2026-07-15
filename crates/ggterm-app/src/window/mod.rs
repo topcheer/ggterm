@@ -1860,13 +1860,19 @@ impl ApplicationHandler for DesktopApp {
         // Pump PTY events — active session first, then non-active.
         self.active_session_mut().pump();
         // Pump non-active sessions and mark tabs with unread output.
+        // Also collect bells from background sessions.
         let active = self.active;
+        let mut bg_bell = false;
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if i != active {
                 // pump() returns true if any pane had data.
                 let had_data = session.pump();
                 if had_data {
                     session.mark_unread();
+                }
+                if session.take_any_bell() {
+                    session.mark_bell();
+                    bg_bell = true;
                 }
             }
         }
@@ -2237,16 +2243,15 @@ impl ApplicationHandler for DesktopApp {
         // Check ALL panes in the active session, not just the active one,
         // because background panes' output is also visible in split mode.
         let content_dirty = self.active_session().any_pane_dirty();
+        // Collect bell from all panes in the active session (not just active pane).
+        let active_bell = self.active_session_mut().take_any_bell();
         let need_redraw = content_dirty
             || self.pending_resize.is_some()
             || self.pipe_command_active
             || self.command_palette.visible
             || self.pending_pipe_result.is_some()
-            || self
-                .active_session_mut()
-                .app_mut()
-                .terminal_mut()
-                .take_bell()
+            || active_bell
+            || bg_bell
             || self.toast.is_some();
 
         // Cursor blink: redraw every 500ms for blink animation.
