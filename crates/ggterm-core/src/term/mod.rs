@@ -2556,7 +2556,13 @@ impl Perform for Terminal {
                             format!("\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", cmd_num, r, g, b)
                         }
                         Color::Default => {
-                            format!("\x1b]{};rgb:ff/ff/ff\x1b\\", cmd_num)
+                            // OSC 10/12 (fg/cursor) default = white,
+                            // OSC 11 (bg) default = black.
+                            let (r, g, b) = match cmd {
+                                Some(11) => (0u8, 0u8, 0u8),
+                                _ => (0xff, 0xff, 0xff),
+                            };
+                            format!("\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", cmd_num, r, g, b)
                         }
                     };
                     self.response_buffer.extend_from_slice(resp.as_bytes());
@@ -5122,6 +5128,32 @@ mod tests {
         assert!(
             resp.contains("rgb:"),
             "query response should contain rgb: spec"
+        );
+    }
+
+    #[test]
+    fn t_osc11_query_default_bg_is_black() {
+        let mut t = Terminal::new(80, 24);
+        // Query default bg color (no dynamic bg set)
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.contains("rgb:00/00/00"),
+            "default bg should be black, got: {resp}"
+        );
+    }
+
+    #[test]
+    fn t_osc10_query_default_fg_is_white() {
+        let mut t = Terminal::new(80, 24);
+        // Reset fg to default first
+        feed(&mut t, b"\x1b[39m");
+        // Query default fg color
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.contains("rgb:ff/ff/ff"),
+            "default fg should be white, got: {resp}"
         );
     }
 
