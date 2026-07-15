@@ -1212,10 +1212,14 @@ impl Terminal {
         } else {
             self.cursor.y += 1;
         }
+        // Always clear pending_wrap on line feed — the cursor has moved
+        // to a new line regardless of LNM mode. Without this, bare LF
+        // (without CR) when LNM is off would leave pending_wrap=true,
+        // causing the next printable char to wrap an extra line.
+        self.cursor.pending_wrap = false;
         // LNM (mode 20): LF also performs a carriage return.
         if self.modes.new_line_mode {
             self.cursor.x = 0;
-            self.cursor.pending_wrap = false;
         }
     }
 
@@ -2891,6 +2895,22 @@ mod tests {
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E');
+    }
+
+    #[test]
+    fn t_lf_clears_pending_wrap_without_lnm() {
+        // Fill a full line to set pending_wrap, then bare LF (no CR).
+        // Without the fix, pending_wrap stays true and the next char
+        // would wrap an extra line.
+        let mut t = Terminal::new(4, 4);
+        // LNM is off by default.
+        feed(&mut t, b"ABCD"); // fills row 0, pending_wrap=true at col 3
+        feed(&mut t, b"\n"); // bare LF — should clear pending_wrap
+        feed(&mut t, b"E");
+        // LNM off → LF keeps column. E should be at col 3 of row 1.
+        // If pending_wrap wasn't cleared, E would wrap to col 0 of row 2.
+        assert_eq!(t.grid().cell(3, 1).unwrap().ch, 'E');
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ');
     }
 
     #[test]
