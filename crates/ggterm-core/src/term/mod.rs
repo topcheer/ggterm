@@ -28,6 +28,7 @@ pub struct Cursor {
 /// - Current SGR attributes (fg, bg, underline color, flags)
 /// - Character set designation (G0, G1, active set)
 /// - Autowrap (DECAWM) mode
+/// - Origin (DECOM) mode
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DecscState {
     pub(crate) cursor: Cursor,
@@ -39,6 +40,7 @@ pub(crate) struct DecscState {
     pub(crate) g1_charset: Charset,
     pub(crate) active_g1: bool,
     pub(crate) auto_wrap: bool,
+    pub(crate) origin: bool,
 }
 
 /// OSC 133 command mark kind (Shell Integration protocol).
@@ -2428,6 +2430,7 @@ impl Perform for Terminal {
                     g1_charset: self.g1_charset,
                     active_g1: self.active_g1,
                     auto_wrap: self.modes.auto_wrap,
+                    origin: self.modes.origin,
                 });
             }
             // DECRC — restore cursor and terminal state (ESC 8).
@@ -2442,6 +2445,7 @@ impl Perform for Terminal {
                     self.g1_charset = state.g1_charset;
                     self.active_g1 = state.active_g1;
                     self.modes.auto_wrap = state.auto_wrap;
+                    self.modes.origin = state.origin;
                 } else {
                     // No saved state — restore to home position (xterm behavior).
                     self.cursor = Cursor::default();
@@ -6725,6 +6729,22 @@ mod tests {
         feed(&mut t, b"\x1b[10;10H");
         feed(&mut t, b"\x1b8");
         assert_eq!((t.cursor().0, t.cursor().1), (0, 0));
+    }
+
+    #[test]
+    fn t_decsc_restores_origin_mode() {
+        let mut t = Terminal::new(80, 24);
+        // Enable origin mode
+        feed(&mut t, b"\x1b[?6h");
+        assert!(t.modes.origin);
+        // Save
+        feed(&mut t, b"\x1b7");
+        // Disable origin mode
+        feed(&mut t, b"\x1b[?6l");
+        assert!(!t.modes.origin);
+        // Restore — should be enabled again
+        feed(&mut t, b"\x1b8");
+        assert!(t.modes.origin);
     }
 
     // ===== Robustness / edge case tests =====
