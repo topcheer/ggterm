@@ -277,6 +277,10 @@ class _TerminalScreenState extends State<TerminalScreen>
           }
           HapticFeedback.heavyImpact();
           _durationTimer?.cancel();
+          _blinkTimer?.cancel();
+          // Stop the render loop — no more data will arrive.
+          // The terminal overlay still shows the last frame.
+          _renderTimer?.cancel();
           // Auto-hide keyboard bar and input bar on disconnect so the
           // disconnect overlay is not obscured by keyboard UI.
           if (_showKeyboardBar || _showInputBar) {
