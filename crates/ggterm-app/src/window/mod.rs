@@ -2255,9 +2255,12 @@ impl ApplicationHandler for DesktopApp {
             || self.toast.is_some();
 
         // Cursor blink: redraw every 500ms for blink animation.
+        // Skip blink when window is occluded (hidden) — no need to animate
+        // an invisible cursor, and it avoids waking the event loop.
         let now = std::time::Instant::now();
         let blink_interval = std::time::Duration::from_millis(500);
-        let blink_due = now.duration_since(self.last_redraw) >= blink_interval;
+        let blink_due =
+            !self.window_occluded && now.duration_since(self.last_redraw) >= blink_interval;
 
         if need_redraw || blink_due || self.debug_visible {
             self.last_redraw = now;
