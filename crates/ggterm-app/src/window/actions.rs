@@ -2519,10 +2519,14 @@ impl DesktopApp {
                 self.clear_all_tabs();
             }
             "terminal.reset" => {
+                self.selection.clear();
+                self.selection_auto_scroll = 0;
                 self.active_session_mut().app_mut().terminal_mut().ris();
             }
             "terminal.clear_and_reset" => {
                 // Clear scrollback + screen, then full RIS reset.
+                self.selection.clear();
+                self.selection_auto_scroll = 0;
                 self.active_session_mut()
                     .app_mut()
                     .terminal_mut()
