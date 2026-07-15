@@ -2281,14 +2281,17 @@ impl ApplicationHandler for DesktopApp {
             // Idle: sleep to avoid busy-looping at 100% CPU.
             // When P2P is connected, use shorter sleep for lower latency
             // (faster echo round-trip for mobile users).
+            // When occluded, sleep much longer — no visual updates needed.
             #[cfg(feature = "p2p")]
-            let sleep_ms = if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
+            let sleep_ms = if self.window_occluded {
+                1000
+            } else if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
                 5
             } else {
                 50
             };
             #[cfg(not(feature = "p2p"))]
-            let sleep_ms = 50;
+            let sleep_ms = if self.window_occluded { 1000 } else { 50 };
             std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
         }
 
