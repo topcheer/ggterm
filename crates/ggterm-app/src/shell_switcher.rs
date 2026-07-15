@@ -173,6 +173,11 @@ impl ShellSwitcherState {
     }
 
     /// Get the display name for the status bar.
+    /// Return the current shell path (for change detection).
+    pub fn current_shell_str(&self) -> &str {
+        &self.current_shell
+    }
+
     pub fn status_bar_label(&self) -> String {
         let shell_name = std::path::Path::new(&self.current_shell)
             .file_name()

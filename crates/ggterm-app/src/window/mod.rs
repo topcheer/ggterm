@@ -269,6 +269,8 @@ pub struct DesktopApp {
     cached_uptime_mins: u64,
     /// Cached raw CWD path — compare before formatting display string.
     cached_cwd_raw: Option<std::path::PathBuf>,
+    /// Cached raw shell path — compare before rebuilding display label.
+    cached_shell_raw: String,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -676,6 +678,7 @@ impl DesktopApp {
             cached_dims: String::new(),
             cached_uptime_mins: 0,
             cached_cwd_raw: None,
+            cached_shell_raw: String::new(),
             status_bar_visible: true,
             hovered_link: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
@@ -1520,7 +1523,14 @@ impl ApplicationHandler for DesktopApp {
                     self.status_bar.workspace_name = ws_name.to_string();
                 }
                 self.status_bar.sound_enabled = self.sound_player.is_enabled();
-                self.status_bar.shell_name = self.shell_switcher.status_bar_label();
+                // shell_name: only rebuild "Shell: <name>" when shell path changes.
+                {
+                    let current = self.shell_switcher.current_shell_str();
+                    if current != self.cached_shell_raw {
+                        self.cached_shell_raw = current.to_string();
+                        self.status_bar.shell_name = self.shell_switcher.status_bar_label();
+                    }
+                }
                 self.status_bar.pane_zoomed = self.pane_zoomed;
                 self.status_bar.font_size = self.font_zoom.current_size();
                 self.status_bar.cursor_line = self
@@ -1561,13 +1571,15 @@ impl ApplicationHandler for DesktopApp {
                     self.status_bar.hovered_link = new_link;
                 }
                 // Remote host from OSC 1337 RemoteHost=
-                self.status_bar.remote_host = self
+                let remote = self
                     .active_session()
                     .app()
                     .terminal()
                     .remote_host()
-                    .unwrap_or("")
-                    .to_string();
+                    .unwrap_or("");
+                if self.status_bar.remote_host != remote {
+                    self.status_bar.remote_host = remote.to_string();
+                }
                 // Progress from OSC 9;4
                 self.status_bar.progress = self.active_session().app().terminal().progress();
                 self.status_bar.last_exit_code =
