@@ -2255,44 +2255,63 @@ impl Perform for Terminal {
         subs: &[u16],
         final_byte: u8,
     ) {
-        // Handle SGR 4:N underline styles (only when sub-parameters are present).
+        // Handle SGR 4:N underline styles when colon syntax is used.
+        // With the new parser, `4:3` produces params=[4, 3] with subs=[0, 1].
+        // subs[i+1] != 0 means params[i+1] was colon-derived from params[i].
         if final_byte == b'm' && !intermediates.contains(&b'?') && subs.iter().any(|&s| s != 0) {
+            let mut handled = false;
             let mut i = 0;
             while i < params.len() {
                 let p = params[i];
-                let sub = subs.get(i).copied().unwrap_or(0);
-                match (p, sub) {
-                    (4, 0) | (4, 1) => {
-                        self.flags |= CellFlags::UNDERLINE;
-                        self.flags &= !(CellFlags::UNDERLINE_DOUBLE
-                            | CellFlags::UNDERLINE_CURLY
-                            | CellFlags::UNDERLINE_DOTTED
-                            | CellFlags::UNDERLINE_DASHED);
+                // Check if the NEXT param is colon-derived (sub != 0).
+                let next_is_colon = subs.get(i + 1).copied().unwrap_or(0) != 0;
+                if next_is_colon {
+                    let val = params.get(i + 1).copied().unwrap_or(0);
+                    match (p, val) {
+                        (4, 0) | (4, 1) => {
+                            self.flags |= CellFlags::UNDERLINE;
+                            self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                                | CellFlags::UNDERLINE_CURLY
+                                | CellFlags::UNDERLINE_DOTTED
+                                | CellFlags::UNDERLINE_DASHED);
+                            handled = true;
+                        }
+                        (4, 2) => {
+                            self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOUBLE;
+                            handled = true;
+                        }
+                        (4, 3) => {
+                            self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_CURLY;
+                            handled = true;
+                        }
+                        (4, 4) => {
+                            self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOTTED;
+                            handled = true;
+                        }
+                        (4, 5) => {
+                            self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DASHED;
+                            handled = true;
+                        }
+                        (24, _) => {
+                            self.flags &= !CellFlags::UNDERLINE;
+                            self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                                | CellFlags::UNDERLINE_CURLY
+                                | CellFlags::UNDERLINE_DOTTED
+                                | CellFlags::UNDERLINE_DASHED);
+                            handled = true;
+                        }
+                        _ => {}
                     }
-                    (4, 2) => {
-                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOUBLE;
-                    }
-                    (4, 3) => {
-                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_CURLY;
-                    }
-                    (4, 4) => {
-                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOTTED;
-                    }
-                    (4, 5) => {
-                        self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DASHED;
-                    }
-                    (24, _) => {
-                        self.flags &= !CellFlags::UNDERLINE;
-                        self.flags &= !(CellFlags::UNDERLINE_DOUBLE
-                            | CellFlags::UNDERLINE_CURLY
-                            | CellFlags::UNDERLINE_DOTTED
-                            | CellFlags::UNDERLINE_DASHED);
-                    }
-                    _ => {}
+                    i += 2;
+                } else {
+                    i += 1;
                 }
-                i += 1;
             }
-            return;
+            // Only return if we handled SGR 4:N. Otherwise fall through
+            // to csi() so colon-separated colors (38:2:R:G:B, 38:5:N) work.
+            if handled {
+                return;
+            }
         }
         // Default: delegate to regular csi()
         self.csi(intermediates, params, final_byte);
@@ -3066,6 +3085,30 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[38;2;255;128;0mX");
         assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 128, 0));
+    }
+
+    #[test]
+    fn t_sgr_truecolor_colon_syntax() {
+        // Colon-separated truecolor: 38:2:R:G:B (used by kitty, foot, etc.)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[38:2:255:128:0mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 128, 0));
+    }
+
+    #[test]
+    fn t_sgr_256color_colon_syntax() {
+        // Colon-separated 256-color: 38:5:N
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[38:5:200mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(200));
+    }
+
+    #[test]
+    fn t_sgr_bg_truecolor_colon_syntax() {
+        // Background truecolor with colon syntax: 48:2:R:G:B
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[48:2:0:128:255mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Rgb(0, 128, 255));
     }
 
     #[test]

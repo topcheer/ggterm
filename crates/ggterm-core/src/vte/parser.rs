@@ -36,8 +36,6 @@ pub struct Parser {
     param_sub: [u16; 16],
     /// True if the current parameter has been explicitly set.
     param_set: bool,
-    /// True if currently collecting a colon sub-parameter value.
-    in_sub_param: bool,
     /// Accumulator for OSC string data.
     string_buffer: Vec<u8>,
     /// DCS final byte (set when entering DcsString).
@@ -58,7 +56,6 @@ impl Parser {
             param_count: 0,
             param_sub: [0; 16],
             param_set: false,
-            in_sub_param: false,
             string_buffer: Vec::with_capacity(256),
             dcs_final: 0,
             utf8_buf: [0; 4],
@@ -216,6 +213,16 @@ impl Parser {
                     .min(self.params.len() - 1);
                 self.param_set = false;
             }
+            b':' => {
+                self.state = State::CsiParam;
+                self.param_count = self
+                    .param_count
+                    .saturating_add(1)
+                    .min(self.params.len() - 1);
+                let idx = self.param_count.min(self.params.len() - 1);
+                self.param_sub[idx] = 1;
+                self.param_set = true;
+            }
             // Private mode prefixes: ?, <, >, = — treated as intermediates
             b'?' | b'<' | b'>' | b'=' => {
                 if self.intermediate_count < self.intermediates.len() {
@@ -247,16 +254,9 @@ impl Parser {
         match byte {
             b'0'..=b'9' => {
                 let idx = self.param_count.min(self.params.len() - 1);
-                if self.in_sub_param {
-                    // Colon sub-parameter: accumulate into param_sub.
-                    self.param_sub[idx] = self.param_sub[idx]
-                        .saturating_mul(10)
-                        .saturating_add((byte - b'0') as u16);
-                } else {
-                    self.params[idx] = self.params[idx]
-                        .saturating_mul(10)
-                        .saturating_add((byte - b'0') as u16);
-                }
+                self.params[idx] = self.params[idx]
+                    .saturating_mul(10)
+                    .saturating_add((byte - b'0') as u16);
                 self.param_set = true;
             }
             b';' => {
@@ -264,11 +264,18 @@ impl Parser {
                     self.param_count += 1;
                 }
                 self.param_set = false;
-                self.in_sub_param = false;
             }
-            // Colon sub-parameter separator (e.g. SGR 4:1 for underline style).
+            // Colon sub-parameter separator (e.g. SGR 4:1, 38:2:R:G:B).
+            // Treated like ';' for param advancement, but param_sub marks
+            // which positions came from colons so csi_with_subs can
+            // distinguish 4:1 (curly underline) from 4;1 (underline+bold).
             b':' => {
-                self.in_sub_param = true;
+                if self.param_count < self.params.len() - 1 {
+                    self.param_count += 1;
+                }
+                let idx = self.param_count.min(self.params.len() - 1);
+                self.param_sub[idx] = 1; // mark colon-derived
+                self.param_set = true;
             }
             // Intermediate bytes
             0x20..=0x2f => {
@@ -481,7 +488,6 @@ impl Parser {
         self.params = [0; 16];
         self.param_sub = [0; 16];
         self.param_set = false;
-        self.in_sub_param = false;
     }
 
     // -- UTF-8 handling ------------------------------------------------------
