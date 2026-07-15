@@ -199,7 +199,8 @@ pub fn row_to_runs(
             if let Some(r) = current.take() {
                 runs.push(r);
             }
-            let mut initial_text = ch.to_string();
+            let mut initial_text = String::with_capacity(1 + cell.combining.len());
+            initial_text.push(ch);
             for &mc in &cell.combining {
                 initial_text.push(mc);
             }
