@@ -267,6 +267,8 @@ pub struct DesktopApp {
     cached_dims: String,
     /// Cached uptime in minutes — avoids per-frame format! when minute hasn't changed.
     cached_uptime_mins: u64,
+    /// Cached raw CWD path — compare before formatting display string.
+    cached_cwd_raw: Option<std::path::PathBuf>,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -673,6 +675,7 @@ impl DesktopApp {
                 .unwrap_or_default(),
             cached_dims: String::new(),
             cached_uptime_mins: 0,
+            cached_cwd_raw: None,
             status_bar_visible: true,
             hovered_link: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
@@ -1526,23 +1529,30 @@ impl ApplicationHandler for DesktopApp {
                     .is_some_and(|m| m.config().appearance.cursor_line_highlight);
                 self.status_bar.scroll_mode = self.scroll_mode;
                 // CWD from OSC 7 (pane-level cwd tracking) — abbreviate $HOME to ~.
-                let new_cwd = self
-                    .active_session()
-                    .cwd()
-                    .map(|p| {
-                        let s = p.display().to_string();
-                        if let Some(home) = std::env::var_os("HOME")
-                            && let Some(hs) = home.to_str()
-                            && hs.len() > 2
-                            && s.starts_with(hs)
-                        {
-                            format!("~{}", &s[hs.len()..])
-                        } else {
-                            s
-                        }
-                    })
-                    .unwrap_or_default();
-                if self.status_bar.cwd != new_cwd {
+                // Optimized: compare raw path first, only format when changed.
+                let current_cwd = self.active_session().cwd().map(|p| p.to_path_buf());
+                let cwd_changed = match (&current_cwd, &self.cached_cwd_raw) {
+                    (Some(a), Some(b)) => a != b,
+                    (None, None) => false,
+                    _ => true,
+                };
+                if cwd_changed {
+                    self.cached_cwd_raw = current_cwd.clone();
+                    let new_cwd = current_cwd
+                        .as_ref()
+                        .map(|p| {
+                            let s = p.display().to_string();
+                            if let Some(home) = std::env::var_os("HOME")
+                                && let Some(hs) = home.to_str()
+                                && hs.len() > 2
+                                && s.starts_with(hs)
+                            {
+                                format!("~{}", &s[hs.len()..])
+                            } else {
+                                s
+                            }
+                        })
+                        .unwrap_or_default();
                     self.status_bar.cwd = new_cwd;
                 }
                 // Hovered URL/hyperlink for status bar link preview.
