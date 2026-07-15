@@ -2447,8 +2447,14 @@ impl Perform for Terminal {
                     self.modes.auto_wrap = state.auto_wrap;
                     self.modes.origin = state.origin;
                 } else {
-                    // No saved state — restore to home position (xterm behavior).
+                    // No saved state — restore defaults (VT220 spec).
                     self.cursor = Cursor::default();
+                    self.fg = Color::Default;
+                    self.bg = Color::Default;
+                    self.underline_color = Color::Default;
+                    self.flags = CellFlags::empty();
+                    self.modes.auto_wrap = true;
+                    self.modes.origin = false;
                 }
             }
             b'c' => {
@@ -6724,11 +6730,18 @@ mod tests {
 
     #[test]
     fn t_decsc_no_saved_state_restores_home() {
-        // DECRC without prior DECSC should restore cursor to (0,0).
+        // DECRC without prior DECSC should restore cursor to (0,0) and
+        // reset SGR attributes to defaults (VT220 spec).
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[10;10H");
+        feed(&mut t, b"\x1b[1;31m"); // bold + red
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
         feed(&mut t, b"\x1b8");
         assert_eq!((t.cursor().0, t.cursor().1), (0, 0));
+        assert_eq!(t.fg, Color::Default);
+        assert!(!t.flags.contains(CellFlags::BOLD));
+        assert!(!t.modes.origin);
+        assert!(t.modes.auto_wrap);
     }
 
     #[test]
