@@ -611,11 +611,15 @@ class _TerminalScreenState extends State<TerminalScreen>
   DateTime _lastScrollTime = DateTime.fromMillisecondsSinceEpoch(0);
   // Visual bell: counts down frames for red border flash.
   int _bellFlashFrames = 0;
+  // Font size at gesture start — ensures linear (not exponential) zoom.
+  double _gestureStartFontSize = 13.0;
 
   void _onScale(ScaleUpdateDetails details) {
     // Pinch to zoom (scale change).
+    // Use _gestureStartFontSize (saved at gesture start) so zoom is linear:
+    // newSize = startSize * cumulativeScale, not fontSize * scale.
     if ((details.scale - 1.0).abs() > 0.01) {
-      final newSize = (_fontSize * details.scale).clamp(8.0, 32.0);
+      final newSize = (_gestureStartFontSize * details.scale).clamp(8.0, 32.0);
       // Show font size toast when it changes by at least 0.5pt
       if ((newSize - _fontSize).abs() >= 0.5) {
         _showCopiedSnackBar('Font size: ${newSize.toStringAsFixed(1)}pt');
@@ -1624,7 +1628,10 @@ class _TerminalScreenState extends State<TerminalScreen>
                   });
 
                   return GestureDetector(
-                    onScaleStart: (_) => _cancelInertia(),
+                    onScaleStart: (_) {
+                      _cancelInertia();
+                      _gestureStartFontSize = _fontSize;
+                    },
                     onScaleUpdate: _onScale,
                     onTapUp: _onTapUp,
                     onLongPressStart: _onLongPress,
