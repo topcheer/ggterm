@@ -2894,6 +2894,8 @@ impl DesktopApp {
                 self.reopen_closed_tab();
             }
             "split.close" => {
+                self.selection.clear();
+                self.selection_auto_scroll = 0;
                 self.active_session_mut().remove_active_pane();
                 if let Some(ref window) = self.window {
                     window.request_redraw();
