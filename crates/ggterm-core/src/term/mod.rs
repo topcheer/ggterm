@@ -454,6 +454,9 @@ pub struct Terminal {
     /// Saved cursor for alt-screen swap (P15-A).
     /// Used by DECSET 1049 which saves/restores cursor in addition to grid.
     pub(crate) alt_saved_cursor: Cursor,
+    /// Saved tab stops for alt-screen swap.
+    /// Alt screen gets default tab stops; primary stops are restored on exit.
+    pub(crate) alt_saved_tab_stops: Option<Vec<bool>>,
     /// Dynamic foreground color set via OSC 10 (P17-A).
     /// When set, overrides the theme default foreground.
     pub(crate) dynamic_fg: Option<Color>,
@@ -638,6 +641,7 @@ impl Terminal {
             bell: false,
             alt_saved_grid: None,
             alt_saved_cursor: Cursor::default(),
+            alt_saved_tab_stops: None,
             dynamic_fg: None,
             dynamic_bg: None,
             dynamic_cursor: None,
@@ -1062,6 +1066,17 @@ impl Terminal {
         text.trim_end().to_string()
     }
 
+    /// Reset tab stops to default (every 8 columns).
+    fn reset_tab_stops(&mut self) {
+        let width = self.grid.width();
+        self.tab_stops = vec![false; width.max(1)];
+        let mut col = 0;
+        while col < width {
+            self.tab_stops[col] = true;
+            col += 8;
+        }
+    }
+
     pub fn resize(&mut self, width: usize, height: usize) {
         if self.modes.reflow {
             self.grid.reflow_resize(width, height);
@@ -1258,33 +1273,43 @@ impl Terminal {
             // Alt-screen modes — P15-A: properly save/restore grid
             47 | 1047 => {
                 if enable && !self.modes.alt_screen {
-                    // Enter alt-screen: save primary grid, install fresh grid
+                    // Enter alt-screen: save primary grid + tab stops
                     self.alt_saved_grid = Some(self.grid.clone());
+                    self.alt_saved_tab_stops = Some(self.tab_stops.clone());
                     self.grid = Grid::new(self.width(), self.height());
+                    self.reset_tab_stops();
                     if mode == 1047 {
                         // 1047: clear the alt screen (already fresh)
                     }
                     self.modes.alt_screen = true;
                 } else if !enable && self.modes.alt_screen {
-                    // Exit alt-screen: restore primary grid
+                    // Exit alt-screen: restore primary grid + tab stops
                     if let Some(saved) = self.alt_saved_grid.take() {
                         self.grid = saved;
+                    }
+                    if let Some(stops) = self.alt_saved_tab_stops.take() {
+                        self.tab_stops = stops;
                     }
                     self.modes.alt_screen = false;
                 }
             }
             1049 => {
                 if enable && !self.modes.alt_screen {
-                    // Enter alt-screen: save cursor, save grid, install fresh grid
+                    // Enter alt-screen: save cursor, grid, tab stops
                     self.alt_saved_cursor = self.cursor;
                     self.alt_saved_grid = Some(self.grid.clone());
+                    self.alt_saved_tab_stops = Some(self.tab_stops.clone());
                     self.grid = Grid::new(self.width(), self.height());
+                    self.reset_tab_stops();
                     self.cursor = Cursor::default();
                     self.modes.alt_screen = true;
                 } else if !enable && self.modes.alt_screen {
-                    // Exit alt-screen: restore grid, restore cursor
+                    // Exit alt-screen: restore grid, cursor, tab stops
                     if let Some(saved) = self.alt_saved_grid.take() {
                         self.grid = saved;
+                    }
+                    if let Some(stops) = self.alt_saved_tab_stops.take() {
+                        self.tab_stops = stops;
                     }
                     self.cursor = self.alt_saved_cursor;
                     self.modes.alt_screen = false;
@@ -3254,6 +3279,27 @@ mod tests {
         // Exit alt-screen (restores cursor).
         feed(&mut t, b"\x1b[?1049l");
         assert_eq!(t.cursor(), (4, 1));
+    }
+
+    #[test]
+    fn t_alt_screen_1049_preserves_custom_tab_stops() {
+        let mut t = Terminal::new(40, 3);
+        // Clear all default tab stops, set custom one at col 20.
+        feed(&mut t, b"\x1b[3g"); // TBC 3: clear all tab stops
+        feed(&mut t, b"\x1b[1;21H"); // CUP: row 1, col 21 → x=20
+        feed(&mut t, b"\x1bH"); // HTS: set tab stop here
+        // Verify custom tab stop exists at col 20.
+        assert!(t.tab_stops.get(20).copied().unwrap_or(false));
+        // Enter alt-screen.
+        feed(&mut t, b"\x1b[?1049h");
+        // Alt screen should have default tab stops (every 8), not custom.
+        assert!(!t.tab_stops.get(20).copied().unwrap_or(false));
+        assert!(t.tab_stops.get(8).copied().unwrap_or(false));
+        // Exit alt-screen.
+        feed(&mut t, b"\x1b[?1049l");
+        // Custom tab stop should be restored.
+        assert!(t.tab_stops.get(20).copied().unwrap_or(false));
+        assert!(!t.tab_stops.get(8).copied().unwrap_or(false));
     }
 
     #[test]
