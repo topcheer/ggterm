@@ -1209,7 +1209,10 @@ impl Terminal {
             && let Some(c) = self.grid.cell_mut(self.cursor.x + 1, self.cursor.y)
         {
             c.bg = self.bg;
-            c.hyperlink = self.current_hyperlink.clone();
+            // Spacer cell: set hyperlink only when active (avoid clone of None).
+            if let Some(ref hl) = self.current_hyperlink {
+                c.hyperlink = Some(hl.clone());
+            }
         }
 
         // Advance cursor by the character's display width
