@@ -2337,10 +2337,30 @@ impl Perform for Terminal {
                     i += 1;
                 }
             }
-            // Only return if we handled SGR 4:N. Otherwise fall through
-            // to csi() so colon-separated colors (38:2:R:G:B, 38:5:N) work.
+            // Only return early if ALL params were colon-derived underline
+            // styles. If there are non-colon params mixed in (e.g. 4:3;31),
+            // fall through to csi() so the regular SGR handler processes them.
             if handled {
-                return;
+                // Check if any params were NOT consumed by colon pairs.
+                let mut all_colon = true;
+                let mut j = 0;
+                while j < params.len() {
+                    let next_is_colon = subs.get(j + 1).copied().unwrap_or(0) != 0;
+                    let curr_is_colon = subs.get(j).copied().unwrap_or(0) != 0;
+                    if next_is_colon {
+                        j += 2;
+                    } else if curr_is_colon {
+                        j += 1; // skip colon-derived value
+                    } else {
+                        // This param is a regular SGR value (e.g. 31=red).
+                        all_colon = false;
+                        break;
+                    }
+                }
+                if all_colon {
+                    return;
+                }
+                // Fall through to csi() to process remaining regular SGR params.
             }
         }
         // Default: delegate to regular csi()
@@ -3057,6 +3077,19 @@ mod tests {
         let flags = t.grid().cell(0, 0).unwrap().flags;
         assert!(flags.contains(CellFlags::UNDERLINE));
         assert!(flags.contains(CellFlags::UNDERLINE_CURLY));
+    }
+
+    #[test]
+    fn t_sgr_underline_style_mixed_with_color() {
+        // ESC[4:3;31m — curly underline AND red foreground
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:3;31mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            cell.flags.contains(CellFlags::UNDERLINE_CURLY),
+            "should have curly underline"
+        );
+        assert_eq!(cell.fg, Color::Indexed(1), "should have red fg");
     }
 
     #[test]
