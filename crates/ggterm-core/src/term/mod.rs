@@ -1131,7 +1131,12 @@ impl Terminal {
     fn put_printable_char(&mut self, ch: char) {
         // Update last output time here — once per character, not per byte.
         self.last_output_time = Some(std::time::Instant::now());
-        let w = UnicodeWidthChar::width(ch).unwrap_or(1);
+        // Fast path for ASCII: width is always 1, skip UnicodeWidthChar lookup.
+        let w = if (ch as u32) < 0x80 {
+            1
+        } else {
+            UnicodeWidthChar::width(ch).unwrap_or(1)
+        };
 
         // P17-B: Combining characters (zero-width) are merged into the preceding cell.
         if w == 0 {
