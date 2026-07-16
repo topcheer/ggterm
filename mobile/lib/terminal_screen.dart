@@ -183,6 +183,7 @@ class _TerminalScreenState extends State<TerminalScreen>
       _isPaused = true;
       _renderTimer?.cancel();
       _blinkTimer?.cancel();
+      _durationTimer?.cancel();
     } else if (state == AppLifecycleState.resumed) {
       // App came back to foreground — resume rendering.
       if (_isPaused) {
