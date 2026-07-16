@@ -1519,21 +1519,33 @@ impl DesktopApp {
         }
 
         // Handle OSC 52 clipboard QUERY: respond with current clipboard contents.
+        // SECURITY: only allow for local sessions. Remote (SSH) programs must
+        // not silently read the user's clipboard (may contain passwords/keys).
         if self
             .active_session_mut()
             .app_mut()
             .terminal_mut()
             .take_pending_clipboard_query()
-            && let Some(text) = crate::clipboard::read_clipboard()
         {
-            // Base64-encode the clipboard text and send the OSC 52 response.
-            let b64 = Self::base64_encode(text.as_bytes());
-            let resp = format!("\x1b]52;c;{b64}\x07");
-            self.write_to_pty(resp.as_bytes());
-            log::debug!(
-                "OSC 52 clipboard query: responded with {} chars",
-                text.len()
-            );
+            let is_remote = self
+                .active_session()
+                .app()
+                .terminal()
+                .remote_host()
+                .is_some();
+            if !is_remote {
+                if let Some(text) = crate::clipboard::read_clipboard() {
+                    let b64 = Self::base64_encode(text.as_bytes());
+                    let resp = format!("\x1b]52;c;{b64}\x07");
+                    self.write_to_pty(resp.as_bytes());
+                    log::debug!(
+                        "OSC 52 clipboard query: responded with {} chars",
+                        text.len()
+                    );
+                }
+            } else {
+                log::warn!("OSC 52 clipboard query blocked (SSH remote session)");
+            }
         }
     }
 
