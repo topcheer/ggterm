@@ -464,12 +464,13 @@ impl Grid {
 
         // Scrollback (oldest first)
         for row in &self.scrollback {
-            lines.push(row.text().trim_end().to_string());
+            // row.text() already trims trailing whitespace.
+            lines.push(row.text());
         }
 
         // Visible screen
         for row in &self.rows {
-            lines.push(row.text().trim_end().to_string());
+            lines.push(row.text());
         }
 
         // Trim trailing empty lines
@@ -487,7 +488,8 @@ impl Grid {
     pub fn export_visible_text(&self) -> String {
         let mut lines: Vec<String> = Vec::with_capacity(self.height);
         for row in &self.rows {
-            lines.push(row.text().trim_end().to_string());
+            // row.text() already trims trailing whitespace.
+            lines.push(row.text());
         }
         while lines.last().is_some_and(|l| l.is_empty()) {
             lines.pop();
