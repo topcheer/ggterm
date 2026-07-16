@@ -2244,6 +2244,9 @@ impl Perform for Terminal {
                 }
                 // Reset hyperlinks
                 self.current_hyperlink = None;
+                // Clear partial UTF-8 sequence and REP tracking
+                self.utf8_buf.clear();
+                self.last_printed_char = None;
                 // Reset dynamic colors
                 self.dynamic_fg = None;
                 self.dynamic_bg = None;
