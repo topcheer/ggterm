@@ -301,6 +301,9 @@ impl DesktopApp {
             let key_name = keycode_to_name(code);
 
             // Ctrl+T → new tab (also Cmd+T on macOS)
+            // Skip key-repeat for action shortcuts to prevent rapid-fire
+            // (e.g. holding Ctrl+T creating dozens of tabs).
+            let is_repeat = event.repeat;
             if self.check_keybinding(
                 "new_tab",
                 self.mods.ctrl,
@@ -309,7 +312,9 @@ impl DesktopApp {
                 key_name,
             ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "t")
             {
-                self.open_tab();
+                if !is_repeat {
+                    self.open_tab();
+                }
                 return;
             }
             // Ctrl+Shift+T → reopen last closed tab (also Cmd+Shift+T on macOS)
@@ -319,7 +324,9 @@ impl DesktopApp {
                     && self.mods.shift
                     && key_name == "t")
             {
-                self.reopen_closed_tab();
+                if !is_repeat {
+                    self.reopen_closed_tab();
+                }
                 return;
             }
             // Ctrl+Shift+N → open new ggterm window (also Cmd+Shift+N on macOS)
@@ -329,23 +336,31 @@ impl DesktopApp {
                     && self.mods.shift
                     && key_name == "n")
             {
-                self.open_new_window();
+                if !is_repeat {
+                    self.open_new_window();
+                }
                 return;
             }
             // Ctrl+Shift+Alt+D → duplicate active tab
             if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "d" {
-                self.duplicate_tab();
+                if !is_repeat {
+                    self.duplicate_tab();
+                }
                 return;
             }
             // Ctrl+Shift+Alt+W → close all other tabs
             if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "w" {
-                self.close_other_tabs();
+                if !is_repeat {
+                    self.close_other_tabs();
+                }
                 return;
             }
             // Ctrl+Shift+Alt+Q → toggle P2P terminal sharing
             #[cfg(feature = "p2p")]
             if self.mods.ctrl && self.mods.shift && self.mods.alt && key_name == "q" {
-                self.toggle_p2p_share();
+                if !is_repeat {
+                    self.toggle_p2p_share();
+                }
                 return;
             }
             // Ctrl+Shift+Alt+L → manually reload config from file
