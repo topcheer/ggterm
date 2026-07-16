@@ -459,6 +459,11 @@ impl GlyphonRenderer {
         self.palette_overrides = overrides;
     }
 
+    /// Get a reference to current palette overrides (for change detection).
+    pub fn palette_overrides_ref(&self) -> &HashMap<u8, (u8, u8, u8)> {
+        &self.palette_overrides
+    }
+
     /// Set the font size and recompute cell metrics.
     ///
     /// Line height = font_size (1.0x, for seamless box-drawing chars).

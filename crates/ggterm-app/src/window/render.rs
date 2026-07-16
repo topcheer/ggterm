@@ -134,7 +134,11 @@ impl DesktopApp {
         }));
 
         // OSC 4: Sync custom palette overrides from terminal to renderer.
-        renderer.set_palette_overrides(term.palette_overrides().clone());
+        // Only clone when the map actually changed (avoid per-frame HashMap clone).
+        let palette = term.palette_overrides();
+        if palette != renderer.palette_overrides_ref() {
+            renderer.set_palette_overrides(palette.clone());
+        }
 
         // SGR 5: Blink text — share the cursor blink phase for text blink.
         renderer.set_blink_phase(blink_alpha);
