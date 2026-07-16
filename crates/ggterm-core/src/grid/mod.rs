@@ -504,6 +504,10 @@ impl Grid {
         while self.scrollback.len() > max {
             self.scrollback.pop_front();
         }
+        // Clamp display_offset to valid range after trimming.
+        if self.display_offset > self.scrollback.len() {
+            self.display_offset = self.scrollback.len();
+        }
     }
 
     /// Export terminal output as an HTML document with ANSI colors preserved.
