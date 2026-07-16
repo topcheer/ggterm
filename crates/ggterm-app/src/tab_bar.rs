@@ -836,6 +836,7 @@ mod tests {
     fn t_windows_right_margin_for_controls() {
         let mut state = TabBarState::new();
         state.update(&["a", "b"], 0);
+        #[cfg(not(target_os = "macos"))]
         let layout = state.compute_layout(800.0, 14.0);
         // The "+" new tab button must not extend into the window control area.
         #[cfg(not(target_os = "macos"))]

@@ -143,11 +143,17 @@ pub fn row_to_runs(
 
         // Cursor: swap resulting RGB for visibility (handles Default color case).
         let cursor_here = cursor.is_some_and(|c| c.visible && c.x == col && c.y == row);
+        // When cursor is on a wide char lead (col-1), also highlight this spacer cell
+        // so the block cursor visually covers the full wide character.
+        let cursor_on_wide_lead = !cursor_here
+            && col > 0
+            && cell.flags.contains(CellFlags::WIDE_SPACER)
+            && cursor.is_some_and(|c| c.visible && c.y == row && c.x == col - 1);
 
         // When a dynamic cursor color is set (OSC 12), use it as the cursor cell bg.
         // Highlight takes priority over cursor color swap.
         #[allow(clippy::collapsible_if)]
-        if cursor_here
+        if (cursor_here || cursor_on_wide_lead)
             && !highlighted
             && let Some(c) = cursor
         {
