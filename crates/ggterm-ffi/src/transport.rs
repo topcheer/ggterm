@@ -91,8 +91,15 @@ pub extern "C" fn ggterm_session_create(cols: usize, rows: usize) -> u32 {
 /// Destroy a session, dropping its terminal and transport.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_destroy(id: u32) {
-    let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
-    map.remove(&id);
+    // Remove from map while holding lock, but drop the value after releasing
+    // the lock to prevent deadlock if the transport's Drop impl calls back
+    // into the FFI layer (e.g., SSH channel close).
+    let removed = {
+        let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(&id)
+    };
+    // removed is dropped here, after the mutex guard is released.
+    drop(removed);
 }
 
 /// Get the number of active sessions.
