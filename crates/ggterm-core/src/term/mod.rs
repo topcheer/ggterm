@@ -2621,7 +2621,12 @@ impl Perform for Terminal {
                 } else {
                     // Cap URI length to prevent memory exhaustion from
                     // malformed or malicious OSC 8 sequences.
-                    let uri = if uri.len() > 2048 { &uri[..2048] } else { uri };
+                    let uri = if uri.len() > 2048 {
+                        // Use floor_char_boundary for UTF-8 safety.
+                        &uri[..uri.floor_char_boundary(2048)]
+                    } else {
+                        uri
+                    };
                     self.current_hyperlink = Some(uri.to_string());
                 }
             }
