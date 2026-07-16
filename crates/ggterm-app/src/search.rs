@@ -450,6 +450,15 @@ impl SimpleRegex {
     /// Find all matches in text. Returns (start_col, length) pairs.
     fn find_iter<'a>(&'a self, text: &'a str) -> Vec<(usize, usize)> {
         let chars: Vec<char> = text.chars().collect();
+        // Pre-compute byte offsets for each char position to avoid O(n²) scanning.
+        let mut byte_offsets = Vec::with_capacity(chars.len() + 1);
+        byte_offsets.push(0);
+        let mut acc = 0;
+        for &c in &chars {
+            acc += c.len_utf8();
+            byte_offsets.push(acc);
+        }
+
         let mut results = Vec::new();
         let mut start = 0;
 
@@ -457,9 +466,10 @@ impl SimpleRegex {
             if let Some(len) = self.match_at(&chars, start)
                 && len > 0
             {
-                let byte_start = chars[..start].iter().map(|c| c.len_utf8()).sum();
-                let byte_len = chars[start..start + len].iter().map(|c| c.len_utf8()).sum();
-                results.push((byte_start, byte_len));
+                results.push((
+                    byte_offsets[start],
+                    byte_offsets[start + len] - byte_offsets[start],
+                ));
                 start += len; // Skip past this match.
                 continue;
             }
