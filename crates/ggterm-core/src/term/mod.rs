@@ -455,9 +455,9 @@ pub struct Terminal {
     /// When alt-screen is activated, the primary grid is saved here
     /// and a fresh grid is installed. On exit, the primary grid is restored.
     pub(crate) alt_saved_grid: Option<Grid>,
-    /// Saved cursor for alt-screen swap (P15-A).
-    /// Used by DECSET 1049 which saves/restores cursor in addition to grid.
-    pub(crate) alt_saved_cursor: Cursor,
+    /// Saved DECSC state for alt-screen swap (P15-A).
+    /// Used by DECSET 1049 which saves/restores full cursor+SGR state.
+    pub(crate) alt_saved_state: Option<DecscState>,
     /// Saved tab stops for alt-screen swap.
     /// Alt screen gets default tab stops; primary stops are restored on exit.
     pub(crate) alt_saved_tab_stops: Option<Vec<bool>>,
@@ -648,7 +648,7 @@ impl Terminal {
             current_hyperlink: None,
             bell: false,
             alt_saved_grid: None,
-            alt_saved_cursor: Cursor::default(),
+            alt_saved_state: None,
             alt_saved_tab_stops: None,
             dynamic_fg: None,
             dynamic_bg: None,
@@ -1321,7 +1321,19 @@ impl Terminal {
             1049 => {
                 if enable && !self.modes.alt_screen {
                     // Enter alt-screen: save cursor, grid, tab stops
-                    self.alt_saved_cursor = self.cursor;
+                    self.alt_saved_state = Some(DecscState {
+                        cursor: self.cursor,
+                        fg: self.fg,
+                        bg: self.bg,
+                        underline_color: self.underline_color,
+                        flags: self.flags,
+                        g0_charset: self.g0_charset,
+                        g1_charset: self.g1_charset,
+                        active_g1: self.active_g1,
+                        auto_wrap: self.modes.auto_wrap,
+                        origin: self.modes.origin,
+                        protected_attr: self.protected_attr,
+                    });
                     self.alt_saved_grid = Some(self.grid.clone());
                     self.alt_saved_tab_stops = Some(self.tab_stops.clone());
                     self.grid = Grid::new(self.width(), self.height());
@@ -1336,7 +1348,19 @@ impl Terminal {
                     if let Some(stops) = self.alt_saved_tab_stops.take() {
                         self.tab_stops = stops;
                     }
-                    self.cursor = self.alt_saved_cursor;
+                    if let Some(state) = self.alt_saved_state.take() {
+                        self.cursor = state.cursor;
+                        self.fg = state.fg;
+                        self.bg = state.bg;
+                        self.underline_color = state.underline_color;
+                        self.flags = state.flags;
+                        self.g0_charset = state.g0_charset;
+                        self.g1_charset = state.g1_charset;
+                        self.active_g1 = state.active_g1;
+                        self.modes.auto_wrap = state.auto_wrap;
+                        self.modes.origin = state.origin;
+                        self.protected_attr = state.protected_attr;
+                    }
                     self.modes.alt_screen = false;
                 }
             }
@@ -3420,6 +3444,23 @@ mod tests {
         // Exit alt-screen (restores cursor).
         feed(&mut t, b"\x1b[?1049l");
         assert_eq!(t.cursor(), (4, 1));
+    }
+
+    #[test]
+    fn t_alt_screen_1049_saves_and_restores_sgr() {
+        // DECSET 1049 should save/restore full DECSC state including SGR.
+        let mut t = Terminal::new(10, 3);
+        // Set bold + red foreground.
+        feed(&mut t, b"\x1b[1;31m");
+        // Enter alt-screen.
+        feed(&mut t, b"\x1b[?1049h");
+        // Change SGR on alt screen.
+        feed(&mut t, b"\x1b[0;32m");
+        assert_eq!(t.fg, Color::Indexed(2));
+        // Exit alt-screen — original SGR should be restored.
+        feed(&mut t, b"\x1b[?1049l");
+        assert!(t.flags.contains(CellFlags::BOLD), "bold should be restored");
+        assert_eq!(t.fg, Color::Indexed(1), "red fg should be restored");
     }
 
     #[test]
