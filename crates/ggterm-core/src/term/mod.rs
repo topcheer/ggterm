@@ -2638,7 +2638,13 @@ impl Perform for Terminal {
                         if base64_data.is_empty() {
                             self.pending_clipboard_set = Some(Vec::new());
                         } else {
-                            let decoded = Self::decode_base64(base64_data);
+                            // Cap at ~1MB base64 (~750KB decoded) to prevent
+                            // memory exhaustion from malicious OSC 52 payloads.
+                            let decoded = if base64_data.len() > 1_400_000 {
+                                Self::decode_base64(&base64_data[..1_400_000])
+                            } else {
+                                Self::decode_base64(base64_data)
+                            };
                             self.pending_clipboard_set = Some(decoded);
                         }
                     }
@@ -2652,7 +2658,13 @@ impl Perform for Terminal {
                     if base64_data.is_empty() {
                         self.pending_clipboard_set = Some(Vec::new());
                     } else {
-                        let decoded = Self::decode_base64(base64_data);
+                        // Cap at ~1MB base64 (~750KB decoded) to prevent
+                        // memory exhaustion from malicious OSC 52 payloads.
+                        let decoded = if base64_data.len() > 1_400_000 {
+                            Self::decode_base64(&base64_data[..1_400_000])
+                        } else {
+                            Self::decode_base64(base64_data)
+                        };
                         self.pending_clipboard_set = Some(decoded);
                     }
                 }
