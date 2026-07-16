@@ -219,9 +219,10 @@ impl CommandHistoryState {
         &'a self,
         query: &'a str,
     ) -> impl Iterator<Item = &'a CommandHistoryEntry> + 'a {
-        self.entries.iter().filter(move |e| {
-            query.is_empty() || e.command.to_lowercase().contains(&query.to_lowercase())
-        })
+        let q = query.to_lowercase();
+        self.entries
+            .iter()
+            .filter(move |e| q.is_empty() || e.command.to_lowercase().contains(&q))
     }
 
     /// Get running command count.
