@@ -1741,7 +1741,15 @@ impl Perform for Terminal {
             }
             b'd' => {
                 let row = Self::param(params, 0, 1) as usize;
-                self.set_cursor(self.cursor.x, row.saturating_sub(1));
+                // Origin mode: VPA is relative to scroll region top,
+                // and cursor is clamped to the scroll region.
+                let actual_row = if self.modes.origin {
+                    let (top, bottom) = self.grid.scroll_region();
+                    (top + row.saturating_sub(1)).min(bottom.saturating_sub(1))
+                } else {
+                    row.saturating_sub(1)
+                };
+                self.set_cursor(self.cursor.x, actual_row);
             }
             // DECSED — selective erase in display (CSI ? Ps J) (P24-D)
             // Must come BEFORE regular ED to take priority when `?` prefix is present.
@@ -3826,6 +3834,25 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[10d");
         assert_eq!(t.cursor().1, 9);
+    }
+
+    #[test]
+    fn t_vpa_origin_mode() {
+        let mut t = Terminal::new(80, 24);
+        // Set scroll region to rows 5-15 (0-based: 4-14)
+        feed(&mut t, b"\x1b[5;15r");
+        // Enable origin mode
+        feed(&mut t, b"\x1b[?6h");
+        // VPA to row 1 → should be relative to scroll region top (row 4)
+        feed(&mut t, b"\x1b[1d");
+        assert_eq!(
+            t.cursor().1,
+            4,
+            "VPA row 1 in origin mode should be scroll top"
+        );
+        // VPA to row 3 → row 6 (4 + 3 - 1)
+        feed(&mut t, b"\x1b[3d");
+        assert_eq!(t.cursor().1, 6, "VPA row 3 in origin mode should be 4+2");
     }
 
     #[test]
