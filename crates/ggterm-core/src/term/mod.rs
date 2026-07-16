@@ -1754,14 +1754,26 @@ impl Perform for Terminal {
             b'E' => {
                 let n = Self::param(params, 0, 1) as usize;
                 let (_, bottom) = self.grid.scroll_region();
-                self.cursor.y = (self.cursor.y + n).min(bottom.saturating_sub(1));
+                // CNL stops at scroll region bottom when cursor is inside it.
+                // When cursor is below the scroll region, stops at last row.
+                self.cursor.y = if self.cursor.y < bottom {
+                    (self.cursor.y + n).min(bottom.saturating_sub(1))
+                } else {
+                    (self.cursor.y + n).min(self.grid.height().saturating_sub(1))
+                };
                 self.cursor.x = 0;
                 self.cursor.pending_wrap = false;
             }
             b'F' => {
                 let n = Self::param(params, 0, 1) as usize;
                 let (top, _) = self.grid.scroll_region();
-                self.cursor.y = self.cursor.y.saturating_sub(n).max(top);
+                // CPL stops at scroll region top when cursor is inside it.
+                // When cursor is above the scroll region, stops at row 0.
+                self.cursor.y = if self.cursor.y >= top {
+                    self.cursor.y.saturating_sub(n).max(top)
+                } else {
+                    self.cursor.y.saturating_sub(n)
+                };
                 self.cursor.x = 0;
                 self.cursor.pending_wrap = false;
             }
@@ -3143,6 +3155,30 @@ mod tests {
         feed(&mut t, b"\x1b[8;1H"); // cursor row 7 (below region)
         feed(&mut t, b"\x1b[1B"); // CUD 1
         assert_eq!(t.cursor().1, 8, "CUD below scroll region should not clamp");
+    }
+
+    #[test]
+    fn t_cnl_outside_scroll_region() {
+        // Scroll region rows 0-3. Cursor at row 7 (below region).
+        // CNL should move to row 8, NOT clamp to scroll_bottom.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region top=0, bottom=3
+        feed(&mut t, b"\x1b[8;1H"); // cursor row 7 (below region)
+        feed(&mut t, b"\x1b[1E"); // CNL 1
+        assert_eq!(t.cursor().1, 8, "CNL below scroll region should not clamp");
+        assert_eq!(t.cursor().0, 0, "CNL should set column to 0");
+    }
+
+    #[test]
+    fn t_cpl_outside_scroll_region() {
+        // Scroll region rows 3-6. Cursor at row 1 (above region).
+        // CPL should move to row 0, NOT clamp to scroll_top.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[4;6r"); // region top=3, bottom=6
+        feed(&mut t, b"\x1b[2;1H"); // cursor row 1 (above region)
+        feed(&mut t, b"\x1b[1F"); // CPL 1
+        assert_eq!(t.cursor().1, 0, "CPL above scroll region should not clamp");
+        assert_eq!(t.cursor().0, 0, "CPL should set column to 0");
     }
 
     #[test]
