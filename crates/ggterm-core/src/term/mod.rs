@@ -1231,7 +1231,12 @@ impl Terminal {
             if self.protected_attr {
                 c.flags |= CellFlags::PROTECTED;
             }
-            c.hyperlink = self.current_hyperlink.clone();
+            // Only clone hyperlink when active (avoid None allocation).
+            if let Some(ref hl) = self.current_hyperlink {
+                c.hyperlink = Some(hl.clone());
+            } else {
+                c.hyperlink = None;
+            }
         }
         // For wide chars, set bg on the spacer cell to avoid visual gaps
         if consumed == 2
