@@ -1592,11 +1592,15 @@ impl DesktopApp {
         if cfg!(target_os = "macos") && self.mods.super_key && self.mods.shift && !self.mods.alt {
             match &event.physical_key {
                 PhysicalKey::Code(KeyCode::BracketRight) => {
-                    self.next_tab();
+                    if !is_repeat {
+                        self.next_tab();
+                    }
                     return;
                 }
                 PhysicalKey::Code(KeyCode::BracketLeft) => {
-                    self.prev_tab();
+                    if !is_repeat {
+                        self.prev_tab();
+                    }
                     return;
                 }
                 _ => {}
