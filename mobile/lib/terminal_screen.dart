@@ -2004,17 +2004,23 @@ class _TerminalPainter extends CustomPainter {
       if (cy < maxVisibleRows && cx < cols) {
         final x = cx * cellWidth;
         final y = cy * cellHeight;
+        // Check if cursor is on a wide char (CJK/emoji) — draw 2 cells wide.
+        final cursorIdx = cy * cols + cx;
+        var cursorW = cellWidth;
+        if (cursorIdx < screen.cells.length && screen.cells[cursorIdx].wide) {
+          cursorW = cellWidth * 2;
+        }
         // Draw cursor block with 50% opacity — text underneath remains readable.
         _cursorRectPaint.color = theme.cursor.withValues(alpha: 0.5);
         canvas.drawRect(
-          Rect.fromLTWH(x, y, cellWidth, cellHeight),
+          Rect.fromLTWH(x, y, cursorW, cellHeight),
           _cursorRectPaint,
         );
         // Draw a 1px border for crispness.
         _cursorBorderPaint.color = theme.cursor;
         _cursorBorderPaint.strokeWidth = 1.0;
         canvas.drawRect(
-          Rect.fromLTWH(x, y, cellWidth, cellHeight),
+          Rect.fromLTWH(x, y, cursorW, cellHeight),
           _cursorBorderPaint,
         );
       }
