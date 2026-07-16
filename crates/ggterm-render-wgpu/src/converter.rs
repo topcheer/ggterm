@@ -244,6 +244,10 @@ pub fn row_to_text(grid: &Grid, row: usize) -> String {
         let cell = &grid[(col, row)];
         if !cell.flags.contains(CellFlags::WIDE_SPACER) {
             text.push(cell.ch);
+            // Skip null chars from uninitialized cells — they're not real content.
+            if cell.ch == '\0' {
+                text.pop();
+            }
             for &mc in &cell.combining {
                 text.push(mc);
             }
