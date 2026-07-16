@@ -1880,10 +1880,11 @@ impl Perform for Terminal {
                         .max(1) as usize;
                     if top < bottom && bottom <= self.grid.height() {
                         self.grid.set_scroll_region(top.saturating_sub(1), bottom);
-                        // In origin mode, cursor goes to scroll region top
-                        let (st, _) = self.grid.scroll_region();
-                        self.set_cursor(0, if self.modes.origin { st } else { 0 });
                     }
+                    // Per VT spec, DECSTBM always homes the cursor,
+                    // even when parameters are invalid and region is unchanged.
+                    let (st, _) = self.grid.scroll_region();
+                    self.set_cursor(0, if self.modes.origin { st } else { 0 });
                 }
             }
             b'm' => self.sgr(params),
@@ -4377,6 +4378,22 @@ mod tests {
         feed(&mut t, b"\x1b[5;15r"); // set scroll region
         // Per VT spec, DECSTBM moves cursor to home position
         assert_eq!(t.cursor(), (0, 0), "DECSTBM should home cursor");
+    }
+
+    #[test]
+    fn t_decstbm_invalid_params_still_homes() {
+        // DECSTBM with invalid params (top >= bottom) should NOT change the
+        // scroll region, but per VT spec MUST still home the cursor.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;15r"); // set a valid scroll region first
+        feed(&mut t, b"\x1b[10;10H"); // move cursor away
+        feed(&mut t, b"\x1b[10;5r"); // invalid: top(10) >= bottom(5)
+        // Cursor should still be homed
+        assert_eq!(t.cursor(), (0, 0), "DECSTBM should home cursor even with invalid params");
+        // Scroll region should be unchanged
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 4, "Scroll region top should be unchanged");
+        assert_eq!(bottom, 15, "Scroll region bottom should be unchanged");
     }
 
     // ==================================================================
