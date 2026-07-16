@@ -1129,6 +1129,8 @@ impl Terminal {
     /// Handles deferred wrap (DECAWM), insert mode (IRM), wide character
     /// boundary wrapping, zero-width skip, and attribute merging.
     fn put_printable_char(&mut self, ch: char) {
+        // Update last output time here — once per character, not per byte.
+        self.last_output_time = Some(std::time::Instant::now());
         let w = UnicodeWidthChar::width(ch).unwrap_or(1);
 
         // P17-B: Combining characters (zero-width) are merged into the preceding cell.
@@ -1614,8 +1616,8 @@ fn hex_decode(data: &[u8]) -> Option<String> {
 
 impl Perform for Terminal {
     fn print(&mut self, byte: u8) {
-        self.last_output_time = Some(std::time::Instant::now());
-        // ASCII: flush any pending UTF-8 buffer, then write directly
+        // Defer Instant::now() to flush_utf8 to avoid per-byte syscall
+        // in high-throughput scenarios.
         if byte < 0x80 {
             self.flush_utf8();
             self.put_printable_char(byte as char);
@@ -1625,7 +1627,6 @@ impl Perform for Terminal {
         if !self.utf8_buf.is_empty() && byte >= 0xC0 {
             self.flush_utf8();
         }
-        // Multi-byte UTF-8: buffer and decode when complete
         self.utf8_buf.push(byte);
         let expected = utf8_expected_len(self.utf8_buf[0]);
         if self.utf8_buf.len() >= expected {
