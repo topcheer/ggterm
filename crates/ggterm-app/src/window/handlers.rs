@@ -2971,6 +2971,14 @@ impl DesktopApp {
     ///
     /// A "word" is a run of non-whitespace characters. Finds the word
     /// boundaries by scanning left and right from the clicked cell.
+    /// Get configured word characters for boundary detection.
+    fn word_chars_config(&self) -> String {
+        self.config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.word_chars.clone())
+            .unwrap_or_else(|| ".-/:@~+#?=&%$".to_string())
+    }
+
     pub(super) fn select_word_at(&mut self, col: u16, row: u16) {
         let grid = &self.sessions[self.active].app().grid();
         let col_u = col as usize;
@@ -2980,23 +2988,16 @@ impl DesktopApp {
             return;
         };
 
-        // Character classification for word boundary detection.
-        // Configurable: word_chars from config defines which non-alphanumeric
-        // characters are treated as word characters (for paths, URLs, etc.)
-        let word_chars: String = self
-            .config_mgr
-            .as_ref()
-            .map(|m| m.config().terminal.word_chars.clone())
-            .unwrap_or_else(|| ".-/:@~+#?=&%$".to_string());
+        let word_chars = self.word_chars_config();
         let char_class = |c: char| -> u8 {
             if c.is_alphanumeric() || c == '_' {
-                0 // word chars (letters, digits, underscore)
+                0
             } else if c.is_whitespace() {
-                2 // whitespace separator
+                2
             } else if word_chars.contains(c) {
-                0 // configured path/URL chars — treat as word chars
+                0
             } else {
-                1 // other punctuation/symbols
+                1
             }
         };
 
@@ -3052,12 +3053,7 @@ impl DesktopApp {
             return;
         };
 
-        // Character classification (same logic as select_word_at).
-        let word_chars: String = self
-            .config_mgr
-            .as_ref()
-            .map(|m| m.config().terminal.word_chars.clone())
-            .unwrap_or_else(|| ".-/:@~+#?=&%$".to_string());
+        let word_chars = self.word_chars_config();
         let char_class = |c: char| -> u8 {
             if c.is_alphanumeric() || c == '_' {
                 0
