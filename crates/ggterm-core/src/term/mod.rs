@@ -1658,7 +1658,11 @@ fn utf8_expected_len(lead: u8) -> usize {
 
 /// Hex-encode bytes as lowercase hex string (for XTGETTCAP).
 fn hex_encode(data: &[u8]) -> String {
-    data.iter().map(|b| format!("{b:02x}")).collect()
+    let mut s = String::with_capacity(data.len() * 2);
+    for b in data {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
 }
 
 /// Hex-decode a hex string to bytes (for XTGETTCAP).
