@@ -520,7 +520,9 @@ fn parse_osc7_cwd(payload: &str) -> Option<std::path::PathBuf> {
 
 /// Minimal percent-decoding for file URIs.
 fn percent_decode(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
+    // Collect decoded bytes first, then convert to String via UTF-8.
+    // This correctly handles multi-byte sequences like %E6%A1%8C (CJK).
+    let mut bytes: Vec<u8> = Vec::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch == '%' {
@@ -528,21 +530,23 @@ fn percent_decode(input: &str) -> String {
             let lo = chars.next();
             if let (Some(hi), Some(lo)) = (hi, lo) {
                 if let Ok(byte) = u8::from_str_radix(&format!("{hi}{lo}"), 16) {
-                    result.push(byte as char);
+                    bytes.push(byte);
                     continue;
                 }
                 // Failed decode — keep the original.
-                result.push('%');
-                result.push(hi);
-                result.push(lo);
+                bytes.extend_from_slice(b"%");
+                bytes.push(hi as u8);
+                bytes.push(lo as u8);
             } else {
-                result.push('%');
+                bytes.push(b'%');
             }
         } else {
-            result.push(ch);
+            // Non-% chars: encode as UTF-8 (handles non-ASCII in path).
+            let mut buf = [0u8; 4];
+            bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
         }
     }
-    result
+    String::from_utf8(bytes).unwrap_or_default()
 }
 
 /// Parse an X11 color specification string into a Color.
@@ -5333,6 +5337,17 @@ mod tests {
         // %20 → space
         feed(&mut t, b"\x1b]7;file://host/home/my%20dir\x1b\\");
         assert_eq!(t.cwd(), Some(std::path::Path::new("/home/my dir")));
+    }
+
+    #[test]
+    fn t_osc7_percent_encoded_multibyte() {
+        let mut t = Terminal::new(80, 24);
+        // %E6%A1%8C%E9%9D%A2 → 桌面 (CJK multibyte UTF-8)
+        feed(
+            &mut t,
+            b"\x1b]7;file://host/Users/test/%E6%A1%8C%E9%9D%A2\x1b\\",
+        );
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/Users/test/桌面")));
     }
 
     #[test]
