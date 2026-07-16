@@ -262,6 +262,7 @@ pub struct DesktopApp {
     /// Last applied font size from config (for change detection on hot-reload).
     last_applied_font_size: f32,
     /// Last applied font family from config (for change detection on hot-reload).
+    #[cfg(feature = "config-watch")]
     last_applied_font_family: String,
     /// Cached terminal dimensions "WxH" — only reformat on resize.
     cached_dims: String,
@@ -677,6 +678,7 @@ impl DesktopApp {
                 .as_ref()
                 .map(|m| m.config().appearance.font_size as f32)
                 .unwrap_or(crate::font::DEFAULT_FONT_SIZE),
+            #[cfg(feature = "config-watch")]
             last_applied_font_family: config_mgr
                 .as_ref()
                 .map(|m| m.config().appearance.font_family.clone())
