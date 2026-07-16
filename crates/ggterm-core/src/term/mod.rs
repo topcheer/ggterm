@@ -1091,11 +1091,19 @@ impl Terminal {
         } else {
             self.grid.resize(width, height);
         }
-        self.tab_stops = vec![false; width.max(1)];
-        let mut col = 0;
-        while col < width {
-            self.tab_stops[col] = true;
-            col += 8;
+        // Preserve existing custom tab stops across resize.
+        // If wider, extend with default stops at every 8 columns in the new area.
+        // If narrower, truncate (custom stops in the clipped area are lost).
+        let old_width = self.tab_stops.len();
+        if width > old_width {
+            self.tab_stops.resize(width, false);
+            let mut col = (old_width / 8 + 1) * 8;
+            while col < width {
+                self.tab_stops[col] = true;
+                col += 8;
+            }
+        } else {
+            self.tab_stops.truncate(width.max(1));
         }
         self.cursor.x = self.cursor.x.min(width.saturating_sub(1));
         self.cursor.y = self.cursor.y.min(height.saturating_sub(1));
@@ -4049,6 +4057,23 @@ mod tests {
         p.feed(b"mRed", &mut t);
         assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(1));
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R');
+    }
+
+    #[test]
+    fn t_resize_preserves_custom_tab_stops() {
+        let mut t = Terminal::new(20, 5);
+        // Set custom tab stop at column 3.
+        feed(&mut t, b"\x1b[1;4H\x1bH");
+        assert!(t.tab_stops[3]);
+        // Widen to 30 — custom stop at column 3 should be preserved.
+        t.resize(30, 5);
+        assert!(
+            t.tab_stops[3],
+            "custom tab stop at col 3 should survive resize"
+        );
+        // Default stops at col 8, 16, 24 should also be set in new area.
+        assert!(t.tab_stops[8], "default stop at col 8");
+        assert!(t.tab_stops[24], "default stop at col 24 in new area");
     }
 
     // -- UTF-8 tests --
