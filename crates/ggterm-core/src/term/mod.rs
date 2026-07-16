@@ -2611,6 +2611,9 @@ impl Perform for Terminal {
                 if uri.is_empty() {
                     self.current_hyperlink = None;
                 } else {
+                    // Cap URI length to prevent memory exhaustion from
+                    // malformed or malicious OSC 8 sequences.
+                    let uri = if uri.len() > 2048 { &uri[..2048] } else { uri };
                     self.current_hyperlink = Some(uri.to_string());
                 }
             }
