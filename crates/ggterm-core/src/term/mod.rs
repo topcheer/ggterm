@@ -1955,14 +1955,15 @@ impl Perform for Terminal {
             }
             // DA1 — primary device attributes
             b'c' if !intermediates.contains(&b'>') && !intermediates.contains(&b'=') => {
-                // Respond: CSI ? 62 ; 1 ; 2 ; 4 ; 6 ; 9 ; 15 ; 16 ; 22 ; 29 c
-                // VT220-level capabilities:
-                //   62 = VT220, 1 = 132-cols, 2 = printer, 4 = sixel,
+                // Respond: CSI ? 62 ; 1 ; 6 ; 9 ; 16 ; 22 ; 29 c
+                // VT220-level capabilities — only features we actually support:
+                //   62 = VT220, 1 = 132-cols,
                 //   6 = selective erase, 9 = national charset,
-                //   15 = DEC technical, 16 = locator port,
+                //   16 = locator port,
                 //   22 = ANSI color, 29 = ANSI text locator (OSC 8 hyperlinks)
+                // Removed: 4 (sixel — not rendered), 2 (printer), 15 (DEC tech)
                 self.response_buffer
-                    .extend_from_slice(b"\x1b[?62;1;2;4;6;9;15;16;22;29c");
+                    .extend_from_slice(b"\x1b[?62;1;6;9;16;22;29c");
             }
             // DA2 — secondary device attributes (CSI > c)
             b'c' if intermediates.contains(&b'>') => {
