@@ -2528,14 +2528,11 @@ impl DesktopApp {
                 self.active_session_mut().app_mut().terminal_mut().ris();
             }
             "terminal.clear_and_reset" => {
-                // Clear scrollback + screen, then full RIS reset.
+                // Full RIS reset — Terminal::new creates a fresh grid
+                // with empty scrollback, so explicit clear_scrollback is
+                // redundant.
                 self.selection.clear();
                 self.selection_auto_scroll = 0;
-                self.active_session_mut()
-                    .app_mut()
-                    .terminal_mut()
-                    .grid_mut()
-                    .clear_scrollback();
                 self.active_session_mut().app_mut().terminal_mut().ris();
                 self.show_toast("Terminal cleared and reset".to_string());
             }
