@@ -1689,13 +1689,25 @@ impl Perform for Terminal {
             b'A' => {
                 let n = Self::param(params, 0, 1) as usize;
                 let (top, _) = self.grid.scroll_region();
-                self.cursor.y = self.cursor.y.saturating_sub(n).max(top);
+                // CUU stops at scroll region top when cursor is inside it.
+                // When cursor is above the scroll region, stops at row 0.
+                self.cursor.y = if self.cursor.y >= top {
+                    self.cursor.y.saturating_sub(n).max(top)
+                } else {
+                    self.cursor.y.saturating_sub(n)
+                };
                 self.cursor.pending_wrap = false;
             }
             b'B' => {
                 let n = Self::param(params, 0, 1) as usize;
                 let (_, bottom) = self.grid.scroll_region();
-                self.cursor.y = (self.cursor.y + n).min(bottom.saturating_sub(1));
+                // CUD stops at scroll region bottom when cursor is inside it.
+                // When cursor is below the scroll region, stops at last row.
+                self.cursor.y = if self.cursor.y < bottom {
+                    (self.cursor.y + n).min(bottom.saturating_sub(1))
+                } else {
+                    (self.cursor.y + n).min(self.grid.height().saturating_sub(1))
+                };
                 self.cursor.pending_wrap = false;
             }
             b'C' => {
