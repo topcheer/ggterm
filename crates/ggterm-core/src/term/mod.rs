@@ -1239,11 +1239,16 @@ impl Terminal {
     }
 
     fn line_feed(&mut self) {
-        let (_top, bottom) = self.grid.scroll_region();
-        if self.cursor.y >= bottom.saturating_sub(1) {
+        let (top, bottom) = self.grid.scroll_region();
+        // Only scroll when cursor is at the bottom of the scroll region.
+        // If cursor is below the scroll region, just advance the row.
+        if self.cursor.y >= top
+            && self.cursor.y < bottom
+            && self.cursor.y >= bottom.saturating_sub(1)
+        {
             self.grid.scroll_up(1);
         } else {
-            self.cursor.y += 1;
+            self.cursor.y = (self.cursor.y + 1).min(self.grid.height().saturating_sub(1));
         }
         // Always clear pending_wrap on line feed — the cursor has moved
         // to a new line regardless of LNM mode. Without this, bare LF
@@ -1257,8 +1262,10 @@ impl Terminal {
     }
 
     fn reverse_line_feed(&mut self) {
-        let (top, _bottom) = self.grid.scroll_region();
-        if self.cursor.y == top {
+        let (top, bottom) = self.grid.scroll_region();
+        // Only scroll down when cursor is at the top of the scroll region.
+        // If cursor is above or outside the scroll region, just move up.
+        if self.cursor.y == top && self.cursor.y < bottom {
             self.grid.scroll_down(1);
         } else if self.cursor.y > 0 {
             self.cursor.y -= 1;
@@ -3011,6 +3018,30 @@ mod tests {
         // If pending_wrap wasn't cleared, E would wrap to col 0 of row 2.
         assert_eq!(t.grid().cell(3, 1).unwrap().ch, 'E');
         assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_lf_outside_scroll_region_no_scroll() {
+        // Scroll region rows 0-2; cursor at row 3 (below region).
+        // LF should move cursor down without scrolling the region.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r"); // region top=0, bottom=2
+        feed(&mut t, b"\x1b[4;1H"); // cursor to row 3 (0-based), below region
+        feed(&mut t, b"\n"); // LF
+        // Cursor should move to row 4, region should NOT scroll.
+        assert_eq!(t.cursor().1, 4, "LF below scroll region should move cursor");
+    }
+
+    #[test]
+    fn t_ril_outside_scroll_region_no_scroll() {
+        // Scroll region rows 2-4; cursor at row 0 (above region).
+        // RI should move cursor up without scrolling the region.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5r"); // region top=2, bottom=4
+        feed(&mut t, b"\x1b[2;1H"); // cursor to row 1 (above region)
+        feed(&mut t, b"\x1bM"); // RI (reverse line feed)
+        // Cursor should move to row 0, region should NOT scroll.
+        assert_eq!(t.cursor().1, 0, "RI above scroll region should move cursor");
     }
 
     #[test]
