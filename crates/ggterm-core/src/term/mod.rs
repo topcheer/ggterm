@@ -3084,6 +3084,28 @@ mod tests {
     }
 
     #[test]
+    fn t_cuu_outside_scroll_region() {
+        // Scroll region rows 3-6 (0-based). Cursor at row 1 (above region).
+        // CUU should move up to row 0, NOT clamp to scroll_top.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[4;6r"); // region top=3, bottom=6
+        feed(&mut t, b"\x1b[2;1H"); // cursor row 1 (above region)
+        feed(&mut t, b"\x1b[1A"); // CUU 1
+        assert_eq!(t.cursor().1, 0, "CUU above scroll region should not clamp");
+    }
+
+    #[test]
+    fn t_cud_outside_scroll_region() {
+        // Scroll region rows 0-3 (0-based). Cursor at row 7 (below region).
+        // CUD should move down to row 8, NOT clamp to scroll_bottom.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region top=0, bottom=3
+        feed(&mut t, b"\x1b[8;1H"); // cursor row 7 (below region)
+        feed(&mut t, b"\x1b[1B"); // CUD 1
+        assert_eq!(t.cursor().1, 8, "CUD below scroll region should not clamp");
+    }
+
+    #[test]
     fn t_csi_cuf_cub() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[10C\x1b[3D");
