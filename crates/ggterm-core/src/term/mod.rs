@@ -989,9 +989,8 @@ impl Terminal {
         }
         let mut lines = Vec::new();
         for row in start..end {
-            let text = self.extract_row_text(row);
-            // Trim trailing whitespace but keep the line.
-            lines.push(text.trim_end().to_string());
+            // extract_row_text already trims trailing whitespace.
+            lines.push(self.extract_row_text(row));
         }
         // Remove trailing empty lines.
         while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
@@ -1018,16 +1017,16 @@ impl Terminal {
         // Command line (from command_row to output_row)
         let output_row = block.output_row.unwrap_or(cmd_row + 1);
         for row in cmd_row..output_row {
+            // extract_row_text already trims trailing whitespace.
             let text = self.extract_row_text(row);
-            let trimmed = text.trim_end();
-            if !trimmed.is_empty() {
-                lines.push(format!("$ {trimmed}"));
+            if !text.is_empty() {
+                lines.push(format!("$ {text}"));
             }
         }
         // Output lines
         for row in output_row..end_row {
-            let text = self.extract_row_text(row);
-            lines.push(text.trim_end().to_string());
+            // extract_row_text already trims trailing whitespace.
+            lines.push(self.extract_row_text(row));
         }
         while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
             lines.pop();
