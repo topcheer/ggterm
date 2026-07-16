@@ -1158,7 +1158,11 @@ impl Terminal {
                 && !c.flags.contains(CellFlags::WIDE_SPACER)
                 && !c.is_blank()
             {
-                c.combining.push(ch);
+                // Cap combining chars to prevent memory exhaustion from
+                // sequences that emit many zero-width characters.
+                if c.combining.len() < 8 {
+                    c.combining.push(ch);
+                }
                 return;
             }
             if cx == 0 && cy > 0 {
@@ -1167,7 +1171,9 @@ impl Terminal {
                     && !c.flags.contains(CellFlags::WIDE_SPACER)
                     && !c.is_blank()
                 {
-                    c.combining.push(ch);
+                    if c.combining.len() < 8 {
+                        c.combining.push(ch);
+                    }
                     return;
                 }
             }
