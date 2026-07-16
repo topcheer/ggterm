@@ -297,13 +297,13 @@ impl DesktopApp {
         // All configurable actions are resolved through check_keybinding().
         // The resolved_keybindings map is populated from ConfigManager at
         // startup and falls back to default_keybindings() when no config exists.
+        // Skip key-repeat for action shortcuts to prevent rapid-fire
+        // (e.g. holding Ctrl+T creating dozens of tabs).
+        let is_repeat = event.repeat;
         if let PhysicalKey::Code(code) = &event.physical_key {
             let key_name = keycode_to_name(code);
 
             // Ctrl+T → new tab (also Cmd+T on macOS)
-            // Skip key-repeat for action shortcuts to prevent rapid-fire
-            // (e.g. holding Ctrl+T creating dozens of tabs).
-            let is_repeat = event.repeat;
             if self.check_keybinding(
                 "new_tab",
                 self.mods.ctrl,
@@ -615,7 +615,9 @@ impl DesktopApp {
             let ctrl_shift = self.mods.ctrl && self.mods.shift && !self.mods.alt;
             let cmd = cfg!(target_os = "macos") && self.mods.super_key && !self.mods.shift;
             if ctrl_shift || cmd {
-                self.split_pane_horizontal();
+                if !is_repeat {
+                    self.split_pane_horizontal();
+                }
                 return;
             }
         }
@@ -627,7 +629,9 @@ impl DesktopApp {
             && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::Backslash) = &event.physical_key
         {
-            self.split_pane_vertical();
+            if !is_repeat {
+                self.split_pane_vertical();
+            }
             return;
         }
 
@@ -696,7 +700,9 @@ impl DesktopApp {
             && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::KeyZ) = &event.physical_key
         {
-            self.toggle_pane_zoom();
+            if !is_repeat {
+                self.toggle_pane_zoom();
+            }
             return;
         }
 
