@@ -440,7 +440,13 @@ impl GlyphonRenderer {
     /// Each tuple is `(row, col_start, col_end)` — all inclusive.
     /// Pass an empty vec to clear highlights.
     pub fn set_highlights(&mut self, highlights: Vec<(usize, usize, usize)>) {
-        self.highlights = highlights;
+        // Reuse allocation when possible: swap contents instead of replace.
+        if self.highlights.capacity() >= highlights.len() {
+            self.highlights.clear();
+            self.highlights.extend(highlights);
+        } else {
+            self.highlights = highlights;
+        }
     }
 
     /// Set dynamic foreground color (OSC 10). Pass None to reset to theme default.
