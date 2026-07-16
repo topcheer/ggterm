@@ -1352,6 +1352,20 @@ mod tests {
     }
 
     #[test]
+    fn resize_shrink_clears_dangling_wide_lead() {
+        // Place a wide char at col 8 (lead=8, spacer=9) in a 10-wide grid.
+        let mut g = Grid::new(10, 1);
+        g.put_char(8, 0, '\u{4E00}'); // CJK wide char
+        assert!(g[(8, 0)].is_wide());
+        assert!(g[(9, 0)].is_wide_spacer());
+        // Shrink to 9 columns — spacer at col 9 is truncated.
+        g.resize(9, 1);
+        // The lead at col 8 should be cleared (no spacer to pair with).
+        assert!(!g[(8, 0)].is_wide(), "dangling wide lead should be cleared");
+        assert_eq!(g[(8, 0)].ch, ' ');
+    }
+
+    #[test]
     fn resize_shrink_to_scrollback() {
         let mut g = Grid::new(10, 5);
         g.resize(10, 3);

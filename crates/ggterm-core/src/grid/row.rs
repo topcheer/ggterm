@@ -58,6 +58,12 @@ impl Row {
 
     /// Resize the row. New cells are blank.
     pub fn resize(&mut self, new_width: usize) {
+        // When shrinking: if the new last cell is a wide-char lead without
+        // its spacer (because the spacer got truncated), clear the lead to
+        // avoid a dangling WIDE_CHAR flag that would render at wrong width.
+        if new_width < self.cells.len() && new_width > 0 && self.cells[new_width - 1].is_wide() {
+            self.cells[new_width - 1] = Cell::blank();
+        }
         self.cells.resize(new_width, Cell::blank());
     }
 
