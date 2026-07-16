@@ -1247,6 +1247,8 @@ impl Terminal {
             // Spacer cell: set hyperlink only when active (avoid clone of None).
             if let Some(ref hl) = self.current_hyperlink {
                 c.hyperlink = Some(hl.clone());
+            } else {
+                c.hyperlink = None;
             }
         }
 
