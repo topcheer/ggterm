@@ -977,6 +977,24 @@ mod tests {
     }
 
     #[test]
+    fn row_delete_char_on_wide_spacer_includes_lead() {
+        // Place a wide char at col 1 (lead=1, spacer=2), then 'X' at col 3
+        let mut r = Row::new(10);
+        r.put_char(0, 'A');
+        r.put_char(1, '\u{4E00}'); // CJK wide char: col 1=lead, col 2=spacer
+        r.put_char(3, 'X');
+        assert!(r[2].is_wide_spacer(), "col 2 should be spacer");
+        // Delete 1 cell starting at col 2 (spacer).
+        // Wide spacer detection adjusts start to col 1 (lead).
+        // After delete of 1 cell from col 1: spacer shifts to col 1, X to col 2
+        r.delete_char(2, 1);
+        // The lead char at col 1 is gone; spacer content moved.
+        assert_eq!(r[0].ch, 'A');
+        // Col 1 now has the old spacer content (shifted left by 1)
+        assert!(r[1].is_wide_spacer(), "spacer should have shifted to col 1");
+    }
+
+    #[test]
     fn row_erase_char_basic() {
         let mut r = Row::new(10);
         r.put_char(0, 'A');

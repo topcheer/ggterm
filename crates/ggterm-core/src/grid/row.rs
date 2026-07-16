@@ -127,17 +127,13 @@ impl Row {
         } else {
             col
         };
-        let count = count.min(len - actual_col);
-        // Shift left
-        // Shift left (Cell is Clone, not Copy, so use clone)
-        let len = self.cells.len();
-        let actual_col = col.min(len);
         let actual_count = count.min(len - actual_col);
+        // Shift left
         for i in actual_col + actual_count..len {
             self.cells[i - actual_count] = self.cells[i].clone();
         }
         // Fill the vacated tail with blanks
-        for cell in &mut self.cells[len - count..] {
+        for cell in &mut self.cells[len - actual_count..] {
             *cell = Cell::blank();
         }
     }
