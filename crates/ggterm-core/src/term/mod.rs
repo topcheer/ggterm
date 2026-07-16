@@ -1773,8 +1773,10 @@ impl Perform for Terminal {
                         self.grid.clear();
                     }
                     3 => {
-                        self.grid.clear();
+                        // xterm: CSI 3J clears scrollback only.
+                        // Do NOT clear the visible screen.
                         self.grid.clear_scrollback();
+                        self.grid.reset_viewport();
                     }
                     _ => {}
                 }
@@ -4689,9 +4691,11 @@ mod tests {
         // Fill visible screen, then scroll to create scrollback
         feed(&mut t, b"AAAA\r\nBBBB\r\nCCCC\r\nDDDD\r\nEEEE");
         assert!(t.grid().scrollback_len() > 0);
-        // ED mode 3 — clear scrollback only
+        // ED mode 3 — clear scrollback only, screen content must survive
         feed(&mut t, b"\x1b[3J");
         assert_eq!(t.grid().scrollback_len(), 0);
+        // Screen content should still be there (EEEE on last visible row).
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'E');
     }
 
     #[test]
