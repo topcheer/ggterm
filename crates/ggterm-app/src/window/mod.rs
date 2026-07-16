@@ -189,6 +189,8 @@ pub struct DesktopApp {
     smooth_scroll: crate::smooth_scroll::SmoothScroller,
     /// P27-F: Whether the window is currently focused (for cursor style).
     window_focused: bool,
+    /// Previous alt-screen state (to detect screen switch and clear selection).
+    prev_alt_screen: bool,
     /// True when the window is occluded (covered by other windows) or minimized.
     /// When true, rendering is skipped to save GPU/CPU resources.
     window_occluded: bool,
@@ -639,6 +641,7 @@ impl DesktopApp {
             context_menu: Default::default(),
             smooth_scroll: Default::default(),
             window_focused: true,
+            prev_alt_screen: false,
             window_occluded: false,
             scale_factor: 1.0,
             ime_preedit: None,
@@ -2242,6 +2245,16 @@ impl ApplicationHandler for DesktopApp {
                     window.request_redraw();
                 }
             }
+        }
+
+        // Clear selection when alt screen switches (vim/less enter/exit).
+        // The selection references grid row numbers; after a screen swap,
+        // those rows contain different content, so stale highlights
+        // would point at wrong text.
+        let alt_now = self.active_session().app().terminal().is_alt_screen();
+        if alt_now != self.prev_alt_screen {
+            self.selection.clear();
+            self.prev_alt_screen = alt_now;
         }
 
         // P23-C: Conditional redraw — only request redraw when there's
