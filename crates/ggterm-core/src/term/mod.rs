@@ -4445,7 +4445,11 @@ mod tests {
         feed(&mut t, b"\x1b[10;10H"); // move cursor away
         feed(&mut t, b"\x1b[10;5r"); // invalid: top(10) >= bottom(5)
         // Cursor should still be homed
-        assert_eq!(t.cursor(), (0, 0), "DECSTBM should home cursor even with invalid params");
+        assert_eq!(
+            t.cursor(),
+            (0, 0),
+            "DECSTBM should home cursor even with invalid params"
+        );
         // Scroll region should be unchanged
         let (top, bottom) = t.grid().scroll_region();
         assert_eq!(top, 4, "Scroll region top should be unchanged");

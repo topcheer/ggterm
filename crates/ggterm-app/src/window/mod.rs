@@ -2268,8 +2268,7 @@ impl ApplicationHandler for DesktopApp {
         // maximum to ensure the user sees progress on large redraws.
         let sync_active = self.active_session().app().terminal().is_synchronized();
         if sync_active && self.sync_render_deadline.is_none() {
-            self.sync_render_deadline =
-                Some(now + std::time::Duration::from_millis(100));
+            self.sync_render_deadline = Some(now + std::time::Duration::from_millis(100));
         } else if !sync_active {
             self.sync_render_deadline = None;
         }
