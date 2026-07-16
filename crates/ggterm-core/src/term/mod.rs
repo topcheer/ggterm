@@ -2593,9 +2593,11 @@ impl Perform for Terminal {
         match cmd {
             Some(0) | Some(2) => {
                 // Strip control characters to prevent terminal injection
-                // and log forging via window title.
+                // and log forging via window title. Cap at 256 chars
+                // (well beyond any reasonable title length) to avoid
+                // wasting memory on malformed sequences.
                 let raw = parts.next().unwrap_or("");
-                self.title = raw.chars().filter(|c| !c.is_control()).collect();
+                self.title = raw.chars().filter(|c| !c.is_control()).take(256).collect();
             }
             Some(8) => {
                 // OSC 8 — Hyperlink.
