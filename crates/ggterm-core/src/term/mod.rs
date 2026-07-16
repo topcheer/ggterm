@@ -1054,8 +1054,8 @@ impl Terminal {
     ///
     /// Returns an empty string if the row is out of bounds.
     pub fn extract_row_text(&self, row: usize) -> String {
-        let mut text = String::new();
         let width = self.grid.width();
+        let mut text = String::with_capacity(width);
         for x in 0..width {
             match self.grid.cell(x, row) {
                 Some(cell) => {
@@ -1071,7 +1071,11 @@ impl Terminal {
                 None => break,
             }
         }
-        text.trim_end().to_string()
+        // Trim trailing whitespace in-place to avoid trim_end().to_string() allocation.
+        while text.ends_with(|c: char| c.is_whitespace()) {
+            text.pop();
+        }
+        text
     }
 
     /// Reset tab stops to default (every 8 columns).
