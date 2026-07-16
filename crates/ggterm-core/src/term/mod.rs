@@ -2158,6 +2158,10 @@ impl Perform for Terminal {
             b'u' if intermediates.contains(&b'>') => {
                 let new_flags = params.first().copied().unwrap_or(0) as u32;
                 self.kitty_kb_stack.push(self.modes.kitty_keyboard);
+                // Prevent unbounded growth (malicious programs).
+                if self.kitty_kb_stack.len() > 100 {
+                    self.kitty_kb_stack.remove(0);
+                }
                 self.modes.kitty_keyboard |= new_flags;
             }
             // Kitty keyboard protocol: pop flags (CSI < Ps u)
