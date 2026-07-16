@@ -1563,10 +1563,12 @@ impl DesktopApp {
         if (self.mods.ctrl || (cfg!(target_os = "macos") && self.mods.super_key))
             && let PhysicalKey::Code(KeyCode::Tab) = &event.physical_key
         {
-            if self.mods.shift {
-                self.prev_tab();
-            } else {
-                self.next_tab();
+            if !is_repeat {
+                if self.mods.shift {
+                    self.prev_tab();
+                } else {
+                    self.next_tab();
+                }
             }
             return;
         }
@@ -1577,7 +1579,12 @@ impl DesktopApp {
             && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::Backquote) = &event.physical_key
         {
-            self.toggle_last_tab();
+            if !is_repeat {
+                self.toggle_last_tab();
+            }
+            if !is_repeat {
+                self.toggle_last_tab();
+            }
             return;
         }
 
