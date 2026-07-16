@@ -377,12 +377,14 @@ impl DesktopApp {
                 key_name,
             ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "w")
             {
-                if self.active_session().pane_count() > 1 {
-                    // Multiple panes: close the active pane instead of the tab.
-                    self.show_toast("Pane closed");
-                    self.active_session_mut().remove_active_pane();
-                } else {
-                    self.close_tab();
+                if !is_repeat {
+                    if self.active_session().pane_count() > 1 {
+                        // Multiple panes: close the active pane instead of the tab.
+                        self.show_toast("Pane closed");
+                        self.active_session_mut().remove_active_pane();
+                    } else {
+                        self.close_tab();
+                    }
                 }
                 return;
             }
@@ -581,6 +583,9 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) {
+                if is_repeat {
+                    return;
+                }
                 // If there's selected text, pre-fill the search query
                 // with the first line of the selection.
                 if !self.search.visible
@@ -663,7 +668,9 @@ impl DesktopApp {
             && !self.mods.alt
             && let PhysicalKey::Code(KeyCode::KeyX) = &event.physical_key
         {
-            self.swap_active_pane();
+            if !is_repeat {
+                self.swap_active_pane();
+            }
             return;
         }
 
