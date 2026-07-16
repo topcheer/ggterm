@@ -43,7 +43,14 @@ impl Row {
 
     /// Clear cells from `start` to end of row.
     pub fn clear_from(&mut self, start: usize) {
-        for cell in &mut self.cells[start..] {
+        // If starting on a wide spacer, the lead cell at start-1
+        // would be left dangling with WIDE_CHAR flag. Clear it too.
+        let actual_start = if start > 0 && self.cells[start].is_wide_spacer() {
+            start - 1
+        } else {
+            start
+        };
+        for cell in &mut self.cells[actual_start..] {
             cell.clear();
         }
     }
@@ -51,7 +58,15 @@ impl Row {
     /// Clear cells from start to `end` (exclusive).
     pub fn clear_to(&mut self, end: usize) {
         let end = end.min(self.cells.len());
-        for cell in &mut self.cells[..end] {
+        // If ending exactly on a wide spacer, its lead cell at end-1
+        // would be left dangling. Include the spacer.
+        let actual_end = if end < self.cells.len() && self.cells[end].is_wide_spacer() {
+            end + 1
+        } else {
+            end
+        };
+        let actual_end = actual_end.min(self.cells.len());
+        for cell in &mut self.cells[..actual_end] {
             cell.clear();
         }
     }
@@ -153,8 +168,21 @@ impl Row {
         if col >= len || count == 0 {
             return;
         }
+        // If starting on a wide spacer, include the lead cell.
+        let actual_col = if col > 0 && self.cells[col].is_wide_spacer() {
+            col - 1
+        } else {
+            col
+        };
+        // End is col + count (original, not adjusted for lead).
         let end = (col + count).min(len);
-        for cell in &mut self.cells[col..end] {
+        // If ending right after a wide lead (on its spacer), include the spacer.
+        let end = if end < len && self.cells[end].is_wide_spacer() {
+            end + 1
+        } else {
+            end
+        };
+        for cell in &mut self.cells[actual_col..end] {
             cell.clear();
         }
     }
@@ -262,5 +290,52 @@ mod tests {
         row.cells[0].combining.push('\u{0308}'); // diaeresis
         row.cells[0].combining.push('\u{0304}'); // macron
         assert_eq!(row.text(), "a\u{0308}\u{0304}");
+    }
+
+    #[test]
+    fn t_clear_from_wide_spacer_clears_lead() {
+        let mut row = Row::new(6);
+        row.cells[0].ch = 'A';
+        row.cells[1].ch = 'あ'; // wide CJK
+        row.cells[1].flags = CellFlags::WIDE_CHAR;
+        row.cells[2].set_wide_spacer();
+        row.cells[3].ch = 'B';
+        // Clear from col 2 (the spacer) — should also clear col 1 (lead).
+        row.clear_from(2);
+        assert!(!row.cells[1].is_wide(), "wide lead should be cleared");
+        assert!(!row.cells[2].is_wide_spacer(), "spacer should be cleared");
+        assert_eq!(row.cells[0].ch, 'A', "col 0 should be untouched");
+    }
+
+    #[test]
+    fn t_clear_to_wide_lead_includes_spacer() {
+        let mut row = Row::new(6);
+        row.cells[0].ch = 'A';
+        row.cells[1].ch = 'あ'; // wide CJK
+        row.cells[1].flags = CellFlags::WIDE_CHAR;
+        row.cells[2].set_wide_spacer();
+        // Clear to col 2 — the wide lead at col 1 should be cleared,
+        // and since col 2 is its spacer, it should also be cleared.
+        row.clear_to(2);
+        assert!(!row.cells[1].is_wide(), "wide lead should be cleared");
+        assert!(
+            !row.cells[2].is_wide_spacer(),
+            "spacer should also be cleared"
+        );
+    }
+
+    #[test]
+    fn t_erase_char_on_wide_spacer_clears_lead() {
+        let mut row = Row::new(6);
+        row.cells[0].ch = 'A';
+        row.cells[1].ch = 'あ'; // wide CJK
+        row.cells[1].flags = CellFlags::WIDE_CHAR;
+        row.cells[2].set_wide_spacer();
+        row.cells[3].ch = 'B';
+        // Erase starting from col 2 (the spacer) — should clear col 1 too.
+        row.erase_char(2, 1);
+        assert!(!row.cells[1].is_wide(), "wide lead should be cleared");
+        assert!(!row.cells[2].is_wide_spacer(), "spacer should be cleared");
+        assert_eq!(row.cells[3].ch, 'B', "col 3 should be untouched");
     }
 }
