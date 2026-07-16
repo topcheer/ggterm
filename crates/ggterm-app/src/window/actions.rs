@@ -1227,7 +1227,9 @@ impl DesktopApp {
             };
         }
 
-        let mut text = String::new();
+        // Pre-allocate based on estimated selection size to avoid reallocation.
+        let row_count = (ey - sy + 1) as usize;
+        let mut text = String::with_capacity(row_count * width);
 
         if sy == ey {
             // Single-line selection.
