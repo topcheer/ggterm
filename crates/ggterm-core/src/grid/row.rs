@@ -84,7 +84,7 @@ impl Row {
 
     /// Get the text content of this row as a String (trailing spaces trimmed).
     pub fn text(&self) -> String {
-        let mut s = String::new();
+        let mut s = String::with_capacity(self.cells.len());
         for c in &self.cells {
             if c.is_wide_spacer() {
                 continue;
@@ -94,7 +94,11 @@ impl Row {
                 s.push(mc);
             }
         }
-        s.trim_end().to_string()
+        // Trim trailing whitespace in-place to avoid trim_end().to_string() allocation.
+        while s.ends_with(|ch: char| ch.is_whitespace()) {
+            s.pop();
+        }
+        s
     }
 
     // --------------------------------------------------------------------
