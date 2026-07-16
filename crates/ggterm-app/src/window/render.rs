@@ -2511,13 +2511,14 @@ impl DesktopApp {
                 // Show "↓ NN%" when scrolled, or "↓ N lines" for large scrollback
                 let indicator_text = if scrollback_total > 0 {
                     let pct = (display_offset * 100 / (scrollback_total + 1)).min(100);
-                    if pct > 0 {
+                    if pct >= 1 {
                         format!("↓ {}%", pct)
                     } else {
-                        "↓ Bottom".to_string()
+                        // Scrolled but less than 1% — show line count.
+                        format!("↓ {}L", display_offset)
                     }
                 } else {
-                    "↓ Bottom".to_string()
+                    format!("↓ {}L", display_offset)
                 };
                 let indicator_w = (indicator_text.len() as f32 * 7.0 + 24.0).max(60.0);
                 let indicator_h = 24.0;
