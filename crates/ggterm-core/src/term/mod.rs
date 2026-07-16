@@ -2852,6 +2852,10 @@ impl Perform for Terminal {
                     // SetUserVar=name=value — store user variable
                     if let Some(eq_pos) = rest.find('=') {
                         let (name, value) = rest.split_at(eq_pos);
+                        // Prevent unbounded growth (malicious programs).
+                        if self.user_vars.len() >= 100 && !self.user_vars.contains_key(name) {
+                            self.user_vars.clear();
+                        }
                         self.user_vars
                             .insert(name.to_string(), value[1..].to_string());
                     }
