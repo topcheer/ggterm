@@ -972,12 +972,22 @@ impl GlyphonRenderer {
 
     /// Set overlay text specs for this frame. Call before `render_to_pass()`.
     pub fn set_overlay_text(&mut self, texts: Vec<OverlayTextSpec>) {
-        self.overlay_text = texts;
+        if self.overlay_text.capacity() >= texts.len() {
+            self.overlay_text.clear();
+            self.overlay_text.extend(texts);
+        } else {
+            self.overlay_text = texts;
+        }
     }
 
     /// Set overlay rectangle specs for this frame. Call before `render_to_pass()`.
     pub fn set_overlay_rects(&mut self, rects: Vec<OverlayRect>) {
-        self.overlay_rects = rects;
+        if self.overlay_rects.capacity() >= rects.len() {
+            self.overlay_rects.clear();
+            self.overlay_rects.extend(rects);
+        } else {
+            self.overlay_rects = rects;
+        }
     }
 
     /// Clear all overlay data.
@@ -1033,7 +1043,12 @@ impl GlyphonRenderer {
 
     /// Set UI rectangle specs for this frame. Call before `render_overlays_to_pass()`.
     pub fn set_ui_rects(&mut self, rects: Vec<UiRect>) {
-        self.ui_rects = rects;
+        if self.ui_rects.capacity() >= rects.len() {
+            self.ui_rects.clear();
+            self.ui_rects.extend(rects);
+        } else {
+            self.ui_rects = rects;
+        }
     }
 
     /// Build the UI SDF pipeline lazily.
