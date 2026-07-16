@@ -2124,6 +2124,10 @@ impl Perform for Terminal {
                         let kind = params.get(1).copied().unwrap_or(0);
                         if kind == 0 || kind == 2 || kind == 1 {
                             self.title_stack.push(self.title.clone());
+                            // Prevent unbounded growth (malicious programs).
+                            if self.title_stack.len() > 100 {
+                                self.title_stack.remove(0);
+                            }
                         }
                     }
                     23 => {
