@@ -309,6 +309,9 @@ pub struct DesktopApp {
     // ── P23-C: Conditional redraw ──
     /// Last time a redraw was requested (for cursor blink timing).
     last_redraw: std::time::Instant,
+    /// Deadline for deferred render when synchronized output (mode 2026) is active.
+    /// When set, GPU render is deferred until this deadline to reduce flicker.
+    sync_render_deadline: Option<std::time::Instant>,
 
     // ── P24-C: Debug overlay ──
     /// Whether the debug overlay (FPS, cell counts) is visible.
@@ -642,6 +645,7 @@ impl DesktopApp {
             force_config_reload: false,
             last_resize_time: None,
             last_redraw: std::time::Instant::now(),
+            sync_render_deadline: None,
             debug_visible: false,
             frame_count: 0,
             last_fps_time: std::time::Instant::now(),
@@ -2254,15 +2258,34 @@ impl ApplicationHandler for DesktopApp {
             || bg_bell
             || self.toast.is_some();
 
+        let now = std::time::Instant::now();
+
+        // Synchronized output (DECSET 2026): defer rendering while a program
+        // is sending a batch of updates (vim, tmux, less). This reduces
+        // visual flicker by skipping intermediate frames. Enforce a 100ms
+        // maximum to ensure the user sees progress on large redraws.
+        let sync_active = self.active_session().app().terminal().is_synchronized();
+        if sync_active && self.sync_render_deadline.is_none() {
+            self.sync_render_deadline =
+                Some(now + std::time::Duration::from_millis(100));
+        } else if !sync_active {
+            self.sync_render_deadline = None;
+        }
+        let sync_overdue = self.sync_render_deadline.is_some_and(|d| now >= d);
+
+        // When synchronized output is active (and not overdue), defer
+        // content-driven redraws. Force redraw on bells/resizes/UI overlays.
+        let defer_render = sync_active && !sync_overdue;
+        let effective_redraw = need_redraw && !defer_render;
+
         // Cursor blink: redraw every 500ms for blink animation.
         // Skip blink when window is occluded (hidden) — no need to animate
         // an invisible cursor, and it avoids waking the event loop.
-        let now = std::time::Instant::now();
         let blink_interval = std::time::Duration::from_millis(500);
         let blink_due =
             !self.window_occluded && now.duration_since(self.last_redraw) >= blink_interval;
 
-        if need_redraw || blink_due || self.debug_visible {
+        if effective_redraw || blink_due || self.debug_visible {
             self.last_redraw = now;
 
             // P24-C: Update FPS counter.
@@ -2277,21 +2300,31 @@ impl ApplicationHandler for DesktopApp {
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }
-        } else if !content_dirty {
-            // Idle: sleep to avoid busy-looping at 100% CPU.
+        } else if !content_dirty || defer_render {
+            // Idle (or synchronized-output deferred): sleep to avoid busy-looping.
             // When P2P is connected, use shorter sleep for lower latency
             // (faster echo round-trip for mobile users).
             // When occluded, sleep much longer — no visual updates needed.
+            // When sync-rendering is active, use short sleep to check the
+            // deadline promptly.
             #[cfg(feature = "p2p")]
             let sleep_ms = if self.window_occluded {
                 1000
+            } else if defer_render {
+                5
             } else if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
                 5
             } else {
                 50
             };
             #[cfg(not(feature = "p2p"))]
-            let sleep_ms = if self.window_occluded { 1000 } else { 50 };
+            let sleep_ms = if self.window_occluded {
+                1000
+            } else if defer_render {
+                5
+            } else {
+                50
+            };
             std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
         }
 
