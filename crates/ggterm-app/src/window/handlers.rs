@@ -47,19 +47,23 @@ impl DesktopApp {
                 Some(gpu.create_renderer(gpu.config.width, gpu.config.height, self.scale_factor));
         }
 
-        // Get actual cols/rows from renderer.
-        let new_cols = self
-            .renderer
-            .as_ref()
-            .map(|r| r.cols() as u16)
-            .unwrap_or(80)
-            .max(10);
-        let new_rows = self
-            .renderer
-            .as_ref()
-            .map(|r| r.rows() as u16)
-            .unwrap_or(24)
-            .max(3);
+        // Get actual cols/rows from renderer — but adjust for content area
+        // (tab bar, status bar, padding). The renderer reports raw surface
+        // cols/rows, which overcounts because the terminal content doesn't
+        // start at (0,0).
+        let (new_cols, new_rows) = {
+            let r = self.renderer.as_ref();
+            let raw_cols = r.map(|r| r.cols() as u16).unwrap_or(80).max(10);
+            let raw_rows = r.map(|r| r.rows() as u16).unwrap_or(24).max(3);
+
+            let cell_w = r.map(|r| r.cell_width()).unwrap_or(8);
+            let cell_h = r.map(|r| r.cell_height()).unwrap_or(16);
+
+            let bounds = self.content_area_bounds();
+            let adj_cols = ((bounds.width / cell_w.max(1)) as u16).max(10);
+            let adj_rows = ((bounds.height / cell_h.max(1)) as u16).max(3);
+            (adj_cols.min(raw_cols), adj_rows.min(raw_rows))
+        };
 
         log::debug!(
             "Resize: {}x{}px → {}x{} cells",

@@ -1240,9 +1240,19 @@ impl ApplicationHandler for DesktopApp {
         // 4. Create GlyphonRenderer with surface dimensions.
         let renderer = gpu.create_renderer(phys_w, phys_h, scale_factor);
 
-        // Update cols/rows from renderer's computed dimensions.
-        self.config.cols = renderer.cols().max(10) as u16;
-        self.config.rows = renderer.rows().max(3) as u16;
+        // Update cols/rows from renderer's computed dimensions — but adjust
+        // for content area (tab bar, status bar, padding).
+        {
+            let cell_w = renderer.cell_width();
+            let cell_h = renderer.cell_height();
+            let tab_bar_h = ((cell_w as f32 + 26.0).max(48.0) + 4.0) as u32;
+            let status_bar_h = cell_h + 8;
+            let pad: u32 = 2;
+            let avail_w = phys_w.saturating_sub(pad * 2);
+            let avail_h = phys_h.saturating_sub(tab_bar_h + status_bar_h + pad * 2);
+            self.config.cols = ((avail_w / cell_w.max(1)) as u16).max(10);
+            self.config.rows = ((avail_h / cell_h.max(1)) as u16).max(3);
+        }
 
         self.window = Some(window.clone());
         self.surface = Some(surface);
@@ -2161,12 +2171,12 @@ impl ApplicationHandler for DesktopApp {
                         self.last_applied_font_family = new_font_family.clone();
                         log::info!("Font family changed -> applied {new_font_family}");
                         // Re-measure cell dimensions and resize terminal grid.
-                        if let (Some(renderer), Some(window)) = (&self.renderer, &self.window) {
+                        if let Some(renderer) = &self.renderer {
                             let cw = renderer.cell_width();
                             let ch = renderer.cell_height();
-                            let inner = window.inner_size();
-                            let new_cols = ((inner.width / cw.max(1)) as usize).max(10) as u16;
-                            let new_rows = ((inner.height / ch.max(1)) as usize).max(3) as u16;
+                            let bounds = self.content_area_bounds();
+                            let new_cols = ((bounds.width / cw.max(1)) as usize).max(10) as u16;
+                            let new_rows = ((bounds.height / ch.max(1)) as usize).max(3) as u16;
                             for session in &mut self.sessions {
                                 session.resize(new_cols, new_rows);
                             }
