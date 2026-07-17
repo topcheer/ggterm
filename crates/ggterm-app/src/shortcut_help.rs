@@ -366,7 +366,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+Alt+E".into(),
+            keys: "Ctrl+Shift+Alt+H".into(),
             description: "Export terminal as HTML (with colors)".into(),
             category: ShortcutCategory::Edit,
             configurable: false,
@@ -500,7 +500,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+G".into(),
+            keys: "Ctrl+Shift+Alt+G".into(),
             description: "Toggle perf monitor".into(),
             category: ShortcutCategory::View,
             configurable: false,
@@ -661,13 +661,13 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+Alt+B".into(),
+            keys: "Ctrl+Shift+Alt+M".into(),
             description: "Cycle broadcast mode".into(),
             category: ShortcutCategory::System,
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+Alt+W".into(),
+            keys: "Ctrl+Shift+Alt+Y".into(),
             description: "Cycle workspace".into(),
             category: ShortcutCategory::System,
             configurable: false,

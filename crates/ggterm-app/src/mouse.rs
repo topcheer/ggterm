@@ -203,6 +203,9 @@ pub struct MouseSelection {
     pub dragging: bool,
     /// True when Alt-dragging to select a rectangular block.
     pub block_mode: bool,
+    /// True when the selection was created by triple-click (line select).
+    /// Used to append a trailing newline when copying.
+    pub line_select: bool,
 }
 
 impl MouseSelection {
@@ -211,6 +214,7 @@ impl MouseSelection {
         self.start = Some((x, y));
         self.end = Some((x, y));
         self.dragging = true;
+        self.line_select = false;
     }
 
     /// Begin a new block (rectangular) selection at the given cell.

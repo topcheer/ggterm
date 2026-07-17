@@ -95,7 +95,18 @@ impl P2pShareState {
                 let ticket = host.ticket().to_string();
                 log::debug!("host started, ticket len={}", ticket.len());
                 // Write ticket to file for automation/testing.
-                let _ = std::fs::write("/tmp/ggterm_p2p_ticket", &ticket);
+                // Use PID-suffixed path with restrictive permissions to prevent
+                // other users from reading the connection ticket.
+                let ticket_path = format!("/tmp/ggterm_p2p_ticket_{}", std::process::id());
+                let _ = std::fs::write(&ticket_path, &ticket);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(
+                        &ticket_path,
+                        std::fs::Permissions::from_mode(0o600),
+                    );
+                }
 
                 // Generate QR code from the ticket.
                 let qr = generate_qr(&ticket);

@@ -183,6 +183,8 @@ pub struct DesktopApp {
     last_click_time: Option<std::time::Instant>,
     /// P27-B: Position of last left-click (col, row).
     last_click_pos: (u16, u16),
+    /// P27-B: Pixel position of last left-click (for multi-click tolerance).
+    last_click_pixel_pos: Option<(f64, f64)>,
     /// P27-C: Right-click context menu state.
     context_menu: crate::context_menu::ContextMenuState,
     /// P27-D: Smooth inertial scroll state.
@@ -638,6 +640,7 @@ impl DesktopApp {
             drag_select_mode: crate::mouse::DragSelectMode::Char,
             last_click_time: None,
             last_click_pos: (0, 0),
+            last_click_pixel_pos: None,
             context_menu: Default::default(),
             smooth_scroll: Default::default(),
             window_focused: true,

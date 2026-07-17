@@ -138,6 +138,8 @@ pub(crate) fn spawn_io_task(
     read_buf: Arc<Mutex<Vec<u8>>>,
     alive: Arc<AtomicBool>,
 ) {
+    /// Maximum read buffer size — prevents unbounded growth.
+    const MAX_READ_BUF: usize = 1024 * 1024; // 1 MB
     tokio::spawn(async move {
         let mut buf = [0u8; 4096];
 
@@ -163,7 +165,10 @@ pub(crate) fn spawn_io_task(
                 }
                 Ok(Ok(Some(n))) => {
                     if let Ok(mut rb) = read_buf.lock() {
-                        rb.extend_from_slice(&buf[..n]);
+                        // Cap buffer to prevent unbounded growth.
+                        if rb.len() < MAX_READ_BUF {
+                            rb.extend_from_slice(&buf[..n]);
+                        }
                     }
                 }
                 Ok(Ok(None)) => {

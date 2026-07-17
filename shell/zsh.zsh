@@ -69,7 +69,13 @@ __ggterm_osc133_D() {                             # command end
 # At this point the previous command has finished.
 __ggterm_zsh_precmd() {
     local ec=$?
-    __ggterm_osc133_D "$ec"   # D: end previous command
+    # Only emit D if a command was actually started (preexec ran).
+    # Without this guard, the first precmd emits a spurious D without
+    # a matching B, creating a phantom command-end mark.
+    if [[ -n "$_GGTERM_PREEXEC_DONE" ]]; then
+        __ggterm_osc133_D "$ec"   # D: end previous command
+        unset _GGTERM_PREEXEC_DONE
+    fi
     __ggterm_osc133_A          # A: start new prompt
 
     # OSC 7: report current working directory for CWD tracking.
@@ -79,6 +85,7 @@ __ggterm_zsh_precmd() {
 
 # preexec: runs after Enter is pressed, before command starts.
 __ggterm_zsh_preexec() {
+    _GGTERM_PREEXEC_DONE=1
     __ggterm_osc133_B          # B: command start
     __ggterm_osc133_C          # C: output start
 }

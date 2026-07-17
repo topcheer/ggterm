@@ -1266,7 +1266,12 @@ impl DesktopApp {
         while lines.first().is_some_and(|l| l.is_empty()) {
             lines.remove(0);
         }
-        let text = lines.join("\n");
+        let mut text = lines.join("\n");
+
+        // Triple-click line selection: append trailing newline (like xterm/iTerm2).
+        if self.selection.line_select && !text.is_empty() {
+            text.push('\n');
+        }
 
         if !text.is_empty() {
             log::debug!("Clipboard copy: {} chars", text.len());

@@ -54,9 +54,10 @@ if not set -q GGTERM_SHELL_INTEGRATION_FISH
         end
 
         function __ggterm_osc133_D   # command end (arg: exit code)
+            set -l real_status $status
             set -l ec $argv[1]
             if test -z "$ec"
-                set ec $status
+                set ec $real_status
             end
             printf '\e]133;D;%s\a' "$ec"
         end

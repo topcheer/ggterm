@@ -916,10 +916,11 @@ impl DesktopApp {
             return;
         }
 
-        // P28-A: Ctrl+Shift+G → toggle perf monitor
+        // P28-A: Ctrl+Shift+Alt+G → toggle perf monitor (moved from Ctrl+Shift+G
+        // which conflicts with search_web_for_selection).
         if self.mods.ctrl
             && self.mods.shift
-            && !self.mods.alt
+            && self.mods.alt
             && let PhysicalKey::Code(KeyCode::KeyG) = &event.physical_key
         {
             self.perf_monitor.toggle();
@@ -1022,11 +1023,12 @@ impl DesktopApp {
             }
         }
 
-        // P28-A: Ctrl+Shift+W → cycle workspace forward
+        // P28-A: Ctrl+Shift+Alt+Y → cycle workspace forward (moved from KeyW
+        // which conflicts with close_other_tabs).
         if self.mods.ctrl
             && self.mods.shift
             && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyW) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::KeyY) = &event.physical_key
         {
             self.workspaces.cycle_next();
             self.animations.tab_switch();
@@ -1144,11 +1146,12 @@ impl DesktopApp {
             return;
         }
 
-        // Ctrl+Shift+Alt+E → export terminal as HTML
+        // Ctrl+Shift+Alt+H → export terminal as HTML (moved from KeyE which
+        // conflicts with export_config).
         if self.mods.ctrl
             && self.mods.shift
             && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyE) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::KeyH) = &event.physical_key
         {
             self.export_html();
             return;
@@ -1306,11 +1309,12 @@ impl DesktopApp {
             return; // swallow all other keys when palette is open
         }
 
-        // P25-D: Ctrl+Shift+Alt+B → cycle broadcast mode
+        // P25-D: Ctrl+Shift+Alt+M → cycle broadcast mode (moved from KeyB
+        // which conflicts with balance_panes).
         if self.mods.ctrl
             && self.mods.shift
             && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyB) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::KeyM) = &event.physical_key
         {
             self.broadcast.cycle();
             return;
@@ -1645,9 +1649,11 @@ impl DesktopApp {
             }
         }
 
-        // Phase 8-D: Ctrl+Shift+Up/Down for command block navigation (not configurable)
+        // Phase 8-D: Ctrl+Alt+Up/Down for command block navigation.
+        // (Moved from Ctrl+Shift+Up/Down which conflicts with scroll-one-line.)
         if self.mods.ctrl
-            && self.mods.shift
+            && self.mods.alt
+            && !self.mods.shift
             && let PhysicalKey::Code(code) = &event.physical_key
         {
             match code {
@@ -2570,11 +2576,16 @@ impl DesktopApp {
                 }
 
                 // P27-B: Double-click / triple-click detection.
+                // Use pixel proximity instead of exact cell match — this is
+                // more forgiving on high-DPI displays where a small mouse drift
+                // between clicks shouldn't break multi-click.
                 let now = std::time::Instant::now();
                 let is_multi_click = self
                     .last_click_time
                     .is_some_and(|t| now.duration_since(t).as_millis() < 400)
-                    && self.last_click_pos == (col, row);
+                    && self.last_click_pixel_pos.is_some_and(|(lx, ly)| {
+                        (lx - self.cursor_pos.0).abs() < 5.0 && (ly - self.cursor_pos.1).abs() < 5.0
+                    });
 
                 if is_multi_click {
                     self.click_count = (self.click_count % 3) + 1; // cycle 1→2→3→1
@@ -2583,6 +2594,7 @@ impl DesktopApp {
                 }
                 self.last_click_time = Some(now);
                 self.last_click_pos = (col, row);
+                self.last_click_pixel_pos = Some(self.cursor_pos);
 
                 match self.click_count {
                     2 => {
@@ -3046,6 +3058,7 @@ impl DesktopApp {
         self.selection.start(0, row);
         self.selection.extend(width - 1, row);
         self.selection.finish();
+        self.selection.line_select = true;
     }
 
     /// Extend selection word-by-word during drag (after double-click).
