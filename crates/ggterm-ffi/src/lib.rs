@@ -215,10 +215,35 @@ pub unsafe extern "C" fn ggterm_read_cells(
     }
     unsafe {
         let h = &*handle;
-        let cells = grid_to_ffi(h.terminal.grid());
-        let n = cells.len().min(max_cells);
-        ptr::copy_nonoverlapping(cells.as_ptr(), buf, n);
-        n
+        let grid = h.terminal.grid();
+        let cols = grid.width();
+        let rows = grid.height();
+        let total = cols * rows;
+        let n = total.min(max_cells);
+
+        // Write directly to the output buffer — avoids allocating an
+        // intermediate Vec<GGTermCell> on every call (mobile hot path).
+        let mut written = 0usize;
+        for row_idx in 0..rows {
+            if written >= n {
+                break;
+            }
+            let row = grid.display_row(row_idx);
+            for col in 0..cols {
+                if written >= n {
+                    break;
+                }
+                *buf.add(written) = match row {
+                    Some(r) => match r.cells.get(col) {
+                        Some(c) => GGTermCell::from_cell(c),
+                        None => GGTermCell::default(),
+                    },
+                    None => GGTermCell::default(),
+                };
+                written += 1;
+            }
+        }
+        written
     }
 }
 

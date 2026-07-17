@@ -181,19 +181,27 @@ pub unsafe extern "C" fn ggterm_session_read_cells(
         let n = total.min(max_cells);
 
         // Write directly to the output buffer — avoids allocating a Vec.
-        for idx in 0..n {
-            let row = idx / cols;
-            let col = idx % cols;
-            let cell = if let Some(r) = grid.display_row(row) {
-                r.cells.get(col)
-            } else {
-                None
-            };
-            unsafe {
-                *buf.add(idx) = match cell {
-                    Some(c) => GGTermCell::from_cell(c),
-                    None => GGTermCell::default(),
-                };
+        // Iterate row-by-row to avoid per-cell division/modulo.
+        let mut written = 0usize;
+        for row_idx in 0..rows {
+            if written >= n {
+                break;
+            }
+            let row = grid.display_row(row_idx);
+            for col in 0..cols {
+                if written >= n {
+                    break;
+                }
+                unsafe {
+                    *buf.add(written) = match row {
+                        Some(r) => match r.cells.get(col) {
+                            Some(c) => GGTermCell::from_cell(c),
+                            None => GGTermCell::default(),
+                        },
+                        None => GGTermCell::default(),
+                    };
+                }
+                written += 1;
             }
         }
         n

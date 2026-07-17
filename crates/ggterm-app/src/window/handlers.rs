@@ -3316,9 +3316,14 @@ impl DesktopApp {
                     b"\x1b[B".to_vec()
                 }
             };
-            for _ in 0..lines.unsigned_abs() {
-                self.write_to_pty(&key_bytes);
+            // Send arrow keys for each scroll line — batch into a single
+            // write to avoid N individual PTY writes (each locks a mutex).
+            let count = lines.unsigned_abs();
+            let mut batch = Vec::with_capacity(key_bytes.len() * count);
+            for _ in 0..count {
+                batch.extend_from_slice(&key_bytes);
             }
+            self.write_to_pty(&batch);
             return;
         }
 
