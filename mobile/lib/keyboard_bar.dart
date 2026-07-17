@@ -268,15 +268,17 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _repeatableKeyButton('↓', 'Down'),
             _repeatableKeyButton('↑', 'Up'),
             _repeatableKeyButton('→', 'Right'),
+            // Backspace — long-press repeat for fast deletion
+            _repeatableKeyButton('⌫', 'Backspace'),
             // Separator
             Container(
               width: 1,
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Page keys
-            _keyButton('PgUp', 'PageUp'),
-            _keyButton('PgDn', 'PageDown'),
+            // Page keys — support long-press auto-repeat
+            _repeatableKeyButton('PgUp', 'PageUp'),
+            _repeatableKeyButton('PgDn', 'PageDown'),
             _keyButton('Home', 'Home'),
             _keyButton('End', 'End'),
             // Separator

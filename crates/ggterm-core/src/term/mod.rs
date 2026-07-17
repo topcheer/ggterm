@@ -3682,6 +3682,33 @@ mod tests {
     }
 
     #[test]
+    fn t_ris_resets_all_state() {
+        let mut t = Terminal::new(80, 24);
+        // Set cursor style
+        feed(&mut t, b"\x1b[5 q"); // BlinkBar
+        // Set dynamic colors
+        feed(&mut t, b"\x1b]10;rgb:ff/00/00\x1b\\");
+        feed(&mut t, b"\x1b]12;rgb:00/ff/00\x1b\\");
+        // Set palette override (OSC 4)
+        feed(&mut t, b"\x1b]4;1;rgb:aa/bb/cc\x1b\\");
+        // Enable bracketed paste
+        feed(&mut t, b"\x1b[?2004h");
+        // Set title
+        feed(&mut t, b"\x1b]0;Test\x07");
+
+        // RIS
+        feed(&mut t, b"\x1bc");
+
+        // All state should be fully reset
+        assert_eq!(t.cursor_style(), CursorStyle::Default);
+        assert!(t.dynamic_fg().is_none());
+        assert!(t.dynamic_cursor().is_none());
+        assert!(t.palette_overrides().is_empty());
+        assert!(!t.bracketed_paste());
+        assert!(t.title().is_empty());
+    }
+
+    #[test]
     fn t_esc_ri_reverse_index() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[1;1H\x1bM");
