@@ -193,7 +193,7 @@ padding = 8                  # content padding in pixels
 [terminal]
 scrollback_lines = 10000
 shell = "/bin/zsh"
-bell_mode = "visual"         # none | visual | sound
+bell_mode = "visual"         # none | visual | sound | both
 restore_session = false      # restore tabs/splits from last session
 notify_on_complete = true    # notify when long command finishes while unfocused
 min_notify_duration_secs = 10 # min seconds to trigger notification

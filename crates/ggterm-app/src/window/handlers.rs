@@ -2452,6 +2452,32 @@ impl DesktopApp {
                         self.pending_open_settings = true;
                         return;
                     }
+                    // Linux/Windows: window control buttons (minimize/maximize/close).
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let ctrl_layout =
+                            crate::titlebar::x11::compute_layout(screen_w, layout.bar_h);
+                        if let Some(btn) = crate::titlebar::x11::hit_test(&ctrl_layout, px, py) {
+                            use crate::titlebar::WindowControlButton;
+                            match btn {
+                                WindowControlButton::Close => {
+                                    self.should_quit = true;
+                                }
+                                WindowControlButton::Minimize => {
+                                    if let Some(ref window) = self.window {
+                                        window.set_minimized(true);
+                                    }
+                                }
+                                WindowControlButton::Maximize => {
+                                    self.maximized = !self.maximized;
+                                    if let Some(ref window) = self.window {
+                                        window.set_maximized(self.maximized);
+                                    }
+                                }
+                            }
+                            return;
+                        }
+                    }
                     // Empty title bar area → window drag or maximize on double-click
                     // (same UX as multi-tab mode).
                     if py < layout.bar_h {

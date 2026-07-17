@@ -486,60 +486,16 @@ impl DesktopApp {
 
             // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
             #[cfg(not(target_os = "macos"))]
-            {
-                let layout = crate::titlebar::x11::compute_layout(screen_w, bar_h);
-                let px = self.cursor_pos.0 as f32;
-                let py = self.cursor_pos.1 as f32;
-
-                for (glyph, &(bx, by, bsize), hover_color, normal_color) in [
-                    (
-                        "\u{2014}",
-                        &layout.minimize,
-                        (255, 200, 80u8),
-                        (180, 180, 180u8),
-                    ), // ─ minimize
-                    (
-                        "\u{25A1}",
-                        &layout.maximize,
-                        (100, 200, 100u8),
-                        (180, 180, 180u8),
-                    ), // □ maximize
-                    (
-                        "\u{2715}",
-                        &layout.close,
-                        (255, 100, 100u8),
-                        (180, 180, 180u8),
-                    ), // ✕ close
-                ] {
-                    let hovered = px >= bx && px <= bx + bsize && py >= by && py <= by + bsize;
-
-                    // Button background on hover.
-                    if hovered {
-                        let bg = match glyph {
-                            "\u{2715}" => (0.8, 0.15, 0.15, 0.8), // close → red
-                            "\u{25A1}" => (0.15, 0.5, 0.15, 0.5), // maximize → green
-                            _ => (0.3, 0.3, 0.3, 0.5),            // minimize → gray
-                        };
-                        ui_rects.push(ggterm_render_wgpu::UiRect {
-                            x: bx - 4.0,
-                            y: by - 4.0,
-                            w: bsize + 8.0,
-                            h: bsize + 8.0,
-                            color: bg,
-                            radius: 4.0,
-                            stroke_width: 0.0,
-                        });
-                    }
-
-                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                        text: glyph.to_string(),
-                        left: bx,
-                        top: by,
-                        color: if hovered { hover_color } else { normal_color },
-                        ..Default::default()
-                    });
-                }
-            }
+            push_window_controls(
+                &mut ui_rects,
+                &mut overlay_texts,
+                WindowControlParams {
+                    screen_w,
+                    bar_h,
+                    cursor_x: self.cursor_pos.0 as f32,
+                    cursor_y: self.cursor_pos.1 as f32,
+                },
+            );
             // Close of `if self.tab_bar.visible` block.
         } else if !self.tab_bar.tabs.is_empty() {
             // Single-tab mode: keep the title bar background strip but without
@@ -653,6 +609,19 @@ impl DesktopApp {
                 cell_w,
                 cell_h,
                 8.0,
+            );
+
+            // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
+            #[cfg(not(target_os = "macos"))]
+            push_window_controls(
+                &mut ui_rects,
+                &mut overlay_texts,
+                WindowControlParams {
+                    screen_w,
+                    bar_h: layout.bar_h,
+                    cursor_x: self.cursor_pos.0 as f32,
+                    cursor_y: self.cursor_pos.1 as f32,
+                },
             );
         }
 
@@ -3315,6 +3284,76 @@ impl DesktopApp {
 
 /// Render a title bar button with background container and centered icon.
 /// Pushes a UiRect for the background and an OverlayTextSpec for the icon.
+#[allow(clippy::too_many_arguments)]
+/// Parameters for rendering Linux/Windows window control buttons.
+#[cfg(not(target_os = "macos"))]
+struct WindowControlParams {
+    screen_w: f32,
+    bar_h: f32,
+    cursor_x: f32,
+    cursor_y: f32,
+}
+
+/// Render Linux/Windows window control buttons (minimize/maximize/close).
+#[cfg(not(target_os = "macos"))]
+fn push_window_controls(
+    ui_rects: &mut Vec<ggterm_render_wgpu::UiRect>,
+    overlay_texts: &mut Vec<ggterm_render_wgpu::OverlayTextSpec>,
+    p: WindowControlParams,
+) {
+    let layout = crate::titlebar::x11::compute_layout(p.screen_w, p.bar_h);
+    for (glyph, &(bx, by, bsize), hover_color, normal_color) in [
+        (
+            "\u{2014}",
+            &layout.minimize,
+            (255, 200, 80u8),
+            (180, 180, 180u8),
+        ), // ─ minimize
+        (
+            "\u{25A1}",
+            &layout.maximize,
+            (100, 200, 100u8),
+            (180, 180, 180u8),
+        ), // □ maximize
+        (
+            "\u{2715}",
+            &layout.close,
+            (255, 100, 100u8),
+            (180, 180, 180u8),
+        ), // ✕ close
+    ] {
+        let hovered = p.cursor_x >= bx
+            && p.cursor_x <= bx + bsize
+            && p.cursor_y >= by
+            && p.cursor_y <= by + bsize;
+
+        if hovered {
+            let bg = match glyph {
+                "\u{2715}" => (0.8, 0.15, 0.15, 0.8),
+                "\u{25A1}" => (0.15, 0.5, 0.15, 0.5),
+                _ => (0.3, 0.3, 0.3, 0.5),
+            };
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: bx - 4.0,
+                y: by - 4.0,
+                w: bsize + 8.0,
+                h: bsize + 8.0,
+                color: bg,
+                radius: 4.0,
+                stroke_width: 0.0,
+            });
+        }
+
+        overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+            text: glyph.to_string(),
+            left: bx,
+            top: by,
+            color: if hovered { hover_color } else { normal_color },
+            ..Default::default()
+        });
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn push_titlebar_button(
     ui_rects: &mut Vec<ggterm_render_wgpu::UiRect>,

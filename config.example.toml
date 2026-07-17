@@ -52,6 +52,7 @@ restore_session = false
 # Bell behavior when terminal sends BEL (0x07).
 # "visual" = flash the terminal briefly (default)
 # "sound"  = play a system sound
+# "both"   = visual flash + system sound
 # "none"   = silently ignore
 # bell_mode = "visual"
 
