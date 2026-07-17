@@ -380,6 +380,9 @@ impl DesktopApp {
         }
         log::info!("Closed tab, active={}", self.active + 1);
         self.save_session_on_exit();
+        if let Some(ref window) = self.window {
+            window.request_redraw();
+        }
     }
 
     /// Reopen the last closed tab in its original working directory.
