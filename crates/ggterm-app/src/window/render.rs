@@ -161,6 +161,8 @@ impl DesktopApp {
         let screen_h = renderer.resolution_height() as f32;
         let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::with_capacity(32);
         let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::with_capacity(16);
+        // Reuse status bar segments Vec across frames (avoids per-frame allocation).
+        let mut status_segments: Vec<(String, (u8, u8, u8))> = Vec::with_capacity(24);
 
         // Theme background as normalized f32 — used for tab bar/status bar
         // so they match the terminal content instead of hardcoded colors.
@@ -1295,14 +1297,14 @@ impl DesktopApp {
             });
 
             // Render status bar text segments with individual colors.
-            let segments = self.status_bar.format_segments();
+            self.status_bar.format_segments_into(&mut status_segments);
             let cell_w = renderer.cell_width() as f32;
             let text_top = bar_y + 4.0;
             let mut x = pad_x + 8.0;
 
             // Right boundary: stop rendering segments that would overflow.
             let max_x = screen_w - pad_x - 8.0;
-            for (text, color) in &segments {
+            for (text, color) in &status_segments {
                 let text_w = text.chars().count() as f32 * cell_w;
                 if x + text_w > max_x {
                     break;

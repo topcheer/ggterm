@@ -2363,7 +2363,9 @@ impl DesktopApp {
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, true)
                     };
                     if let Some(bytes) = bytes {
-                        self.write_to_pty(&bytes);
+                        // Protocol response: write directly to PTY to avoid
+                        // auto-scroll/broadcast/blink-reset side effects.
+                        self.active_session_mut().write_to_pty(&bytes);
                     }
                 }
                 ElementState::Released => {
@@ -2374,7 +2376,7 @@ impl DesktopApp {
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, false)
                     };
                     if let Some(bytes) = bytes {
-                        self.write_to_pty(&bytes);
+                        self.active_session_mut().write_to_pty(&bytes);
                     }
                 }
             }
@@ -2867,7 +2869,8 @@ impl DesktopApp {
                 };
                 if sgr {
                     let bytes = crate::mouse::encode_sgr_motion(&mouse_ev, held);
-                    self.write_to_pty(bytes.as_bytes());
+                    // Protocol response: write directly to PTY.
+                    self.active_session_mut().write_to_pty(bytes.as_bytes());
                 }
                 return;
             }
@@ -3373,7 +3376,8 @@ impl DesktopApp {
                     mods,
                 };
                 if let Some(bytes) = crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true) {
-                    self.write_to_pty(&bytes);
+                    // Protocol response: write directly to PTY.
+                    self.active_session_mut().write_to_pty(&bytes);
                 }
             }
 
@@ -3391,7 +3395,7 @@ impl DesktopApp {
                     mods,
                 };
                 if let Some(bytes) = crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true) {
-                    self.write_to_pty(&bytes);
+                    self.active_session_mut().write_to_pty(&bytes);
                 }
             }
             return;

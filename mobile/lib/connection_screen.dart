@@ -78,6 +78,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   bool _obscurePassword = true;
   bool _useKeyFile = false;
   String? _errorMessage;
+  ConnectionParams? _lastFailedParams; // for retry button
   String _selectedTheme = 'dark'; // persisted theme name
 
   static const _saveFile = 'last_connection.json';
@@ -554,6 +555,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     if (lower.contains('auth')) {
       return 'Authentication failed. Check your username and password/key.';
     }
+    if (lower.contains('key') && (lower.contains('load') || lower.contains('read') || lower.contains('parse') || lower.contains('invalid'))) {
+      return 'SSH key error. The key file may be missing, invalid, or in an unsupported format.';
+    }
     if (lower.contains('connection refused') || lower.contains('connection reset')) {
       return 'Connection refused. The server may be down or SSH is not running.';
     }
@@ -565,6 +569,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     }
     if (lower.contains('channel') || lower.contains('pty') || lower.contains('shell')) {
       return 'Session setup failed. The server may refuse PTY allocation.';
+    }
+    if (lower.contains('handshake')) {
+      return 'SSH handshake failed. The server may use an incompatible SSH version.';
     }
     return raw;
   }
@@ -607,6 +614,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       if (mounted) {
         setState(() {
           _errorMessage = _friendlyError(e.toString());
+          _lastFailedParams = params;
         });
       }
     } finally {
@@ -846,6 +854,17 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                           style: TextStyle(color: Colors.red.shade200, fontSize: 13),
                         ),
                       ),
+                      if (_lastFailedParams != null) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, color: Colors.red, size: 20),
+                          tooltip: 'Retry',
+                          onPressed: _connecting ? null : () {
+                            setState(() => _errorMessage = null);
+                            _connect();
+                          },
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -887,23 +906,51 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               ),
               const SizedBox(height: 12),
 
-              // ── Connect button ──
-              FilledButton.icon(
-                onPressed: _connecting ? null : _connect,
-                icon: _connecting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.electrical_services),
-                label: Text(_connecting
-                    ? 'Connecting… ${_connectElapsed}s'
-                    : 'Connect'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
+              // ── Connect / Cancel button ──
+              if (_connecting) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: null,
+                        icon: const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        label: Text('Connecting… ${_connectElapsed}s'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _connecting = false;
+                          _errorMessage = 'Connection cancelled.';
+                        });
+                        _connectTimer?.cancel();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        foregroundColor: Colors.red,
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ],
                 ),
-              ),
+              ] else ...[
+                FilledButton.icon(
+                  onPressed: _connect,
+                  icon: const Icon(Icons.electrical_services),
+                  label: const Text('Connect'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 12),
 

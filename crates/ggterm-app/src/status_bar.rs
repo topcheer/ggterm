@@ -418,6 +418,15 @@ impl StatusBar {
     /// The renderer can use this to draw each segment at the correct position
     /// with appropriate coloring (e.g. red for errors, green for exit 0).
     pub fn format_segments(&self) -> Vec<(String, (u8, u8, u8))> {
+        let mut segs = Vec::with_capacity(24);
+        self.format_segments_into(&mut segs);
+        segs
+    }
+
+    /// Write formatted segments into the provided Vec (reuses allocation).
+    /// The Vec is cleared first. Use this in render hot paths to avoid
+    /// per-frame Vec allocation.
+    pub fn format_segments_into(&self, segs: &mut Vec<(String, (u8, u8, u8))>) {
         let text_color: (u8, u8, u8) = (180, 180, 190);
         let dim_color: (u8, u8, u8) = (90, 90, 100);
         let accent_color: (u8, u8, u8) = (120, 180, 255);
@@ -425,7 +434,7 @@ impl StatusBar {
         let err_color: (u8, u8, u8) = (230, 80, 80);
         let ok_color: (u8, u8, u8) = (100, 200, 120);
 
-        let mut segs: Vec<(String, (u8, u8, u8))> = Vec::with_capacity(24);
+        segs.clear();
 
         macro_rules! seg {
             ($text:expr, $color:expr) => {{
@@ -637,8 +646,6 @@ impl StatusBar {
             let m = (secs / 60) % 60;
             seg!(format!("{:02}:{:02}", h, m), dim_color);
         }
-
-        segs
     }
 }
 
