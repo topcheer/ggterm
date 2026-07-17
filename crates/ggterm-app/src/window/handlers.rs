@@ -1592,9 +1592,6 @@ impl DesktopApp {
             if !is_repeat {
                 self.toggle_last_tab();
             }
-            if !is_repeat {
-                self.toggle_last_tab();
-            }
             return;
         }
 

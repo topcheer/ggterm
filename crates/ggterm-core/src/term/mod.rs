@@ -43,6 +43,7 @@ pub(crate) struct DecscState {
     pub(crate) auto_wrap: bool,
     pub(crate) origin: bool,
     pub(crate) protected_attr: bool,
+    pub(crate) cursor_style: CursorStyle,
 }
 
 /// OSC 133 command mark kind (Shell Integration protocol).
@@ -1363,6 +1364,7 @@ impl Terminal {
                         auto_wrap: self.modes.auto_wrap,
                         origin: self.modes.origin,
                         protected_attr: self.protected_attr,
+                        cursor_style: self.cursor_style,
                     });
                     self.alt_saved_grid = Some(self.grid.clone());
                     self.alt_saved_tab_stops = Some(self.tab_stops.clone());
@@ -1390,6 +1392,7 @@ impl Terminal {
                         self.modes.auto_wrap = state.auto_wrap;
                         self.modes.origin = state.origin;
                         self.protected_attr = state.protected_attr;
+                        self.cursor_style = state.cursor_style;
                     }
                     self.modes.alt_screen = false;
                 }
@@ -2565,6 +2568,7 @@ impl Perform for Terminal {
                     auto_wrap: self.modes.auto_wrap,
                     origin: self.modes.origin,
                     protected_attr: self.protected_attr,
+                    cursor_style: self.cursor_style,
                 });
             }
             // DECRC — restore cursor and terminal state (ESC 8).
@@ -2581,6 +2585,7 @@ impl Perform for Terminal {
                     self.modes.auto_wrap = state.auto_wrap;
                     self.modes.origin = state.origin;
                     self.protected_attr = state.protected_attr;
+                    self.cursor_style = state.cursor_style;
                 } else {
                     // No saved state — restore defaults (VT220 spec).
                     self.cursor = Cursor::default();

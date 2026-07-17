@@ -155,6 +155,10 @@ pub unsafe extern "C" fn ggterm_session_take_input(id: u32, buf: *mut u8, max_le
                 std::ptr::copy_nonoverlapping(input.as_ptr(), buf, n);
             }
         }
+        // Re-queue any bytes that didn't fit in the caller's buffer.
+        if input.len() > n {
+            s.handle.send_input(&input[n..]);
+        }
         n
     } else {
         0
@@ -251,9 +255,9 @@ pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize
             .terminal
             .grid_mut()
             .resize(cols.max(1), rows.max(1));
-        // Also resize transport if present
+        // Also resize transport if present (clamp to >= 1 for PTY safety).
         if let Some(t) = s.transport.as_mut() {
-            t.resize(cols, rows);
+            t.resize(cols.max(1), rows.max(1));
         }
     }
 }
@@ -613,12 +617,12 @@ impl TerminalTransport for EchoTransport {
     }
 
     fn write(&mut self, data: &[u8]) {
-        // Echo back with CR
+        // Echo back with CR before LF for terminal display.
         for &b in data {
-            self.pending_output.push(b);
             if b == b'\n' {
-                // Already has \n, add \r for terminal display
+                self.pending_output.push(b'\r');
             }
+            self.pending_output.push(b);
         }
     }
 

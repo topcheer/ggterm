@@ -1393,7 +1393,13 @@ impl DesktopApp {
             let text_top = bar_y + 4.0;
             let mut x = pad_x + 8.0;
 
+            // Right boundary: stop rendering segments that would overflow.
+            let max_x = screen_w - pad_x - 8.0;
             for (text, color) in &segments {
+                let text_w = text.chars().count() as f32 * cell_w;
+                if x + text_w > max_x {
+                    break;
+                }
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: text.clone(),
                     left: x,
@@ -1401,7 +1407,7 @@ impl DesktopApp {
                     color: *color,
                     ..Default::default()
                 });
-                x += text.chars().count() as f32 * cell_w;
+                x += text_w;
             }
 
             // Right-aligned "Share" button for P2P sharing.
@@ -1546,10 +1552,8 @@ impl DesktopApp {
                 // Show "↓ N" for small offsets, "↓ N%" for larger ones.
                 let scrollback_len = grid.scrollback_len();
                 let total_lines = scrollback_len + grid.height();
-                let pct = (offset * 100)
-                    .checked_div(total_lines.max(1))
-                    .map(|v| v.min(100))
-                    .unwrap_or(0);
+                // Use float division so small scroll offsets still show a percentage.
+                let pct = ((offset as f64 * 100.0) / total_lines.max(1) as f64) as u32;
                 let pill_w = if pct > 0 {
                     cell_w * 5.0 // "↓ 42%" needs more room
                 } else {

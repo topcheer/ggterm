@@ -55,6 +55,8 @@ class _TerminalScreenState extends State<TerminalScreen>
   Timer? _durationTimer; // updates AppBar duration every second
   bool _transportAlive = true;
   bool _sizeInitialized = false;
+  int _lastRequestedCols = 0;
+  int _lastRequestedRows = 0;
   bool _isPaused = false; // true when app is in background
   DateTime? _connectedAt; // when the session connected (for duration display)
   TerminalTheme _currentTheme = darkTheme;
@@ -351,7 +353,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     h = (h * 31 + snap.cwd.hashCode) & 0x7FFFFFFF;
     for (var i = 0; i < snap.cells.length; i++) {
       final c = snap.cells[i];
-      h = (h * 31 + c.charCode ^ (c.flags << 8) ^ c.fg ^ (c.bg << 16)) & 0x7FFFFFFF;
+      h = (h * 31 + c.charCode ^ (c.combiningChar << 24) ^ (c.flags << 8) ^ c.fg ^ (c.bg << 16)) & 0x7FFFFFFF;
     }
     return h;
   }
@@ -1625,8 +1627,10 @@ class _TerminalScreenState extends State<TerminalScreen>
                   // This handles keyboard open/close gracefully — the grid
                   // preserves scrollback content on resize.
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!_sizeInitialized || newCols != _screen.cols || newRows != _screen.rows) {
+                    if (!_sizeInitialized || newCols != _lastRequestedCols || newRows != _lastRequestedRows) {
                       _sizeInitialized = true;
+                      _lastRequestedCols = newCols;
+                      _lastRequestedRows = newRows;
                       widget.sessionManager.resize(widget.sessionId, newCols, newRows);
                       _lastFrameHash = 0; // Force screen refresh
                     }

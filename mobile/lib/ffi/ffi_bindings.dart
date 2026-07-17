@@ -17,7 +17,8 @@ import 'types.dart';
 
 // ── Function type definitions ─────────────────────────────────────────
 
-typedef _SessionCreateC = Uint32 Function(Uint32 cols, Uint32 rows);
+// usize on 64-bit platforms is 8 bytes; use IntPtr for correct ABI.
+typedef _SessionCreateC = Uint32 Function(IntPtr cols, IntPtr rows);
 typedef _SessionCreateDart = int Function(int cols, int rows);
 
 typedef _SessionDestroyC = Void Function(Uint32 id);
@@ -56,7 +57,7 @@ typedef _CursorC = Void Function(
 typedef _CursorDart = void Function(
     int id, Pointer<IntPtr> col, Pointer<IntPtr> row);
 
-typedef _ResizeC = Void Function(Uint32 id, Uint32 cols, Uint32 rows);
+typedef _ResizeC = Void Function(Uint32 id, IntPtr cols, IntPtr rows);
 typedef _ResizeDart = void Function(int id, int cols, int rows);
 
 typedef _TakeBellC = Int32 Function(Uint32 id);

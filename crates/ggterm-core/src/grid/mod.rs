@@ -295,11 +295,14 @@ impl Grid {
             self.rows.truncate(len.saturating_sub(n));
             let mut restored = Vec::with_capacity(n);
             for _ in 0..n {
-                restored.push(
-                    self.scrollback
-                        .pop_back()
-                        .unwrap_or_else(|| Row::new(self.width)),
-                );
+                // Resize restored rows to current grid width — they may have
+                // been pushed to scrollback when the grid was a different size.
+                let mut row = self
+                    .scrollback
+                    .pop_back()
+                    .unwrap_or_else(|| Row::new(self.width));
+                row.resize(self.width);
+                restored.push(row);
             }
             // pop_back gives most-recent-first; reverse for chronological order.
             restored.reverse();
@@ -339,9 +342,11 @@ impl Grid {
             return;
         }
         let count = count.min(self.scroll_bottom - row);
-        for _ in 0..count {
-            let _removed = self.rows.remove(self.scroll_bottom - 1);
-            self.rows.insert(row, Row::new(self.width));
+        // Rotate region right by count, then fill the vacated top with blanks.
+        // O(region_height) instead of O(count × region_height) with remove/insert.
+        self.rows[row..self.scroll_bottom].rotate_right(count);
+        for i in 0..count {
+            self.rows[row + i] = Row::new(self.width);
         }
         self.damage.mark_rows(row, self.scroll_bottom - row);
     }
@@ -356,10 +361,11 @@ impl Grid {
             return;
         }
         let count = count.min(self.scroll_bottom - row);
-        for _ in 0..count {
-            self.rows.remove(row);
-            self.rows
-                .insert(self.scroll_bottom - 1, Row::new(self.width));
+        // Rotate region left by count, then fill the vacated bottom with blanks.
+        // O(region_height) instead of O(count × region_height) with remove/insert.
+        self.rows[row..self.scroll_bottom].rotate_left(count);
+        for i in 0..count {
+            self.rows[self.scroll_bottom - 1 - i] = Row::new(self.width);
         }
         self.damage.mark_rows(row, self.scroll_bottom - row);
     }

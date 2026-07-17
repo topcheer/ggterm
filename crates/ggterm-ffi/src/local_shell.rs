@@ -58,11 +58,11 @@ impl LocalShellTransport {
         let cols = cols.max(1).min(500) as u16;
         let rows = rows.max(1).min(200) as u16;
 
-        let master_fd = unsafe { forkpty_and_exec(cols, rows)? };
+        let (master_fd, child_pid) = unsafe { forkpty_and_exec(cols, rows)? };
 
         Ok(Self {
             master_fd,
-            child_pid: 0, // PID set inside forkpty_and_exec via box
+            child_pid,
             read_buf: vec![0u8; 8192],
             alive: true,
         })
@@ -86,7 +86,15 @@ impl LocalShellTransport {
                 n if n > 0 => {
                     total.extend_from_slice(&buf[..n as usize]);
                 }
-                _ => break, // EAGAIN, EWOULDBLOCK, or error
+                0 => break, // EOF
+                _ => {
+                    // n < 0: retry on EINTR (signal interrupted), break on EAGAIN/EWOULDBLOCK.
+                    let err = io::Error::last_os_error();
+                    if err.raw_os_error() == Some(libc::EINTR) {
+                        continue;
+                    }
+                    break;
+                }
             }
         }
         // Restore blocking.
@@ -106,7 +114,11 @@ impl LocalShellTransport {
                 )
             };
             if n <= 0 {
-                return Err(io::Error::last_os_error());
+                let err = io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::EINTR) {
+                    continue; // Retry on signal interruption.
+                }
+                return Err(err);
             }
             written += n as usize;
         }
@@ -207,8 +219,8 @@ fn set_blocking(fd: RawFd) -> io::Result<()> {
 
 /// Fork a child process inside a PTY and exec the shell.
 ///
-/// Returns the master fd on success.
-unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellError> {
+/// Returns the master fd and child PID on success.
+unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<(RawFd, libc::pid_t), LocalShellError> {
     let mut master: libc::c_int = -1;
     let mut winsize = libc::winsize {
         ws_row: rows,
@@ -267,7 +279,7 @@ unsafe fn forkpty_and_exec(cols: u16, rows: u16) -> Result<RawFd, LocalShellErro
     }
 
     // ── Parent process ──
-    Ok(master)
+    Ok((master, pid))
 }
 
 /// Get the app's private home directory on Android.
