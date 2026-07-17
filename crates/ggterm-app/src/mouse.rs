@@ -325,6 +325,8 @@ pub fn detect_url_at_position(line: &str, col: usize) -> Option<(usize, usize, S
 pub fn find_urls(line: &str) -> Vec<(usize, String)> {
     let mut results = Vec::new();
     let chars: Vec<char> = line.chars().collect();
+    // All scheme strings are ASCII lowercase; we compare case-insensitively
+    // via prefix_matches to avoid per-position String allocation.
     let schemes = ["https://", "http://", "ftp://", "git://", "ssh://", "www."];
 
     // Common TLDs for bare hostname detection (e.g. github.com/user/repo)
@@ -335,30 +337,28 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
 
     let mut i = 0;
     while i < chars.len() {
-        // Check if a known scheme starts at this position.
-        let remaining: String = chars[i..].iter().collect();
-        let matched = schemes.iter().find(|s| {
-            remaining
-                .to_ascii_lowercase()
-                .starts_with(&s.to_ascii_lowercase())
-        });
+        // Check if a known scheme starts at this position (no allocation).
+        let matched = schemes
+            .iter()
+            .find(|s| prefix_matches(&chars, i, s));
 
         if let Some(scheme) = matched {
+            let scheme_len = scheme.len(); // ASCII, so bytes == chars
             // Scan forward to find the end of the URL.
             let url_start = i;
-            let mut j = i + scheme.len();
+            let mut j = i + scheme_len;
             while j < chars.len() && is_url_char(chars[j]) {
                 j += 1;
             }
             // Trim trailing punctuation that's unlikely part of the URL.
-            while j > url_start + scheme.len()
+            while j > url_start + scheme_len
                 && matches!(chars[j - 1], '.' | ',' | ';' | ')' | ']' | '}' | '\'')
             {
                 j -= 1;
             }
 
-            let url: String = chars[url_start..j].iter().collect();
-            if url.len() > scheme.len() {
+            if j > url_start + scheme_len {
+                let url: String = chars[url_start..j].iter().collect();
                 results.push((url_start, url));
             }
             i = j;
@@ -376,12 +376,11 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
                 {
                     host_end += 1;
                 }
-                // Check if the hostname part ends with a known TLD
-                let host: String = chars[i..host_end].iter().collect();
-                let host_lower = host.to_ascii_lowercase();
-                let has_tld = tlds
-                    .iter()
-                    .any(|t| host_lower.ends_with(t) && host_lower.len() > t.len());
+                // Check if the hostname part ends with a known TLD (no allocation)
+                let host_len = host_end - i;
+                let has_tld = tlds.iter().any(|t| {
+                    suffix_matches(&chars, i, host_len, t) && host_len > t.len()
+                });
                 if has_tld {
                     // Continue scanning for path/query/port after hostname
                     let mut j = host_end;
@@ -395,8 +394,7 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
                         j -= 1;
                     }
                     // Require path/port after hostname (avoid linking bare "example.com")
-                    let after_host: String = chars[host_end..j].iter().collect();
-                    if after_host.starts_with('/') || after_host.starts_with(':') {
+                    if j > host_end && (chars[host_end] == '/' || chars[host_end] == ':') {
                         let url: String = chars[i..j].iter().collect();
                         results.push((i, url));
                         i = j;
@@ -408,6 +406,36 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
         }
     }
     results
+}
+
+/// Check if `chars[pos..]` starts with `scheme` (ASCII case-insensitive).
+/// Avoids allocating a String for each position in the line.
+fn prefix_matches(chars: &[char], pos: usize, scheme: &str) -> bool {
+    let scheme_bytes = scheme.as_bytes();
+    if pos + scheme_bytes.len() > chars.len() {
+        return false;
+    }
+    for (k, &sb) in scheme_bytes.iter().enumerate() {
+        if !chars[pos + k].eq_ignore_ascii_case(&(sb as char)) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Check if the char slice `[start, start+len)` ends with `suffix` (ASCII case-insensitive).
+fn suffix_matches(chars: &[char], start: usize, len: usize, suffix: &str) -> bool {
+    let suffix_bytes = suffix.as_bytes();
+    if len < suffix_bytes.len() {
+        return false;
+    }
+    let off = start + len - suffix_bytes.len();
+    for (k, &sb) in suffix_bytes.iter().enumerate() {
+        if !chars[off + k].eq_ignore_ascii_case(&(sb as char)) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Characters that are valid inside a URL path.
