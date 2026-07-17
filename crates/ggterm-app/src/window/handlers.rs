@@ -1497,31 +1497,15 @@ impl DesktopApp {
             }
         }
 
-        // Ctrl+Shift+Up/Down → scroll one line at a time (no Shift on macOS).
+        // Ctrl+Shift+Up/Down → jump between command prompts (OSC 133).
         if self.mods.ctrl && self.mods.shift && !self.mods.alt {
             match &event.physical_key {
                 PhysicalKey::Code(KeyCode::ArrowUp) => {
-                    self.active_session_mut()
-                        .app_mut()
-                        .terminal_mut()
-                        .grid_mut()
-                        .scroll_up_viewport(1);
-                    self.smooth_scroll.reset();
-                    if let Some(ref window) = self.window {
-                        window.request_redraw();
-                    }
+                    self.jump_to_prev_prompt();
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowDown) => {
-                    self.active_session_mut()
-                        .app_mut()
-                        .terminal_mut()
-                        .grid_mut()
-                        .scroll_down_viewport(1);
-                    self.smooth_scroll.reset();
-                    if let Some(ref window) = self.window {
-                        window.request_redraw();
-                    }
+                    self.jump_to_next_prompt();
                     return;
                 }
                 _ => {}

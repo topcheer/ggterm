@@ -2376,6 +2376,69 @@ impl DesktopApp {
         }
     }
 
+    /// Jump to the previous command prompt (OSC 133 PromptStart mark).
+    pub(super) fn jump_to_prev_prompt(&mut self) {
+        use ggterm_core::CommandMarkKind;
+        let grid = self.active_session().app().grid();
+        let marks = self.active_session().app().terminal().command_marks();
+        if marks.is_empty() {
+            return;
+        }
+        let scrollback_len = grid.scrollback_len();
+        let display_offset = grid.display_offset();
+        let height = grid.height();
+        let visible_bottom = scrollback_len + height - display_offset;
+        let visible_center = visible_bottom.saturating_sub(height / 2);
+
+        if let Some(row) = marks
+            .iter()
+            .rev()
+            .find(|m| m.kind == CommandMarkKind::PromptStart && m.row < visible_center)
+            .map(|m| m.row)
+        {
+            let grid_row = row.saturating_sub(scrollback_len);
+            self.active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut()
+                .scroll_to_grid_row(grid_row);
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+        }
+    }
+
+    /// Jump to the next command prompt (OSC 133 PromptStart mark).
+    pub(super) fn jump_to_next_prompt(&mut self) {
+        use ggterm_core::CommandMarkKind;
+        let grid = self.active_session().app().grid();
+        let marks = self.active_session().app().terminal().command_marks();
+        if marks.is_empty() {
+            return;
+        }
+        let scrollback_len = grid.scrollback_len();
+        let display_offset = grid.display_offset();
+        let height = grid.height();
+        let visible_bottom = scrollback_len + height - display_offset;
+        let visible_center = visible_bottom.saturating_sub(height / 2);
+
+        if let Some(row) = marks
+            .iter()
+            .find(|m| m.kind == CommandMarkKind::PromptStart && m.row > visible_center)
+            .map(|m| m.row)
+        {
+            let grid_row = row.saturating_sub(scrollback_len);
+            self.active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut()
+                .scroll_to_grid_row(grid_row);
+            if let Some(ref window) = self.window {
+                window.request_redraw();
+            }
+        }
+    }
+
     /// Clear the screen of all tabs (sends ESC[H ESC[2J to each tab's active pane).
     /// Force reload the config file on the next tick.
     pub(super) fn reload_configuration(&mut self) {
