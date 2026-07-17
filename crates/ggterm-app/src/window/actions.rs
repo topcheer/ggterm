@@ -1550,7 +1550,9 @@ impl DesktopApp {
                 if let Some(text) = crate::clipboard::read_clipboard() {
                     let b64 = Self::base64_encode(text.as_bytes());
                     let resp = format!("\x1b]52;c;{b64}\x07");
-                    self.write_to_pty(resp.as_bytes());
+                    // Write directly to PTY (not via write_to_pty) to avoid
+                    // unwanted auto-scroll, broadcast, and cursor blink reset.
+                    self.active_session_mut().write_to_pty(resp.as_bytes());
                     log::debug!(
                         "OSC 52 clipboard query: responded with {} chars",
                         text.len()

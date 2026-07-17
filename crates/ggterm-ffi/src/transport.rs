@@ -323,6 +323,19 @@ pub unsafe extern "C" fn ggterm_session_take_bell(id: u32) -> i32 {
     0
 }
 
+/// Returns 1 if the terminal cursor is visible (DECSET 25 on), 0 otherwise.
+/// Programs like vim/less hide the cursor via DECSET 25 = off.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_cursor_visible(id: u32) -> i32 {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id)
+        && s.handle.terminal.cursor_visible()
+    {
+        return 1;
+    }
+    0
+}
+
 // ── Transport: Data Pump ───────────────────────────────────────────────
 
 /// Read from the transport, feed bytes into the terminal.
@@ -817,6 +830,32 @@ mod tests {
         assert_eq!(unsafe { ggterm_session_take_bell(id) }, 1);
         // Bell consumed
         assert_eq!(unsafe { ggterm_session_take_bell(id) }, 0);
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_cursor_visible_default() {
+        let id = ggterm_session_create(80, 24);
+        // Default: cursor should be visible (DECSET 25 on).
+        assert_eq!(unsafe { ggterm_session_cursor_visible(id) }, 1);
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_cursor_visible_hide() {
+        let id = ggterm_session_create(80, 24);
+        // DECSET 25 off: hide cursor.
+        let hide = b"\x1b[?25l";
+        unsafe {
+            ggterm_session_process_bytes(id, hide.as_ptr(), hide.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_visible(id) }, 0);
+        // DECSET 25 on: show cursor.
+        let show = b"\x1b[?25h";
+        unsafe {
+            ggterm_session_process_bytes(id, show.as_ptr(), show.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_visible(id) }, 1);
         unsafe { ggterm_session_destroy(id) };
     }
 

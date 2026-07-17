@@ -121,6 +121,7 @@ class GgtermFfi {
   late final void Function(int, Pointer<IntPtr>, Pointer<IntPtr>) sessionCursor;
   late final void Function(int, int, int) sessionResize;
   late final int Function(int) sessionTakeBell;
+  late final int Function(int) sessionCursorVisible;
   late final int Function(int) transportPump;
   late final void Function(int) transportFlush;
   late final int Function(int) transportIsAlive;
@@ -218,6 +219,9 @@ class GgtermFfi {
     sessionTakeBell = _lib
         .lookupFunction<_TakeBellC, _TakeBellDart>(
             'ggterm_session_take_bell');
+    sessionCursorVisible = _lib
+        .lookupFunction<_TakeBellC, _TakeBellDart>(
+            'ggterm_session_cursor_visible');
     transportPump = _lib
         .lookupFunction<_PumpC, _PumpDart>(
             'ggterm_transport_pump');

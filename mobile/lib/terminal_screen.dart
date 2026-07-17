@@ -1670,7 +1670,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                             theme: theme,
                             cellWidth: _cellWidth,
                             cellHeight: _cellHeight,
-                            cursorVisible: _cursorVisible,
+                            cursorVisible: _screen.cursorVisible && _cursorVisible,
                             blinkVisible: _cursorVisible, // blink text (SGR 5) follows cursor blink phase
                           ),
                           child: Container(),

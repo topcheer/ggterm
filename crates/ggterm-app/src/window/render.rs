@@ -166,22 +166,26 @@ impl DesktopApp {
         // so they match the terminal content instead of hardcoded colors.
         let theme_bg = (br as f32 / 255.0, bg as f32 / 255.0, bb as f32 / 255.0);
 
-        // Update tab bar data — prepend pin indicator for pinned tabs.
-        let titles: Vec<String> = self
-            .sessions
-            .iter()
-            .map(|s| {
-                if s.is_pinned() {
-                    format!("\u{1f4cc}{}", s.title())
-                } else {
-                    s.title().to_string()
-                }
-            })
-            .collect();
-        let title_refs: Vec<&str> = titles.iter().map(|s| s.as_str()).collect();
-        let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
-        self.tab_bar
-            .update_with_bells(&title_refs, self.active, &bell_flags);
+        // Update tab bar data — only when multiple tabs exist (visible).
+        // Single-tab mode skips this to avoid per-frame Vec allocations.
+        if self.sessions.len() > 1 {
+            // Prepend pin indicator for pinned tabs.
+            let titles: Vec<String> = self
+                .sessions
+                .iter()
+                .map(|s| {
+                    if s.is_pinned() {
+                        format!("\u{1f4cc}{}", s.title())
+                    } else {
+                        s.title().to_string()
+                    }
+                })
+                .collect();
+            let title_refs: Vec<&str> = titles.iter().map(|s| s.as_str()).collect();
+            let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
+            self.tab_bar
+                .update_with_bells(&title_refs, self.active, &bell_flags);
+        }
 
         // ── Tab bar: auto-fill width like browser tabs ─────────────────
         if self.tab_bar.visible {

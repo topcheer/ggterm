@@ -29,6 +29,7 @@ class ScreenSnapshot {
   final List<GGTermCellData> cells;
   final int cursorCol;
   final int cursorRow;
+  final bool cursorVisible;
   final bool hasBell;
   /// Terminal title (OSC 0/2). Empty if not set.
   final String title;
@@ -41,6 +42,7 @@ class ScreenSnapshot {
     required this.cells,
     this.cursorCol = 0,
     this.cursorRow = 0,
+    this.cursorVisible = true,
     this.hasBell = false,
     this.title = '',
     this.cwd = '',
@@ -241,6 +243,7 @@ class SessionManager {
       }
 
       final (cursorCol, cursorRow) = getCursor(id);
+      final cursorVisible = _ffi.sessionCursorVisible(id) != 0;
       final bell = _ffi.sessionTakeBell(id) != 0;
       final title = _ffi.getSessionTitle(id);
       final cwd = _ffi.getSessionCwd(id);
@@ -251,6 +254,7 @@ class SessionManager {
         cells: cells,
         cursorCol: cursorCol,
         cursorRow: cursorRow,
+        cursorVisible: cursorVisible,
         hasBell: bell,
         title: title,
         cwd: cwd,

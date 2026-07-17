@@ -1807,13 +1807,15 @@ impl ApplicationHandler for DesktopApp {
                 self.window_focused = focused;
 
                 // P12-D: Send focus event report if DECSET 1004 is active.
+                // Write directly to PTY (not via write_to_pty) to avoid
+                // unwanted auto-scroll, broadcast, and cursor blink reset.
                 let report = if focused {
                     self.active_session().app().terminal().focus_in_report()
                 } else {
                     self.active_session().app().terminal().focus_out_report()
                 };
                 if !report.is_empty() {
-                    self.write_to_pty(&report);
+                    self.active_session_mut().write_to_pty(&report);
                 }
                 if let Some(ref window) = self.window {
                     window.request_redraw();
@@ -2373,11 +2375,15 @@ impl ApplicationHandler for DesktopApp {
         let effective_redraw = need_redraw && !defer_render;
 
         // Cursor blink: redraw every 500ms for blink animation.
-        // Skip blink when window is occluded (hidden) — no need to animate
-        // an invisible cursor, and it avoids waking the event loop.
+        // Skip when window is occluded, cursor is hidden (DECSET 25 off),
+        // or blink is not enabled (steady cursor style). This avoids
+        // unnecessary CPU/GPU wake-ups in vim/less/tmux and full-screen apps.
+        let cursor_visible = self.active_session().app().terminal().cursor_visible();
         let blink_interval = std::time::Duration::from_millis(500);
-        let blink_due =
-            !self.window_occluded && now.duration_since(self.last_redraw) >= blink_interval;
+        let blink_due = !self.window_occluded
+            && cursor_visible
+            && self.cursor_blink.is_enabled()
+            && now.duration_since(self.last_redraw) >= blink_interval;
 
         if effective_redraw || blink_due || self.debug_visible {
             self.last_redraw = now;
