@@ -74,6 +74,9 @@ class _TerminalScreenState extends State<TerminalScreen>
   bool _isScrolledUp = false;
   // Tap tracking for triple-tap line select.
   int _tapCount = 0;
+  // Custom text selection range (for drag-to-select mode).
+  int? _selStartIdx;
+  int? _selEndIdx;
   DateTime _lastTapTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Visible input bar for typing.
@@ -824,6 +827,61 @@ class _TerminalScreenState extends State<TerminalScreen>
     _showCopiedSnackBar('Copied: $word');
   }
 
+  /// Get the currently selected text (from manual selection range).
+  String? _getSelectedText() {
+    if (_selStartIdx == null || _selEndIdx == null) return null;
+    final start = _selStartIdx!.clamp(0, _screen.cells.length - 1);
+    final end = _selEndIdx!.clamp(0, _screen.cells.length - 1);
+    final lo = start < end ? start : end;
+    final hi = start < end ? end : lo;
+    final buf = StringBuffer();
+    for (var i = lo; i <= hi; i++) {
+      final cell = _screen.cells[i];
+      if (cell.charCode != 0) {
+        buf.write(cell.char);
+      } else if (i > lo && i % _screen.cols == 0) {
+        buf.write('\n');
+      } else {
+        buf.write(' ');
+      }
+    }
+    final s = buf.toString();
+    return s.isEmpty ? null : s;
+  }
+
+  /// Enter selection mode at the given position.
+  void _startSelection(Offset position) {
+    final col = (position.dx / _cellWidth).floor().clamp(0, _screen.cols - 1);
+    final row = (position.dy / _cellHeight).floor().clamp(0, _screen.rows - 1);
+    final idx = row * _screen.cols + col;
+    setState(() {
+      _selStartIdx = idx;
+      _selEndIdx = idx;
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  /// Extend the selection end to the given position.
+  void _extendSelection(Offset position) {
+    if (_selStartIdx == null) return;
+    final col = (position.dx / _cellWidth).floor().clamp(0, _screen.cols - 1);
+    final row = (position.dy / _cellHeight).floor().clamp(0, _screen.rows - 1);
+    final idx = row * _screen.cols + col;
+    if (idx != _selEndIdx) {
+      setState(() => _selEndIdx = idx);
+    }
+  }
+
+  /// Clear the current selection.
+  void _clearSelection() {
+    if (_selStartIdx != null) {
+      setState(() {
+        _selStartIdx = null;
+        _selEndIdx = null;
+      });
+    }
+  }
+
   /// Triple-tap → select and copy entire line at position.
   void _selectLineAt(Offset position) {
     final row = (position.dy / _cellHeight).floor();
@@ -920,6 +978,19 @@ class _TerminalScreenState extends State<TerminalScreen>
                 onTap: () {
                   Navigator.pop(context);
                   _selectWordAt(details.localPosition);
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.swipe_left, color: Colors.white70),
+                title: const Text('Select text range',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Drag to select, tap to copy',
+                    style: TextStyle(color: Colors.grey, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _startSelection(details.localPosition);
+                  _showCopiedSnackBar('Drag to select, then tap to copy');
                 },
               ),
               ListTile(
@@ -1683,7 +1754,25 @@ class _TerminalScreenState extends State<TerminalScreen>
                       _gestureStartFontSize = _fontSize;
                     },
                     onScaleUpdate: _onScale,
-                    onTapUp: _onTapUp,
+                    onTapUp: (details) {
+                      // If in selection mode, tap to copy and exit.
+                      if (_selStartIdx != null) {
+                        final text = _getSelectedText();
+                        if (text != null && text.trim().isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: text));
+                          _showCopiedSnackBar('Copied ${text.trim().length} chars');
+                        }
+                        _clearSelection();
+                        return;
+                      }
+                      _onTapUp(details);
+                    },
+                    onPanUpdate: (details) {
+                      // Extend selection during single-finger drag.
+                      if (_selStartIdx != null) {
+                        _extendSelection(details.localPosition);
+                      }
+                    },
                     onLongPressStart: _onLongPress,
                     child: Stack(
                       children: [
@@ -1706,6 +1795,22 @@ class _TerminalScreenState extends State<TerminalScreen>
                           ),
                           child: Container(),
                         ),
+                        // Text selection highlight overlay.
+                        if (_selStartIdx != null && _selEndIdx != null)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: _SelectionOverlay(
+                                  selStart: _selStartIdx!,
+                                  selEnd: _selEndIdx!,
+                                  cols: _screen.cols,
+                                  rows: _screen.rows,
+                                  cellWidth: _cellWidth,
+                                  cellHeight: _cellHeight,
+                                ),
+                              ),
+                            ),
+                          ),
                         // Visual bell flash — red border when BEL fires.
                         if (_bellFlashFrames > 0)
                           Positioned.fill(
@@ -2137,4 +2242,67 @@ class _TerminalPainter extends CustomPainter {
     final dy = rowY + (cellH - _textPainter.height) / 2;
     _textPainter.paint(canvas, Offset(x, dy));
   }
+}
+
+/// Paints text selection highlight on the terminal canvas.
+class _SelectionOverlay extends CustomPainter {
+  final int selStart;
+  final int selEnd;
+  final int cols;
+  final int rows;
+  final double cellWidth;
+  final double cellHeight;
+
+  _SelectionOverlay({
+    required this.selStart,
+    required this.selEnd,
+    required this.cols,
+    required this.rows,
+    required this.cellWidth,
+    required this.cellHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lo = selStart < selEnd ? selStart : selEnd;
+    final hi = selStart < selEnd ? selEnd : lo;
+    final paint = Paint()..color = Colors.blue.withValues(alpha: 0.25);
+
+    final startRow = lo ~/ cols;
+    final startCol = lo % cols;
+    final endRow = hi ~/ cols;
+    final endCol = hi % cols;
+
+    if (startRow == endRow) {
+      canvas.drawRect(
+        Rect.fromLTWH(startCol * cellWidth, startRow * cellHeight,
+            (endCol - startCol + 1) * cellWidth, cellHeight),
+        paint,
+      );
+    } else {
+      // First row from startCol to end of line.
+      canvas.drawRect(
+        Rect.fromLTWH(startCol * cellWidth, startRow * cellHeight,
+            (cols - startCol) * cellWidth, cellHeight),
+        paint,
+      );
+      // Full rows in between.
+      for (var r = startRow + 1; r < endRow; r++) {
+        canvas.drawRect(
+          Rect.fromLTWH(0, r * cellHeight, cols * cellWidth, cellHeight),
+          paint,
+        );
+      }
+      // Last row from start to endCol.
+      canvas.drawRect(
+        Rect.fromLTWH(0, endRow * cellHeight,
+            (endCol + 1) * cellWidth, cellHeight),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SelectionOverlay old) =>
+      selStart != old.selStart || selEnd != old.selEnd;
 }
