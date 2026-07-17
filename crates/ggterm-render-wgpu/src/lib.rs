@@ -561,9 +561,9 @@ impl GlyphonRenderer {
         // This ensures perfect alignment for ASCII, CJK, emoji, and box-drawing chars.
         // Wide chars (CJK/emoji) always start their own run so they don't drift
         // subsequent characters within the same run.
-        let mut buffers: Vec<Buffer> = Vec::new();
+        let mut buffers: Vec<Buffer> = Vec::with_capacity(row_end * 4);
         type AreaSpec = (usize, f32, f32, (u8, u8, u8));
-        let mut text_area_specs: Vec<AreaSpec> = Vec::new();
+        let mut text_area_specs: Vec<AreaSpec> = Vec::with_capacity(row_end * 4);
 
         for row_idx in row_start..row_end {
             // Only allocate highlights Vec when highlights exist.
