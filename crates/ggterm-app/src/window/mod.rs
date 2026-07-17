@@ -1846,6 +1846,30 @@ impl ApplicationHandler for DesktopApp {
                 }
             }
 
+            WindowEvent::ThemeChanged(theme) => {
+                // Follow OS dark/light appearance when the configured theme
+                // is "system" or the default. On macOS this fires when the
+                // user toggles System Settings → Appearance.
+                log::debug!("OS theme changed: {theme:?}");
+                use winit::window::Theme as WinitTheme;
+                let target = match theme {
+                    WinitTheme::Dark => "dark",
+                    WinitTheme::Light => "light",
+                };
+                // Only auto-switch if the current theme is a generic
+                // "dark"/"light" (not a custom named theme like "dracula").
+                let current = &self.last_applied_theme;
+                if (current == "dark" || current == "light") && current != target {
+                    self.last_applied_theme = target.to_string();
+                    for session in &mut self.sessions {
+                        session.app_mut().theme_manager().set_by_name(target);
+                    }
+                    if let Some(ref window) = self.window {
+                        window.request_redraw();
+                    }
+                }
+            }
+
             // Skip GPU rendering when the window is occluded (hidden behind
             // other windows) to save battery and GPU resources.
             WindowEvent::Occluded(occluded) => {
