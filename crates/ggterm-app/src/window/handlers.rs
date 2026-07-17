@@ -2425,13 +2425,19 @@ impl DesktopApp {
                     let gear_x = screen_w - btn_size - right_margin;
                     let plus_x = gear_x - btn_size - btn_gap;
                     let btn_y = (bar_h - btn_size) / 2.0;
-                    // "+" button.
+                    // "+" button → open dropdown menu (same as multi-tab mode).
                     if px >= plus_x
                         && px <= plus_x + btn_size
                         && py >= btn_y
                         && py <= btn_y + btn_size
                     {
-                        self.open_tab();
+                        let menu_w = crate::new_tab_menu::NewTabMenuState::WIDTH;
+                        let mut menu_x = plus_x + btn_size - menu_w;
+                        if menu_x < 4.0 {
+                            menu_x = 4.0;
+                        }
+                        let menu_y = btn_y + btn_size + 2.0;
+                        self.new_tab_menu.toggle(menu_x, menu_y);
                         if let Some(ref window) = self.window {
                             window.request_redraw();
                         }
