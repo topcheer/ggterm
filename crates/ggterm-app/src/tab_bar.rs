@@ -49,6 +49,8 @@ pub struct TabInfo {
     pub dirty: bool,
     /// Whether this tab has a pending bell (BEL received while inactive).
     pub bell: bool,
+    /// Whether a command completed in this background tab.
+    pub cmd_done: bool,
 }
 
 impl TabInfo {
@@ -60,6 +62,7 @@ impl TabInfo {
             active,
             dirty: false,
             bell: false,
+            cmd_done: false,
         }
     }
 
@@ -86,6 +89,8 @@ impl TabInfo {
         let title = self.truncated_title(14);
         let suffix = if self.bell && !self.active {
             " \u{1F514}" // BELL emoji
+        } else if self.cmd_done && !self.active {
+            " \u{2713}" // checkmark — command finished
         } else if self.dirty && !self.active {
             " \u{2022}" // bullet
         } else {
@@ -221,11 +226,17 @@ impl TabBarState {
     /// Rebuild the tab list from session titles and active index.
     /// `bell_flags` indicates which tabs have a pending bell indicator.
     pub fn update(&mut self, titles: &[&str], active: usize) {
-        self.update_with_bells(titles, active, &[]);
+        self.update_with_bells(titles, active, &[], &[]);
     }
 
     /// Rebuild the tab list with bell indicators.
-    pub fn update_with_bells(&mut self, titles: &[&str], active: usize, bell_flags: &[bool]) {
+    pub fn update_with_bells(
+        &mut self,
+        titles: &[&str],
+        active: usize,
+        bell_flags: &[bool],
+        cmd_done_flags: &[bool],
+    ) {
         self.tabs = titles
             .iter()
             .enumerate()
@@ -235,6 +246,7 @@ impl TabBarState {
                 active: i == active,
                 dirty: false,
                 bell: bell_flags.get(i).copied().unwrap_or(false),
+                cmd_done: cmd_done_flags.get(i).copied().unwrap_or(false),
             })
             .collect();
         // Hide tab bar when only 1 tab — saves vertical space for terminal
@@ -649,7 +661,7 @@ mod tests {
     #[test]
     fn t_update_with_bells() {
         let mut state = TabBarState::new();
-        state.update_with_bells(&["a", "b", "c"], 0, &[false, true, false]);
+        state.update_with_bells(&["a", "b", "c"], 0, &[false, true, false], &[]);
         assert!(!state.tabs[0].bell);
         assert!(state.tabs[1].bell);
         assert!(!state.tabs[2].bell);

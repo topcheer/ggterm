@@ -127,6 +127,9 @@ pub struct TabSession {
     /// True when this tab received a bell (BEL) while not active.
     /// Cleared when the user switches to this tab.
     has_bell: bool,
+    /// True when a command finished in this background tab (OSC 133;D received).
+    /// Cleared when the user switches to this tab.
+    command_completed: bool,
     /// When this tab was created (for uptime display).
     created_at: std::time::Instant,
     /// Pinned tabs cannot be closed with Ctrl+W or the × button.
@@ -156,6 +159,7 @@ impl TabSession {
             title,
             has_unread_output: false,
             has_bell: false,
+            command_completed: false,
             created_at: std::time::Instant::now(),
             pinned: false,
         })
@@ -171,6 +175,7 @@ impl TabSession {
             title: "test".to_string(),
             has_unread_output: false,
             has_bell: false,
+            command_completed: false,
             created_at: std::time::Instant::now(),
             pinned: false,
         }
@@ -267,6 +272,16 @@ impl TabSession {
         self.has_bell
     }
 
+    /// Returns true if a command completed in this background tab.
+    pub fn command_completed(&self) -> bool {
+        self.command_completed
+    }
+
+    /// Mark that a command completed in this background tab.
+    pub fn mark_command_completed(&mut self) {
+        self.command_completed = true;
+    }
+
     /// Returns true if this tab is pinned (cannot be closed).
     pub fn is_pinned(&self) -> bool {
         self.pinned
@@ -303,6 +318,7 @@ impl TabSession {
     pub fn clear_unread(&mut self) {
         self.has_unread_output = false;
         self.has_bell = false;
+        self.command_completed = false;
     }
 
     /// Check if this tab has unread output.

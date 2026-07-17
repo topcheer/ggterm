@@ -185,8 +185,13 @@ impl DesktopApp {
                 .collect();
             let title_refs: Vec<&str> = titles.iter().map(|s| s.as_str()).collect();
             let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
+            let cmd_done_flags: Vec<bool> = self
+                .sessions
+                .iter()
+                .map(|s| s.command_completed())
+                .collect();
             self.tab_bar
-                .update_with_bells(&title_refs, self.active, &bell_flags);
+                .update_with_bells(&title_refs, self.active, &bell_flags, &cmd_done_flags);
         }
 
         // ── Tab bar: auto-fill width like browser tabs ─────────────────

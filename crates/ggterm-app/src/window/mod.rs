@@ -1984,13 +1984,15 @@ impl ApplicationHandler for DesktopApp {
         let mut bg_bell = false;
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if i != active {
-                // pump() now limits to MAX_EVENTS_PER_PUMP (64) per call,
-                // but we further reduce background processing by only
-                // pumping once per frame — the remaining events will be
-                // picked up on the next about_to_wait cycle.
+                // Track command running state before pump to detect completion.
+                let was_running = session.is_running();
                 let had_data = session.pump();
                 if had_data {
                     session.mark_unread();
+                }
+                // Detect command completion: was running, now idle.
+                if was_running && !session.is_running() {
+                    session.mark_command_completed();
                 }
                 if session.take_any_bell() {
                     session.mark_bell();
