@@ -2433,9 +2433,16 @@ impl DesktopApp {
                 .terminal_mut()
                 .grid_mut()
                 .scroll_to_grid_row(grid_row);
-            if let Some(ref window) = self.window {
-                window.request_redraw();
-            }
+        } else {
+            // No more prompts below — jump back to bottom.
+            self.active_session_mut()
+                .app_mut()
+                .terminal_mut()
+                .grid_mut()
+                .reset_viewport();
+        }
+        if let Some(ref window) = self.window {
+            window.request_redraw();
         }
     }
 

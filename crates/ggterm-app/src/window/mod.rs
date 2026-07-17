@@ -1099,6 +1099,54 @@ impl DesktopApp {
             }
         }
     }
+
+    /// Send a desktop notification when a long-running command completes
+    /// in a background tab (or active tab when window is unfocused).
+    pub fn maybe_notify_command_complete(&mut self, tab_idx: usize) {
+        let notify = self
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.notify_on_complete)
+            .unwrap_or(false);
+        if !notify {
+            return;
+        }
+        let is_background = tab_idx != self.active;
+        if self.window_focused && !is_background {
+            return;
+        }
+        let min_duration = self
+            .config_mgr
+            .as_ref()
+            .map(|m| m.config().terminal.min_notify_duration_secs)
+            .unwrap_or(3);
+        let elapsed = self.sessions[tab_idx]
+            .app()
+            .terminal()
+            .last_command_duration();
+        let secs = elapsed.map(|d| d.as_secs()).unwrap_or(0);
+        if secs < min_duration {
+            return;
+        }
+        let title = self.sessions[tab_idx].title().to_string();
+        let msg = format!("Command finished in \"{title}\" ({secs}s)");
+        log::info!("{msg}");
+        self.show_toast(msg.clone());
+
+        #[cfg(target_os = "macos")]
+        {
+            let script = format!("display notification \"{msg}\" with title \"GGTerm\"");
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn();
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let _ = std::process::Command::new("notify-send")
+                .args(["GGTerm", &msg])
+                .spawn();
+        }
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1947,6 +1995,10 @@ impl ApplicationHandler for DesktopApp {
         }
 
         // ── Settings window lifecycle ──
+
+        // Check for command completion notifications before settings.
+        // (handled inline in background pump above via maybe_notify)
+
         if self.pending_open_settings {
             self.pending_open_settings = false;
             if self.settings_window.is_none() {
@@ -1982,6 +2034,7 @@ impl ApplicationHandler for DesktopApp {
         // starve the active tab or the event loop.
         let active = self.active;
         let mut bg_bell = false;
+        let mut notify_tabs: Vec<usize> = Vec::new();
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if i != active {
                 // Track command running state before pump to detect completion.
@@ -1990,15 +2043,20 @@ impl ApplicationHandler for DesktopApp {
                 if had_data {
                     session.mark_unread();
                 }
-                // Detect command completion: was running, now idle.
                 if was_running && !session.is_running() {
                     session.mark_command_completed();
+                    notify_tabs.push(i);
                 }
                 if session.take_any_bell() {
                     session.mark_bell();
                     bg_bell = true;
                 }
             }
+        }
+
+        // Fire desktop notifications for completed background commands.
+        for idx in notify_tabs {
+            self.maybe_notify_command_complete(idx);
         }
 
         // Flush terminal protocol responses (DA1, DA2, DSR, DECRQM,
