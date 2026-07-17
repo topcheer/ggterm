@@ -1104,4 +1104,46 @@ mod tests {
         app.inject_bytes(b"\x1b]133;D\x1b\\");
         assert!(!app.terminal().is_command_running());
     }
+
+    #[test]
+    fn t_last_command_duration_after_end() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // No commands yet → None.
+        assert!(app.terminal().last_command_duration().is_none());
+
+        // Command running → still None (not finished yet).
+        app.inject_bytes(b"\x1b]133;A\x1b\\$ cmd\r\n\x1b]133;B\x1b\\");
+        assert!(app.terminal().last_command_duration().is_none());
+
+        // CommandEnd → Some(duration).
+        app.inject_bytes(b"\x1b]133;D\x1b\\");
+        let dur = app.terminal().last_command_duration();
+        assert!(dur.is_some(), "duration should be set after CommandEnd");
+        // Duration should be very small (near-zero for instant command).
+        assert!(
+            dur.unwrap().as_secs() < 1,
+            "instant command should have <1s duration"
+        );
+    }
+
+    #[test]
+    fn t_notify_threshold_zero_duration_safe() {
+        // Verify that an instant command (0s duration) will NOT trigger
+        // notification because 0 < min_notify_duration (default 3).
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Run a command that finishes instantly.
+        app.inject_bytes(b"\x1b]133;A\x1b\\$ true\r\n\x1b]133;B\x1b\\ok\r\n\x1b]133;D\x1b\\");
+
+        let dur = app.terminal().last_command_duration().unwrap_or_default();
+        let secs = dur.as_secs();
+        assert_eq!(secs, 0, "instant command duration should be 0 seconds");
+        assert!(
+            secs < 3,
+            "0s should be below default min_notify_duration of 3"
+        );
+    }
 }
