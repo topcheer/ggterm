@@ -564,18 +564,20 @@ impl GlyphonRenderer {
         let mut buffers: Vec<Buffer> = Vec::with_capacity(row_end * 4);
         type AreaSpec = (usize, f32, f32, (u8, u8, u8));
         let mut text_area_specs: Vec<AreaSpec> = Vec::with_capacity(row_end * 4);
+        // Reuse row_highlights allocation across rows.
+        let mut row_highlights: Vec<(usize, usize)> = Vec::new();
 
         for row_idx in row_start..row_end {
-            // Only allocate highlights Vec when highlights exist.
-            let row_highlights: Vec<(usize, usize)> = if self.highlights.is_empty() {
-                Vec::new()
-            } else {
-                self.highlights
-                    .iter()
-                    .filter(|&&(r, _, _)| r == row_idx)
-                    .map(|&(_, s, e)| (s, e))
-                    .collect()
-            };
+            // Only populate highlights when highlights exist.
+            row_highlights.clear();
+            if !self.highlights.is_empty() {
+                row_highlights.extend(
+                    self.highlights
+                        .iter()
+                        .filter(|&&(r, _, _)| r == row_idx)
+                        .map(|&(_, s, e)| (s, e)),
+                );
+            }
 
             let runs = converter::row_to_runs(
                 grid,

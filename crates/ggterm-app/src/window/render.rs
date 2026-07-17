@@ -161,8 +161,8 @@ impl DesktopApp {
         let cell_w = renderer.cell_width() as f32;
         let screen_w = renderer.resolution_width() as f32;
         let screen_h = renderer.resolution_height() as f32;
-        let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::new();
-        let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::new();
+        let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::with_capacity(32);
+        let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::with_capacity(16);
 
         // Theme background as normalized f32 — used for tab bar/status bar
         // so they match the terminal content instead of hardcoded colors.
@@ -3308,22 +3308,7 @@ impl DesktopApp {
             self.sessions[active].clear_content_dirty();
         }
 
-        // P19-C: Update tab bar display data — prepend pin indicator for pinned tabs.
-        let titles: Vec<String> = self
-            .sessions
-            .iter()
-            .map(|s| {
-                if s.is_pinned() {
-                    format!("\u{1f4cc}{}", s.title())
-                } else {
-                    s.title().to_string()
-                }
-            })
-            .collect();
-        let title_refs: Vec<&str> = titles.iter().map(|s| s.as_str()).collect();
-        let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
-        self.tab_bar
-            .update_with_bells(&title_refs, self.active, &bell_flags);
+        // P19-C: Debug log tab bar state (data already updated before render).
         if self.tab_bar.visible {
             log::debug!("tab_bar: {}", self.tab_bar.format());
         }
