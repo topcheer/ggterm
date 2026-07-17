@@ -5,6 +5,7 @@
 /// the next regular key press, then auto-releases.
 
 library;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -83,6 +84,7 @@ class _KeyboardBarState extends State<KeyboardBar> {
   @override
   void dispose() {
     widget.modifiers.removeListener(_onModChange);
+    _repeatTimer?.cancel();
     super.dispose();
   }
 
@@ -134,6 +136,55 @@ class _KeyboardBarState extends State<KeyboardBar> {
       onTap: () {
         HapticFeedback.selectionClick();
         _sendKey(keyName);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade800,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.grey.shade600, width: 0.5),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey.shade300,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Key button with long-press auto-repeat (for arrow keys, etc).
+  /// Initial press fires immediately. After holding ~400ms, the key
+  /// auto-repeats every ~80ms until release.
+  Timer? _repeatTimer;
+  bool _repeatArmed = false;
+
+  Widget _repeatableKeyButton(String label, String keyName) {
+    return GestureDetector(
+      onTapDown: (_) {
+        HapticFeedback.selectionClick();
+        _sendKey(keyName);
+        _repeatArmed = true;
+        // Start repeat after initial delay.
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (_repeatArmed) {
+            _repeatTimer?.cancel();
+            _repeatTimer = Timer.periodic(
+              const Duration(milliseconds: 80),
+              (_) => _sendKey(keyName),
+            );
+          }
+        });
+      },
+      onTapUp: (_) {
+        _repeatArmed = false;
+        _repeatTimer?.cancel();
+      },
+      onTapCancel: () {
+        _repeatArmed = false;
+        _repeatTimer?.cancel();
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -212,11 +263,11 @@ class _KeyboardBarState extends State<KeyboardBar> {
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Arrow keys
-            _keyButton('←', 'Left'),
-            _keyButton('↓', 'Down'),
-            _keyButton('↑', 'Up'),
-            _keyButton('→', 'Right'),
+            // Arrow keys — support long-press auto-repeat
+            _repeatableKeyButton('←', 'Left'),
+            _repeatableKeyButton('↓', 'Down'),
+            _repeatableKeyButton('↑', 'Up'),
+            _repeatableKeyButton('→', 'Right'),
             // Separator
             Container(
               width: 1,

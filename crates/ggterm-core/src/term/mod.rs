@@ -2301,6 +2301,10 @@ impl Perform for Terminal {
                 }
                 // Reset hyperlinks
                 self.current_hyperlink = None;
+                // Reset cursor style to default (DECSCUSR)
+                self.cursor_style = CursorStyle::default();
+                // Reset modifyOtherKeys mode
+                self.modes.modify_other_keys = 0;
                 // Clear partial UTF-8 sequence and REP tracking
                 self.utf8_buf.clear();
                 self.last_printed_char = None;
@@ -4929,6 +4933,36 @@ mod tests {
         assert!(
             t.modes.cursor_visible,
             "DECSTR should restore cursor_visible=true"
+        );
+    }
+
+    #[test]
+    fn t_decstr_resets_cursor_style() {
+        let mut t = Terminal::new(80, 24);
+        // Set cursor to SteadyBar (vim insert mode)
+        feed(&mut t, b"\x1b[6 q");
+        assert_eq!(t.cursor_style(), CursorStyle::SteadyBar);
+        // DECSTR should reset cursor style to Default
+        feed(&mut t, b"\x1b[!p");
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::Default,
+            "DECSTR should reset cursor_style to Default"
+        );
+    }
+
+    #[test]
+    fn t_decstr_resets_modify_other_keys() {
+        let mut t = Terminal::new(80, 24);
+        // Enable modifyOtherKeys mode 2
+        feed(&mut t, b"\x1b[>4;2h");
+        assert_eq!(t.modify_other_keys(), 2);
+        // DECSTR should reset to 0
+        feed(&mut t, b"\x1b[!p");
+        assert_eq!(
+            t.modify_other_keys(),
+            0,
+            "DECSTR should reset modifyOtherKeys to 0"
         );
     }
 
