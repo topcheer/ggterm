@@ -1191,9 +1191,8 @@ impl DesktopApp {
             while lines.last().is_some_and(|l| l.is_empty()) {
                 lines.pop();
             }
-            while lines.first().is_some_and(|l| l.is_empty()) {
-                lines.remove(0);
-            }
+            let trim_front = lines.iter().position(|l| !l.is_empty()).unwrap_or(0);
+            lines.drain(..trim_front);
             let text = lines.join("\n");
 
             if !text.is_empty() {
@@ -1319,7 +1318,11 @@ impl DesktopApp {
     /// newlines, we strip trailing newlines and show a warning toast to
     /// prevent accidental command execution.
     pub(super) fn paste_from_clipboard(&mut self) {
-        let Some(text) = crate::clipboard::read_clipboard() else {
+        self.paste_from_source(crate::clipboard::PasteSource::Clipboard);
+    }
+
+    pub(super) fn paste_from_source(&mut self, source: crate::clipboard::PasteSource) {
+        let Some(text) = crate::clipboard::read_for_paste(source) else {
             log::debug!("Paste: clipboard empty or unavailable");
             return;
         };

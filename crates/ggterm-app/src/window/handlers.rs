@@ -2717,7 +2717,9 @@ impl DesktopApp {
             }
             (crate::mouse::MouseButton::Middle, ElementState::Pressed) => {
                 // Middle-click on tab closes it (like browsers).
-                // Otherwise, middle-click paste from system clipboard.
+                // Otherwise, middle-click paste:
+                // - Linux X11/Wayland: from PRIMARY selection (standard behavior)
+                // - macOS/Windows: from CLIPBOARD
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
                 let bounds = self.content_area_bounds();
                 if py < bounds.y as f32 && self.tab_bar.visible {
@@ -2740,7 +2742,7 @@ impl DesktopApp {
                         return;
                     }
                 }
-                self.paste_from_clipboard();
+                self.paste_from_source(crate::clipboard::PasteSource::MiddleClick);
             }
             (crate::mouse::MouseButton::Right, ElementState::Pressed) => {
                 // P27-C: Show context menu at mouse position.

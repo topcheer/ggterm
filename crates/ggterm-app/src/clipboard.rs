@@ -55,6 +55,24 @@ fn detect_display_server() -> DisplayServer {
 //  Public API
 // ══════════════════════════════════════════════════════════════════
 
+/// Source for paste operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PasteSource {
+    /// Ctrl+V / menu paste — always uses CLIPBOARD.
+    #[default]
+    Clipboard,
+    /// Middle-click paste — uses PRIMARY on Linux, CLIPBOARD elsewhere.
+    MiddleClick,
+}
+
+/// Read text appropriate for the given paste source.
+pub fn read_for_paste(source: PasteSource) -> Option<String> {
+    match source {
+        PasteSource::Clipboard => read_clipboard(),
+        PasteSource::MiddleClick => read_primary_selection().or_else(read_clipboard),
+    }
+}
+
 /// Read text from the system clipboard.
 ///
 /// Returns `None` if the clipboard is empty or unavailable.
@@ -114,6 +132,37 @@ pub fn bracket_paste(text: &str, bracketed: bool) -> Vec<u8> {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  Primary selection (X11 / Wayland middle-click paste)
+// ══════════════════════════════════════════════════════════════════
+
+/// Read text from the PRIMARY selection (X11 middle-click buffer).
+///
+/// On Linux, text selected with the mouse is placed in the PRIMARY
+/// selection, and middle-click pastes from it. This is separate from
+/// the CLIPBOARD selection (Ctrl+C / Ctrl+V).
+///
+/// Returns `None` on non-Linux platforms or if the PRIMARY selection
+/// is empty / unavailable.
+pub fn read_primary_selection() -> Option<String> {
+    match detect_display_server() {
+        DisplayServer::X11 => read_x11_primary(),
+        DisplayServer::Wayland => read_wayland_primary(),
+        _ => None,
+    }
+}
+
+/// Write text to the PRIMARY selection (for copy-on-select on Linux).
+///
+/// On non-Linux platforms this writes to the regular clipboard instead.
+pub fn write_primary_selection(text: &str) -> bool {
+    match detect_display_server() {
+        DisplayServer::X11 => write_x11_primary(text),
+        DisplayServer::Wayland => write_wayland_primary(text),
+        _ => write_clipboard(text),
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  Platform implementations
 // ══════════════════════════════════════════════════════════════════
 
@@ -156,7 +205,11 @@ fn read_windows() -> Option<String> {
     match result {
         Ok(output) if output.status.success() => {
             let text = String::from_utf8_lossy(&output.stdout).to_string();
-            let text = text.trim_end_matches('\r').to_string();
+            // PowerShell Get-Clipboard returns CRLF line endings on Windows.
+            // Normalize to LF so pasted text is consistent across platforms.
+            let text = text.replace("\r\n", "\n");
+            // Also strip any lone \r (rare, but possible from legacy apps).
+            let text = text.trim_end_matches('\n').to_string();
             if text.is_empty() { None } else { Some(text) }
         }
         _ => None,
@@ -273,6 +326,104 @@ fn write_x11(text: &str) -> bool {
     result.is_ok()
 }
 
+// ── Linux X11 PRIMARY selection ───────────────────────────────────
+
+fn read_x11_primary() -> Option<String> {
+    use std::process::Command;
+
+    // Try xclip with PRIMARY selection
+    let result = Command::new("xclip")
+        .args(["-selection", "primary", "-o"])
+        .output();
+    if let Ok(output) = result
+        && output.status.success()
+    {
+        let text = String::from_utf8_lossy(&output.stdout).to_string();
+        if !text.is_empty() {
+            return Some(text);
+        }
+    }
+
+    // Fall back to xsel
+    let result = Command::new("xsel")
+        .args(["--primary", "--output"])
+        .output();
+    match result {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout).to_string();
+            if text.is_empty() { None } else { Some(text) }
+        }
+        _ => None,
+    }
+}
+
+fn write_x11_primary(text: &str) -> bool {
+    use std::process::Command;
+
+    // Try xclip first
+    let result = Command::new("xclip")
+        .args(["-selection", "primary"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            child.wait()
+        });
+    if result.is_ok() {
+        return true;
+    }
+
+    // Fall back to xsel
+    let result = Command::new("xsel")
+        .args(["--primary", "--input"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            child.wait()
+        });
+    result.is_ok()
+}
+
+// ── Linux Wayland PRIMARY selection ───────────────────────────────
+
+fn read_wayland_primary() -> Option<String> {
+    use std::process::Command;
+    // wl-paste --primary
+    let result = Command::new("wl-paste")
+        .args(["--primary", "--no-newline"])
+        .output();
+    match result {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout).to_string();
+            if text.is_empty() { None } else { Some(text) }
+        }
+        _ => None,
+    }
+}
+
+fn write_wayland_primary(text: &str) -> bool {
+    use std::process::Command;
+    let result = Command::new("wl-copy")
+        .arg("--primary")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            child.wait()
+        });
+    result.is_ok()
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  Tests
 // ══════════════════════════════════════════════════════════════════
@@ -336,5 +487,32 @@ mod tests {
     fn test_set_clipboard_bytes_invalid_utf8() {
         // Should not panic on invalid UTF-8
         set_clipboard_bytes(&[0xff, 0xfe, 0xfd]);
+    }
+
+    #[test]
+    fn test_read_primary_does_not_panic() {
+        let _ = read_primary_selection();
+    }
+
+    #[test]
+    fn test_write_primary_does_not_panic() {
+        let _ = write_primary_selection("test");
+    }
+
+    #[test]
+    fn test_read_for_paste_clipboard() {
+        // Clipboard source should always return Some or None without panic.
+        let _ = read_for_paste(PasteSource::Clipboard);
+    }
+
+    #[test]
+    fn test_read_for_paste_middle_click() {
+        // MiddleClick falls back to Clipboard on non-Linux.
+        let _ = read_for_paste(PasteSource::MiddleClick);
+    }
+
+    #[test]
+    fn test_paste_source_default() {
+        assert_eq!(PasteSource::default(), PasteSource::Clipboard);
     }
 }
