@@ -132,7 +132,7 @@ impl SingleTabButtonLayout {
         let btn_size = (tab_h * 0.5).max(20.0);
         let btn_gap = 6.0_f32;
         #[cfg(not(target_os = "macos"))]
-        let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0; // window controls
+        let right_margin = crate::titlebar::CAPTION_BTN_W * 3.0; // 3 caption buttons
         #[cfg(target_os = "macos")]
         let right_margin = 8.0;
         let gear_x = screen_w - btn_size - right_margin;

@@ -2456,8 +2456,8 @@ impl DesktopApp {
                     #[cfg(not(target_os = "macos"))]
                     {
                         let ctrl_layout =
-                            crate::titlebar::x11::compute_layout(screen_w, layout.bar_h);
-                        if let Some(btn) = crate::titlebar::x11::hit_test(&ctrl_layout, px, py) {
+                            crate::titlebar::compute_caption_layout(screen_w, layout.bar_h);
+                        if let Some(btn) = crate::titlebar::caption_hit_test(&ctrl_layout, px, py) {
                             use crate::titlebar::WindowControlButton;
                             match btn {
                                 WindowControlButton::Close => {
@@ -2552,11 +2552,12 @@ impl DesktopApp {
                         // Linux/Windows: window control buttons (minimize/maximize/close).
                         #[cfg(not(target_os = "macos"))]
                         {
-                            let ctrl_layout = crate::titlebar::x11::compute_layout(
+                            let ctrl_layout = crate::titlebar::compute_caption_layout(
                                 self.tab_layout_width(),
-                                self.tab_font_size(),
+                                (self.tab_font_size() + 26.0).max(48.0) + 4.0,
                             );
-                            if let Some(btn) = crate::titlebar::x11::hit_test(&ctrl_layout, px, py)
+                            if let Some(btn) =
+                                crate::titlebar::caption_hit_test(&ctrl_layout, px, py)
                             {
                                 use crate::titlebar::WindowControlButton;
                                 match btn {

@@ -1,9 +1,8 @@
-//! macOS custom titlebar: transparent titlebar with traffic light buttons.
+//! Platform titlebar support.
 //!
-//! Instead of removing decorations (which kills the traffic lights),
-//! we keep decorations and make the titlebar transparent + full-size content.
-//! This lets the tab bar extend underneath the titlebar while keeping
-//! the close/minimize/zoom buttons fully functional.
+//! - **macOS**: Transparent titlebar with preserved traffic light buttons.
+//! - **Linux/Windows**: Custom-drawn caption buttons (minimize/maximize/close)
+//!   that match each platform's conventions.
 
 #[cfg(target_os = "macos")]
 pub mod macos {
@@ -15,10 +14,6 @@ pub mod macos {
     const NS_FULL_SIZE_CONTENT_VIEW_MASK: u64 = 1 << 15;
 
     /// Make the window's titlebar transparent and extend content underneath.
-    ///
-    /// This is how Warp, WezTerm, and VS Code achieve unified titlebars
-    /// on macOS: the native titlebar becomes invisible, content fills the
-    /// entire window, and traffic light buttons float on top.
     pub fn make_titlebar_transparent(window: &winit::window::Window) {
         let Ok(handle) = window.window_handle() else {
             log::warn!("Failed to get window handle for titlebar FFI");
@@ -31,31 +26,18 @@ pub mod macos {
         let ns_view = appkit.ns_view.as_ptr() as *mut AnyObject;
 
         unsafe {
-            // Get the NSWindow from the NSView.
             let win: *mut AnyObject = msg_send![ns_view, window];
             if win.is_null() {
                 log::warn!("NSWindow is null in make_titlebar_transparent");
                 return;
             }
 
-            // 1. Add NSFullSizeContentViewWindowMask to styleMask.
-            //    This makes the content view extend underneath the titlebar.
             let current_mask: u64 = msg_send![win, styleMask];
             let new_mask = current_mask | NS_FULL_SIZE_CONTENT_VIEW_MASK;
             let _: () = msg_send![win, setStyleMask: new_mask];
-
-            // 2. Make the titlebar transparent (not hidden — buttons stay).
             let _: () = msg_send![win, setTitlebarAppearsTransparent: true];
-
-            // 3. Hide the title text.
-            let _: () = msg_send![win, setTitleVisibility: 1i64]; // NSWindowTitleHidden = 1
-
-            // 4. Make the window non-opaque so our background shows through.
+            let _: () = msg_send![win, setTitleVisibility: 1i64];
             let _: () = msg_send![win, setOpaque: false];
-
-            // 5. Set the background color to clear (NSColor clearColor).
-            //    NSColor clearColor = [NSColor colorWithDeviceWhite:0.0 alpha:0.0]
-            //    We use the simpler: [NSColor clearColor]
             if let Some(cls) = objc2::runtime::AnyClass::get(c"NSColor") {
                 let clear: *mut AnyObject = msg_send![cls, clearColor];
                 if !clear.is_null() {
@@ -68,7 +50,6 @@ pub mod macos {
     }
 
     /// Width reserved for traffic light buttons on the left side.
-    /// Modern macOS (Big Sur+) uses ~76px for buttons + ~16px padding gap.
     pub const TRAFFIC_LIGHT_WIDTH: f32 = 92.0;
 }
 
@@ -81,6 +62,10 @@ pub const TRAFFIC_LIGHT_WIDTH: f32 = 0.0;
 #[cfg(not(target_os = "macos"))]
 pub fn install_traffic_lights(_window: &winit::window::Window) {}
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Linux / Windows caption buttons
+// ═══════════════════════════════════════════════════════════════════════════
+
 /// Window control buttons for Linux/Windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowControlButton {
@@ -89,52 +74,154 @@ pub enum WindowControlButton {
     Close,
 }
 
-#[cfg(not(target_os = "macos"))]
-pub mod x11 {
-    use super::WindowControlButton;
+/// Caption button layout for Linux/Windows.
+///
+/// On Windows, caption buttons follow the standard convention:
+/// - Full-height buttons (no gap between them)
+/// - Order left-to-right: Minimize, Maximize, Close
+/// - Close button is rightmost, touching the right edge
+/// - Each button is ~46px wide (CSS standard)
+///
+/// On Linux/X11, a similar layout is used for consistency.
+#[derive(Debug, Clone, Copy)]
+pub struct CaptionButton {
+    /// X position of the button's left edge.
+    pub x: f32,
+    /// Y position of the button's top edge.
+    pub y: f32,
+    /// Button width.
+    pub w: f32,
+    /// Button height.
+    pub h: f32,
+}
 
-    pub struct ControlButtonLayout {
-        pub minimize: (f32, f32, f32),
-        pub maximize: (f32, f32, f32),
-        pub close: (f32, f32, f32),
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct CaptionLayout {
+    pub minimize: CaptionButton,
+    pub maximize: CaptionButton,
+    pub close: CaptionButton,
+}
 
-    pub const BTN_SIZE: f32 = 14.0;
-    pub const BTN_GAP: f32 = 8.0;
+/// Standard caption button width on Windows.
+pub const CAPTION_BTN_W: f32 = 46.0;
 
-    pub fn compute_layout(right_edge: f32, bar_height: f32) -> ControlButtonLayout {
-        let total_w = BTN_SIZE * 3.0 + BTN_GAP * 2.0;
-        let start_x = right_edge - total_w - 12.0;
-        let y = (bar_height - BTN_SIZE) / 2.0;
+/// Compute caption button layout.
+///
+/// Buttons are positioned flush against the right edge of the window,
+/// stacked left-to-right: Minimize → Maximize → Close.
+/// All three buttons share the same height (full bar height).
+pub fn compute_caption_layout(screen_w: f32, bar_h: f32) -> CaptionLayout {
+    let btn_w = CAPTION_BTN_W;
+    let close_x = screen_w - btn_w;
+    let maximize_x = close_x - btn_w;
+    let minimize_x = maximize_x - btn_w;
 
-        ControlButtonLayout {
-            close: (start_x, y, BTN_SIZE),
-            minimize: (start_x + BTN_SIZE + BTN_GAP, y, BTN_SIZE),
-            maximize: (start_x + (BTN_SIZE + BTN_GAP) * 2.0, y, BTN_SIZE),
-        }
-    }
-
-    pub fn hit_test(layout: &ControlButtonLayout, px: f32, py: f32) -> Option<WindowControlButton> {
-        for (btn, &(x, y, size)) in [
-            (WindowControlButton::Close, &layout.close),
-            (WindowControlButton::Minimize, &layout.minimize),
-            (WindowControlButton::Maximize, &layout.maximize),
-        ] {
-            if px >= x && px <= x + size && py >= y && py <= y + size {
-                return Some(btn);
-            }
-        }
-        None
+    CaptionLayout {
+        minimize: CaptionButton {
+            x: minimize_x,
+            y: 0.0,
+            w: btn_w,
+            h: bar_h,
+        },
+        maximize: CaptionButton {
+            x: maximize_x,
+            y: 0.0,
+            w: btn_w,
+            h: bar_h,
+        },
+        close: CaptionButton {
+            x: close_x,
+            y: 0.0,
+            w: btn_w,
+            h: bar_h,
+        },
     }
 }
 
+/// Hit-test a pixel position against caption buttons.
+pub fn caption_hit_test(layout: &CaptionLayout, px: f32, py: f32) -> Option<WindowControlButton> {
+    for (btn, b) in [
+        (WindowControlButton::Minimize, &layout.minimize),
+        (WindowControlButton::Maximize, &layout.maximize),
+        (WindowControlButton::Close, &layout.close),
+    ] {
+        if px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h {
+            return Some(btn);
+        }
+    }
+    None
+}
+
+/// Check if pixel is inside ANY caption button area.
+pub fn is_in_caption_area(layout: &CaptionLayout, px: f32, py: f32) -> bool {
+    px >= layout.minimize.x && py <= layout.close.h
+}
+
+// ── Legacy x11 module removed; all callers now use compute_caption_layout ─
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_traffic_light_width() {
         #[cfg(target_os = "macos")]
-        assert_eq!(super::TRAFFIC_LIGHT_WIDTH, 92.0);
+        assert_eq!(TRAFFIC_LIGHT_WIDTH, 92.0);
         #[cfg(not(target_os = "macos"))]
-        assert_eq!(super::TRAFFIC_LIGHT_WIDTH, 0.0);
+        assert_eq!(TRAFFIC_LIGHT_WIDTH, 0.0);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn test_caption_layout_positions() {
+        let layout = compute_caption_layout(1000.0, 52.0);
+        // Close is rightmost, touching right edge
+        assert!((layout.close.x - (1000.0 - 46.0)).abs() < 0.01);
+        assert!((layout.close.w - 46.0).abs() < 0.01);
+        // Maximize is to the left of close
+        assert!((layout.maximize.x - (1000.0 - 92.0)).abs() < 0.01);
+        // Minimize is to the left of maximize
+        assert!((layout.minimize.x - (1000.0 - 138.0)).abs() < 0.01);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn test_caption_hit_test() {
+        let layout = compute_caption_layout(1000.0, 52.0);
+        // Close button center
+        assert_eq!(
+            caption_hit_test(&layout, 977.0, 26.0),
+            Some(WindowControlButton::Close)
+        );
+        // Maximize button center
+        assert_eq!(
+            caption_hit_test(&layout, 931.0, 26.0),
+            Some(WindowControlButton::Maximize)
+        );
+        // Minimize button center
+        assert_eq!(
+            caption_hit_test(&layout, 885.0, 26.0),
+            Some(WindowControlButton::Minimize)
+        );
+        // Outside all buttons
+        assert_eq!(caption_hit_test(&layout, 800.0, 26.0), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn test_caption_is_in_area() {
+        let layout = compute_caption_layout(1000.0, 52.0);
+        assert!(is_in_caption_area(&layout, 977.0, 10.0));
+        assert!(!is_in_caption_area(&layout, 800.0, 10.0));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn test_caption_full_bar_height() {
+        let layout = compute_caption_layout(800.0, 48.0);
+        // All buttons should span the full bar height
+        assert!((layout.minimize.h - 48.0).abs() < 0.01);
+        assert!((layout.maximize.h - 48.0).abs() < 0.01);
+        assert!((layout.close.h - 48.0).abs() < 0.01);
     }
 }
