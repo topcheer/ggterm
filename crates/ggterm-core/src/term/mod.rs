@@ -1273,10 +1273,7 @@ impl Terminal {
         let (top, bottom) = self.grid.scroll_region();
         // Only scroll when cursor is at the bottom of the scroll region.
         // If cursor is below the scroll region, just advance the row.
-        if self.cursor.y >= top
-            && self.cursor.y < bottom
-            && self.cursor.y >= bottom.saturating_sub(1)
-        {
+        if self.cursor.y >= top && self.cursor.y == bottom.saturating_sub(1) {
             self.grid.scroll_up(1);
         } else {
             self.cursor.y = (self.cursor.y + 1).min(self.grid.height().saturating_sub(1));
@@ -1754,6 +1751,7 @@ impl Perform for Terminal {
     }
 
     fn csi(&mut self, intermediates: &[u8], params: &[u16], final_byte: u8) {
+        self.flush_utf8();
         let is_private = intermediates.contains(&b'?');
         match final_byte {
             b'A' => {
@@ -2506,6 +2504,7 @@ impl Perform for Terminal {
     }
 
     fn esc(&mut self, intermediates: &[u8], final_byte: u8) {
+        self.flush_utf8();
         // SCS: ESC ( <final> — designate G0 character set
         if intermediates.contains(&b'(') {
             match final_byte {
@@ -2617,6 +2616,7 @@ impl Perform for Terminal {
     }
 
     fn osc(&mut self, data: &[u8]) {
+        self.flush_utf8();
         let s = String::from_utf8_lossy(data);
         let mut parts = s.splitn(2, ';');
         let cmd = parts.next().and_then(|s| s.parse::<u16>().ok());

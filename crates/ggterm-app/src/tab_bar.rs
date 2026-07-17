@@ -288,7 +288,7 @@ impl TabBarState {
         let button_size = (tab_height * 0.65).max(24.0);
         let buttons_width = button_size * 2.0   // + button + gear button
             + TAB_GAP * 3.0;
-        let available_width = surface_width - left_margin - right_margin - buttons_width;
+        let available_width = (surface_width - left_margin - right_margin - buttons_width).max(0.0);
         let tab_count = self.tabs.len() as f32;
 
         // Each tab gets an equal share of the full available width.
