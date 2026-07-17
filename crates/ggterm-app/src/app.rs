@@ -1003,4 +1003,105 @@ mod tests {
         assert_eq!(grid.cell(1, 1).unwrap().ch, 'i');
         assert_eq!(grid.cell(4, 1).unwrap().ch, '2');
     }
+
+    #[test]
+    fn t_osc133_marks_tracked() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Simulate shell integration: PromptStart, command, CommandStart, output, CommandEnd.
+        app.inject_bytes(b"\x1b]133;A\x1b\\"); // PromptStart
+        app.inject_bytes(b"$ ls\r\n");
+        app.inject_bytes(b"\x1b]133;B\x1b\\"); // CommandStart
+        app.inject_bytes(b"file1 file2\r\n");
+        app.inject_bytes(b"\x1b]133;D\x1b\\"); // CommandEnd
+
+        let marks = app.terminal().command_marks();
+        assert!(
+            marks.len() >= 3,
+            "should have at least 3 marks, got {}",
+            marks.len()
+        );
+
+        // First mark should be PromptStart.
+        use ggterm_core::CommandMarkKind;
+        assert_eq!(marks[0].kind, CommandMarkKind::PromptStart);
+    }
+
+    #[test]
+    fn t_osc133_prompt_marks_multiple() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // First command block.
+        app.inject_bytes(b"\x1b]133;A\x1b\\$ echo hi\r\n\x1b]133;B\x1b\\hi\r\n\x1b]133;D\x1b\\");
+        // Second command block.
+        app.inject_bytes(b"\x1b]133;A\x1b\\$ echo bye\r\n\x1b]133;B\x1b\\bye\r\n\x1b]133;D\x1b\\");
+
+        let marks = app.terminal().command_marks();
+        use ggterm_core::CommandMarkKind;
+
+        let prompt_starts: Vec<_> = marks
+            .iter()
+            .filter(|m| m.kind == CommandMarkKind::PromptStart)
+            .collect();
+        assert_eq!(prompt_starts.len(), 2, "should have 2 PromptStart marks");
+
+        // Second prompt should be on a later row than the first.
+        assert!(
+            prompt_starts[1].row > prompt_starts[0].row,
+            "second prompt row {} should be > first row {}",
+            prompt_starts[1].row,
+            prompt_starts[0].row
+        );
+    }
+
+    #[test]
+    fn t_scroll_to_grid_row_centers_viewport() {
+        let (mut app, _tx) = App::new(10, 5); // small grid for easy math
+        app.start();
+
+        // Fill 20 lines to create scrollback.
+        for i in 0..20 {
+            app.inject_bytes(format!("L{i}\r\n").as_bytes());
+        }
+
+        let grid = app.terminal().grid();
+        // After 20 lines in a 5-row grid, we have scrollback.
+        assert!(grid.scrollback_len() > 0, "should have scrollback");
+
+        // Scroll up 3 lines.
+        let mut grid = app.terminal_mut().grid_mut();
+        grid.scroll_up_viewport(3);
+        assert_eq!(grid.display_offset(), 3);
+
+        // scroll_to_grid_row for row 0 (top) should center it.
+        grid.scroll_to_grid_row(0);
+        // After centering, display_offset should bring row 0 into view center.
+        // display_offset = scrollback_len + height - (scrollback_len + 0 + height/2)
+        //                = height - height/2 = height/2
+        let scrollback_len = grid.scrollback_len();
+        assert_eq!(
+            grid.display_offset(),
+            scrollback_len + 5 - (scrollback_len + 5 / 2),
+            "scroll_to_grid_row(0) should center row 0"
+        );
+    }
+
+    #[test]
+    fn t_is_command_running_after_osc133() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+
+        // Initially not running.
+        assert!(!app.terminal().is_command_running());
+
+        // PromptStart + CommandStart → running.
+        app.inject_bytes(b"\x1b]133;A\x1b\\$ sleep 1\r\n\x1b]133;B\x1b\\");
+        assert!(app.terminal().is_command_running());
+
+        // CommandEnd → not running.
+        app.inject_bytes(b"\x1b]133;D\x1b\\");
+        assert!(!app.terminal().is_command_running());
+    }
 }
