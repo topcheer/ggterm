@@ -529,8 +529,11 @@ fn percent_decode(input: &str) -> String {
             let hi = chars.next();
             let lo = chars.next();
             if let (Some(hi), Some(lo)) = (hi, lo) {
-                if let Ok(byte) = u8::from_str_radix(&format!("{hi}{lo}"), 16) {
-                    bytes.push(byte);
+                // Parse hex directly without format! allocation.
+                let hi_val = hi.to_digit(16);
+                let lo_val = lo.to_digit(16);
+                if let (Some(h), Some(l)) = (hi_val, lo_val) {
+                    bytes.push((h * 16 + l) as u8);
                     continue;
                 }
                 // Failed decode — keep the original.
