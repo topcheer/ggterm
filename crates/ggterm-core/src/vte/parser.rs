@@ -97,10 +97,12 @@ impl Parser {
             State::DcsEsc => {
                 // After ESC in DCS context: ST = ESC \
                 if byte != b'\\' {
-                    // Not ST — could be another escape, but we just
-                    // go back to consuming DCS data or ground.
+                    // Not ST — push the byte into DCS buffer and resume string.
                     if byte == 0x1b {
                         self.state = State::DcsEsc;
+                    } else if byte >= 0x20 && self.string_buffer.len() < 1048576 {
+                        self.string_buffer.push(byte);
+                        self.state = State::DcsString;
                     } else {
                         self.state = State::DcsString;
                     }

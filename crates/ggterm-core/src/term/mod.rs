@@ -1946,11 +1946,12 @@ impl Perform for Terminal {
                     self.set_cursor(0, 0);
                 } else {
                     let top = Self::param(params, 0, 1) as usize;
-                    let bottom = params
-                        .get(1)
-                        .copied()
-                        .unwrap_or(self.grid.height() as u16)
-                        .max(1) as usize;
+                    let bottom_param = params.get(1).copied().unwrap_or(0);
+                    let bottom = if bottom_param == 0 {
+                        self.grid.height()
+                    } else {
+                        bottom_param as usize
+                    };
                     if top < bottom && bottom <= self.grid.height() {
                         self.grid.set_scroll_region(top.saturating_sub(1), bottom);
                     }
@@ -2477,26 +2478,24 @@ impl Perform for Terminal {
             // styles. If there are non-colon params mixed in (e.g. 4:3;31),
             // fall through to csi() so the regular SGR handler processes them.
             if handled {
-                // Check if any params were NOT consumed by colon pairs.
-                let mut all_colon = true;
+                // Build filtered params list — exclude colon-derived pairs.
+                let mut filtered: Vec<u16> = Vec::new();
                 let mut j = 0;
                 while j < params.len() {
                     let next_is_colon = subs.get(j + 1).copied().unwrap_or(0) != 0;
-                    let curr_is_colon = subs.get(j).copied().unwrap_or(0) != 0;
                     if next_is_colon {
-                        j += 2;
-                    } else if curr_is_colon {
-                        j += 1; // skip colon-derived value
+                        j += 2; // skip the pair (e.g. 4:3)
                     } else {
-                        // This param is a regular SGR value (e.g. 31=red).
-                        all_colon = false;
-                        break;
+                        filtered.push(params[j]);
+                        j += 1;
                     }
                 }
-                if all_colon {
-                    return;
+                if filtered.is_empty() {
+                    return; // all params were colon-derived
                 }
-                // Fall through to csi() to process remaining regular SGR params.
+                // Process remaining regular SGR params with the filtered list.
+                self.sgr(&filtered);
+                return;
             }
         }
         // Default: delegate to regular csi()
