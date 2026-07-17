@@ -1674,7 +1674,13 @@ class _TerminalScreenState extends State<TerminalScreen>
                             theme: theme,
                             cellWidth: _cellWidth,
                             cellHeight: _cellHeight,
-                            cursorVisible: _screen.cursorVisible && _cursorVisible,
+                            // Steady cursor styles (2,4,6) don't blink — always visible.
+                            // Blink styles (0,1,3,5) toggle with _cursorVisible.
+                            cursorVisible: _screen.cursorVisible &&
+                                (_screen.cursorStyle == 2 ||
+                                 _screen.cursorStyle == 4 ||
+                                 _screen.cursorStyle == 6 ||
+                                 _cursorVisible),
                             blinkVisible: _cursorVisible, // blink text (SGR 5) follows cursor blink phase
                             cursorStyle: _screen.cursorStyle,
                           ),
