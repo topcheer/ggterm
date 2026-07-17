@@ -1554,11 +1554,16 @@ impl DesktopApp {
                 let total_lines = scrollback_len + grid.height();
                 // Use float division so small scroll offsets still show a percentage.
                 let pct = ((offset as f64 * 100.0) / total_lines.max(1) as f64) as u32;
-                let pill_w = if pct > 0 {
-                    cell_w * 5.0 // "↓ 42%" needs more room
+                // When scrolled, always show position info — never "Bottom"
+                // (the indicator only appears when is_scrolled is true).
+                let label = if pct > 0 {
+                    format!("\u{2193} {}%", pct)
                 } else {
-                    cell_w * 3.5
+                    format!("\u{2193} {}L", offset)
                 };
+                // Pill width adapts to label length.
+                let label_len = label.chars().count().max(3) as f32;
+                let pill_w = cell_w * (label_len + 1.5);
                 let indicator_x =
                     content_bounds.x as f32 + content_bounds.width as f32 - pill_w - 4.0;
                 // Pill background.
@@ -1571,12 +1576,8 @@ impl DesktopApp {
                     radius: 4.0,
                     stroke_width: 0.0,
                 });
-                // Show "↓ N%" when scrolled up, "↓ Bottom" when at bottom.
-                let label = if pct > 0 {
-                    format!("\u{2193} {}%", pct)
-                } else {
-                    "\u{2193} Bottom".to_string()
-                };
+                // Show scroll position: percentage for large offsets,
+                // line count for small offsets.
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: label,
                     left: indicator_x + cell_w * 0.3,
