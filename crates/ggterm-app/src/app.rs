@@ -406,19 +406,29 @@ impl App {
         let mut had_data = false;
         // Limit events per pump to avoid blocking the event loop when a
         // background tab accumulated massive output (e.g. `cat` large file).
-        // Each event carries up to 16KB of PTY data, so 64 events ≈ 1MB max
-        // per frame — enough for smooth scrolling without starving UI.
-        const MAX_EVENTS_PER_PUMP: usize = 64;
-        let mut count = 0;
-        while count < MAX_EVENTS_PER_PUMP
-            && let Ok(event) = self.event_rx.try_recv()
-        {
-            self.handle_event(event);
-            had_data = true;
-            count += 1;
+        // Each event carries up to 16KB of PTY data.
+        //
+        // Two-phase approach: process 64 events first, then check if more
+        // are available. If the backlog is large, process another batch.
+        // This prevents unbounded memory growth while keeping UI responsive.
+        const BATCH_SIZE: usize = 64;
+        let mut total = 0;
+        loop {
+            let mut count = 0;
+            while count < BATCH_SIZE
+                && let Ok(event) = self.event_rx.try_recv()
+            {
+                self.handle_event(event);
+                had_data = true;
+                count += 1;
+            }
+            total += count;
+            // Stop if batch wasn't full (channel drained) or we've processed
+            // enough this frame (4 batches = 256 events ≈ 4MB).
+            if count < BATCH_SIZE || total >= BATCH_SIZE * 4 {
+                break;
+            }
         }
-        // Single render after all events are processed — avoids redundant
-        // renders when multiple PtyBytes events arrive in the same frame.
         if had_data {
             self.render();
         }
