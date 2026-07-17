@@ -57,6 +57,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   bool _sizeInitialized = false;
   int _lastRequestedCols = 0;
   int _lastRequestedRows = 0;
+  bool _sessionDestroyed = false;
   bool _isPaused = false; // true when app is in background
   DateTime? _connectedAt; // when the session connected (for duration display)
   TerminalTheme _currentTheme = darkTheme;
@@ -360,6 +361,12 @@ class _TerminalScreenState extends State<TerminalScreen>
 
   @override
   void dispose() {
+    // Ensure session is cleaned up even if disposed by widget tree rebuild
+    // rather than back-press or disconnect menu.
+    if (!_sessionDestroyed) {
+      widget.sessionManager.destroySession(widget.sessionId);
+      _sessionDestroyed = true;
+    }
     WidgetsBinding.instance.removeObserver(this);
     WakelockPlus.disable();
     _renderTimer?.cancel();
@@ -1298,6 +1305,7 @@ class _TerminalScreenState extends State<TerminalScreen>
         }
         // Otherwise, disconnect and go back.
         widget.sessionManager.destroySession(widget.sessionId);
+        _sessionDestroyed = true;
         Navigator.of(context).pop();
       },
       child: Focus(
@@ -1492,6 +1500,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                   break;
                 case 'disconnect':
                   widget.sessionManager.destroySession(widget.sessionId);
+                  _sessionDestroyed = true;
                   if (mounted) Navigator.of(context).pop();
                   break;
               }
