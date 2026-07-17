@@ -637,15 +637,16 @@ impl GlyphonRenderer {
         }
 
         // P19-G: Append overlay text (tab bar, settings, about) as extra buffers.
+        // Move overlay texts out (avoid per-frame .clone()).
         let overlay_texts = std::mem::take(&mut self.overlay_text);
-        for ot in &overlay_texts {
+        for ot in overlay_texts {
             let attrs = Attrs::new()
                 .family(Family::Name(&self.font_family))
                 .color(GlyphonColor::rgb(ot.color.0, ot.color.1, ot.color.2));
             let attrs_list = AttrsList::new(&attrs);
             let mut buffer = Buffer::new(&mut self.font_system, metrics);
             buffer.lines = vec![BufferLine::new(
-                ot.text.clone(),
+                ot.text,
                 LineEnding::None,
                 attrs_list,
                 Shaping::Advanced,
@@ -655,7 +656,7 @@ impl GlyphonRenderer {
             buffers.push(buffer);
             text_area_specs.push((buf_idx, ot.left, ot.top, ot.color));
         }
-        self.overlay_text = overlay_texts; // restore for next frame
+        // overlay_text will be repopulated by the next render_frame() call.
 
         // Build TextArea references after all buffers are created.
         let text_areas: Vec<TextArea> = text_area_specs
@@ -1282,7 +1283,7 @@ impl GlyphonRenderer {
             #[allow(clippy::type_complexity)]
             let mut text_area_specs: Vec<(usize, f32, f32, (u8, u8, u8), f32)> = Vec::new();
 
-            for ot in &overlay_texts {
+            for ot in overlay_texts {
                 let scale = ot.scale.max(0.1); // clamp to prevent 0-font panic
                 let scaled_font = self.font_size * scale;
                 let metrics = Metrics::new(scaled_font, scaled_font);
@@ -1292,7 +1293,7 @@ impl GlyphonRenderer {
                 let attrs_list = AttrsList::new(&attrs);
                 let mut buffer = Buffer::new(&mut self.font_system, metrics);
                 buffer.lines = vec![BufferLine::new(
-                    ot.text.clone(),
+                    ot.text,
                     LineEnding::None,
                     attrs_list,
                     Shaping::Advanced,
@@ -1333,7 +1334,6 @@ impl GlyphonRenderer {
             self.text_renderer
                 .render(&self.atlas, &self.viewport, render_pass)?;
         }
-        self.overlay_text = overlay_texts;
         Ok(())
     }
 }
