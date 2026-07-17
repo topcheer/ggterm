@@ -220,10 +220,11 @@ impl SearchState {
 
     /// Find all occurrences of the query in a single row's text.
     fn find_in_row(&mut self, text: &str, abs_row: usize, query_lower: &str) {
+        // Use Cow to avoid allocation in the case-sensitive path.
         let search_text = if self.case_insensitive {
-            text.to_lowercase()
+            std::borrow::Cow::Owned(text.to_lowercase())
         } else {
-            text.to_string()
+            std::borrow::Cow::Borrowed(text)
         };
 
         let mut start = 0;
