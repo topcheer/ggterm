@@ -357,6 +357,33 @@ pub unsafe extern "C" fn ggterm_session_cursor_style(id: u32) -> i32 {
     0
 }
 
+/// Returns 1 if the alternate screen buffer is active (DECSET 47/1047/1049),
+/// 0 otherwise. Used by mobile to enable alternate scroll (arrow key) mode.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_alt_screen(id: u32) -> i32 {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id)
+        && s.handle.terminal.is_alt_screen()
+    {
+        return 1;
+    }
+    0
+}
+
+/// Returns 1 if alternate scroll mode is enabled (DECSET 7727), 0 otherwise.
+/// When enabled, scroll wheel in alt screen sends arrow keys instead of
+/// scrolling (non-existent) scrollback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_alt_scroll(id: u32) -> i32 {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id)
+        && s.handle.terminal.alternate_scroll_enabled()
+    {
+        return 1;
+    }
+    0
+}
+
 // ── Transport: Data Pump ───────────────────────────────────────────────
 
 /// Read from the transport, feed bytes into the terminal.
@@ -907,6 +934,42 @@ mod tests {
         }
         assert_eq!(unsafe { ggterm_session_cursor_style(id) }, 4);
 
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_alt_screen() {
+        let id = ggterm_session_create(80, 24);
+        // Default: primary screen.
+        assert_eq!(unsafe { ggterm_session_alt_screen(id) }, 0);
+
+        // Enter alt screen (DECSET 1049).
+        let enter_alt = b"\x1b[?1049h";
+        unsafe {
+            ggterm_session_process_bytes(id, enter_alt.as_ptr(), enter_alt.len());
+        }
+        assert_eq!(unsafe { ggterm_session_alt_screen(id) }, 1);
+
+        // Exit alt screen.
+        let exit_alt = b"\x1b[?1049l";
+        unsafe {
+            ggterm_session_process_bytes(id, exit_alt.as_ptr(), exit_alt.len());
+        }
+        assert_eq!(unsafe { ggterm_session_alt_screen(id) }, 0);
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_alt_scroll_default() {
+        let id = ggterm_session_create(80, 24);
+        // Default: alternate scroll enabled (DECSET 7727 on).
+        assert_eq!(unsafe { ggterm_session_alt_scroll(id) }, 1);
+        // Disable alternate scroll.
+        let disable = b"\x1b[?7727l";
+        unsafe {
+            ggterm_session_process_bytes(id, disable.as_ptr(), disable.len());
+        }
+        assert_eq!(unsafe { ggterm_session_alt_scroll(id) }, 0);
         unsafe { ggterm_session_destroy(id) };
     }
 

@@ -656,8 +656,28 @@ class _TerminalScreenState extends State<TerminalScreen>
     // focalPointDelta.y < 0 = dragging up = scroll up (toward older).
     final dy = details.focalPointDelta.dy;
     if (dy.abs() > 0.5) {
-      _scrollAccumulator += dy;
-      // Track velocity for inertial scrolling.
+      // DECSET 7727 (alternate scroll): in alt screen (vim/less), send
+      // arrow keys instead of scrolling scrollback (which doesn't exist).
+      final id = widget.sessionId;
+      final mgr = widget.sessionManager;
+      if (mgr.isAltScreen(id) && mgr.altScrollEnabled(id)) {
+        // Each "row" of scroll → one arrow key.
+        _scrollAccumulator += dy;
+        final threshold = _cellHeight;
+        while (_scrollAccumulator.abs() >= threshold) {
+          if (_scrollAccumulator < 0) {
+            // Drag up → Up arrow
+            _sendInput([0x1b, 0x5b, 0x41]); // ESC [ A
+          } else {
+            // Drag down → Down arrow
+            _sendInput([0x1b, 0x5b, 0x42]); // ESC [ B
+          }
+          _scrollAccumulator -= threshold * (_scrollAccumulator.sign);
+        }
+        return;
+      }
+
+      // Normal scroll: track velocity for inertial scrolling.
       // Normalize to rows/sec based on cell height.
       final now = DateTime.now();
       final dtMs = now.difference(_lastScrollTime).inMilliseconds;

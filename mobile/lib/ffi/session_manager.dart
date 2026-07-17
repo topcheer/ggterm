@@ -270,6 +270,13 @@ class SessionManager {
 
   // ── Transport operations ──
 
+  /// Returns true if the alternate screen buffer is active (vim/less).
+  bool isAltScreen(int id) => _ffi.sessionAltScreen(id) != 0;
+
+  /// Returns true if alternate scroll mode is enabled (DECSET 7727).
+  /// When true, scroll in alt screen should send arrow keys, not scroll viewport.
+  bool altScrollEnabled(int id) => _ffi.sessionAltScroll(id) != 0;
+
   /// Get all visible terminal text as a string.
   /// Reads cells from the screen buffer, converting to text line by line.
   /// Strips trailing whitespace from each line and skips empty trailing lines.
