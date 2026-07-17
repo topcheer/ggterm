@@ -213,7 +213,7 @@ impl App {
                 self.terminal.resize(cols as usize, rows as usize);
                 self.renderer.resize(cols as usize, rows as usize);
                 self.tabs.resize_all(cols as usize, rows as usize);
-                self.render();
+                // Note: render() deferred to pump() — no need to render here.
 
                 // Phase 6: dispatch OnResize hook
                 #[cfg(feature = "plugin")]
