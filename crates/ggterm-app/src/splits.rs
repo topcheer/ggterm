@@ -187,13 +187,13 @@ impl SplitNode {
                     None
                 }
             }
-            SplitNode::Horizontal { left, right, .. } => {
-                let (lb, rb) = bounds.split_h(0.5);
+            SplitNode::Horizontal { left, right, ratio } => {
+                let (lb, rb) = bounds.split_h(*ratio);
                 left.pane_at_point(px, py, lb)
                     .or_else(|| right.pane_at_point(px, py, rb))
             }
-            SplitNode::Vertical { top, bottom, .. } => {
-                let (tb, bb) = bounds.split_v(0.5);
+            SplitNode::Vertical { top, bottom, ratio } => {
+                let (tb, bb) = bounds.split_v(*ratio);
                 top.pane_at_point(px, py, tb)
                     .or_else(|| bottom.pane_at_point(px, py, bb))
             }

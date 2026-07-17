@@ -3234,8 +3234,8 @@ impl DesktopApp {
             let tree = session.split_tree();
 
             // When zoomed, render only the active pane at full bounds.
+            let active_id = tree.active();
             let areas: Vec<(usize, crate::splits::Rect)> = if pane_zoomed {
-                let active_id = tree.active();
                 vec![(
                     active_id,
                     crate::splits::Rect {
@@ -3259,8 +3259,8 @@ impl DesktopApp {
                         if app.terminal().grid().is_scrolled() {
                             cs.visible = false;
                         }
-                        // Dim cursor when window is unfocused (hollow outline).
-                        cs.focused = self.window_focused;
+                        // Dim cursor when window is unfocused or pane is inactive (hollow outline).
+                        cs.focused = self.window_focused && *id == active_id;
                         // Apply blink from DesktopApp's cursor_blink state.
                         if cs.visible {
                             cs.blink_alpha = blink_alpha;
