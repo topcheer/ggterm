@@ -89,7 +89,10 @@ impl Row {
             if c.is_wide_spacer() {
                 continue;
             }
-            s.push(c.ch);
+            // Skip null chars from uninitialized cells.
+            if c.ch != '\0' {
+                s.push(c.ch);
+            }
             for &mc in &c.combining {
                 s.push(mc);
             }

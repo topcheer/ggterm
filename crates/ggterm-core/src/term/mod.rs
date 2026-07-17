@@ -1061,7 +1061,10 @@ impl Terminal {
                     if cell.flags.contains(CellFlags::WIDE_SPACER) {
                         continue;
                     }
-                    text.push(cell.ch);
+                    // Skip null chars from uninitialized cells.
+                    if cell.ch != '\0' {
+                        text.push(cell.ch);
+                    }
                     // Append combining characters (zero-width marks like accents)
                     for &mc in &cell.combining {
                         text.push(mc);

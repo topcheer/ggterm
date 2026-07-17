@@ -1217,7 +1217,7 @@ impl DesktopApp {
         macro_rules! push_cell {
             ($x:expr, $y:expr, $out:expr) => {
                 if let Some(cell) = grid.display_cell($x as usize, $y as usize) {
-                    if !cell.is_wide_spacer() {
+                    if !cell.is_wide_spacer() && cell.ch != '\0' {
                         $out.push(cell.ch);
                         for &c in &cell.combining {
                             $out.push(c);
