@@ -545,10 +545,9 @@ impl DesktopApp {
             // Single-tab mode: keep the title bar background strip but without
             // tab labels. Shows the current tab title on the left and "+"/"⚙"
             // buttons on the right. Taller bar and larger buttons for usability.
-            let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
-            let tab_h = (cell_h + 26.0).max(48.0); // matches multi-tab tab height
-            let btn_size = (tab_h * 0.5).max(20.0); // 50% of tab height, min 20px
-            let btn_gap = 6.0_f32;
+            let layout = super::SingleTabButtonLayout::compute(screen_w, cell_h);
+            let bar_h = layout.bar_h;
+            let btn_size = layout.btn_size;
             let cell_w = renderer.cell_width() as f32;
 
             // Title bar background — same theme-aware style as full tab bar.
@@ -618,31 +617,16 @@ impl DesktopApp {
                 ..Default::default()
             });
 
-            // "+" and "⚙" buttons on the right side.
-            // On Linux/Windows, leave space for window control buttons.
-            #[cfg(not(target_os = "macos"))]
-            let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0; // window controls + gap
-            #[cfg(target_os = "macos")]
-            let right_margin = 8.0;
-
-            let gear_x = screen_w - btn_size - right_margin;
-            let plus_x = gear_x - btn_size - btn_gap;
-            // Square buttons centered vertically in the bar.
-            let btn_y = (bar_h - btn_size) / 2.0;
-            let btn_h = btn_size;
-
             // "+" new-tab button.
-            let plus_hovered = self.cursor_pos.0 as f32 >= plus_x
-                && self.cursor_pos.0 as f32 <= plus_x + btn_size
-                && self.cursor_pos.1 as f32 >= btn_y
-                && self.cursor_pos.1 as f32 <= btn_y + btn_size;
+            let plus_hovered =
+                layout.is_on_plus(self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
             push_titlebar_button(
                 &mut ui_rects,
                 &mut overlay_texts,
-                plus_x,
-                btn_y,
+                layout.plus_x,
+                layout.btn_y,
                 btn_size,
-                btn_h,
+                btn_size,
                 "+",
                 plus_hovered,
                 (0.35, 0.42, 0.55, 0.8),
@@ -653,17 +637,15 @@ impl DesktopApp {
             );
 
             // Settings gear button.
-            let gear_hovered = self.cursor_pos.0 as f32 >= gear_x
-                && self.cursor_pos.0 as f32 <= gear_x + btn_size
-                && self.cursor_pos.1 as f32 >= btn_y
-                && self.cursor_pos.1 as f32 <= btn_y + btn_size;
+            let gear_hovered =
+                layout.is_on_gear(self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
             push_titlebar_button(
                 &mut ui_rects,
                 &mut overlay_texts,
-                gear_x,
-                btn_y,
+                layout.gear_x,
+                layout.btn_y,
                 btn_size,
-                btn_h,
+                btn_size,
                 "\u{2699}", // ⚙ gear symbol
                 gear_hovered,
                 (0.35, 0.42, 0.55, 0.8),

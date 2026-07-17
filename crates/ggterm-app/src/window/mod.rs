@@ -107,6 +107,63 @@ impl From<ModsState> for crate::input::KeyModifiers {
     }
 }
 
+/// Single-tab title bar button positions.
+///
+/// Shared between render.rs, handlers.rs, and hover detection to ensure
+/// consistent layout. Construct via [`SingleTabButtonLayout::compute`].
+pub(super) struct SingleTabButtonLayout {
+    /// Total title bar height.
+    pub bar_h: f32,
+    /// Square button side length.
+    pub btn_size: f32,
+    /// X of the "+" button's left edge.
+    pub plus_x: f32,
+    /// X of the gear button's left edge.
+    pub gear_x: f32,
+    /// Y of both buttons' top edge.
+    pub btn_y: f32,
+}
+
+impl SingleTabButtonLayout {
+    /// Compute button positions from screen width and cell height.
+    pub(super) fn compute(screen_w: f32, cell_h: f32) -> Self {
+        let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
+        let tab_h = bar_h - 4.0;
+        let btn_size = (tab_h * 0.5).max(20.0);
+        let btn_gap = 6.0_f32;
+        #[cfg(not(target_os = "macos"))]
+        let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0; // window controls
+        #[cfg(target_os = "macos")]
+        let right_margin = 8.0;
+        let gear_x = screen_w - btn_size - right_margin;
+        let plus_x = gear_x - btn_size - btn_gap;
+        let btn_y = (bar_h - btn_size) / 2.0;
+        Self {
+            bar_h,
+            btn_size,
+            plus_x,
+            gear_x,
+            btn_y,
+        }
+    }
+
+    /// True if pixel (px, py) is inside the "+" button.
+    pub(super) fn is_on_plus(&self, px: f32, py: f32) -> bool {
+        px >= self.plus_x
+            && px <= self.plus_x + self.btn_size
+            && py >= self.btn_y
+            && py <= self.btn_y + self.btn_size
+    }
+
+    /// True if pixel (px, py) is inside the gear button.
+    pub(super) fn is_on_gear(&self, px: f32, py: f32) -> bool {
+        px >= self.gear_x
+            && px <= self.gear_x + self.btn_size
+            && py >= self.btn_y
+            && py <= self.btn_y + self.btn_size
+    }
+}
+
 /// Desktop terminal application.
 ///
 /// Implements winit's `ApplicationHandler` trait to receive OS events.

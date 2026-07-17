@@ -2395,7 +2395,26 @@ impl DesktopApp {
 
                 self.button_held = Some(mouse_button);
 
-                // Single-tab title bar: check + and gear buttons.
+                // Multi-click detection — done early so ALL click handlers
+                // (title bar, tab bar, terminal area) can use click_count.
+                let now = std::time::Instant::now();
+                let is_multi_click = self
+                    .last_click_time
+                    .is_some_and(|t| now.duration_since(t).as_millis() < 400)
+                    && self.last_click_pixel_pos.is_some_and(|(lx, ly)| {
+                        (lx - self.cursor_pos.0).abs() < 5.0 && (ly - self.cursor_pos.1).abs() < 5.0
+                    });
+                if is_multi_click {
+                    self.click_count = (self.click_count % 3) + 1; // cycle 1→2→3→1
+                } else {
+                    self.click_count = 1;
+                }
+                self.last_click_time = Some(now);
+                self.last_click_pos = (col, row);
+                self.last_click_pixel_pos = Some(self.cursor_pos);
+
+                // Single-tab title bar: check + and gear buttons, plus
+                // window drag on empty area.
                 // This must be OUTSIDE the `if self.tab_bar.visible` block
                 // because visible=false in single-tab mode.
                 if !self.tab_bar.visible
@@ -2404,39 +2423,24 @@ impl DesktopApp {
                     && button == winit::event::MouseButton::Left
                 {
                     let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                    let screen_w = if let Some(ref r) = self.renderer {
-                        r.resolution_width() as f32
+                    let (screen_w, cell_h) = if let Some(ref r) = self.renderer {
+                        (r.resolution_width() as f32, r.cell_height() as f32)
                     } else {
-                        self.config.cols as f32 * self.config.cell_width
+                        (
+                            self.config.cols as f32 * self.config.cell_width,
+                            self.config.cell_height,
+                        )
                     };
-                    let cell_h = if let Some(ref r) = self.renderer {
-                        r.cell_height() as f32
-                    } else {
-                        self.config.cell_height
-                    };
-                    let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
-                    let tab_h = bar_h - 4.0;
-                    let btn_size = (tab_h * 0.5).max(20.0); // matches render.rs
-                    let btn_gap = 6.0_f32;
-                    #[cfg(not(target_os = "macos"))]
-                    let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
-                    #[cfg(target_os = "macos")]
-                    let right_margin = 8.0;
-                    let gear_x = screen_w - btn_size - right_margin;
-                    let plus_x = gear_x - btn_size - btn_gap;
-                    let btn_y = (bar_h - btn_size) / 2.0;
-                    // "+" button → open dropdown menu (same as multi-tab mode).
-                    if px >= plus_x
-                        && px <= plus_x + btn_size
-                        && py >= btn_y
-                        && py <= btn_y + btn_size
-                    {
+                    let layout = super::SingleTabButtonLayout::compute(screen_w, cell_h);
+
+                    // "+" button → open dropdown menu.
+                    if layout.is_on_plus(px, py) {
                         let menu_w = crate::new_tab_menu::NewTabMenuState::WIDTH;
-                        let mut menu_x = plus_x + btn_size - menu_w;
+                        let mut menu_x = layout.plus_x + layout.btn_size - menu_w;
                         if menu_x < 4.0 {
                             menu_x = 4.0;
                         }
-                        let menu_y = btn_y + btn_size + 2.0;
+                        let menu_y = layout.btn_y + layout.btn_size + 2.0;
                         self.new_tab_menu.toggle(menu_x, menu_y);
                         if let Some(ref window) = self.window {
                             window.request_redraw();
@@ -2444,12 +2448,23 @@ impl DesktopApp {
                         return;
                     }
                     // Settings gear button.
-                    if px >= gear_x
-                        && px <= gear_x + btn_size
-                        && py >= btn_y
-                        && py <= btn_y + btn_size
-                    {
+                    if layout.is_on_gear(px, py) {
                         self.pending_open_settings = true;
+                        return;
+                    }
+                    // Empty title bar area → window drag or maximize on double-click
+                    // (same UX as multi-tab mode).
+                    if py < layout.bar_h {
+                        if self.click_count == 2 {
+                            self.maximized = !self.maximized;
+                            if let Some(ref window) = self.window {
+                                window.set_maximized(self.maximized);
+                            }
+                            return;
+                        }
+                        if let Some(ref window) = self.window {
+                            let _ = window.drag_window();
+                        }
                         return;
                     }
                 }
@@ -2581,27 +2596,7 @@ impl DesktopApp {
                     }
                 }
 
-                // P27-B: Double-click / triple-click detection.
-                // Use pixel proximity instead of exact cell match — this is
-                // more forgiving on high-DPI displays where a small mouse drift
-                // between clicks shouldn't break multi-click.
-                let now = std::time::Instant::now();
-                let is_multi_click = self
-                    .last_click_time
-                    .is_some_and(|t| now.duration_since(t).as_millis() < 400)
-                    && self.last_click_pixel_pos.is_some_and(|(lx, ly)| {
-                        (lx - self.cursor_pos.0).abs() < 5.0 && (ly - self.cursor_pos.1).abs() < 5.0
-                    });
-
-                if is_multi_click {
-                    self.click_count = (self.click_count % 3) + 1; // cycle 1→2→3→1
-                } else {
-                    self.click_count = 1;
-                }
-                self.last_click_time = Some(now);
-                self.last_click_pos = (col, row);
-                self.last_click_pixel_pos = Some(self.cursor_pos);
-
+                // Terminal content area: multi-click already tracked above.
                 match self.click_count {
                     2 => {
                         // Double-click: select word at position.
@@ -3398,33 +3393,17 @@ impl DesktopApp {
         if self.tab_bar.visible || self.tab_bar.tabs.is_empty() {
             return false;
         }
-        let cell_h = if let Some(ref r) = self.renderer {
-            r.cell_height() as f32
+        let (screen_w, cell_h) = if let Some(ref r) = self.renderer {
+            (r.resolution_width() as f32, r.cell_height() as f32)
         } else {
-            self.config.cell_height
+            (
+                self.config.cols as f32 * self.config.cell_width,
+                self.config.cell_height,
+            )
         };
-        let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
-        let tab_h = (cell_h + 26.0).max(48.0);
-        let btn_size = (tab_h * 0.5).max(20.0); // matches render.rs
-        let btn_gap = 6.0_f32;
-        let screen_w = if let Some(ref r) = self.renderer {
-            r.resolution_width() as f32
-        } else {
-            self.config.cols as f32 * self.config.cell_width
-        };
-        #[cfg(not(target_os = "macos"))]
-        let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
-        #[cfg(target_os = "macos")]
-        let right_margin = 8.0;
-        let gear_x = screen_w - btn_size - right_margin;
-        let plus_x = gear_x - btn_size - btn_gap;
-        let btn_y = (bar_h - btn_size) / 2.0;
+        let layout = super::SingleTabButtonLayout::compute(screen_w, cell_h);
         let px = self.cursor_pos.0 as f32;
-        let on_plus =
-            px >= plus_x && px <= plus_x + btn_size && py >= btn_y && py <= btn_y + btn_size;
-        let on_gear =
-            px >= gear_x && px <= gear_x + btn_size && py >= btn_y && py <= btn_y + btn_size;
-        on_plus || on_gear
+        layout.is_on_plus(px, py) || layout.is_on_gear(px, py)
     }
 }
 
