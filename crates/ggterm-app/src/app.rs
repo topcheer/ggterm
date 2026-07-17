@@ -601,7 +601,7 @@ pub fn spawn_pty_reader(
     sender: EventSender,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 16384];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => {

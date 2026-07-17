@@ -338,9 +338,7 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
     let mut i = 0;
     while i < chars.len() {
         // Check if a known scheme starts at this position (no allocation).
-        let matched = schemes
-            .iter()
-            .find(|s| prefix_matches(&chars, i, s));
+        let matched = schemes.iter().find(|s| prefix_matches(&chars, i, s));
 
         if let Some(scheme) = matched {
             let scheme_len = scheme.len(); // ASCII, so bytes == chars
@@ -378,9 +376,9 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
                 }
                 // Check if the hostname part ends with a known TLD (no allocation)
                 let host_len = host_end - i;
-                let has_tld = tlds.iter().any(|t| {
-                    suffix_matches(&chars, i, host_len, t) && host_len > t.len()
-                });
+                let has_tld = tlds
+                    .iter()
+                    .any(|t| suffix_matches(&chars, i, host_len, t) && host_len > t.len());
                 if has_tld {
                     // Continue scanning for path/query/port after hostname
                     let mut j = host_end;
