@@ -251,13 +251,22 @@ impl Grid {
         // the user is already viewing the latest output (offset == 0).
         let was_scrolled = self.display_offset > 0;
 
-        for _ in 0..n {
-            let removed = self.rows.remove(self.scroll_top);
-            if self.scroll_top == 0 {
-                self.push_scrollback(removed);
+        if self.scroll_top == 0 {
+            // Full-screen scroll (most common case):
+            // Drain first n rows → push to scrollback, then append n blanks.
+            // This is O(n) instead of O(rows × n) with per-line remove(0).
+            let drained: Vec<Row> = self.rows.drain(..n).collect();
+            for row in drained {
+                self.push_scrollback(row);
             }
-            self.rows
-                .insert(self.scroll_bottom - 1, Row::new(self.width));
+            self.rows.extend((0..n).map(|_| Row::new(self.width)));
+        } else {
+            // Scroll region (DECSTBM): rotate region [T..B) left by n,
+            // then fill the last n positions of the region with blank rows.
+            self.rows[self.scroll_top..self.scroll_bottom].rotate_left(n);
+            for i in 0..n {
+                self.rows[self.scroll_bottom - 1 - i] = Row::new(self.width);
+            }
         }
 
         if was_scrolled {
@@ -279,17 +288,27 @@ impl Grid {
         if n == 0 {
             return;
         }
-        for _ in 0..n {
-            let _removed = self.rows.remove(self.scroll_bottom - 1);
-            // When scroll region starts at row 0, try to restore from scrollback
-            if self.scroll_top == 0 {
-                if let Some(row) = self.scrollback.pop_back() {
-                    self.rows.insert(0, row);
-                } else {
-                    self.rows.insert(0, Row::new(self.width));
-                }
-            } else {
-                self.rows.insert(self.scroll_top, Row::new(self.width));
+        if self.scroll_top == 0 {
+            // Full-screen scroll: truncate last n rows, restore from scrollback.
+            // This is O(n) instead of O(rows × n) with per-line remove/insert.
+            let len = self.rows.len();
+            self.rows.truncate(len.saturating_sub(n));
+            let mut restored = Vec::with_capacity(n);
+            for _ in 0..n {
+                restored.push(
+                    self.scrollback
+                        .pop_back()
+                        .unwrap_or_else(|| Row::new(self.width)),
+                );
+            }
+            // pop_back gives most-recent-first; reverse for chronological order.
+            restored.reverse();
+            self.rows.splice(0..0, restored);
+        } else {
+            // Scroll region: rotate [T..B) right by n, fill first n with blanks.
+            self.rows[self.scroll_top..self.scroll_bottom].rotate_right(n);
+            for i in 0..n {
+                self.rows[self.scroll_top + i] = Row::new(self.width);
             }
         }
         self.damage.mark_rows(self.scroll_top, region_height);

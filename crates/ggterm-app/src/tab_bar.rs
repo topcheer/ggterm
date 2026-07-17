@@ -292,9 +292,20 @@ impl TabBarState {
         let tab_count = self.tabs.len() as f32;
 
         // Each tab gets an equal share of the full available width.
-        // Enforce a minimum tab width so titles remain readable with many tabs.
+        // Shrink to fit: when there are many tabs, allow widths below
+        // MIN_TAB_WIDTH so the tab bar never overflows past the buttons.
         const MIN_TAB_WIDTH: f32 = 80.0;
-        let tab_w = (available_width / tab_count).floor().max(MIN_TAB_WIDTH);
+        const MIN_TAB_WIDTH_FLOOR: f32 = 40.0;
+        let natural_w = (available_width / tab_count).floor();
+        // If natural width fits, use min(MIN_TAB_WIDTH, natural) to avoid
+        // unnecessarily wide tabs when there are few of them.
+        // If it doesn't fit (many tabs), clamp to a hard floor so tabs
+        // remain barely usable rather than overflowing.
+        let tab_w = if natural_w >= MIN_TAB_WIDTH {
+            natural_w
+        } else {
+            natural_w.max(MIN_TAB_WIDTH_FLOOR)
+        };
 
         let mut layouts = Vec::with_capacity(self.tabs.len());
         let mut x = left_margin;
