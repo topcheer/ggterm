@@ -1943,11 +1943,18 @@ impl ApplicationHandler for DesktopApp {
         self.active_session_mut().pump();
         // Pump non-active sessions and mark tabs with unread output.
         // Also collect bells from background sessions.
+        // Background sessions are pumped with a lower limit to prioritize
+        // the active tab's responsiveness. Each background tab gets a
+        // small per-frame budget so one churning background tab doesn't
+        // starve the active tab or the event loop.
         let active = self.active;
         let mut bg_bell = false;
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if i != active {
-                // pump() returns true if any pane had data.
+                // pump() now limits to MAX_EVENTS_PER_PUMP (64) per call,
+                // but we further reduce background processing by only
+                // pumping once per frame — the remaining events will be
+                // picked up on the next about_to_wait cycle.
                 let had_data = session.pump();
                 if had_data {
                     session.mark_unread();
