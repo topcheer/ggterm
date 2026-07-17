@@ -2186,6 +2186,19 @@ impl DesktopApp {
         state: ElementState,
         button: winit::event::MouseButton,
     ) {
+        // Window edge resize: when decorations are off, we handle resizing
+        // ourselves via drag_resize_window(). Check if the mouse is at a
+        // window edge and start a resize operation.
+        #[cfg(not(target_os = "macos"))]
+        if state == ElementState::Pressed
+            && button == winit::event::MouseButton::Left
+            && let Some(ref window) = self.window
+            && let Some(dir) = self.window_edge_resize_direction()
+        {
+            let _ = window.drag_resize_window(dir);
+            return;
+        }
+
         // P21-A: Handle split separator drag.
         if button == winit::event::MouseButton::Left {
             if state == ElementState::Pressed {
@@ -2452,7 +2465,7 @@ impl DesktopApp {
                         self.pending_open_settings = true;
                         return;
                     }
-                    // Linux/Windows: window control buttons (minimize/maximize/close).
+                    // Linux/Windows: caption buttons (minimize/maximize/close).
                     #[cfg(not(target_os = "macos"))]
                     {
                         let ctrl_layout =
@@ -2478,20 +2491,21 @@ impl DesktopApp {
                             return;
                         }
                     }
-                    // Empty title bar area → window drag or maximize on double-click
-                    // (same UX as multi-tab mode).
-                    if py < layout.bar_h {
-                        if self.click_count == 2 {
-                            self.maximized = !self.maximized;
+                    // Title bar drag and double-click maximize (all platforms).
+                    {
+                        if py < layout.bar_h {
+                            if self.click_count == 2 {
+                                self.maximized = !self.maximized;
+                                if let Some(ref window) = self.window {
+                                    window.set_maximized(self.maximized);
+                                }
+                                return;
+                            }
                             if let Some(ref window) = self.window {
-                                window.set_maximized(self.maximized);
+                                let _ = window.drag_window();
                             }
                             return;
                         }
-                        if let Some(ref window) = self.window {
-                            let _ = window.drag_window();
-                        }
-                        return;
                     }
                 }
 
@@ -2549,12 +2563,13 @@ impl DesktopApp {
                             self.pending_open_settings = true;
                             return;
                         }
-                        // Linux/Windows: window control buttons (minimize/maximize/close).
+                        // Linux/Windows: caption buttons (minimize/maximize/close).
                         #[cfg(not(target_os = "macos"))]
                         {
+                            let bar_h = (self.tab_font_size() + 26.0).max(48.0) + 4.0;
                             let ctrl_layout = crate::titlebar::compute_caption_layout(
                                 self.tab_layout_width(),
-                                (self.tab_font_size() + 26.0).max(48.0) + 4.0,
+                                bar_h,
                             );
                             if let Some(btn) =
                                 crate::titlebar::caption_hit_test(&ctrl_layout, px, py)
@@ -2583,7 +2598,7 @@ impl DesktopApp {
                         if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
                             if tab_idx < layout.tabs.len() {
                                 let cb = &layout.tabs[tab_idx].close;
-                                let hit = cb.size / 2.0 + 4.0; // generous touch target
+                                let hit = cb.size / 2.0 + 4.0;
                                 let dx = px - cb.cx;
                                 let dy = py - cb.cy;
                                 if dx.abs() <= hit
@@ -2596,19 +2611,16 @@ impl DesktopApp {
                                 }
                             }
                             self.switch_tab(tab_idx);
-                            // P30-B: Double-click → start rename.
                             if self.click_count == 2 {
                                 self.renaming_tab = Some(tab_idx);
                                 self.rename_text = self.sessions[tab_idx].title().to_string();
                             }
-                            // P23-E: Single click → start tab drag for reordering.
                             if self.click_count == 1 && self.sessions.len() > 1 {
                                 self.dragging_tab = Some(tab_idx);
                             }
                             return;
                         }
-                        // Empty area of tab bar → start window drag,
-                        // or maximize on double-click (macOS convention).
+                        // Empty area of tab bar → window drag or double-click maximize.
                         if self.click_count == 2 {
                             self.maximized = !self.maximized;
                             if let Some(ref window) = self.window {
@@ -2944,9 +2956,61 @@ impl DesktopApp {
             } else if py > content_top || self.selection.dragging {
                 CursorIcon::Text
             } else {
-                CursorIcon::Default
+                // Check window edge resize zone before falling back to Default.
+                #[cfg(not(target_os = "macos"))]
+                if let Some(dir) = self.window_edge_resize_direction() {
+                    use winit::window::ResizeDirection::*;
+                    match dir {
+                        North | South => CursorIcon::NsResize,
+                        East | West => CursorIcon::EwResize,
+                        NorthWest | SouthEast => CursorIcon::NwseResize,
+                        NorthEast | SouthWest => CursorIcon::NeswResize,
+                    }
+                } else {
+                    CursorIcon::Default
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    CursorIcon::Default
+                }
             };
             window.set_cursor(icon);
+        }
+    }
+
+    /// Detect if cursor is at a window edge for resizing (decorations off).
+    #[cfg(not(target_os = "macos"))]
+    fn window_edge_resize_direction(&self) -> Option<winit::window::ResizeDirection> {
+        use winit::window::ResizeDirection;
+
+        let (screen_w, screen_h) = if let Some(ref renderer) = self.renderer {
+            (
+                renderer.resolution_width() as f32,
+                renderer.resolution_height() as f32,
+            )
+        } else {
+            return None;
+        };
+
+        let px = self.cursor_pos.0 as f32;
+        let py = self.cursor_pos.1 as f32;
+        const EDGE: f32 = 6.0;
+
+        let at_left = px < EDGE;
+        let at_right = px > screen_w - EDGE;
+        let at_top = py < EDGE;
+        let at_bottom = py > screen_h - EDGE;
+
+        match (at_left, at_right, at_top, at_bottom) {
+            (true, _, true, _) => Some(ResizeDirection::NorthWest),
+            (_, true, true, _) => Some(ResizeDirection::NorthEast),
+            (true, _, _, true) => Some(ResizeDirection::SouthWest),
+            (_, true, _, true) => Some(ResizeDirection::SouthEast),
+            (true, _, _, _) => Some(ResizeDirection::West),
+            (_, true, _, _) => Some(ResizeDirection::East),
+            (_, _, true, _) => Some(ResizeDirection::North),
+            (_, _, _, true) => Some(ResizeDirection::South),
+            _ => None,
         }
     }
 

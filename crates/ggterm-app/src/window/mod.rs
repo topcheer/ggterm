@@ -132,7 +132,7 @@ impl SingleTabButtonLayout {
         let btn_size = (tab_h * 0.5).max(20.0);
         let btn_gap = 6.0_f32;
         #[cfg(not(target_os = "macos"))]
-        let right_margin = crate::titlebar::CAPTION_BTN_W * 3.0; // 3 caption buttons
+        let right_margin = crate::titlebar::CAPTION_BTN_W * 3.0;
         #[cfg(target_os = "macos")]
         let right_margin = 8.0;
         let gear_x = screen_w - btn_size - right_margin;
@@ -1123,7 +1123,10 @@ impl ApplicationHandler for DesktopApp {
         // macOS: keep decorations=true but make titlebar transparent via FFI
         // after window creation. This preserves traffic light buttons while
         // giving us full control over the titlebar appearance.
+        //
         // Linux/Windows: use decorations=false for full custom titlebar.
+        // We implement edge resize via drag_resize_window() and caption
+        // buttons ourselves to maintain a consistent cross-platform look.
         #[cfg(not(target_os = "macos"))]
         {
             attrs = attrs.with_decorations(false);

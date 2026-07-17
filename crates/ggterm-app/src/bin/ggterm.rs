@@ -21,6 +21,10 @@
 //! GGTerm reads `~/.ggterm/config.toml` on startup and watches it for
 //! changes (with `config-watch` feature). CLI args override config values.
 
+// On Windows, hide the console window. This must be a conditional attribute
+// so it doesn't affect non-Windows builds.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::process::ExitCode;
 
 use clap::Parser;

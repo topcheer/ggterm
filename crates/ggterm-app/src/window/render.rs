@@ -237,7 +237,7 @@ impl DesktopApp {
                 });
             }
 
-            // Windows/Linux: caption buttons (minimize/maximize/close).
+            // Linux/Windows: caption buttons (minimize/maximize/close).
             #[cfg(not(target_os = "macos"))]
             push_window_controls(
                 &mut ui_rects,
@@ -565,7 +565,7 @@ impl DesktopApp {
                 8.0,
             );
 
-            // ── Linux/Windows: window control buttons (minimize/maximize/close) ──
+            // ── Linux/Windows: caption buttons (minimize/maximize/close) ──
             #[cfg(not(target_os = "macos"))]
             push_window_controls(
                 &mut ui_rects,

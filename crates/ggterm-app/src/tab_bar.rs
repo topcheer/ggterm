@@ -278,7 +278,7 @@ impl TabBarState {
         #[cfg(not(target_os = "macos"))]
         let left_margin = TAB_BAR_PADDING_H;
 
-        // Linux/Windows: reserve space on the right for window control buttons.
+        // Linux/Windows: reserve space for caption buttons.
         #[cfg(not(target_os = "macos"))]
         let right_margin = TAB_BAR_PADDING_H + crate::titlebar::CAPTION_BTN_W * 3.0;
         #[cfg(target_os = "macos")]
