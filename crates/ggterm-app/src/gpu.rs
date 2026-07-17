@@ -311,7 +311,8 @@ impl GpuContext {
                         &self.queue,
                         spec.grid,
                         spec.cursor,
-                        // Always re-prepare: panes share text buffers.
+                        // Always re-prepare: panes share text buffers, so
+                        // each pane must rebuild its text before drawing.
                         true,
                         &mut pass,
                     )
