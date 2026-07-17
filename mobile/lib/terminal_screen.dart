@@ -1890,7 +1890,8 @@ class _TerminalPainter extends CustomPainter {
     if (cellWidth != old.cellWidth ||
         cellHeight != old.cellHeight ||
         cursorVisible != old.cursorVisible ||
-        blinkVisible != old.blinkVisible) {
+        blinkVisible != old.blinkVisible ||
+        cursorStyle != old.cursorStyle) {
       return true;
     }
     return !identical(screen, old.screen);
