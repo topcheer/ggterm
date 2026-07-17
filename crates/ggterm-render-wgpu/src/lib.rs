@@ -591,7 +591,7 @@ impl GlyphonRenderer {
                 &self.palette_overrides,
             );
 
-            for run in &runs {
+            for run in runs {
                 if run.text.is_empty() {
                     continue;
                 }
@@ -620,7 +620,7 @@ impl GlyphonRenderer {
 
                 let mut buffer = Buffer::new(&mut self.font_system, metrics);
                 buffer.lines = vec![BufferLine::new(
-                    run.text.clone(),
+                    run.text,
                     LineEnding::None,
                     attrs_list,
                     Shaping::Advanced,
