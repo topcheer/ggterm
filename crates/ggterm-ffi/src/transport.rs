@@ -336,6 +336,27 @@ pub unsafe extern "C" fn ggterm_session_cursor_visible(id: u32) -> i32 {
     0
 }
 
+/// Returns the cursor shape (DECSCUSR) as an integer:
+/// 0=Default, 1=BlinkBlock, 2=SteadyBlock, 3=BlinkUnderline,
+/// 4=SteadyUnderline, 5=BlinkBar, 6=SteadyBar.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_cursor_style(id: u32) -> i32 {
+    use ggterm_core::CursorStyle;
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id) {
+        return match s.handle.terminal.cursor_style() {
+            CursorStyle::Default => 0,
+            CursorStyle::BlinkBlock => 1,
+            CursorStyle::SteadyBlock => 2,
+            CursorStyle::BlinkUnderline => 3,
+            CursorStyle::SteadyUnderline => 4,
+            CursorStyle::BlinkBar => 5,
+            CursorStyle::SteadyBar => 6,
+        };
+    }
+    0
+}
+
 // ── Transport: Data Pump ───────────────────────────────────────────────
 
 /// Read from the transport, feed bytes into the terminal.
@@ -856,6 +877,36 @@ mod tests {
             ggterm_session_process_bytes(id, show.as_ptr(), show.len());
         }
         assert_eq!(unsafe { ggterm_session_cursor_visible(id) }, 1);
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_cursor_style() {
+        let id = ggterm_session_create(80, 24);
+        // Default cursor style: 0 (Default).
+        assert_eq!(unsafe { ggterm_session_cursor_style(id) }, 0);
+
+        // DECSCUSR 2: SteadyBlock.
+        let steady_block = b"\x1b[2 q";
+        unsafe {
+            ggterm_session_process_bytes(id, steady_block.as_ptr(), steady_block.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_style(id) }, 2);
+
+        // DECSCUSR 5: BlinkBar (vim insert mode).
+        let blink_bar = b"\x1b[5 q";
+        unsafe {
+            ggterm_session_process_bytes(id, blink_bar.as_ptr(), blink_bar.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_style(id) }, 5);
+
+        // DECSCUSR 4: SteadyUnderline.
+        let steady_ul = b"\x1b[4 q";
+        unsafe {
+            ggterm_session_process_bytes(id, steady_ul.as_ptr(), steady_ul.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_style(id) }, 4);
+
         unsafe { ggterm_session_destroy(id) };
     }
 

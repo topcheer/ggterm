@@ -30,6 +30,7 @@ class ScreenSnapshot {
   final int cursorCol;
   final int cursorRow;
   final bool cursorVisible;
+  final int cursorStyle; // 0=Default, 1=BlinkBlock, 2=SteadyBlock, 3=BlinkUnderline, 4=SteadyUnderline, 5=BlinkBar, 6=SteadyBar
   final bool hasBell;
   /// Terminal title (OSC 0/2). Empty if not set.
   final String title;
@@ -43,6 +44,7 @@ class ScreenSnapshot {
     this.cursorCol = 0,
     this.cursorRow = 0,
     this.cursorVisible = true,
+    this.cursorStyle = 0,
     this.hasBell = false,
     this.title = '',
     this.cwd = '',
@@ -244,6 +246,7 @@ class SessionManager {
 
       final (cursorCol, cursorRow) = getCursor(id);
       final cursorVisible = _ffi.sessionCursorVisible(id) != 0;
+      final cursorStyle = _ffi.sessionCursorStyle(id);
       final bell = _ffi.sessionTakeBell(id) != 0;
       final title = _ffi.getSessionTitle(id);
       final cwd = _ffi.getSessionCwd(id);
@@ -255,6 +258,7 @@ class SessionManager {
         cursorCol: cursorCol,
         cursorRow: cursorRow,
         cursorVisible: cursorVisible,
+        cursorStyle: cursorStyle,
         hasBell: bell,
         title: title,
         cwd: cwd,

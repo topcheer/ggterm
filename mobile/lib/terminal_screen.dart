@@ -1672,6 +1672,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                             cellHeight: _cellHeight,
                             cursorVisible: _screen.cursorVisible && _cursorVisible,
                             blinkVisible: _cursorVisible, // blink text (SGR 5) follows cursor blink phase
+                            cursorStyle: _screen.cursorStyle,
                           ),
                           child: Container(),
                         ),
@@ -1855,6 +1856,7 @@ class _TerminalPainter extends CustomPainter {
   final double cellHeight;
   final bool cursorVisible;
   final bool blinkVisible;
+  final int cursorStyle;
 
   // Reusable Paint objects to avoid per-frame allocation.
   static final _cellBgPaint = Paint();
@@ -1876,6 +1878,7 @@ class _TerminalPainter extends CustomPainter {
     required this.cellHeight,
     this.cursorVisible = true,
     this.blinkVisible = true,
+    this.cursorStyle = 0,
   });
 
   @override
@@ -2018,7 +2021,7 @@ class _TerminalPainter extends CustomPainter {
     }
 
     // Third pass: draw cursor (over everything).
-    // Semi-transparent so the character underneath remains visible.
+    // Supports DECSCUSR shapes: block, underline, bar.
     if (cursorVisible) {
       final cy = screen.cursorRow;
       final cx = screen.cursorCol;
@@ -2031,19 +2034,31 @@ class _TerminalPainter extends CustomPainter {
         if (cursorIdx < screen.cells.length && screen.cells[cursorIdx].wide) {
           cursorW = cellWidth * 2;
         }
-        // Draw cursor block with 50% opacity — text underneath remains readable.
+        // Determine cursor shape from DECSCUSR style.
+        // 0=Default, 1/2=Block, 3/4=Underline, 5/6=Bar.
+        final isUnderline = cursorStyle == 3 || cursorStyle == 4;
+        final isBar = cursorStyle == 5 || cursorStyle == 6;
+
         _cursorRectPaint.color = theme.cursor.withValues(alpha: 0.5);
-        canvas.drawRect(
-          Rect.fromLTWH(x, y, cursorW, cellHeight),
-          _cursorRectPaint,
-        );
-        // Draw a 1px border for crispness.
         _cursorBorderPaint.color = theme.cursor;
         _cursorBorderPaint.strokeWidth = 1.0;
-        canvas.drawRect(
-          Rect.fromLTWH(x, y, cursorW, cellHeight),
-          _cursorBorderPaint,
-        );
+
+        if (isUnderline) {
+          // Underline: bottom ~25% of cell.
+          final uy = y + cellHeight * 0.75;
+          final uh = cellHeight * 0.25;
+          canvas.drawRect(Rect.fromLTWH(x, uy, cursorW, uh), _cursorRectPaint);
+          canvas.drawRect(Rect.fromLTWH(x, uy, cursorW, uh), _cursorBorderPaint);
+        } else if (isBar) {
+          // Bar: left ~20% of cell.
+          final bw = (cellWidth * 0.2).clamp(2.0, cellWidth);
+          canvas.drawRect(Rect.fromLTWH(x, y, bw, cellHeight), _cursorRectPaint);
+          canvas.drawRect(Rect.fromLTWH(x, y, bw, cellHeight), _cursorBorderPaint);
+        } else {
+          // Block (default): full cell.
+          canvas.drawRect(Rect.fromLTWH(x, y, cursorW, cellHeight), _cursorRectPaint);
+          canvas.drawRect(Rect.fromLTWH(x, y, cursorW, cellHeight), _cursorBorderPaint);
+        }
       }
     }
   }
