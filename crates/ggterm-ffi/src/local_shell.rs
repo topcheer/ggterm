@@ -147,11 +147,16 @@ impl LocalShellTransport {
         let mut status: libc::c_int = 0;
         let ret = unsafe { libc::waitpid(self.child_pid, &mut status, libc::WNOHANG) };
         if ret == self.child_pid {
-            // Child exited
+            // Child exited.
+            self.alive = false;
+            false
+        } else if ret == -1 {
+            // waitpid error (ECHILD = already reaped, EINVAL, etc.).
+            // Child is gone — treat as not alive.
             self.alive = false;
             false
         } else {
-            // Still running (ret == 0) or error
+            // ret == 0: child still running.
             true
         }
     }
@@ -161,6 +166,13 @@ impl Drop for LocalShellTransport {
     fn drop(&mut self) {
         if self.master_fd >= 0 {
             unsafe { libc::close(self.master_fd) };
+        }
+        // Reap child process to prevent zombie.
+        if self.child_pid > 0 {
+            unsafe {
+                let mut status: libc::c_int = 0;
+                libc::waitpid(self.child_pid, &mut status, libc::WNOHANG);
+            }
         }
     }
 }

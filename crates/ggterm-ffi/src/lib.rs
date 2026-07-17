@@ -47,7 +47,11 @@ impl TerminalHandle {
 
     /// Queue input bytes (keystrokes from the user).
     pub fn send_input(&mut self, data: &[u8]) {
-        self.input_buffer.extend_from_slice(data);
+        // Cap input buffer to prevent unbounded growth if the host never drains it.
+        const MAX_INPUT_BUFFER: usize = 256 * 1024; // 256 KB
+        if self.input_buffer.len() + data.len() <= MAX_INPUT_BUFFER {
+            self.input_buffer.extend_from_slice(data);
+        }
     }
 
     /// Take pending input bytes for the host to send to PTY/SSH.
@@ -93,7 +97,7 @@ fn pack_color(color: Color) -> u32 {
     match color {
         Color::Default => 0,
         Color::Indexed(i) => 0x0100_0000 | (i as u32),
-        Color::Rgb(r, g, b) => ((r as u32) << 16) | ((g as u32) << 8) | (b as u32),
+        Color::Rgb(r, g, b) => 0x0200_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32),
     }
 }
 
@@ -359,7 +363,8 @@ mod tests {
 
     #[test]
     fn t_pack_color_rgb() {
-        assert_eq!(pack_color(Color::Rgb(255, 128, 0)), 0x00FF8000);
+        assert_eq!(pack_color(Color::Rgb(255, 128, 0)), 0x02FF8000);
+        assert_eq!(pack_color(Color::Rgb(0, 0, 0)), 0x02000000); // not Default!
     }
 
     #[test]

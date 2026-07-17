@@ -61,7 +61,6 @@ pub enum CommandMarkKind {
 
 /// A single OSC 133 mark emitted by the shell integration protocol.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 pub struct CommandMark {
     /// What kind of mark this is.
     pub kind: CommandMarkKind,

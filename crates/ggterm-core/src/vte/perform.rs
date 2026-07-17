@@ -61,9 +61,3 @@ pub trait Perform {
     /// Used by XTGETTCAP, Sixel, tmux passthrough, etc.
     fn dcs(&mut self, _intermediates: &[u8], _params: &[u16], _final_byte: u8, _data: &[u8]) {}
 }
-
-/// A no-op implementation of [`Perform`] for testing and as a default.
-#[allow(dead_code)]
-pub struct NullPerform;
-
-impl Perform for NullPerform {}

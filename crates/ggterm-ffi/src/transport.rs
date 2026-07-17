@@ -249,6 +249,8 @@ pub unsafe extern "C" fn ggterm_session_cursor(id: u32, col: *mut usize, row: *m
 /// Resize the terminal grid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize) {
+    let cols = cols.clamp(1, 500);
+    let rows = rows.clamp(1, 200);
     let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         s.handle

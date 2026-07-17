@@ -56,18 +56,6 @@ const HOOK_ON_COMMAND_END: i32 = 3;
 const HOOK_ON_RESIZE: i32 = 4;
 const HOOK_ON_THEME_CHANGE: i32 = 5;
 
-#[allow(dead_code)]
-fn hook_type_to_id(ht: HookType) -> i32 {
-    match ht {
-        HookType::OnInput => HOOK_ON_INPUT,
-        HookType::OnOutput => HOOK_ON_OUTPUT,
-        HookType::OnCommandStart => HOOK_ON_COMMAND_START,
-        HookType::OnCommandEnd => HOOK_ON_COMMAND_END,
-        HookType::OnResize => HOOK_ON_RESIZE,
-        HookType::OnThemeChange => HOOK_ON_THEME_CHANGE,
-    }
-}
-
 fn id_to_hook_type(id: i32) -> Option<HookType> {
     match id {
         HOOK_ON_INPUT => Some(HookType::OnInput),

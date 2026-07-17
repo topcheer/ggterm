@@ -58,6 +58,9 @@ class ColorCodec {
   /// Check if a color is default (0).
   static bool isDefault(int packed) => packed == 0;
 
+  /// Check if a color is an explicit RGB value (0x02RRGGBB).
+  static bool isRgb(int packed) => (packed & 0x02000000) != 0;
+
   /// Extract RGB components from a packed color.
   static (int, int, int) getRgb(int packed) {
     final r = (packed >> 16) & 0xFF;
