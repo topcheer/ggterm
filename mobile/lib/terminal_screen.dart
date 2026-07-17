@@ -350,6 +350,8 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Compares cells + cursor position — skips when nothing changed
   /// to avoid 60fps setState storms on idle terminals.
   int _computeFrameHash(ScreenSnapshot snap) {
+    // Fast path: empty snapshot (no terminal data yet).
+    if (snap.cells.isEmpty) return 0;
     var h = snap.cursorCol ^ (snap.cursorRow << 16);
     // Include cursor visibility and style so DECSET 25 (hide cursor)
     // and DECSCUSR (cursor shape change) trigger immediate repaint.

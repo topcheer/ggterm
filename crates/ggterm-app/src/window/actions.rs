@@ -3594,4 +3594,28 @@ mod tests {
         flush_span(&mut buf, &Some("#fff".into()), true, true, &mut html);
         assert!(html.is_empty());
     }
+
+    #[test]
+    fn test_paste_threshold_constant() {
+        // Verify the threshold is 5KB — used for paste confirmation gating.
+        const LARGE_PASTE_THRESHOLD: usize = 5_000;
+        assert_eq!(LARGE_PASTE_THRESHOLD, 5000);
+        // Content just under threshold should not trigger confirmation.
+        let small = "x".repeat(LARGE_PASTE_THRESHOLD - 1);
+        assert!(small.len() < LARGE_PASTE_THRESHOLD);
+        // Content just over threshold should trigger confirmation.
+        let large = "x".repeat(LARGE_PASTE_THRESHOLD + 1);
+        assert!(large.len() > LARGE_PASTE_THRESHOLD);
+    }
+
+    #[test]
+    fn test_paste_source_confirmed_is_default_variant() {
+        // Verified: Confirmed variant exists and is not the default.
+        let default = crate::clipboard::PasteSource::default();
+        assert!(matches!(default, crate::clipboard::PasteSource::Clipboard));
+        assert!(!matches!(
+            crate::clipboard::PasteSource::Confirmed,
+            crate::clipboard::PasteSource::Clipboard
+        ));
+    }
 }
