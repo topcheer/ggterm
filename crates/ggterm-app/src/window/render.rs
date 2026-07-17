@@ -3126,6 +3126,52 @@ impl DesktopApp {
             }]);
         }
 
+        // ── Tab close confirmation dialog ─────────────────────────
+        if self.pending_close_tab.is_some() {
+            let msg = "Process still running. Close tab again to confirm.";
+            let char_w = renderer.cell_width() as f32;
+            let mut close_ui: Vec<ggterm_render_wgpu::UiRect> = Vec::with_capacity(3);
+            close_ui.push(ggterm_render_wgpu::UiRect {
+                x: 0.0,
+                y: 0.0,
+                w: screen_w,
+                h: screen_h,
+                color: (0.0, 0.0, 0.0, 0.5),
+                radius: 0.0,
+                stroke_width: 0.0,
+            });
+            let panel_w = msg.chars().count() as f32 * char_w + 48.0;
+            let panel_h = cell_h + 32.0;
+            let panel_x = (screen_w - panel_w) / 2.0;
+            let panel_y = (screen_h - panel_h) / 2.0;
+            close_ui.push(ggterm_render_wgpu::UiRect {
+                x: panel_x,
+                y: panel_y,
+                w: panel_w,
+                h: panel_h,
+                color: (0.12, 0.13, 0.16, 0.95),
+                radius: 8.0,
+                stroke_width: 0.0,
+            });
+            close_ui.push(ggterm_render_wgpu::UiRect {
+                x: panel_x,
+                y: panel_y,
+                w: panel_w,
+                h: panel_h,
+                color: (0.9, 0.6, 0.2, 0.0),
+                radius: 8.0,
+                stroke_width: 1.5,
+            });
+            renderer.set_ui_rects(close_ui);
+            renderer.set_overlay_text(vec![ggterm_render_wgpu::OverlayTextSpec {
+                text: msg.to_string(),
+                left: panel_x + 24.0,
+                top: panel_y + 16.0,
+                color: (240, 220, 180),
+                ..Default::default()
+            }]);
+        }
+
         // IME preedit text overlay — show in-progress CJK composition text
         // as an underline-styled overlay at the cursor position.
         if let Some(ref preedit) = self.ime_preedit {

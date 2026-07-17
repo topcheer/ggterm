@@ -1114,6 +1114,33 @@ mod tests {
     }
 
     #[test]
+    fn t_next_match_wrapped_flag() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.set_query("hello", &g);
+        // set_query sets current_match to 0 (first of 2 matches).
+        // First next: 0→1, no wrap.
+        s.next_match();
+        assert!(!s.last_wrapped(), "first next should not wrap");
+        // Second next: 1→0, wraps.
+        s.next_match();
+        assert!(s.last_wrapped(), "second next should wrap");
+    }
+
+    #[test]
+    fn t_prev_match_wrapped_flag() {
+        let g = make_grid();
+        let mut s = SearchState::new();
+        s.set_query("hello", &g);
+        // set_query sets current_match to 0. Prev wraps to last (index 1).
+        s.prev_match();
+        assert!(s.last_wrapped(), "first prev should wrap");
+        // Next prev: 1→0, no wrap.
+        s.prev_match();
+        assert!(!s.last_wrapped(), "second prev should not wrap");
+    }
+
+    #[test]
     fn t_close_clears_everything() {
         let g = make_grid();
         let mut s = SearchState::new();
