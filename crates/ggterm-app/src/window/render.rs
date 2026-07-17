@@ -2522,19 +2522,22 @@ impl DesktopApp {
                     .terminal()
                     .grid()
                     .scrollback_len();
-                // Show "↓ NN%" when scrolled, or "↓ N lines" for large scrollback
+                // Show scroll position: Top / percentage / line count.
                 let indicator_text = if scrollback_total > 0 {
-                    let pct = (display_offset * 100 / (scrollback_total + 1)).min(100);
-                    if pct >= 1 {
-                        format!("↓ {}%", pct)
+                    if display_offset >= scrollback_total {
+                        "↓ Top".to_string()
                     } else {
-                        // Scrolled but less than 1% — show line count.
-                        format!("↓ {}L", display_offset)
+                        let pct = (display_offset * 100 / scrollback_total).min(100);
+                        if pct >= 1 {
+                            format!("↓ {}%", pct)
+                        } else {
+                            format!("↓ {}L", display_offset)
+                        }
                     }
                 } else {
                     format!("↓ {}L", display_offset)
                 };
-                let indicator_w = (indicator_text.len() as f32 * 7.0 + 24.0).max(60.0);
+                let indicator_w = (indicator_text.chars().count() as f32 * 7.0 + 24.0).max(60.0);
                 let indicator_h = 24.0;
                 let ix = screen_w - indicator_w - 20.0;
                 let iy = screen_h - indicator_h - 40.0;
@@ -2806,7 +2809,7 @@ impl DesktopApp {
         // ── Command Palette overlay ──────────────────────────────────
         if self.command_palette.visible {
             let results = self.command_palette.results(&self.command_registry);
-            let palette_w = 520.0;
+            let palette_w = (520.0_f32).min(screen_w - 40.0);
             let palette_h = 360.0;
             let palette_x = (screen_w - palette_w) / 2.0;
             let palette_y = 60.0;

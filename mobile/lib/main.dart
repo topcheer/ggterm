@@ -259,6 +259,7 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
             ), localShell: true)
           : null,
       onScanQr: _p2p.isAvailable ? _onScanQr : null,
+      onDirectConnect: _p2p.isAvailable ? _connectWithTicket : null,
       // Share Terminal (P2P host) only makes sense with a local terminal.
       // iOS has no local shell, so only show on Android.
       onShare: (_p2p.isAvailable && Platform.isAndroid) ? _onShare : null,

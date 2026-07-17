@@ -40,6 +40,7 @@ class ConnectionScreen extends StatefulWidget {
 
   /// Called when the user wants to scan a P2P QR code.
   final VoidCallback? onScanQr;
+  final void Function(String ticket)? onDirectConnect;
 
   /// Called when the user wants to host a P2P session.
   final VoidCallback? onShare;
@@ -50,6 +51,7 @@ class ConnectionScreen extends StatefulWidget {
     this.onEchoTest,
     this.onLocalShell,
     this.onScanQr,
+    this.onDirectConnect,
     this.onShare,
   });
 
@@ -457,9 +459,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   /// Direct P2P connect via pasted ticket.
   void _onDirectConnect(String ticket) {
     if (ticket.trim().isEmpty) return;
-    // Navigate to terminal screen with the pasted ticket.
-    // The QR scan screen handler accepts both scanned and pasted tickets.
-    widget.onScanQr?.call();
+    widget.onDirectConnect?.call(ticket.trim());
   }
 
   /// Paste from clipboard and parse SSH connection string.
@@ -1013,11 +1013,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         if (clip?.text != null &&
                             clip!.text!.isNotEmpty) {
                           _ticketController.text = clip.text!;
+                          setState(() {});
                         }
                       },
                     ),
                   ),
                   maxLines: 2,
+                  onChanged: (_) => setState(() {}),
                   style: const TextStyle(
                       fontSize: 12, fontFamily: 'monospace'),
                 ),

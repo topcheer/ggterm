@@ -478,6 +478,9 @@ class _TerminalScreenState extends State<TerminalScreen>
         } else if (_modifiers.alt) {
           codes.add(0x1B); // ESC prefix
           codes.addAll(utf8.encode(char));
+        } else if (_modifiers.shift) {
+          // Shift+letter → uppercase
+          codes.addAll(utf8.encode(char.toUpperCase()));
         } else {
           codes.addAll(utf8.encode(char));
         }
