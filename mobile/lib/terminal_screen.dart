@@ -1747,6 +1747,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                       _lastRequestedRows = newRows;
                       widget.sessionManager.resize(widget.sessionId, newCols, newRows);
                       _lastFrameHash = 0; // Force screen refresh
+                      _clearSelection(); // Stale indices after resize
                     }
                   });
 
