@@ -547,8 +547,8 @@ impl DesktopApp {
             // buttons on the right. Taller bar and larger buttons for usability.
             let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
             let tab_h = (cell_h + 26.0).max(48.0); // matches multi-tab tab height
-            let btn_size = (tab_h * 0.65).max(24.0); // 65% of tab height, min 24px
-            let btn_gap = 8.0_f32;
+            let btn_size = (tab_h * 0.5).max(20.0); // 50% of tab height, min 20px
+            let btn_gap = 6.0_f32;
             let cell_w = renderer.cell_width() as f32;
 
             // Title bar background — same theme-aware style as full tab bar.
@@ -627,11 +627,9 @@ impl DesktopApp {
 
             let gear_x = screen_w - btn_size - right_margin;
             let plus_x = gear_x - btn_size - btn_gap;
-            // Match multi-tab button vertical position: (bar_h - tab_h) / 2.0
-            let btn_y = (bar_h - tab_h) / 2.0;
-            // Button container height matches tab height, not btn_size —
-            // this makes the button fill the tab bar height like multi-tab.
-            let btn_h = tab_h;
+            // Square buttons centered vertically in the bar.
+            let btn_y = (bar_h - btn_size) / 2.0;
+            let btn_h = btn_size;
 
             // "+" new-tab button.
             let plus_hovered = self.cursor_pos.0 as f32 >= plus_x

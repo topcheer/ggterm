@@ -2412,8 +2412,9 @@ impl DesktopApp {
                         self.config.cell_height
                     };
                     let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
-                    let btn_size = (bar_h - 8.0).max(32.0);
-                    let btn_gap = 8.0_f32;
+                    let tab_h = bar_h - 4.0;
+                    let btn_size = (tab_h * 0.5).max(20.0); // matches render.rs
+                    let btn_gap = 6.0_f32;
                     #[cfg(not(target_os = "macos"))]
                     let right_margin = 14.0 * 3.0 + 8.0 * 2.0 + 24.0;
                     #[cfg(target_os = "macos")]
@@ -3388,8 +3389,8 @@ impl DesktopApp {
         };
         let bar_h = (cell_h + 26.0).max(48.0) + 4.0;
         let tab_h = (cell_h + 26.0).max(48.0);
-        let btn_size = (tab_h * 0.65).max(24.0); // matches render.rs
-        let btn_gap = 8.0_f32;
+        let btn_size = (tab_h * 0.5).max(20.0); // matches render.rs
+        let btn_gap = 6.0_f32;
         let screen_w = if let Some(ref r) = self.renderer {
             r.resolution_width() as f32
         } else {
