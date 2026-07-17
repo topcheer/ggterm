@@ -3347,8 +3347,8 @@ impl DesktopApp {
 
         match delta {
             winit::event::MouseScrollDelta::LineDelta(_x, y) => {
-                // Line-based scroll (mouse wheel): add integer lines.
-                let lines = -(y as i32); // up = positive
+                // Mouse wheel: scroll 3 lines per notch (standard terminal/editor behavior).
+                let lines = -(y as i32 * 3);
                 self.smooth_scroll.add_lines(lines);
             }
             winit::event::MouseScrollDelta::PixelDelta(pos) => {

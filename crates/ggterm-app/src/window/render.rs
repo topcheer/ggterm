@@ -2425,8 +2425,15 @@ impl DesktopApp {
 
         // ── P30-C: Toast notification ─────────────────────────────────
         if let Some((msg, frames)) = &self.toast {
-            let alpha = (*frames as f32 / 120.0).min(1.0);
-            let toast_w = (msg.len() as f32 * cell_w + 24.0).max(80.0);
+            // Hold at full opacity for first 80% of lifetime, then fade out.
+            let alpha = if *frames > 24 {
+                1.0
+            } else {
+                *frames as f32 / 24.0
+            };
+            // Use char count for width (not byte length — CJK/emoji are multi-byte).
+            let char_count = msg.chars().count() as f32;
+            let toast_w = (char_count * cell_w + 24.0).max(80.0);
             let toast_h = 32.0;
             let tx = (screen_w - toast_w) / 2.0;
             let ty = screen_h - 50.0; // bottom of screen
@@ -2621,7 +2628,7 @@ impl DesktopApp {
             let bar_w = 420.0;
             let bar_h = 40.0;
             let bar_x = screen_w - bar_w - 16.0;
-            let bar_y = 8.0;
+            let bar_y = content_bounds.y as f32 + 8.0;
 
             // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {
@@ -2743,7 +2750,7 @@ impl DesktopApp {
             let bar_w = 480.0;
             let bar_h = 40.0;
             let bar_x = (screen_w - bar_w) / 2.0;
-            let bar_y = 8.0;
+            let bar_y = content_bounds.y as f32 + 8.0;
 
             // Background — theme-aware.
             ui_rects.push(ggterm_render_wgpu::UiRect {

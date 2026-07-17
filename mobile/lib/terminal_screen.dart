@@ -1037,7 +1037,8 @@ class _TerminalScreenState extends State<TerminalScreen>
     if (scrollLen <= 0) return const SizedBox.shrink();
 
     // Calculate scrollbar thumb position.
-    final visibleRows = mgr.getScreenSnapshot(id).rows;
+    // Use already-cached screen dimensions instead of allocating a full snapshot.
+    final visibleRows = _screen.rows;
     final totalRows = scrollLen + visibleRows;
     final thumbFraction = visibleRows / totalRows;
     final thumbHeight = (thumbFraction * 1000).clamp(30.0, 1000.0);
@@ -1156,11 +1157,15 @@ class _TerminalScreenState extends State<TerminalScreen>
   }
 
   /// Share text via the OS share sheet (iOS/Android).
-  void _shareText(String text) {
-    // Use clipboard + showShareSheet via platform channel.
-    // Simple approach: copy to clipboard and show a snackbar.
-    Clipboard.setData(ClipboardData(text: text));
-    _showCopiedSnackBar('Copied ${text.split('\n').length} lines to share');
+  Future<void> _shareText(String text) async {
+    try {
+      const channel = MethodChannel('dev.ggterm/share');
+      await channel.invokeMethod('shareText', {'text': text, 'subject': 'GGTerm output'});
+    } catch (_) {
+      // Fallback: copy to clipboard.
+      Clipboard.setData(ClipboardData(text: text));
+      _showCopiedSnackBar('Copied ${text.split('\n').length} lines');
+    }
   }
 
   /// Handle hardware keyboard events (iPad/Android tablet with physical keyboard).

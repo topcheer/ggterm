@@ -358,7 +358,9 @@ pub extern "C" fn ggterm_transport_flush(id: u32) {
         return;
     }
 
-    if let Some(t) = s.transport.as_mut() {
+    if let Some(t) = s.transport.as_mut()
+        && t.is_alive()
+    {
         t.write(&input);
     }
 }

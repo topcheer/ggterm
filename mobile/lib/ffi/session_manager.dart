@@ -403,9 +403,15 @@ class SessionManager {
   /// One-step pump + flush cycle.
   /// Call this in a timer loop for the render cycle.
   int pumpAndFlush(int id) {
-    final bytes = pump(id);
-    flush(id);
-    return bytes;
+    try {
+      final bytes = pump(id);
+      flush(id);
+      return bytes;
+    } catch (_) {
+      // Native call failed (panic, corrupted state, poisoned mutex).
+      // Return 0 to signal no data — the render loop will skip this frame.
+      return 0;
+    }
   }
 
   String _lastError = '';
