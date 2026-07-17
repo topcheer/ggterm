@@ -153,6 +153,7 @@ pub fn caption_hit_test(layout: &CaptionLayout, px: f32, py: f32) -> Option<Wind
 }
 
 /// Check if pixel is inside ANY caption button area.
+#[cfg(test)]
 pub fn is_in_caption_area(layout: &CaptionLayout, px: f32, py: f32) -> bool {
     px >= layout.minimize.x && py <= layout.close.h
 }
