@@ -3193,7 +3193,6 @@ impl DesktopApp {
                         offset_y: rect.y,
                         width: rect.width,
                         height: rect.height,
-                        needs_prepare: session.pane_needs_prepare(*pane_id),
                         reverse_video: app.terminal().reverse_video(),
                         dynamic_fg: app.terminal().dynamic_fg().map(|c| match c {
                             ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
@@ -3219,11 +3218,7 @@ impl DesktopApp {
                 log::error!("Render error: {e}");
             }
 
-            // P21-D: Clear prepare flags after render.
-            self.sessions[active].clear_prepare_flags();
             // Clear content_dirty to prevent 100% CPU on idle.
-            // Without this, any_pane_dirty() always returns true and
-            // the idle sleep in about_to_wait is dead code.
             self.sessions[active].clear_content_dirty();
         }
 

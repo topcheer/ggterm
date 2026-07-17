@@ -283,6 +283,25 @@ impl DesktopApp {
             }
         }
 
+        // Cancel pending large paste on Escape.
+        if let PhysicalKey::Code(KeyCode::Escape) = &event.physical_key
+            && self.pending_large_paste.is_some()
+            && !event.repeat
+        {
+            self.pending_large_paste = None;
+            self.show_toast("Paste cancelled".to_string());
+            return;
+        }
+
+        // Confirm pending large paste on Enter.
+        if let PhysicalKey::Code(KeyCode::Enter) = &event.physical_key
+            && self.pending_large_paste.is_some()
+            && !event.repeat
+        {
+            self.paste_from_source(crate::clipboard::PasteSource::Confirmed);
+            return;
+        }
+
         // Escape clears text selection (when no overlays are open).
         if !self.mods.ctrl
             && !self.mods.alt

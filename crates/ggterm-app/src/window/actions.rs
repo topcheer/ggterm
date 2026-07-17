@@ -1325,6 +1325,17 @@ impl DesktopApp {
     }
 
     pub(super) fn paste_from_source(&mut self, source: crate::clipboard::PasteSource) {
+        // Confirmed paste: use the stored pending text.
+        if source == crate::clipboard::PasteSource::Confirmed && self.pending_large_paste.is_some()
+        {
+            let text = self.pending_large_paste.take().unwrap();
+            let bracketed = self.active_session().app().terminal().bracketed_paste();
+            let bytes = crate::clipboard::bracket_paste(&text, bracketed);
+            log::debug!("Confirmed paste: {} bytes", bytes.len());
+            self.write_to_pty(&bytes);
+            return;
+        }
+
         let Some(text) = crate::clipboard::read_for_paste(source) else {
             log::debug!("Paste: clipboard empty or unavailable");
             return;
@@ -1333,8 +1344,28 @@ impl DesktopApp {
             return;
         }
 
-        // Safety: warn on very large pastes (>100KB) to prevent terminal
-        // slowdowns from processing massive clipboard content.
+        // Large paste protection: for pastes > 5KB, require confirmation
+        // to prevent accidentally pasting huge content that can freeze
+        // the PTY (e.g. pasting a binary file or log dump).
+        const LARGE_PASTE_THRESHOLD: usize = 5_000;
+        if text.len() > LARGE_PASTE_THRESHOLD && self.pending_large_paste.is_none() {
+            let kb = text.len() / 1024;
+            self.pending_large_paste = Some(text);
+            self.show_toast(format!(
+                "Paste {kb}KB? Press Enter to confirm, Esc to cancel."
+            ));
+            return;
+        }
+
+        // If this is a confirmed paste (from pending), use the stored text.
+        let text = if let Some(ref pending) = self.pending_large_paste {
+            let t = pending.clone();
+            self.pending_large_paste = None;
+            t
+        } else {
+            text
+        };
+
         const MAX_PASTE_WARN: usize = 100_000;
         if text.len() > MAX_PASTE_WARN {
             let kb = text.len() / 1024;

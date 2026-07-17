@@ -63,6 +63,8 @@ pub enum PasteSource {
     Clipboard,
     /// Middle-click paste — uses PRIMARY on Linux, CLIPBOARD elsewhere.
     MiddleClick,
+    /// Confirmed large paste — skip clipboard read, use pending data.
+    Confirmed,
 }
 
 /// Read text appropriate for the given paste source.
@@ -70,6 +72,8 @@ pub fn read_for_paste(source: PasteSource) -> Option<String> {
     match source {
         PasteSource::Clipboard => read_clipboard(),
         PasteSource::MiddleClick => read_primary_selection().or_else(read_clipboard),
+        // Confirmed: caller handles data via pending_large_paste path.
+        PasteSource::Confirmed => None,
     }
 }
 

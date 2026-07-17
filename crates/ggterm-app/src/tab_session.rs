@@ -21,9 +21,6 @@ struct PaneSession {
     pty: Option<PtySession>,
     /// Event sender for the PTY reader thread.
     event_tx: EventSender,
-    /// P21-D: True when grid needs re-prepare before next draw.
-    /// Defaults to `true` so the first frame does a full prepare.
-    needs_reprepare: bool,
     /// Shell program path, saved for restart.
     shell: String,
 }
@@ -53,7 +50,6 @@ impl PaneSession {
             app,
             pty: Some(pty),
             event_tx,
-            needs_reprepare: true,
             shell: shell.to_string(),
         })
     }
@@ -67,7 +63,6 @@ impl PaneSession {
             app,
             pty: None,
             event_tx,
-            needs_reprepare: true,
             shell: String::new(),
         }
     }
@@ -104,7 +99,6 @@ impl PaneSession {
                     spawn_pty_reader(reader, self.event_tx.clone());
                 }
                 self.pty = Some(new_pty);
-                self.needs_reprepare = true;
                 log::info!("Restarted shell: {}", program);
             }
             Err(e) => {
@@ -251,7 +245,6 @@ impl TabSession {
         let mut had_data = false;
         for pane in self.panes.iter_mut().flatten() {
             if pane.app.pump() {
-                pane.needs_reprepare = true;
                 had_data = true;
             }
         }
@@ -322,21 +315,6 @@ impl TabSession {
         self.created_at.elapsed()
     }
 
-    /// P21-D: Check if a pane needs grid re-prepare.
-    pub fn pane_needs_prepare(&self, id: PaneId) -> bool {
-        self.panes
-            .get(id)
-            .and_then(|p: &Option<PaneSession>| p.as_ref())
-            .is_some_and(|p| p.needs_reprepare)
-    }
-
-    /// P21-D: Clear all panes' re-prepare flags. Call after render_frame().
-    pub fn clear_prepare_flags(&mut self) {
-        for pane in self.panes.iter_mut().flatten() {
-            pane.needs_reprepare = false;
-        }
-    }
-
     /// Clear content_dirty on all panes' grids after a successful render.
     /// Without this, `any_pane_dirty()` always returns true, causing
     /// continuous redraws and 100% CPU usage when idle.
@@ -403,7 +381,6 @@ impl TabSession {
                 log::warn!("PTY resize failed: {e}");
             }
             // P21-D: Dimensions changed — all panes need re-prepare.
-            pane.needs_reprepare = true;
         }
     }
 
@@ -448,7 +425,6 @@ impl TabSession {
                     {
                         log::warn!("PTY resize failed: {e}");
                     }
-                    pane.needs_reprepare = true;
                 }
             }
         }
@@ -939,59 +915,6 @@ mod tests {
         let dirty = vec![true, false];
         let bar = format_tab_bar(&titles, 0, &dirty);
         assert_eq!(bar, "1:a* | 2:b");
-    }
-
-    // ── P21-D: needs_prepare tests ────────────────────────────
-
-    #[test]
-    fn test_pane_needs_prepare_default_true() {
-        // PaneSession::new_test sets needs_reprepare = true (first frame must prepare).
-        let session = TabSession::new_test(80, 24);
-        assert!(
-            session.pane_needs_prepare(0),
-            "default needs_prepare should be true for first frame"
-        );
-    }
-
-    #[test]
-    fn test_clear_prepare_flags() {
-        let mut session = TabSession::new_test(80, 24);
-        assert!(session.pane_needs_prepare(0));
-
-        session.clear_prepare_flags();
-        assert!(
-            !session.pane_needs_prepare(0),
-            "needs_prepare should be false after clear_prepare_flags()"
-        );
-    }
-
-    #[test]
-    fn test_resize_sets_needs_prepare() {
-        let mut session = TabSession::new_test(80, 24);
-        // Clear first (default is true)
-        session.clear_prepare_flags();
-        assert!(!session.pane_needs_prepare(0));
-
-        // Resize should mark all panes as needing re-prepare.
-        session.resize(120, 40);
-        assert!(
-            session.pane_needs_prepare(0),
-            "needs_prepare should be true after resize"
-        );
-    }
-
-    #[test]
-    fn test_pump_does_not_mark_clean_pane() {
-        let mut session = TabSession::new_test(80, 24);
-        // Clear the default flag.
-        session.clear_prepare_flags();
-
-        // Pump with no PTY data should NOT set needs_prepare.
-        session.pump();
-        assert!(
-            !session.pane_needs_prepare(0),
-            "pump with no data should not set needs_prepare"
-        );
     }
 
     // ── P22-D: OSC 7 cwd tests ────────────────────────────────

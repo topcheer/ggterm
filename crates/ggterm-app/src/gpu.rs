@@ -381,8 +381,6 @@ pub struct PaneRenderSpec<'a> {
     pub width: u32,
     /// Height in pixels for clipping.
     pub height: u32,
-    /// P21-D: Whether to re-prepare glyphon buffers (true when grid changed).
-    pub needs_prepare: bool,
     /// DECSCNM reverse video mode for this pane.
     pub reverse_video: bool,
     /// Dynamic foreground color override (OSC 10) for this pane.
