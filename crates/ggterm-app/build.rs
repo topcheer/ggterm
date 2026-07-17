@@ -1,28 +1,31 @@
-//! Build script — injects git commit hash and build date at compile time.
+//! Build script — embeds git commit hash and build date into the binary.
+//!
+//! Sets GIT_HASH and BUILD_DATE environment variables at compile time,
+//! which version_info.rs reads via option_env!().
+
+use std::process::Command;
 
 fn main() {
-    // Get git commit hash (short).
-    let git_hash = std::process::Command::new("git")
+    // Git commit hash (short).
+    let git_hash = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=GIT_HASH={git_hash}");
 
-    println!("cargo:rustc-env=GIT_HASH={}", git_hash);
-
-    // Get build date.
-    let build_date = std::process::Command::new("date")
+    // Build date (ISO format).
+    let build_date = Command::new("date")
         .arg("+%Y-%m-%d")
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=BUILD_DATE={build_date}");
 
-    println!("cargo:rustc-env=BUILD_DATE={}", build_date);
-
-    // Rerun if git HEAD changes.
-    println!("cargo:rerun-if-changed=.git/HEAD");
+    // Re-run if HEAD changes.
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
 }

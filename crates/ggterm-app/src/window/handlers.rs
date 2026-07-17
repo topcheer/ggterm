@@ -1255,7 +1255,7 @@ impl DesktopApp {
         // P25-B: When command palette is open, intercept keyboard input.
         if self.command_palette.visible {
             // Ignore key-repeat for toggle/close actions to prevent flicker.
-            if event.is_repeat {
+            if event.repeat {
                 // Still allow character typing with repeat, just not toggle keys.
                 match &event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) | PhysicalKey::Code(KeyCode::Enter) => {
