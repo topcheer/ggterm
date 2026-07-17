@@ -404,9 +404,18 @@ impl App {
 
     pub fn pump(&mut self) -> bool {
         let mut had_data = false;
-        while let Ok(event) = self.event_rx.try_recv() {
+        // Limit events per pump to avoid blocking the event loop when a
+        // background tab accumulated massive output (e.g. `cat` large file).
+        // Each event carries up to 16KB of PTY data, so 64 events ≈ 1MB max
+        // per frame — enough for smooth scrolling without starving UI.
+        const MAX_EVENTS_PER_PUMP: usize = 64;
+        let mut count = 0;
+        while count < MAX_EVENTS_PER_PUMP
+            && let Ok(event) = self.event_rx.try_recv()
+        {
             self.handle_event(event);
             had_data = true;
+            count += 1;
         }
         // Single render after all events are processed — avoids redundant
         // renders when multiple PtyBytes events arrive in the same frame.

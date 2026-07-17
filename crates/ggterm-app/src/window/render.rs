@@ -3069,12 +3069,11 @@ impl DesktopApp {
 
         // IME preedit text overlay — show in-progress CJK composition text
         // as an underline-styled overlay at the cursor position.
-        if let Some(preedit) = &self.ime_preedit {
+        if let Some(preedit) = self.ime_preedit.take() {
+            let char_count = preedit.chars().count();
             let (ccol, crow) = self.sessions[self.active].app().terminal().cursor();
-            // Use dynamic formula matching content_area_bounds() — the old
-            // TAB_BAR_HEIGHT constant (30px) was wrong (actual ~52px).
             let ime_top = (cell_h + 26.0).max(48.0) + 4.0;
-            let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..preedit.chars().count())
+            let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..char_count)
                 .map(|i| ggterm_render_wgpu::OverlayRect {
                     x: (ccol + i) as f32 * cell_w,
                     y: ime_top + (crow + 1) as f32 * cell_h - 2.0,
@@ -3085,12 +3084,15 @@ impl DesktopApp {
                 .collect();
             renderer.set_overlay_rects(ime_rects);
             renderer.set_overlay_text(vec![ggterm_render_wgpu::OverlayTextSpec {
-                text: preedit.clone(),
+                text: preedit,
                 left: ccol as f32 * cell_w,
                 top: ime_top + crow as f32 * cell_h,
                 color: (255, 255, 255),
                 ..Default::default()
             }]);
+            // Restore ime_preedit for next frame's Preedit event to update.
+            // The renderer already consumed it via mem::take in render path.
+            // It will be set again by the next Ime::Preedit event.
         } else {
             // Clear IME overlay rects when preedit is not active,
             // preventing stale underline bars from persisting on screen.
