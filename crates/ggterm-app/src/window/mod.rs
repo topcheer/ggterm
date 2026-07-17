@@ -445,6 +445,8 @@ pub struct DesktopApp {
     /// Pending large paste awaiting user confirmation.
     /// Contains the text to paste if the user confirms.
     pending_large_paste: Option<String>,
+    /// Pending tab close confirmation (tab index to close on confirm).
+    pending_close_tab: Option<usize>,
     /// P31: Saved window position from previous session.
     saved_window_pos: Option<(i32, i32)>,
     /// P31: Saved window size from previous session.
@@ -789,6 +791,7 @@ impl DesktopApp {
             pipe_command_input: String::new(),
             pending_pipe_result: None,
             pending_large_paste: None,
+            pending_close_tab: None,
             saved_window_pos: None,
             saved_window_size: None,
             dragging_tab: None,
@@ -2356,6 +2359,7 @@ impl ApplicationHandler for DesktopApp {
             || self.command_palette.visible
             || self.pending_pipe_result.is_some()
             || self.pending_large_paste.is_some()
+            || self.pending_close_tab.is_some()
             || active_bell
             || bg_bell
             || self.toast.is_some();

@@ -360,8 +360,6 @@ impl DesktopApp {
     pub(super) fn close_tab(&mut self) {
         if self.sessions.len() <= 1 {
             // Last tab: close the window instead of just returning.
-            // This matches macOS behavior (Cmd+W on last tab closes window)
-            // and is more intuitive on all platforms.
             self.should_quit = true;
             return;
         }
@@ -370,6 +368,20 @@ impl DesktopApp {
             self.show_toast("Tab is pinned — unpin first to close");
             return;
         }
+
+        // Warn when closing a tab with a running foreground process.
+        // Requires shell integration (OSC 133) for reliable detection.
+        let has_running = self.pending_close_tab == Some(self.active);
+        if !has_running
+            && self.sessions[self.active].is_alive()
+            && self.active_session().app().terminal().is_command_running()
+        {
+            self.pending_close_tab = Some(self.active);
+            self.show_toast("A process is running. Close tab again to confirm.".to_string());
+            return;
+        }
+        self.pending_close_tab = None;
+
         // Save the cwd of the active pane for "reopen closed tab".
         self.last_closed_cwd = self.sessions[self.active].cwd().map(|p| p.to_path_buf());
         self.sessions.remove(self.active);
@@ -427,6 +439,7 @@ impl DesktopApp {
         if index < self.sessions.len() && index != self.active {
             self.selection.clear();
             self.selection_auto_scroll = 0;
+            self.pending_close_tab = None;
             self.last_active_tab = Some(self.active);
             self.active = index;
             self.sessions[self.active].clear_unread();

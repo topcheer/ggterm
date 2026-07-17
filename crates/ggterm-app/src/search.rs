@@ -25,6 +25,8 @@ pub struct SearchState {
     matches: Vec<SearchMatch>,
     /// Index into `matches` for the currently highlighted match.
     current_match: Option<usize>,
+    /// Whether the last next/prev call wrapped around the match list.
+    last_wrapped: bool,
     /// Whether the last search was case-insensitive.
     pub case_insensitive: bool,
     /// Whether regex search mode is active.
@@ -56,6 +58,7 @@ impl SearchState {
             query: String::new(),
             matches: Vec::new(),
             current_match: None,
+            last_wrapped: false,
             case_insensitive: true,
             regex_mode: false,
             history: Vec::new(),
@@ -247,11 +250,13 @@ impl SearchState {
         if self.matches.is_empty() {
             return None;
         }
-        let idx = match self.current_match {
-            Some(i) => (i + 1) % self.matches.len(),
-            None => 0,
+        let (idx, wrapped) = match self.current_match {
+            Some(i) if i + 1 < self.matches.len() => (i + 1, false),
+            Some(_) => (0, true),
+            None => (0, false),
         };
         self.current_match = Some(idx);
+        self.last_wrapped = wrapped;
         self.matches.get(idx).copied()
     }
 
@@ -260,12 +265,18 @@ impl SearchState {
         if self.matches.is_empty() {
             return None;
         }
-        let idx = match self.current_match {
-            Some(0) | None => self.matches.len() - 1,
-            Some(i) => i - 1,
+        let (idx, wrapped) = match self.current_match {
+            Some(0) | None => (self.matches.len() - 1, true),
+            Some(i) => (i - 1, false),
         };
         self.current_match = Some(idx);
+        self.last_wrapped = wrapped;
         self.matches.get(idx).copied()
+    }
+
+    /// Whether the last next/prev call wrapped around.
+    pub fn last_wrapped(&self) -> bool {
+        self.last_wrapped
     }
 
     /// Get the current highlighted match.

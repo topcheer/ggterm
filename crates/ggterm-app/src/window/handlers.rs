@@ -1949,6 +1949,9 @@ impl DesktopApp {
                 } else {
                     search.next_match()
                 };
+                if search.last_wrapped() {
+                    self.show_toast("Search wrapped".to_string());
+                }
                 // Scroll viewport to show the matched position.
                 if let Some(m) = matched {
                     let scrollback_len = self.sessions[self.active].app().grid().scrollback_len();
