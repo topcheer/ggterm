@@ -1595,16 +1595,12 @@ impl DesktopApp {
             }
         }
         if active_bell {
-            // Visual bell (flash) unless mode is "sound" only.
-            if bell_mode == "visual" {
+            // Visual bell (flash) for modes that include visual feedback.
+            if bell_mode == "visual" || bell_mode == "both" {
                 self.visual_bell_frames = VISUAL_BELL_DURATION_FRAMES;
             }
-            // Sound bell only when mode is "sound".
-            if bell_mode == "sound" && self.bell_limiter.check() {
-                self.sound_player.play(crate::sound::SoundType::Bell);
-            }
-            // Also play sound in visual mode if sound is enabled.
-            if bell_mode == "visual" && self.bell_limiter.check() {
+            // Sound bell for modes that include audio feedback.
+            if (bell_mode == "sound" || bell_mode == "both") && self.bell_limiter.check() {
                 self.sound_player.play(crate::sound::SoundType::Bell);
             }
             log::debug!("Bell triggered (mode: {})", bell_mode);

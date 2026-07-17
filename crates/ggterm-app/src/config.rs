@@ -439,7 +439,7 @@ impl Config {
         }
         if let Some(v) = raw.terminal.bell_mode {
             let mode = v.to_lowercase();
-            if mode == "none" || mode == "visual" || mode == "sound" {
+            if mode == "none" || mode == "visual" || mode == "sound" || mode == "both" {
                 config.terminal.bell_mode = mode;
             }
         }
