@@ -772,6 +772,20 @@ impl GlyphonRenderer {
             };
             for col_idx in 0..grid.width().min(self.cols) {
                 if let Some(cell) = display_row.cell(col_idx) {
+                    // Skip cells without any decoration — most cells have none.
+                    // This avoids unnecessary color resolution and coordinate
+                    // computation for ~95% of cells in a typical screen.
+                    const DECORATION_FLAGS: ggterm_core::CellFlags =
+                        ggterm_core::CellFlags::UNDERLINE
+                            .union(ggterm_core::CellFlags::UNDERLINE_DOUBLE)
+                            .union(ggterm_core::CellFlags::UNDERLINE_CURLY)
+                            .union(ggterm_core::CellFlags::UNDERLINE_DOTTED)
+                            .union(ggterm_core::CellFlags::UNDERLINE_DASHED)
+                            .union(ggterm_core::CellFlags::STRIKETHROUGH);
+                    if !cell.flags.intersects(DECORATION_FLAGS) && cell.hyperlink.is_none() {
+                        continue;
+                    }
+
                     let theme = &self.theme;
                     // Resolve effective fg: apply REVERSE swap so decoration
                     // color matches the visible text color. Also check
