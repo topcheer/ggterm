@@ -752,6 +752,45 @@ mod tests {
     }
 
     #[test]
+    fn test_decscnm_plus_cell_reverse_cancels() {
+        // When BOTH DECSCNM (global reverse) AND cell-level SGR REVERSE
+        // are active, they should cancel out → normal colors.
+        let mut grid = Grid::new(1, 1);
+        let mut c = Cell::with_char('X');
+        c.fg = Color::Rgb(255, 0, 0); // red fg
+        c.bg = Color::Rgb(0, 0, 255); // blue bg
+        c.flags |= CellFlags::REVERSE;
+        grid[(0, 0)] = c;
+
+        let theme = RenderTheme::default();
+        // reverse_video=true (DECSCNM on).
+        // Cell has REVERSE → swap happens at line 74 (fg↔bg).
+        // Then DECSCNM swap at line 141 → fg_rgb↔bg_rgb → back to original.
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            true,
+            &std::collections::HashMap::new(),
+        );
+        assert_eq!(runs.len(), 1);
+        assert_eq!(
+            runs[0].fg,
+            (255, 0, 0),
+            "DECSCNM+REVERSE should cancel: fg stays red"
+        );
+        assert_eq!(
+            runs[0].bg,
+            (0, 0, 255),
+            "DECSCNM+REVERSE should cancel: bg stays blue"
+        );
+    }
+
+    #[test]
     fn test_non_bold_uses_normal_color() {
         // Non-bold indexed color 1 (red) should use normal variant.
         let mut grid = Grid::new(1, 1);

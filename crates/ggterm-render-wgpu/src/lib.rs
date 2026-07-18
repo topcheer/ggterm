@@ -790,11 +790,11 @@ impl GlyphonRenderer {
                     // Resolve effective fg: apply REVERSE swap so decoration
                     // color matches the visible text color. Also check
                     // palette overrides (OSC 4) for indexed colors.
-                    let effective_fg = if cell.flags.contains(ggterm_core::CellFlags::REVERSE) {
-                        &cell.bg
-                    } else {
-                        &cell.fg
-                    };
+                    // DECSCNM (global reverse video) XOR cell REVERSE: when
+                    // both are active, they cancel out (double-negative).
+                    let reversed =
+                        cell.flags.contains(ggterm_core::CellFlags::REVERSE) ^ self.reverse_video;
+                    let effective_fg = if reversed { &cell.bg } else { &cell.fg };
                     let fg = if let ggterm_core::Color::Indexed(n) = effective_fg
                         && let Some(rgb) = self.palette_overrides.get(n)
                     {

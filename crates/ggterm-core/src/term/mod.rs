@@ -4407,6 +4407,32 @@ mod tests {
     }
 
     #[test]
+    fn t_utf8_partial_then_esc_discards() {
+        // Partial UTF-8 followed by ESC sequence: partial must be discarded
+        // and ESC processed as control, not consumed into UTF-8 buffer.
+        let mut t = Terminal::new(80, 24);
+        let mut p = Parser::new();
+        p.feed(&[0xE4, 0xB8], &mut t); // first 2 bytes of U+4E2D (中)
+        p.feed(b"\x1b[31m", &mut t); // ESC [ 31 m — SGR red
+        p.feed(b"X", &mut t);
+        let cell = t.grid().cell(0, 0).unwrap();
+        // Partial UTF-8 should have been flushed as U+FFFD, then SGR applied.
+        assert_eq!(
+            cell.ch, '\u{FFFD}',
+            "partial UTF-8 should emit replacement char"
+        );
+        // The 'X' at col 1 should be red (SGR was processed).
+        let x_cell = t.grid().cell(1, 0).unwrap();
+        assert_eq!(x_cell.ch, 'X');
+        assert!(x_cell.flags.contains(CellFlags::BOLD) == false);
+        assert_eq!(
+            x_cell.fg,
+            Color::Indexed(1),
+            "SGR red should have been applied"
+        );
+    }
+
+    #[test]
     fn t_utf8_styled_wide_char_preserves_flags() {
         // Bold red CJK char — SGR attributes must merge with WIDE_CHAR flag
         let mut t = Terminal::new(80, 24);
