@@ -713,10 +713,6 @@ impl Grid {
     /// we convert the grid row to an absolute position and compute the offset
     /// that centers it.
     pub fn scroll_to_grid_row(&mut self, grid_row: usize) {
-        if self.display_offset == 0 {
-            // Not scrolled — the grid_row is already visible.
-            return;
-        }
         // Current absolute bottom row.
         let abs_bottom = self.scrollback.len() + self.height;
         // The grid_row maps to absolute row (scrollback.len() + grid_row).
@@ -1815,12 +1811,14 @@ mod tests {
     }
 
     #[test]
-    fn scroll_to_grid_row_noop_when_at_bottom() {
+    fn scroll_to_grid_row_works_from_bottom() {
         let mut g = Grid::with_scrollback(5, 10, 100);
         g.scroll_up(5);
-        // display_offset is 0 (at bottom)
-        g.scroll_to_grid_row(3);
-        assert_eq!(g.display_offset(), 0); // no change
+        // display_offset is 0 (at bottom). scroll_to_grid_row now scrolls
+        // to center the target row instead of being a no-op.
+        g.scroll_to_grid_row(0); // target top row
+        // Should scroll back to show row 0 centered.
+        assert!(g.display_offset() > 0, "should scroll up to center row 0");
     }
 
     #[test]
