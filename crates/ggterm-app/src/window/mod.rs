@@ -2502,6 +2502,7 @@ impl ApplicationHandler for DesktopApp {
         let cursor_visible = self.active_session().app().terminal().cursor_visible();
         let blink_interval = std::time::Duration::from_millis(500);
         let blink_due = !self.window_occluded
+            && self.window_focused
             && cursor_visible
             && self.cursor_blink.is_enabled()
             && now.duration_since(self.last_redraw) >= blink_interval;

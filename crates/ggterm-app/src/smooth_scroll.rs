@@ -94,7 +94,20 @@ impl SmoothScroller {
         self.target += lines;
 
         // Track velocity for momentum.
-        self.velocity = self.velocity * 0.3 + lines * 8.0;
+        let new_vel = self.velocity * 0.3 + lines * 8.0;
+
+        // Cancel momentum on direction reversal: if the user flicks the
+        // opposite direction, don't add to existing velocity — replace it.
+        // This prevents "bouncy" behavior when changing scroll direction.
+        let velocity = if self.velocity.abs() > 1.0 && new_vel.signum() != self.velocity.signum() {
+            new_vel * 0.5 // Dampen the reversal
+        } else {
+            new_vel
+        };
+
+        // Cap velocity to prevent scrolling past entire scrollback in one frame.
+        // Max ~30 lines/frame at 60fps = ~1800 lines/sec.
+        self.velocity = velocity.clamp(-30.0, 30.0);
 
         self.animating = true;
         self.last_update = Some(Instant::now());
