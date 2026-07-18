@@ -773,7 +773,21 @@ impl GlyphonRenderer {
             for col_idx in 0..grid.width().min(self.cols) {
                 if let Some(cell) = display_row.cell(col_idx) {
                     let theme = &self.theme;
-                    let fg = theme.resolve_fg(&cell.fg);
+                    // Resolve effective fg: apply REVERSE swap so decoration
+                    // color matches the visible text color. Also check
+                    // palette overrides (OSC 4) for indexed colors.
+                    let effective_fg = if cell.flags.contains(ggterm_core::CellFlags::REVERSE) {
+                        &cell.bg
+                    } else {
+                        &cell.fg
+                    };
+                    let fg = if let ggterm_core::Color::Indexed(n) = effective_fg
+                        && let Some(rgb) = self.palette_overrides.get(n)
+                    {
+                        *rgb
+                    } else {
+                        theme.resolve_fg(effective_fg)
+                    };
                     // Use SGR 58 underline color if set, otherwise cell fg.
                     // For OSC 8 hyperlinks, use the same blue tint as the text.
                     let dec_color = self.underline_color.unwrap_or(if cell.hyperlink.is_some() {
