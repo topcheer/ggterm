@@ -992,8 +992,8 @@ impl Terminal {
         }
         let mut lines = Vec::new();
         for row in start..end {
-            // extract_row_text already trims trailing whitespace.
-            lines.push(self.extract_row_text(row));
+            // extract_absolute_row_text handles scrollback rows.
+            lines.push(self.extract_absolute_row_text(row));
         }
         // Remove trailing empty lines.
         while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
@@ -1020,16 +1020,14 @@ impl Terminal {
         // Command line (from command_row to output_row)
         let output_row = block.output_row.unwrap_or(cmd_row + 1);
         for row in cmd_row..output_row {
-            // extract_row_text already trims trailing whitespace.
-            let text = self.extract_row_text(row);
+            let text = self.extract_absolute_row_text(row);
             if !text.is_empty() {
                 lines.push(format!("$ {text}"));
             }
         }
         // Output lines
         for row in output_row..end_row {
-            // extract_row_text already trims trailing whitespace.
-            lines.push(self.extract_row_text(row));
+            lines.push(self.extract_absolute_row_text(row));
         }
         while lines.last().map(|l| l.is_empty()).unwrap_or(false) {
             lines.pop();
@@ -1050,6 +1048,34 @@ impl Terminal {
     /// Used for idle detection.
     pub fn last_output_time(&self) -> Option<std::time::Instant> {
         self.last_output_time
+    }
+
+    /// Extract text from an absolute row (scrollback + visible).
+    ///
+    /// `abs_row` 0 = oldest scrollback row.
+    pub fn extract_absolute_row_text(&self, abs_row: usize) -> String {
+        let Some(row) = self.grid.absolute_row(abs_row) else {
+            return String::new();
+        };
+        let width = self.grid.width();
+        let mut text = String::with_capacity(width);
+        for x in 0..width {
+            if let Some(cell) = row.cell(x) {
+                if cell.flags.contains(CellFlags::WIDE_SPACER) {
+                    continue;
+                }
+                if cell.ch != '\0' {
+                    text.push(cell.ch);
+                }
+                for &mc in &cell.combining {
+                    text.push(mc);
+                }
+            }
+        }
+        while text.ends_with(|c: char| c.is_whitespace()) {
+            text.pop();
+        }
+        text
     }
 
     /// Extract the text content of a grid row, trimming trailing spaces.
@@ -2722,7 +2748,7 @@ impl Perform for Terminal {
                 };
                 self.command_marks.push(CommandMark {
                     kind,
-                    row: self.cursor.y,
+                    row: self.grid.scrollback_len() + self.cursor.y,
                     exit_code: if has_exit { exit_code } else { None },
                 });
                 // Prevent unbounded growth: keep at most 2000 marks (~500 commands).
@@ -4760,6 +4786,36 @@ mod tests {
         let marks = t.command_marks();
         assert_eq!(marks[0].row, 0);
         assert_eq!(marks[1].row, 2);
+    }
+
+    #[test]
+    fn t_osc133_absolute_row_after_scroll() {
+        // Command marks must store ABSOLUTE positions (scrollback + cursor.y)
+        // so they remain valid after the terminal scrolls.
+        let mut t = Terminal::new(10, 3); // tiny grid to force scrolling
+        feed(&mut t, b"\x1b]133;A\x07"); // prompt at row 0, scrollback=0 → abs=0
+        // Fill all 3 rows then scroll: print 3 lines with \r\n
+        feed(&mut t, b"L0\r\n"); // cursor at row 1, scrollback=0
+        feed(&mut t, b"L1\r\n"); // cursor at row 2, scrollback=0
+        feed(&mut t, b"L2\r\n"); // cursor at row 2 after scroll, scrollback=1
+        // Now grid scrolled once. Row "L0" is in scrollback[0].
+        feed(&mut t, b"\x1b]133;A\x07"); // second prompt at cursor.y, scrollback=1
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 2);
+        // First mark: scrollback=0, cursor.y=0 → abs=0.
+        assert_eq!(marks[0].row, 0);
+        // Second mark: scrollback=1, cursor.y=2 → abs=3.
+        assert_eq!(
+            marks[1].row, 3,
+            "second mark must be absolute (scrollback+cursor.y), got {}",
+            marks[1].row
+        );
+        // Verify extract_absolute_row_text finds the scrolled content.
+        let text = t.extract_absolute_row_text(0);
+        assert!(
+            text.contains("L0"),
+            "abs row 0 should be 'L0' from scrollback, got: '{text}'"
+        );
     }
 
     #[test]

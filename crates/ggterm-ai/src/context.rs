@@ -59,15 +59,18 @@ impl AIContext {
 
         // Find the last block that has a command_row.
         let last = blocks.last().expect("blocks is non-empty");
-        ctx.last_command = last.command_row.map(|row| terminal.extract_row_text(row));
+        ctx.last_command = last
+            .command_row
+            .map(|row| terminal.extract_absolute_row_text(row));
         ctx.last_exit_code = last.exit_code;
 
         // Extract output: rows between output_row and end_row (or current cursor).
         if let Some(output_row) = last.output_row {
             let end_row = last.end_row.unwrap_or_else(|| {
-                // If the command hasn't ended, use cursor Y as the end.
-                let (_, cy) = terminal.cursor();
-                cy
+                // If the command hasn't ended, use cursor position as absolute end.
+                let (cx_unused, cy) = terminal.cursor();
+                let _ = cx_unused;
+                terminal.grid().scrollback_len() + cy
             });
             ctx.last_output = Some(extract_output(terminal, output_row, end_row, output_budget));
         }
@@ -77,7 +80,8 @@ impl AIContext {
         let start = completed.len().saturating_sub(history_limit);
         for b in &completed[start..] {
             if let Some(row) = b.command_row {
-                ctx.recent_commands.push(terminal.extract_row_text(row));
+                ctx.recent_commands
+                    .push(terminal.extract_absolute_row_text(row));
             }
         }
 
@@ -185,7 +189,7 @@ fn extract_output(terminal: &Terminal, output_row: usize, end_row: usize, budget
 
     let mut row = output_row;
     while row < end_row {
-        let text = terminal.extract_row_text(row);
+        let text = terminal.extract_absolute_row_text(row);
         let line_len = text.len() + 1; // +1 for newline
         if total + line_len > budget {
             // Truncate: add what fits, then an ellipsis marker.

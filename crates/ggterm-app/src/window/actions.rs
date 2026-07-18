@@ -2385,8 +2385,8 @@ impl DesktopApp {
             return;
         }
         let scrollback_len = grid.scrollback_len();
-        let display_offset = grid.display_offset();
         let height = grid.height();
+        let display_offset = grid.display_offset();
         let visible_bottom = scrollback_len + height - display_offset;
         let visible_center = visible_bottom.saturating_sub(height / 2);
 
@@ -2396,12 +2396,11 @@ impl DesktopApp {
             .find(|m| m.kind == CommandMarkKind::PromptStart && m.row < visible_center)
             .map(|m| m.row)
         {
-            let grid_row = row.saturating_sub(scrollback_len);
             self.active_session_mut()
                 .app_mut()
                 .terminal_mut()
                 .grid_mut()
-                .scroll_to_grid_row(grid_row);
+                .scroll_to_absolute_row(row);
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }
@@ -2417,8 +2416,8 @@ impl DesktopApp {
             return;
         }
         let scrollback_len = grid.scrollback_len();
-        let display_offset = grid.display_offset();
         let height = grid.height();
+        let display_offset = grid.display_offset();
         let visible_bottom = scrollback_len + height - display_offset;
         let visible_center = visible_bottom.saturating_sub(height / 2);
 
@@ -2427,12 +2426,11 @@ impl DesktopApp {
             .find(|m| m.kind == CommandMarkKind::PromptStart && m.row > visible_center)
             .map(|m| m.row)
         {
-            let grid_row = row.saturating_sub(scrollback_len);
             self.active_session_mut()
                 .app_mut()
                 .terminal_mut()
                 .grid_mut()
-                .scroll_to_grid_row(grid_row);
+                .scroll_to_absolute_row(row);
         } else {
             // No more prompts below — jump back to bottom.
             self.active_session_mut()
@@ -2895,7 +2893,7 @@ impl DesktopApp {
                     self.active_session_mut()
                         .app_mut()
                         .grid_mut()
-                        .scroll_to_grid_row(first.prompt_row);
+                        .scroll_to_absolute_row(first.prompt_row);
                     self.show_toast("Jumped to first command".to_string());
                 } else {
                     self.show_toast("No commands in history".to_string());
@@ -2907,7 +2905,7 @@ impl DesktopApp {
                     self.active_session_mut()
                         .app_mut()
                         .grid_mut()
-                        .scroll_to_grid_row(last.prompt_row);
+                        .scroll_to_absolute_row(last.prompt_row);
                     self.show_toast("Jumped to latest command".to_string());
                 } else {
                     self.show_toast("No commands in history".to_string());

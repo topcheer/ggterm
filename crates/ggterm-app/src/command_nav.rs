@@ -186,7 +186,10 @@ impl CommandNavigator {
             .command_blocks()
             .into_iter()
             .filter(|b| b.is_complete())
-            .filter_map(|b| b.command_row.map(|row| terminal.extract_row_text(row)))
+            .filter_map(|b| {
+                b.command_row
+                    .map(|row| terminal.extract_absolute_row_text(row))
+            })
             .collect()
     }
 
@@ -195,7 +198,10 @@ impl CommandNavigator {
         terminal
             .command_blocks()
             .into_iter()
-            .filter_map(|b| b.command_row.map(|row| terminal.extract_row_text(row)))
+            .filter_map(|b| {
+                b.command_row
+                    .map(|row| terminal.extract_absolute_row_text(row))
+            })
             .collect()
     }
 
@@ -215,7 +221,7 @@ impl CommandNavigator {
         terminal.command_blocks().iter().position(|b| {
             if let Some(row) = b.command_row {
                 terminal
-                    .extract_row_text(row)
+                    .extract_absolute_row_text(row)
                     .to_lowercase()
                     .contains(&lower)
             } else {
@@ -511,7 +517,7 @@ impl CommandNavOverlay {
             if let Some(block) = blocks.get(idx) {
                 let cmd_text = block
                     .command_row
-                    .map(|row| self.truncate(&terminal.extract_row_text(row)))
+                    .map(|row| self.truncate(&terminal.extract_absolute_row_text(row)))
                     .unwrap_or_else(|| "(prompt)".to_string());
 
                 let exit_part = if block.is_success() {

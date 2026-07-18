@@ -723,6 +723,29 @@ impl Grid {
         self.set_display_offset(desired_offset);
     }
 
+    /// Get a row by absolute position (scrollback + visible).
+    ///
+    /// `abs_row` 0 is the oldest row in scrollback.
+    /// Rows < scrollback_len are in scrollback; rows >= scrollback_len
+    /// are in the visible grid.
+    pub fn absolute_row(&self, abs_row: usize) -> Option<&Row> {
+        let sb_len = self.scrollback.len();
+        if abs_row < sb_len {
+            self.scrollback.get(abs_row)
+        } else {
+            self.rows.get(abs_row - sb_len)
+        }
+    }
+
+    /// Scroll viewport to center an absolute row.
+    ///
+    /// `abs_row` indexes from the top of all content (0 = oldest scrollback).
+    pub fn scroll_to_absolute_row(&mut self, abs_row: usize) {
+        let abs_bottom = self.scrollback.len() + self.height;
+        let desired_offset = abs_bottom.saturating_sub(abs_row + self.height / 2);
+        self.set_display_offset(desired_offset);
+    }
+
     /// Return the current display offset (0 = at the active bottom).
     pub fn display_offset(&self) -> usize {
         self.display_offset
