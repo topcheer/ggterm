@@ -1209,7 +1209,7 @@ pub fn parse_keybinding(s: &str) -> Option<(bool, bool, bool, &str)> {
         }
     }
 
-    let key = parts.last().unwrap().trim();
+    let key = parts.last().unwrap_or(&"").trim();
     if key.is_empty() {
         return None;
     }

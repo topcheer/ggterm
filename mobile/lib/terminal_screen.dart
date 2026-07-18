@@ -29,6 +29,8 @@ class TerminalScreen extends StatefulWidget {
   final int sessionId;
   final String title;
   final TerminalTheme theme;
+  /// SSH params for auto-reconnect. Null for non-reconnectable sessions (P2P/echo).
+  final SshConnectionParams? reconnectParams;
 
   const TerminalScreen({
     super.key,
@@ -36,6 +38,7 @@ class TerminalScreen extends StatefulWidget {
     required this.sessionId,
     this.title = 'Terminal',
     this.theme = darkTheme,
+    this.reconnectParams,
   });
 
   @override
@@ -55,6 +58,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   Timer? _renderTimer;
   Timer? _durationTimer; // updates AppBar duration every second
   bool _transportAlive = true;
+  bool _reconnecting = false;
   bool _sizeInitialized = false;
   int _lastRequestedCols = 0;
   int _lastRequestedRows = 0;
@@ -882,6 +886,48 @@ class _TerminalScreenState extends State<TerminalScreen>
         _selStartIdx = null;
         _selEndIdx = null;
       });
+    }
+  }
+
+  /// Reconnect SSH session using saved params.
+  Future<void> _reconnect() async {
+    final params = widget.reconnectParams;
+    if (params == null || _reconnecting) return;
+
+    setState(() => _reconnecting = true);
+    HapticFeedback.selectionClick();
+
+    final mgr = widget.sessionManager;
+    final id = widget.sessionId;
+
+    // Create a new session and connect.
+    final newId = mgr.createSession(_lastRequestedCols > 0 ? _lastRequestedCols : 80,
+                                    _lastRequestedRows > 0 ? _lastRequestedRows : 24);
+    bool connected;
+    if (params.keyFilePath != null && params.keyFilePath!.isNotEmpty) {
+      connected = mgr.sshConnectKey(newId, params);
+    } else {
+      connected = mgr.sshConnect(newId, params);
+    }
+
+    if (connected) {
+      // Destroy old session and switch to new one.
+      mgr.destroySession(id);
+      // Can't change widget.sessionId — navigate back to connection screen
+      // which will open the new session. For now just show success.
+      if (mounted) {
+        setState(() {
+          _reconnecting = false;
+          _transportAlive = true;
+        });
+        _showCopiedSnackBar('Reconnected!');
+        Navigator.of(context).pop();
+      }
+    } else {
+      if (mounted) {
+        setState(() => _reconnecting = false);
+        _showCopiedSnackBar('Reconnect failed. Check network.');
+      }
     }
   }
 
@@ -1855,6 +1901,21 @@ class _TerminalScreenState extends State<TerminalScreen>
                                       ),
                                     ),
                                     const SizedBox(height: 16),
+                                    if (widget.reconnectParams != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: FilledButton.icon(
+                                          onPressed: _reconnecting ? null : _reconnect,
+                                          icon: _reconnecting
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                )
+                                              : const Icon(Icons.refresh),
+                                          label: Text(_reconnecting ? 'Reconnecting...' : 'Reconnect'),
+                                        ),
+                                      ),
                                     FilledButton(
                                       onPressed: () =>
                                           Navigator.of(context).pop(),

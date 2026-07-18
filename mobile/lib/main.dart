@@ -157,6 +157,7 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
 
     bool connected = false;
     String title = '';
+    SshConnectionParams? sshParams;
     if (echo) {
       connected = _sessionManager.echoConnect(sessionId);
       title = 'Echo Mode';
@@ -177,7 +178,7 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
       await Future.delayed(const Duration(milliseconds: 50));
 
       // SSH connect — use key auth if key file is provided, otherwise password.
-      final sshParams = SshConnectionParams(
+      sshParams = SshConnectionParams(
         host: params.host,
         port: params.port,
         user: params.username,
@@ -203,6 +204,7 @@ class _ConnectionEntryState extends State<_ConnectionEntry> {
             sessionId: sessionId,
             title: title,
             theme: builtinThemes[ConnectionScreen.currentThemeName] ?? darkTheme,
+            reconnectParams: sshParams,
           ),
         ),
       ).then((_) {
