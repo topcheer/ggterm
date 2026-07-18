@@ -2673,6 +2673,42 @@ impl DesktopApp {
                 self.active_session_mut().app_mut().terminal_mut().ris();
                 self.show_toast("Terminal cleared and reset".to_string());
             }
+            "terminal.install_shell_integration" => {
+                match crate::shell_integration::install_scripts_manually() {
+                    Ok(results) => {
+                        let shell = crate::shell_integration::detect_user_shell();
+                        let hint = if shell != crate::shell_integration::ShellKind::Unknown {
+                            let r = results.iter().find(|r| {
+                                r.script_path
+                                    .extension()
+                                    .map(|e| {
+                                        (shell == crate::shell_integration::ShellKind::Bash
+                                            && e == "sh")
+                                            || (shell == crate::shell_integration::ShellKind::Zsh
+                                                && e == "zsh")
+                                            || (shell == crate::shell_integration::ShellKind::Fish
+                                                && e == "fish")
+                                    })
+                                    .unwrap_or(false)
+                            });
+                            if let Some(r) = r {
+                                format!(
+                                    "Scripts installed. Add to {}:\n{}",
+                                    r.rc_file, r.source_line
+                                )
+                            } else {
+                                "Scripts installed. See ~/.config/ggterm/".to_string()
+                            }
+                        } else {
+                            "Scripts installed. See ~/.config/ggterm/".to_string()
+                        };
+                        self.show_toast(hint);
+                    }
+                    Err(e) => {
+                        self.show_toast(format!("Install failed: {e}"));
+                    }
+                }
+            }
             "terminal.pipe_selection" => {
                 if !self.selection.is_active() {
                     self.show_toast("Select text first".to_string());

@@ -396,6 +396,12 @@ impl CommandRegistry {
             shortcut: None,
         });
         r.register(Command {
+            id: "terminal.install_shell_integration".into(),
+            label: "Install Shell Integration (OSC 133)".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.copy_cwd_path".into(),
             label: "Copy Current Directory Path".into(),
             category: "Terminal".into(),

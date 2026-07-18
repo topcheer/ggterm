@@ -220,6 +220,79 @@ fn script_filename(kind: ShellKind) -> &'static str {
     }
 }
 
+/// Manual installation result — tells the user what to add to their rc file.
+pub struct ManualInstallResult {
+    /// Path where the script was written.
+    pub script_path: PathBuf,
+    /// The rc file the user should edit.
+    pub rc_file: String,
+    /// The exact line to add to the rc file.
+    pub source_line: String,
+}
+
+/// Detect the user's shell from $SHELL.
+pub fn detect_user_shell() -> ShellKind {
+    std::env::var("SHELL")
+        .map(|s| ShellKind::from_path(&s))
+        .unwrap_or(ShellKind::Unknown)
+}
+
+/// Write integration scripts to ~/.config/ggterm/ for manual sourcing.
+///
+/// Unlike auto-injection (which modifies spawn args), this writes the
+/// scripts to a persistent location so users can add `source` lines
+/// to their rc files. Useful for shells launched outside GGTerm or
+/// when auto-injection is disabled.
+pub fn install_scripts_manually() -> std::io::Result<Vec<ManualInstallResult>> {
+    let dir = config_dir()?;
+    fs::create_dir_all(&dir)?;
+
+    let mut results = Vec::new();
+    for (kind, script) in [
+        (ShellKind::Bash, BASH_INTEGRATION),
+        (ShellKind::Zsh, ZSH_INTEGRATION),
+        (ShellKind::Fish, FISH_INTEGRATION),
+    ] {
+        let fname = script_filename(kind);
+        let path = dir.join(fname);
+        fs::write(&path, script)?;
+
+        let path_str = path.to_string_lossy().into_owned();
+        let (rc, source) = match kind {
+            ShellKind::Bash => (
+                "~/.bashrc".to_string(),
+                format!("[ -f \"{path_str}\" ] && source \"{path_str}\""),
+            ),
+            ShellKind::Zsh => (
+                "~/.zshrc".to_string(),
+                format!("[ -f \"{path_str}\" ] && source \"{path_str}\""),
+            ),
+            ShellKind::Fish => (
+                "~/.config/fish/config.fish".to_string(),
+                format!("source \"{path_str}\""),
+            ),
+            ShellKind::Unknown => continue,
+        };
+
+        results.push(ManualInstallResult {
+            script_path: path,
+            rc_file: rc,
+            source_line: source,
+        });
+    }
+
+    Ok(results)
+}
+
+fn config_dir() -> std::io::Result<PathBuf> {
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        return Ok(PathBuf::from(xdg).join("ggterm"));
+    }
+    let home = std::env::var("HOME")
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::NotFound, "HOME not set"))?;
+    Ok(PathBuf::from(home).join(".config").join("ggterm"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,5 +385,39 @@ mod tests {
         assert_eq!(script_filename(ShellKind::Bash), "ggterm_bash.sh");
         assert_eq!(script_filename(ShellKind::Zsh), "ggterm_zsh.zsh");
         assert_eq!(script_filename(ShellKind::Fish), "ggterm_fish.fish");
+    }
+
+    #[test]
+    fn t_manual_install_writes_scripts() {
+        // Write to a temp HOME to avoid polluting the real config dir.
+        let tmp = std::env::temp_dir().join("ggterm_test_install");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let old_home = std::env::var("HOME").ok();
+        // SAFETY: Single-threaded test, no other code reads HOME during this test.
+        unsafe { std::env::set_var("HOME", &tmp) };
+
+        let results = install_scripts_manually().unwrap();
+        assert_eq!(results.len(), 3, "should write bash+zsh+fish scripts");
+
+        // Verify each script was actually written.
+        for r in &results {
+            assert!(r.script_path.exists(), "{:?} should exist", r.script_path);
+            assert!(!r.source_line.is_empty(), "source line should not be empty");
+        }
+
+        // Cleanup.
+        if let Some(h) = old_home {
+            // SAFETY: Single-threaded test.
+            unsafe { std::env::set_var("HOME", h) };
+        }
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn t_detect_user_shell() {
+        let kind = detect_user_shell();
+        // Don't assert specific value — depends on test runner.
+        let _ = kind;
     }
 }
