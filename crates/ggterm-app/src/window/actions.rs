@@ -2741,6 +2741,31 @@ impl DesktopApp {
             "terminal.export_html" => {
                 self.export_html();
             }
+            "terminal.export_text" => {
+                let text = self.active_session().app().grid().export_text();
+                let lines = text.lines().count();
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let filename = format!("ggterm_{now}.txt");
+                match std::env::var("HOME") {
+                    Ok(home) => {
+                        let path = std::path::Path::new(&home).join(&filename);
+                        match std::fs::write(&path, &text) {
+                            Ok(_) => self.show_toast(format!(
+                                "Exported {lines} lines to {}",
+                                path.display()
+                            )),
+                            Err(e) => self.show_toast(format!("Export failed: {e}")),
+                        }
+                    }
+                    Err(_) => {
+                        crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                        self.show_toast(format!("Copied {lines} lines (no HOME dir)"));
+                    }
+                }
+            }
             "terminal.import_ssh" => {
                 self.import_ssh_hosts();
             }

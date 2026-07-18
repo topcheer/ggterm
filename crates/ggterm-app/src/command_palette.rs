@@ -288,6 +288,12 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Alt+E".into()),
         });
         r.register(Command {
+            id: "terminal.export_text".into(),
+            label: "Export Terminal Output to File".into(),
+            category: "Terminal".into(),
+            shortcut: None,
+        });
+        r.register(Command {
             id: "terminal.import_ssh".into(),
             label: "Import SSH Hosts from ~/.ssh/config".into(),
             category: "Terminal".into(),
