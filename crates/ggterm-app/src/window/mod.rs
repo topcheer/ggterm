@@ -2025,7 +2025,22 @@ impl ApplicationHandler for DesktopApp {
         }
 
         // Pump PTY events — active session first, then non-active.
+        // Track scrollback growth to detect content scroll — if the terminal
+        // scrolled due to new output, clear the active selection (positions
+        // are display-relative and would point at wrong rows).
+        let prev_scrollback = self.active_session().app().grid().scrollback_len();
+        let prev_cursor_y = self.active_session().app().terminal().cursor().1;
         self.active_session_mut().pump();
+        // If the active session scrolled (scrollback grew or cursor advanced
+        // to a new line), invalidate any active selection.
+        let new_scrollback = self.active_session().app().grid().scrollback_len();
+        let new_cursor_y = self.active_session().app().terminal().cursor().1;
+        if self.selection.is_active()
+            && (new_scrollback != prev_scrollback || new_cursor_y != prev_cursor_y)
+        {
+            self.selection.clear();
+            self.selection_auto_scroll = 0;
+        }
         // Pump non-active sessions and mark tabs with unread output.
         // Also collect bells from background sessions.
         // Background sessions are pumped with a lower limit to prioritize
