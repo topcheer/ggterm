@@ -1362,11 +1362,29 @@ impl Terminal {
                     self.modes.alt_screen = true;
                 } else if !enable && self.modes.alt_screen {
                     // Exit alt-screen: restore primary grid + tab stops
-                    if let Some(saved) = self.alt_saved_grid.take() {
+                    if let Some(mut saved) = self.alt_saved_grid.take() {
+                        // Resize saved grid if terminal was resized in alt screen.
+                        let cur_w = self.grid.width();
+                        let cur_h = self.grid.height();
+                        if saved.width() != cur_w || saved.height() != cur_h {
+                            saved.resize(cur_w, cur_h);
+                        }
                         self.grid = saved;
                     }
                     if let Some(stops) = self.alt_saved_tab_stops.take() {
                         self.tab_stops = stops;
+                        let w = self.grid.width();
+                        if self.tab_stops.len() < w {
+                            let old_len = self.tab_stops.len();
+                            self.tab_stops.resize(w, false);
+                            let mut col = (old_len / 8 + 1) * 8;
+                            while col < w {
+                                self.tab_stops[col] = true;
+                                col += 8;
+                            }
+                        } else {
+                            self.tab_stops.truncate(w.max(1));
+                        }
                     }
                     self.modes.alt_screen = false;
                 }
@@ -1396,11 +1414,33 @@ impl Terminal {
                     self.modes.alt_screen = true;
                 } else if !enable && self.modes.alt_screen {
                     // Exit alt-screen: restore grid, cursor, tab stops
-                    if let Some(saved) = self.alt_saved_grid.take() {
+                    if let Some(mut saved) = self.alt_saved_grid.take() {
+                        // If the terminal was resized while in alt screen,
+                        // the saved primary grid has old dimensions.
+                        // Resize it to match the current (alt screen) grid
+                        // dimensions so the restored content fits properly.
+                        let cur_w = self.grid.width();
+                        let cur_h = self.grid.height();
+                        if saved.width() != cur_w || saved.height() != cur_h {
+                            saved.resize(cur_w, cur_h);
+                        }
                         self.grid = saved;
                     }
                     if let Some(stops) = self.alt_saved_tab_stops.take() {
                         self.tab_stops = stops;
+                        // Truncate/extend tab stops to current width.
+                        let w = self.grid.width();
+                        if self.tab_stops.len() < w {
+                            let old_len = self.tab_stops.len();
+                            self.tab_stops.resize(w, false);
+                            let mut col = (old_len / 8 + 1) * 8;
+                            while col < w {
+                                self.tab_stops[col] = true;
+                                col += 8;
+                            }
+                        } else {
+                            self.tab_stops.truncate(w.max(1));
+                        }
                     }
                     if let Some(state) = self.alt_saved_state.take() {
                         self.cursor = state.cursor;
@@ -1415,6 +1455,13 @@ impl Terminal {
                         self.modes.origin = state.origin;
                         self.protected_attr = state.protected_attr;
                         self.cursor_style = state.cursor_style;
+                        // Clamp cursor to restored grid dimensions
+                        // (may differ if resized while in alt screen).
+                        let w = self.grid.width();
+                        let h = self.grid.height();
+                        self.cursor.x = self.cursor.x.min(w.saturating_sub(1));
+                        self.cursor.y = self.cursor.y.min(h.saturating_sub(1));
+                        self.cursor.pending_wrap = false;
                     }
                     self.modes.alt_screen = false;
                 }
@@ -3690,6 +3737,77 @@ mod tests {
         feed(&mut t, b"\x1b[?1049l");
         feed(&mut t, b"\x1b[?1049l"); // Double exit — should be no-op
         assert!(!t.modes.alt_screen);
+    }
+
+    #[test]
+    fn t_alt_screen_1049_resize_while_in_alt() {
+        // Resize while in alt screen: saved grid must be resized on exit,
+        // and restored cursor must be clamped to new dimensions.
+        let mut t = Terminal::new(20, 5);
+        // Write content on primary screen.
+        feed(&mut t, b"Hello");
+        // Move cursor to a position that will be out of bounds after shrink.
+        feed(&mut t, b"\x1b[3;15H"); // row 3, col 15
+        // Enter alt screen.
+        feed(&mut t, b"\x1b[?1049h");
+        // Resize narrower while in alt screen.
+        t.resize(10, 3);
+        // Exit alt screen.
+        feed(&mut t, b"\x1b[?1049l");
+        // Grid dimensions should match the resized terminal.
+        assert_eq!(
+            t.grid().width(),
+            10,
+            "restored grid should match current width"
+        );
+        assert_eq!(
+            t.grid().height(),
+            3,
+            "restored grid should match current height"
+        );
+        // Primary content was on old row 0; shrinking from 5→3 height pushes
+        // old rows 0-1 to scrollback. Verify content survives.
+        assert_eq!(t.grid().scrollback_len(), 2);
+        let sb_text = t
+            .grid()
+            .absolute_row(0)
+            .map(|r| r.text())
+            .unwrap_or_default();
+        assert!(
+            sb_text.contains("Hello"),
+            "primary content should survive resize, got: '{sb_text}'"
+        );
+        // Cursor must be clamped to the new (smaller) dimensions.
+        let (cx, cy) = t.cursor();
+        assert!(cx < 10, "cursor x must be < width after restore, got {cx}");
+        assert!(cy < 3, "cursor y must be < height after restore, got {cy}");
+    }
+
+    #[test]
+    fn t_alt_screen_47_resize_while_in_alt() {
+        // Same as above but using mode 47 instead of 1049.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"Data");
+        feed(&mut t, b"\x1b[?47h");
+        t.resize(8, 3);
+        feed(&mut t, b"\x1b[?47l");
+        assert_eq!(t.grid().width(), 8);
+        assert_eq!(t.grid().height(), 3);
+        // Grid::resize shrinks height by removing rows from the TOP.
+        // With original height=5 → new height=3, rows 0-1 go to scrollback.
+        // So "Data" (on old row 0) is now in scrollback, not visible.
+        assert_eq!(
+            t.grid().scrollback_len(),
+            2,
+            "2 rows should be in scrollback"
+        );
+        // Verify content survives in scrollback.
+        let sb_row = t.grid().absolute_row(0);
+        let sb_text = sb_row.map(|r| r.text()).unwrap_or_default();
+        assert!(
+            sb_text.contains("Data"),
+            "content should survive in scrollback, got: '{sb_text}'"
+        );
     }
 
     #[test]
