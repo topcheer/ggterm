@@ -766,8 +766,12 @@ impl GlyphonRenderer {
         let thickness = 1.0;
 
         for row_idx in 0..grid.height().min(self.rows) {
+            // Resolve display row once per row (avoids N redundant lookups).
+            let Some(display_row) = grid.display_row(row_idx) else {
+                continue;
+            };
             for col_idx in 0..grid.width().min(self.cols) {
-                if let Some(cell) = grid.display_cell(col_idx, row_idx) {
+                if let Some(cell) = display_row.cell(col_idx) {
                     let theme = &self.theme;
                     let fg = theme.resolve_fg(&cell.fg);
                     // Use SGR 58 underline color if set, otherwise cell fg.

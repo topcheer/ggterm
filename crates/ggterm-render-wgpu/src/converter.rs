@@ -49,8 +49,14 @@ pub fn row_to_runs(
     let mut runs: Vec<TextRun> = Vec::with_capacity(16);
     let mut current: Option<TextRun> = None;
 
+    // Resolve the display row ONCE (avoids N redundant display_row lookups
+    // inside the inner cell loop — display_row involves scrollback math).
+    let Some(display_row) = grid.display_row(row) else {
+        return runs;
+    };
+
     for col in 0..grid.width() {
-        let cell = match grid.display_cell(col, row) {
+        let cell = match display_row.cell(col) {
             Some(c) => c,
             None => continue,
         };
@@ -81,12 +87,14 @@ pub fn row_to_runs(
         };
 
         // OSC 4: Apply custom palette overrides for indexed colors.
-        if let ggterm_core::Color::Indexed(n) = &cell.fg
+        // Check the (possibly swapped) local fg/bg, not cell.fg/cell.bg,
+        // so REVERSE cells apply the override to the correct channel.
+        if let ggterm_core::Color::Indexed(n) = &fg
             && let Some(rgb) = palette_overrides.get(n)
         {
             fg_rgb = *rgb;
         }
-        if let ggterm_core::Color::Indexed(n) = &cell.bg
+        if let ggterm_core::Color::Indexed(n) = &bg
             && let Some(rgb) = palette_overrides.get(n)
         {
             bg_rgb = *rgb;
@@ -712,6 +720,35 @@ mod tests {
         let bright_red = theme.resolve_indexed(9);
         assert_ne!(normal_red, bright_red, "bright should differ from normal");
         assert_eq!(runs[0].fg, bright_red, "bold should use bright variant");
+    }
+
+    #[test]
+    fn test_reverse_with_palette_override() {
+        // When a cell has REVERSE and an indexed bg color with a palette
+        // override (OSC 4), the override must apply to the *post-swap* fg.
+        // Before the fix, the code checked cell.fg/cell.bg (pre-swap),
+        // causing the override to land on the wrong channel.
+        let mut grid = Grid::new(1, 1);
+        let mut c = Cell::with_char('X');
+        c.fg = Color::Default;
+        c.bg = Color::Indexed(1); // red (indexed)
+        c.flags |= CellFlags::REVERSE;
+        grid[(0, 0)] = c;
+
+        let theme = RenderTheme::default();
+        let mut overrides = std::collections::HashMap::new();
+        // Override color 1 (red) to a distinct value: (123, 45, 67)
+        overrides.insert(1u8, (123u8, 45u8, 67u8));
+
+        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false, &overrides);
+
+        // After REVERSE swap: fg=cell.bg=Indexed(1), bg=cell.fg=Default.
+        // The palette override for Indexed(1) should be applied to fg_rgb.
+        assert_eq!(
+            runs[0].fg,
+            (123, 45, 67),
+            "palette override must apply to post-swap fg"
+        );
     }
 
     #[test]
