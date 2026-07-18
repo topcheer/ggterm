@@ -491,15 +491,22 @@ impl App {
         self.running
     }
 
-    /// Send typed text as keyboard input (convenience for testing).
+    /// Send typed text as keyboard input.
+    ///
+    /// Encodes each character via the input encoder, then writes the
+    /// concatenated result in a single `write_all` + `flush` to minimize
+    /// syscalls.
     pub fn send_text(&mut self, text: &str) {
+        let mut buf: Vec<u8> = Vec::with_capacity(text.len() * 2);
         for ch in text.chars() {
             let key = crate::input::InputKey::char(ch);
-            let bytes = self.input_encoder.encode(&key);
-            if let Some(ref mut writer) = self.pty_writer {
-                let _ = writer.write_all(&bytes);
-                let _ = writer.flush();
-            }
+            buf.extend_from_slice(&self.input_encoder.encode(&key));
+        }
+        if !buf.is_empty()
+            && let Some(ref mut writer) = self.pty_writer
+        {
+            let _ = writer.write_all(&buf);
+            let _ = writer.flush();
         }
     }
 
@@ -1071,7 +1078,7 @@ mod tests {
         assert!(grid.scrollback_len() > 0, "should have scrollback");
 
         // Scroll up 3 lines.
-        let mut grid = app.terminal_mut().grid_mut();
+        let grid = app.terminal_mut().grid_mut();
         grid.scroll_up_viewport(3);
         assert_eq!(grid.display_offset(), 3);
 

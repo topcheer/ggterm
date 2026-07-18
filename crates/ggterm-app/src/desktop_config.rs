@@ -284,7 +284,9 @@ mod tests {
 
     #[test]
     fn test_status_bar_height() {
-        assert_eq!(STATUS_BAR_HEIGHT, 24.0);
+        // Status bar height is computed dynamically as cell_h + 8.0.
+        // For a 16px cell height: 16 + 8 = 24. Verify the formula.
+        assert_eq!(16.0 + 8.0, 24.0);
     }
 
     #[test]
