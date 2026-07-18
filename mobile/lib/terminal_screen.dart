@@ -59,6 +59,8 @@ class _TerminalScreenState extends State<TerminalScreen>
   Timer? _durationTimer; // updates AppBar duration every second
   bool _transportAlive = true;
   bool _reconnecting = false;
+  /// Mutable session ID — supports reconnection by updating this field.
+  late int _currentSessionId;
   bool _sizeInitialized = false;
   int _lastRequestedCols = 0;
   int _lastRequestedRows = 0;
@@ -146,9 +148,9 @@ class _TerminalScreenState extends State<TerminalScreen>
 
   /// Human-readable scroll position label (e.g., "↓ 45%", "↓ 1.2k lines").
   String get _scrollPercentLabel {
-    final offset = widget.sessionManager.displayOffset(widget.sessionId);
+    final offset = widget.sessionManager.displayOffset(_currentSessionId);
     if (offset <= 0) return '↓';
-    final total = widget.sessionManager.scrollbackLen(widget.sessionId);
+    final total = widget.sessionManager.scrollbackLen(_currentSessionId);
     if (total <= 0) return '↓ $offset';
     final pct = ((offset / total) * 100).round().clamp(1, 99);
     if (offset > 999) {
@@ -160,6 +162,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   @override
   void initState() {
     super.initState();
+    _currentSessionId = _currentSessionId;
     WidgetsBinding.instance.addObserver(this);
     _connectedAt = DateTime.now();
     // Keep screen awake while terminal is active — prevents screen timeout
@@ -266,7 +269,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     _renderTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (!mounted) return;
       final mgr = widget.sessionManager;
-      final id = widget.sessionId;
+      final id = _currentSessionId;
 
       // Pump transport data — returns bytes read.
       final bytesPumped = mgr.pumpAndFlush(id);
@@ -378,7 +381,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     // Ensure session is cleaned up even if disposed by widget tree rebuild
     // rather than back-press or disconnect menu.
     if (!_sessionDestroyed) {
-      widget.sessionManager.destroySession(widget.sessionId);
+      widget.sessionManager.destroySession(_currentSessionId);
       _sessionDestroyed = true;
     }
     WidgetsBinding.instance.removeObserver(this);
@@ -398,10 +401,10 @@ class _TerminalScreenState extends State<TerminalScreen>
 
   /// Send input bytes and auto-scroll to bottom if scrolled up.
   void _sendInput(List<int> codes) {
-    widget.sessionManager.sendInput(widget.sessionId, codes);
+    widget.sessionManager.sendInput(_currentSessionId, codes);
     // Auto-scroll to bottom on input (standard terminal behavior).
-    if (widget.sessionManager.displayOffset(widget.sessionId) > 0) {
-      widget.sessionManager.resetViewport(widget.sessionId);
+    if (widget.sessionManager.displayOffset(_currentSessionId) > 0) {
+      widget.sessionManager.resetViewport(_currentSessionId);
       _lastFrameHash = 0; // Force refresh
     }
     // Reset cursor blink so it's visible during active typing.
@@ -504,7 +507,7 @@ class _TerminalScreenState extends State<TerminalScreen>
         _sendInput(codes);
         // Flush immediately for low-latency echo — don't wait for next
         // 16ms render cycle.
-        widget.sessionManager.flush(widget.sessionId);
+        widget.sessionManager.flush(_currentSessionId);
       }
       _modifiers.releaseAll();
     } else if (newText != oldText) {
@@ -526,7 +529,7 @@ class _TerminalScreenState extends State<TerminalScreen>
       }
       if (codes.isNotEmpty) {
         _sendInput(codes);
-        widget.sessionManager.flush(widget.sessionId);
+        widget.sessionManager.flush(_currentSessionId);
       }
     }
 
@@ -668,7 +671,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     if (dy.abs() > 0.5) {
       // DECSET 7727 (alternate scroll): in alt screen (vim/less), send
       // arrow keys instead of scrolling scrollback (which doesn't exist).
-      final id = widget.sessionId;
+      final id = _currentSessionId;
       final mgr = widget.sessionManager;
       if (mgr.isAltScreen(id) && mgr.altScrollEnabled(id)) {
         // Each "row" of scroll → one arrow key.
@@ -703,10 +706,10 @@ class _TerminalScreenState extends State<TerminalScreen>
       while (_scrollAccumulator.abs() >= threshold) {
         if (_scrollAccumulator < 0) {
           // Dragging up → scroll toward older scrollback.
-          widget.sessionManager.scrollUp(widget.sessionId, 1);
+          widget.sessionManager.scrollUp(_currentSessionId, 1);
         } else {
           // Dragging down → scroll toward newer content.
-          widget.sessionManager.scrollDown(widget.sessionId, 1);
+          widget.sessionManager.scrollDown(_currentSessionId, 1);
         }
         _scrollAccumulator -= threshold * (_scrollAccumulator.sign);
       }
@@ -726,9 +729,9 @@ class _TerminalScreenState extends State<TerminalScreen>
     final threshold = _cellHeight;
     while (_scrollAccumulator.abs() >= threshold) {
       if (_scrollAccumulator < 0) {
-        widget.sessionManager.scrollUp(widget.sessionId, 1);
+        widget.sessionManager.scrollUp(_currentSessionId, 1);
       } else {
-        widget.sessionManager.scrollDown(widget.sessionId, 1);
+        widget.sessionManager.scrollDown(_currentSessionId, 1);
       }
       _scrollAccumulator -= threshold * (_scrollAccumulator.sign);
     }
@@ -898,7 +901,6 @@ class _TerminalScreenState extends State<TerminalScreen>
     HapticFeedback.selectionClick();
 
     final mgr = widget.sessionManager;
-    final id = widget.sessionId;
 
     // Create a new session and connect.
     final newId = mgr.createSession(_lastRequestedCols > 0 ? _lastRequestedCols : 80,
@@ -912,18 +914,22 @@ class _TerminalScreenState extends State<TerminalScreen>
 
     if (connected) {
       // Destroy old session and switch to new one.
-      mgr.destroySession(id);
-      // Can't change widget.sessionId — navigate back to connection screen
-      // which will open the new session. For now just show success.
+      mgr.destroySession(_currentSessionId);
+      _currentSessionId = newId;
+      _sessionDestroyed = false;
+      _connectedAt = DateTime.now();
+      _lastFrameHash = 0;
       if (mounted) {
         setState(() {
           _reconnecting = false;
           _transportAlive = true;
         });
         _showCopiedSnackBar('Reconnected!');
-        Navigator.of(context).pop();
+        _startCursorBlink();
+        _startRenderLoop();
       }
     } else {
+      mgr.destroySession(newId);
       if (mounted) {
         setState(() => _reconnecting = false);
         _showCopiedSnackBar('Reconnect failed. Check network.');
@@ -1051,7 +1057,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                   Navigator.pop(context);
                   // Ctrl+L = clear screen
                   widget.sessionManager
-                      .sendInput(widget.sessionId, [0x0C]);
+                      .sendInput(_currentSessionId, [0x0C]);
                   HapticFeedback.selectionClick();
                 },
               ),
@@ -1063,7 +1069,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                 onTap: () {
                   Navigator.pop(context);
                   widget.sessionManager
-                      .sendInput(widget.sessionId, [0x09]);
+                      .sendInput(_currentSessionId, [0x09]);
                   HapticFeedback.selectionClick();
                 },
               ),
@@ -1137,7 +1143,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Extract text from the current visible terminal screen and copy to clipboard.
   /// Useful for sharing terminal output without a selection.
   Future<void> _copyScreenText() async {
-    final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
+    final snap = widget.sessionManager.getScreenSnapshot(_currentSessionId);
     final text = _extractScreenText(snap);
     if (text.isEmpty) {
       _showCopiedSnackBar('Screen is empty');
@@ -1152,7 +1158,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Copy screen text as a Markdown fenced code block.
   /// Useful for pasting terminal output into Slack, Discord, GitHub, etc.
   Future<void> _copyScreenAsMarkdown() async {
-    final snap = widget.sessionManager.getScreenSnapshot(widget.sessionId);
+    final snap = widget.sessionManager.getScreenSnapshot(_currentSessionId);
     final text = _extractScreenText(snap);
     if (text.isEmpty) {
       _showCopiedSnackBar('Screen is empty');
@@ -1178,7 +1184,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Build a thin scrollbar indicator showing scroll position in scrollback.
   Widget _buildScrollbar(BuildContext context) {
     final mgr = widget.sessionManager;
-    final id = widget.sessionId;
+    final id = _currentSessionId;
     final scrollLen = mgr.scrollbackLen(id);
     final offset = mgr.displayOffset(id);
     if (scrollLen <= 0) return const SizedBox.shrink();
@@ -1456,7 +1462,7 @@ class _TerminalScreenState extends State<TerminalScreen>
           return;
         }
         // Otherwise, disconnect and go back.
-        widget.sessionManager.destroySession(widget.sessionId);
+        widget.sessionManager.destroySession(_currentSessionId);
         _sessionDestroyed = true;
         Navigator.of(context).pop();
       },
@@ -1497,7 +1503,7 @@ class _TerminalScreenState extends State<TerminalScreen>
           if (_isScrolledUp)
             TextButton.icon(
               onPressed: () {
-                widget.sessionManager.resetViewport(widget.sessionId);
+                widget.sessionManager.resetViewport(_currentSessionId);
                 _lastFrameHash = 0; // Force refresh
               },
               icon: const Icon(Icons.vertical_align_bottom,
@@ -1587,7 +1593,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                 case 'clear':
                   // Clear screen: send Ctrl+L
                   _sendInput([0x0C]);
-                  widget.sessionManager.flush(widget.sessionId);
+                  widget.sessionManager.flush(_currentSessionId);
                   break;
                 case 'copy_markdown':
                   _copyScreenAsMarkdown();
@@ -1623,7 +1629,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                   HapticFeedback.selectionClick();
                   break;
                 case 'copy_all':
-                  final text = widget.sessionManager.getTerminalText(widget.sessionId);
+                  final text = widget.sessionManager.getTerminalText(_currentSessionId);
                   if (text.isEmpty) {
                     _showCopiedSnackBar('No text to copy');
                   } else {
@@ -1634,7 +1640,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                   HapticFeedback.selectionClick();
                   break;
                 case 'share_text':
-                  final text = widget.sessionManager.getTerminalText(widget.sessionId);
+                  final text = widget.sessionManager.getTerminalText(_currentSessionId);
                   if (text.isEmpty) {
                     _showCopiedSnackBar('No text to share');
                   } else {
@@ -1651,7 +1657,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                   HapticFeedback.selectionClick();
                   break;
                 case 'disconnect':
-                  widget.sessionManager.destroySession(widget.sessionId);
+                  widget.sessionManager.destroySession(_currentSessionId);
                   _sessionDestroyed = true;
                   if (mounted) Navigator.of(context).pop();
                   break;
@@ -1792,7 +1798,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                       _sizeInitialized = true;
                       _lastRequestedCols = newCols;
                       _lastRequestedRows = newRows;
-                      widget.sessionManager.resize(widget.sessionId, newCols, newRows);
+                      widget.sessionManager.resize(_currentSessionId, newCols, newRows);
                       _lastFrameHash = 0; // Force screen refresh
                       _clearSelection(); // Stale indices after resize
                     }
@@ -1950,7 +1956,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                         foregroundColor: Colors.white,
                         elevation: 4,
                         onPressed: () {
-                          widget.sessionManager.resetViewport(widget.sessionId);
+                          widget.sessionManager.resetViewport(_currentSessionId);
                           _lastFrameHash = 0;
                           _cancelInertia();
                         },
@@ -1986,7 +1992,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                           }
                           _inputHistoryIndex = -1;
                           _sendInput([0x0D]);
-                          widget.sessionManager.flush(widget.sessionId);
+                          widget.sessionManager.flush(_currentSessionId);
                           _inputController.clear();
                           _lastInputText = '';
                           _inputFocusNode.requestFocus();
@@ -2017,7 +2023,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                       icon: const Icon(Icons.keyboard_return, color: Colors.white),
                       onPressed: () {
                         _sendInput([0x0D]);
-                        widget.sessionManager.flush(widget.sessionId);
+                        widget.sessionManager.flush(_currentSessionId);
                         _inputController.clear();
                         _lastInputText = '';
                       },
