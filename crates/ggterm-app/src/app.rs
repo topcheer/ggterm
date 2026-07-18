@@ -1146,4 +1146,15 @@ mod tests {
             "0s should be below default min_notify_duration of 3"
         );
     }
+
+    #[test]
+    fn t_export_text_multiline() {
+        let (mut app, _tx) = App::new(80, 24);
+        app.start();
+        app.inject_bytes(b"line1\r\nline2\r\nline3");
+        let text = app.terminal().grid().export_text();
+        assert!(text.contains("line1"), "should contain line1");
+        assert!(text.contains("line3"), "should contain line3");
+        assert!(text.lines().count() >= 3, "should have 3+ lines");
+    }
 }
