@@ -893,6 +893,17 @@ class _TerminalScreenState extends State<TerminalScreen>
   }
 
   /// Reconnect SSH session using saved params.
+  ///
+  /// Lifecycle:
+  /// 1. Create new session via createSession (gets newId)
+  /// 2. Connect newId via sshConnect/sshConnectKey
+  /// 3. On success: destroy old _currentSessionId, set _currentSessionId = newId,
+  ///    reset _sessionDestroyed=false, restart blink+render timers
+  /// 4. On failure: destroy newId (prevent leak), keep old state
+  ///
+  /// dispose() safety: _sessionDestroyed guard prevents double-free.
+  /// If widget is disposed during reconnect, dispose destroys _currentSessionId
+  /// (which is still the old session until step 3 completes).
   Future<void> _reconnect() async {
     final params = widget.reconnectParams;
     if (params == null || _reconnecting) return;
