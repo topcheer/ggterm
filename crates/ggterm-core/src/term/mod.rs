@@ -2769,8 +2769,8 @@ impl Perform for Terminal {
                 if payload == "?" {
                     // Query: report current color
                     let current = match cmd {
-                        Some(10) => &self.fg,
-                        Some(11) => &self.bg,
+                        Some(10) => self.dynamic_fg.as_ref().unwrap_or(&self.fg),
+                        Some(11) => self.dynamic_bg.as_ref().unwrap_or(&self.bg),
                         _ => self.dynamic_cursor.as_ref().unwrap_or(&self.fg),
                     };
                     let resp = match current {
@@ -5622,6 +5622,34 @@ mod tests {
         assert!(
             resp.contains("rgb:00/00/00"),
             "default bg should be black, got: {resp}"
+        );
+    }
+
+    #[test]
+    fn t_osc10_set_then_query_roundtrip() {
+        // OSC 10 query must return the color set by a previous OSC 10,
+        // not the SGR fg color.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]10;rgb:ab/cd/ef\x1b\\");
+        t.take_response(); // clear any pending response
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.contains("10;rgb:ab/cd/ef"),
+            "OSC 10 query should return the set color, got: {resp}"
+        );
+    }
+
+    #[test]
+    fn t_osc11_set_then_query_roundtrip() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]11;rgb:12/34/56\x1b\\");
+        t.take_response(); // clear
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.contains("11;rgb:12/34/56"),
+            "OSC 11 query should return the set color, got: {resp}"
         );
     }
 
