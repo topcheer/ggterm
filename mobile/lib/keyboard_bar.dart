@@ -100,6 +100,12 @@ class _KeyboardBarState extends State<KeyboardBar> {
     widget.modifiers.releaseAll();
   }
 
+  /// Same as _sendKey but does NOT auto-release modifiers.
+  /// Used during key-repeat so Ctrl+Arrow keeps working.
+  void _sendKeyNoRelease(String name) {
+    widget.onKey(name);
+  }
+
   Widget _modifierButton({
     required String label,
     required bool active,
@@ -173,7 +179,9 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _repeatTimer?.cancel();
             _repeatTimer = Timer.periodic(
               const Duration(milliseconds: 80),
-              (_) => _sendKey(keyName),
+              // Use _sendKeyNoRelease during repeat so active modifiers
+              // (Ctrl, Alt) are not released after the first repeat.
+              (_) => _sendKeyNoRelease(keyName),
             );
           }
         });
