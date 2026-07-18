@@ -1339,7 +1339,12 @@ impl Terminal {
     fn set_dec_mode(&mut self, mode: u16, enable: bool) {
         match mode {
             7 => self.modes.auto_wrap = enable,
-            5 => self.modes.reverse_video = enable, // DECSCNM
+            5 => {
+                if self.modes.reverse_video != enable {
+                    self.modes.reverse_video = enable;
+                    self.grid.mark_all_dirty();
+                }
+            }
             12 => self.modes.cursor_blink = enable,
             25 => self.modes.cursor_visible = enable,
             6 => {
@@ -2867,9 +2872,18 @@ impl Perform for Terminal {
                     self.response_buffer.extend_from_slice(resp.as_bytes());
                 } else if let Some(color) = parse_xcolor(payload) {
                     match cmd {
-                        Some(10) => self.dynamic_fg = Some(color),
-                        Some(11) => self.dynamic_bg = Some(color),
-                        Some(12) => self.dynamic_cursor = Some(color),
+                        Some(10) => {
+                            self.dynamic_fg = Some(color);
+                            self.grid.mark_all_dirty();
+                        }
+                        Some(11) => {
+                            self.dynamic_bg = Some(color);
+                            self.grid.mark_all_dirty();
+                        }
+                        Some(12) => {
+                            self.dynamic_cursor = Some(color);
+                            self.grid.mark_all_dirty();
+                        }
                         _ => {}
                     }
                 }
@@ -2973,6 +2987,10 @@ impl Perform for Terminal {
                             continue;
                         };
                         self.palette_overrides.insert(idx, (r, g, b));
+                        // Palette override changes existing cell colors
+                        // without modifying content — must mark dirty so
+                        // the renderer redraws with updated colors.
+                        self.grid.mark_all_dirty();
                     }
                 }
             }
