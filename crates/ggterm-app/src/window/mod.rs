@@ -2274,6 +2274,18 @@ impl ApplicationHandler for DesktopApp {
                         self.apply_font_size();
                         self.last_applied_font_size = new_font_size;
                         log::info!("Font size changed -> applied {new_font_size:.1}px");
+                        // Re-measure cell dimensions and resize terminal grid
+                        // to match new cell metrics (same as font_family change).
+                        if let Some(renderer) = &self.renderer {
+                            let cw = renderer.cell_width();
+                            let ch = renderer.cell_height();
+                            let bounds = self.content_area_bounds();
+                            let new_cols = ((bounds.width / cw.max(1)) as usize).max(10) as u16;
+                            let new_rows = ((bounds.height / ch.max(1)) as usize).max(3) as u16;
+                            for session in &mut self.sessions {
+                                session.resize(new_cols, new_rows);
+                            }
+                        }
                     }
 
                     // Apply font family change if different.
