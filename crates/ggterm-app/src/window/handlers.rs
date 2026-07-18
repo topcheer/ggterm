@@ -2909,18 +2909,25 @@ impl DesktopApp {
 
         // Extend selection while dragging.
         if self.selection.dragging {
-            // Set auto-scroll direction based on proximity to edges.
+            // Set auto-scroll direction and speed based on proximity to edges.
+            // Closer to the edge = faster scroll (like iTerm2/VS Code).
             // The actual scrolling happens in about_to_wait via a timer.
             let bounds = self.content_area_bounds();
             let py = self.cursor_pos.1 as f32;
             let top_y = bounds.y as f32;
             let bottom_y = (bounds.y + bounds.height) as f32;
-            let edge_zone = 40.0;
+            let edge_zone = 60.0;
 
             if py <= top_y + edge_zone {
-                self.selection_auto_scroll = -1;
+                // Distance into the top edge zone (0 at boundary, edge_zone at top).
+                let dist = (top_y + edge_zone - py).max(0.0);
+                // Speed: 1 line at the boundary, up to 5 at the very edge.
+                let speed = 1 + (dist / edge_zone * 4.0) as i32;
+                self.selection_auto_scroll = -speed;
             } else if py >= bottom_y - edge_zone {
-                self.selection_auto_scroll = 1;
+                let dist = (py - (bottom_y - edge_zone)).max(0.0);
+                let speed = 1 + (dist / edge_zone * 4.0) as i32;
+                self.selection_auto_scroll = speed;
             } else {
                 self.selection_auto_scroll = 0;
             }
@@ -3139,37 +3146,55 @@ impl DesktopApp {
         };
 
         let word_chars = self.word_chars_config();
-        let char_class = |c: char| -> u8 {
-            if c.is_alphanumeric() || c == '_' {
+        // Classify a grid cell at a given column — skip wide spacers.
+        let cell_class = |c: usize| -> Option<u8> {
+            let cell = display_row.cell(c)?;
+            if cell.is_wide_spacer() {
+                return None;
+            }
+            let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
+            Some(if ch.is_alphanumeric() || ch == '_' {
                 0
-            } else if c.is_whitespace() {
+            } else if ch.is_whitespace() {
                 2
-            } else if word_chars.contains(c) {
+            } else if word_chars.contains(ch) {
                 0
             } else {
                 1
-            }
+            })
         };
 
         // If the clicked cell is whitespace, select just that cell.
-        let cells: Vec<char> = display_row.text().chars().collect();
-        if col_u >= cells.len() || char_class(cells[col_u]) == 2 {
+        if cell_class(col_u) == Some(2) || display_row.cell(col_u).is_none() {
             self.selection.start(col, row);
             self.selection.extend(col, row);
             self.selection.finish();
             return;
         }
 
-        // Scan left for word start — stop at different char class.
-        let target_class = char_class(cells[col_u]);
+        // Scan left for word start — stop at different char class or wide spacer.
+        let target_class = match cell_class(col_u) {
+            Some(c) => c,
+            None => {
+                // Clicked on a wide spacer — back up to the lead cell.
+                if col_u == 0 {
+                    return;
+                }
+                match cell_class(col_u - 1) {
+                    Some(c) => c,
+                    None => return,
+                }
+            }
+        };
+
         let mut start = col_u;
-        while start > 0 && char_class(cells[start - 1]) == target_class {
+        while start > 0 && cell_class(start - 1) == Some(target_class) {
             start -= 1;
         }
 
         // Scan right for word end.
         let mut end = col_u;
-        while end + 1 < cells.len() && char_class(cells[end + 1]) == target_class {
+        while cell_class(end + 1) == Some(target_class) {
             end += 1;
         }
 
@@ -3205,38 +3230,37 @@ impl DesktopApp {
         };
 
         let word_chars = self.word_chars_config();
-        let char_class = |c: char| -> u8 {
-            if c.is_alphanumeric() || c == '_' {
+        let cell_class = |c: usize| -> Option<u8> {
+            let cell = display_row.cell(c)?;
+            if cell.is_wide_spacer() {
+                return None;
+            }
+            let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
+            Some(if ch.is_alphanumeric() || ch == '_' {
                 0
-            } else if c.is_whitespace() {
+            } else if ch.is_whitespace() {
                 2
-            } else if word_chars.contains(c) {
+            } else if word_chars.contains(ch) {
                 0
             } else {
                 1
-            }
+            })
         };
 
-        let cells: Vec<char> = display_row.text().chars().collect();
-        if cells.is_empty() {
-            self.selection.extend(col, row);
-            return;
-        }
-
         // If cursor is on whitespace or past the line, just extend to cursor.
-        if col_u >= cells.len() || char_class(cells[col_u]) == 2 {
+        if cell_class(col_u).is_none() || cell_class(col_u) == Some(2) {
             self.selection.extend(col, row);
             return;
         }
 
-        // Find word boundaries at cursor position.
-        let target_class = char_class(cells[col_u]);
+        // Find word boundaries at cursor position using grid cells directly.
+        let target_class = cell_class(col_u).unwrap_or(1);
         let mut word_start = col_u;
-        while word_start > 0 && char_class(cells[word_start - 1]) == target_class {
+        while word_start > 0 && cell_class(word_start - 1) == Some(target_class) {
             word_start -= 1;
         }
         let mut word_end = col_u;
-        while word_end + 1 < cells.len() && char_class(cells[word_end + 1]) == target_class {
+        while cell_class(word_end + 1) == Some(target_class) {
             word_end += 1;
         }
 

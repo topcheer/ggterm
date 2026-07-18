@@ -2384,25 +2384,26 @@ impl ApplicationHandler for DesktopApp {
 
         // Selection drag auto-scroll: scroll viewport periodically while
         // the user holds the mouse near the top or bottom edge.
+        // The magnitude of selection_auto_scroll encodes the speed (1-5).
         if self.selection_auto_scroll != 0 {
             let now = std::time::Instant::now();
-            let scroll_dir = self.selection_auto_scroll;
+            let scroll_dir = self.selection_auto_scroll.signum();
+            let scroll_speed = self.selection_auto_scroll.unsigned_abs() as usize;
             if now.duration_since(self.last_auto_scroll) >= std::time::Duration::from_millis(50) {
                 self.last_auto_scroll = now;
-                let grid_h = self.active_session().app().grid().height();
-                let scroll_amount = 1.max(grid_h / 10);
                 let grid = self
                     .active_session_mut()
                     .app_mut()
                     .terminal_mut()
                     .grid_mut();
                 if scroll_dir < 0 {
-                    grid.scroll_up_viewport(scroll_amount);
+                    grid.scroll_up_viewport(scroll_speed);
                 } else {
-                    grid.scroll_down_viewport(scroll_amount);
+                    grid.scroll_down_viewport(scroll_speed);
                 }
 
                 // Extend selection to keep up with scrolled content.
+                let grid_h = grid.height();
                 if self.selection.dragging {
                     let new_end_row = if scroll_dir < 0 {
                         0 // Extend to top visible row
