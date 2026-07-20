@@ -2975,10 +2975,14 @@ impl DesktopApp {
         }
 
         // P17-C: Detect hovered URL (OSC 8 hyperlink or plain text).
-        self.update_hovered_link(col, row);
-
         // P28-B: Update color picker hover state.
-        self.update_color_picker_hover(col, row);
+        // Throttle: skip both when cell position hasn't changed (avoids
+        // per-pixel grid iteration on mouse move).
+        let cell_changed = self.last_mouse_cell != Some((col, row));
+        if cell_changed {
+            self.update_hovered_link(col, row);
+            self.update_color_picker_hover(col, row);
+        }
 
         // P28-F: Feed mouse position to cursor particle system.
         let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
