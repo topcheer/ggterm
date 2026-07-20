@@ -59,7 +59,7 @@ impl SessionManager {
 
     pub fn create_session(&mut self, cols: usize, rows: usize) -> u32 {
         let id = self.next_id;
-        self.next_id += 1;
+        self.next_id = self.next_id.wrapping_add(1);
         self.sessions.insert(
             id,
             TerminalSession {
