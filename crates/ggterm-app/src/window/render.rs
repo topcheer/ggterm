@@ -1491,18 +1491,38 @@ impl DesktopApp {
                 } else {
                     format!("\u{2193} {}L", offset)
                 };
+
+                // If new output arrived while scrolled up, show "+N" badge.
+                let new_lines = self.new_output_while_scrolled;
+                let label = if new_lines > 0 {
+                    // Cap display to avoid overflow (e.g. "+9.9K").
+                    let new_str = if new_lines >= 1000 {
+                        format!("{}.{}K", new_lines / 1000, (new_lines % 1000) / 100)
+                    } else {
+                        new_lines.to_string()
+                    };
+                    format!("{label} +{new_str}")
+                } else {
+                    label
+                };
+
                 // Pill width adapts to label length.
                 let label_len = label.chars().count().max(3) as f32;
                 let pill_w = cell_w * (label_len + 1.5);
                 let indicator_x =
                     content_bounds.x as f32 + content_bounds.width as f32 - pill_w - 4.0;
-                // Pill background.
+                // Pill background — accent color when new output is pending.
+                let pill_color = if new_lines > 0 {
+                    (0.9, 0.5, 0.1, 0.85) // warm orange: attention needed
+                } else {
+                    (0.2, 0.4, 0.8, 0.7) // blue: informational
+                };
                 ui_rects.push(ggterm_render_wgpu::UiRect {
                     x: indicator_x,
                     y: indicator_y,
                     w: pill_w,
                     h: cell_h + 4.0,
-                    color: (0.2, 0.4, 0.8, 0.7),
+                    color: pill_color,
                     radius: 4.0,
                     stroke_width: 0.0,
                 });

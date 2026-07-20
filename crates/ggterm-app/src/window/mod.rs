@@ -463,6 +463,10 @@ pub struct DesktopApp {
     dragging_tab: Option<usize>,
     /// Pane zoom mode: when true, only the active pane is rendered at full size.
     pane_zoomed: bool,
+    /// Count of new output lines received while scrolled up in scrollback.
+    /// Reset when the user scrolls to bottom. Shown on the scroll indicator
+    /// to alert the user that new content arrived below.
+    new_output_while_scrolled: usize,
     /// Scrollback browse mode: when active, keys navigate scrollback
     /// instead of being sent to the PTY (vim-style j/k/G/g/q).
     scroll_mode: bool,
@@ -805,6 +809,7 @@ impl DesktopApp {
             saved_window_size: None,
             dragging_tab: None,
             pane_zoomed: false,
+            new_output_while_scrolled: 0,
             scroll_mode: false,
             settings_window: None,
             pending_open_settings: false,
@@ -2069,6 +2074,18 @@ impl ApplicationHandler for DesktopApp {
         {
             self.selection.clear();
             self.selection_auto_scroll = 0;
+        }
+        // Track new output while scrolled up: count scrollback growth lines
+        // so the scroll indicator can show "N new" to alert the user.
+        if active_had_data {
+            let is_scrolled = self.active_session().app().grid().is_scrolled();
+            if is_scrolled && new_scrollback > prev_scrollback {
+                self.new_output_while_scrolled += new_scrollback - prev_scrollback;
+            }
+        }
+        // Reset the counter when the user returns to the bottom.
+        if !self.active_session().app().grid().is_scrolled() {
+            self.new_output_while_scrolled = 0;
         }
         // Pump non-active sessions and mark tabs with unread output.
         // Also collect bells from background sessions.
