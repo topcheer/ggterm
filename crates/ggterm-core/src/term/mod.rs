@@ -2555,7 +2555,17 @@ impl Perform for Terminal {
                 if next_is_colon {
                     let val = params.get(i + 1).copied().unwrap_or(0);
                     match (p, val) {
-                        (4, 0) | (4, 1) => {
+                        // SGR 4:0 — no underline (same as SGR 24).
+                        (4, 0) => {
+                            self.flags &= !(CellFlags::UNDERLINE
+                                | CellFlags::UNDERLINE_DOUBLE
+                                | CellFlags::UNDERLINE_CURLY
+                                | CellFlags::UNDERLINE_DOTTED
+                                | CellFlags::UNDERLINE_DASHED);
+                            handled = true;
+                        }
+                        // SGR 4:1 — single solid underline.
+                        (4, 1) => {
                             self.flags |= CellFlags::UNDERLINE;
                             self.flags &= !(CellFlags::UNDERLINE_DOUBLE
                                 | CellFlags::UNDERLINE_CURLY
@@ -3660,6 +3670,30 @@ mod tests {
             !flags.contains(CellFlags::ITALIC),
             "SGR 23 should clear ITALIC"
         );
+    }
+
+    #[test]
+    fn t_sgr_colon_4_0_clears_underline() {
+        // SGR 4:0 (colon syntax) = no underline (like SGR 24).
+        // Set underline with SGR 4, then clear with 4:0.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4mU\x1b[4:0mC");
+        let flags = t.grid().cell(1, 0).unwrap().flags;
+        assert!(
+            !flags.contains(CellFlags::UNDERLINE),
+            "SGR 4:0 should clear UNDERLINE"
+        );
+    }
+
+    #[test]
+    fn t_sgr_colon_4_1_single_underline() {
+        // SGR 4:1 (colon syntax) = single solid underline.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:1mU");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::UNDERLINE));
+        assert!(!flags.contains(CellFlags::UNDERLINE_DOUBLE));
+        assert!(!flags.contains(CellFlags::UNDERLINE_CURLY));
     }
 
     #[test]
