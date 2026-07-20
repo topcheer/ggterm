@@ -517,17 +517,23 @@ impl Grid {
     /// Lines are joined with `\n`. Trailing whitespace is trimmed per line.
     /// Empty trailing lines are omitted.
     pub fn export_text(&self) -> String {
-        let mut lines: Vec<String> = Vec::with_capacity(self.scrollback.len() + self.height);
+        // Collect all rows, then merge soft-wrapped lines (wrap=true)
+        // so the exported text preserves original line structure.
+        let all_rows: Vec<&Row> = self.scrollback.iter().chain(self.rows.iter()).collect();
+        let mut lines: Vec<String> = Vec::with_capacity(all_rows.len());
 
-        // Scrollback (oldest first)
-        for row in &self.scrollback {
-            // row.text() already trims trailing whitespace.
-            lines.push(row.text());
+        let mut current = String::new();
+        for row in &all_rows {
+            current.push_str(&row.text());
+            if row.wrap {
+                // Soft-wrapped: continue on the same logical line.
+                continue;
+            }
+            lines.push(std::mem::take(&mut current));
         }
-
-        // Visible screen
-        for row in &self.rows {
-            lines.push(row.text());
+        // Handle trailing soft-wrapped content.
+        if !current.is_empty() {
+            lines.push(current);
         }
 
         // Trim trailing empty lines
