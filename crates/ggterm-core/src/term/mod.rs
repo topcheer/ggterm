@@ -554,6 +554,7 @@ fn percent_decode(input: &str) -> String {
 
 /// Parse an X11 color specification string into a Color.
 /// Format: `rgb:RR/GG/BB` (hex, 1-4 digits per channel).
+/// Also supports `#RRGGBB` CSS-style.
 /// P17-A: used by OSC 10/11/12.
 fn parse_xcolor(spec: &str) -> Option<Color> {
     let spec = spec
@@ -561,9 +562,13 @@ fn parse_xcolor(spec: &str) -> Option<Color> {
         .or_else(|| spec.strip_prefix("#"))?;
     let parts: Vec<&str> = spec.split('/').collect();
     if parts.len() == 3 {
-        let r = u8::from_str_radix(parts[0], 16).ok()?;
-        let g = u8::from_str_radix(parts[1], 16).ok()?;
-        let b = u8::from_str_radix(parts[2], 16).ok()?;
+        // X11 format: rgb:RR/GG/BB where each channel is 1-4 hex digits.
+        // 1-2 digit channels map directly to u8.
+        // 3-4 digit channels (16-bit) are scaled down to 8-bit: scale by
+        // (value * 255) / max_value for correct gamma.
+        let r = parse_channel(parts[0])?;
+        let g = parse_channel(parts[1])?;
+        let b = parse_channel(parts[2])?;
         Some(Color::Rgb(r, g, b))
     } else if parts.len() == 1 && spec.len() == 6 {
         // #RRGGBB format
@@ -573,6 +578,20 @@ fn parse_xcolor(spec: &str) -> Option<Color> {
         Some(Color::Rgb(r, g, b))
     } else {
         None
+    }
+}
+
+/// Parse a single X11 color channel (1-4 hex digits) to u8.
+/// 1-2 digits: direct hex value.
+/// 3-4 digits: 16-bit scale → 8-bit via (v * 255) / max.
+fn parse_channel(s: &str) -> Option<u8> {
+    if s.len() <= 2 {
+        u8::from_str_radix(s, 16).ok()
+    } else {
+        // 3-4 digit channel: parse as u16, scale to u8.
+        let val = u16::from_str_radix(s, 16).ok()?;
+        let max: u32 = (1u32 << (s.len() * 4)) - 1;
+        Some((val as u32 * 255 / max) as u8)
     }
 }
 
@@ -7796,5 +7815,32 @@ mod tests {
             !row0_text.contains('E'),
             "row 0 should NOT have E (truncated, not reflowed): {row0_text}"
         );
+    }
+
+    // ── X11 color parsing tests ──────────────────────────────────
+
+    #[test]
+    fn t_parse_xcolor_8bit_channels() {
+        assert_eq!(parse_xcolor("rgb:ff/00/ff"), Some(Color::Rgb(255, 0, 255)));
+        assert_eq!(parse_xcolor("rgb:FF/00/FF"), Some(Color::Rgb(255, 0, 255)));
+    }
+
+    #[test]
+    fn t_parse_xcolor_16bit_channels() {
+        // rgb:ffff/0000/ffff — 16-bit per channel, should scale to 8-bit.
+        assert_eq!(
+            parse_xcolor("rgb:ffff/0000/ffff"),
+            Some(Color::Rgb(255, 0, 255))
+        );
+        // rgb:8000/8000/8000 — approximately half intensity in 16-bit.
+        let c = parse_xcolor("rgb:8000/8000/8000").unwrap();
+        assert!(matches!(c, Color::Rgb(r, _, _) if (127..=128).contains(&r)));
+    }
+
+    #[test]
+    fn t_parse_xcolor_invalid_returns_none() {
+        assert_eq!(parse_xcolor("#XYZ"), None);
+        assert_eq!(parse_xcolor("rgb:zz/00/00"), None);
+        assert_eq!(parse_xcolor("not-a-color"), None);
     }
 }
