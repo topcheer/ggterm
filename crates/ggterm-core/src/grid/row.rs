@@ -9,6 +9,9 @@ use super::cell::{Cell, CellFlags, char_width};
 pub struct Row {
     /// The cells in this row, left to right.
     pub cells: Vec<Cell>,
+    /// True when the line was soft-wrapped (content continues on next row).
+    /// Used by reflow_resize to merge/split lines when the terminal width changes.
+    pub wrap: bool,
 }
 
 impl Row {
@@ -16,6 +19,7 @@ impl Row {
     pub fn new(width: usize) -> Self {
         Self {
             cells: vec![Cell::blank(); width],
+            wrap: false,
         }
     }
 

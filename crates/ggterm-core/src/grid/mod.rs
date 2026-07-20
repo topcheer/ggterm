@@ -184,6 +184,13 @@ impl Grid {
         self.rows.get_mut(row)
     }
 
+    /// Set the wrap (soft-wrap) flag on a row.
+    pub fn set_row_wrap(&mut self, row: usize, wrap: bool) {
+        if let Some(r) = self.rows.get_mut(row) {
+            r.wrap = wrap;
+        }
+    }
+
     /// Get a cell at (col, row).
     pub fn cell(&self, col: usize, row: usize) -> Option<&Cell> {
         self.rows.get(row).and_then(|r| r.cell(col))

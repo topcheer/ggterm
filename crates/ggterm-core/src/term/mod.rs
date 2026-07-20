@@ -1218,6 +1218,8 @@ impl Terminal {
 
         // Handle deferred wrap (DECAWM) before writing
         if self.cursor.pending_wrap && self.modes.auto_wrap {
+            // Mark the previous row as soft-wrapped for reflow support.
+            self.grid.set_row_wrap(self.cursor.y, true);
             self.cursor.x = 0;
             self.line_feed();
             self.cursor.pending_wrap = false;
@@ -1230,6 +1232,8 @@ impl Terminal {
 
         // For wide chars (width 2), wrap to next line if not enough columns remain
         if w == 2 && self.cursor.x + 1 >= grid_width && self.modes.auto_wrap {
+            // Mark the current row as soft-wrapped.
+            self.grid.set_row_wrap(self.cursor.y, true);
             self.cursor.x = 0;
             self.line_feed();
             self.cursor.pending_wrap = false;
@@ -1816,6 +1820,9 @@ impl Perform for Terminal {
             0x0d => {
                 self.cursor.x = 0;
                 self.cursor.pending_wrap = false;
+                // CR signals a hard newline — clear the soft-wrap flag
+                // so reflow knows this line is not continued.
+                self.grid.set_row_wrap(self.cursor.y, false);
             }
             0x0e => {
                 self.active_g1 = true;
