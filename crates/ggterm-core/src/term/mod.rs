@@ -2051,10 +2051,12 @@ impl Perform for Terminal {
                 }
             }
             b'S' => {
+                self.cursor.pending_wrap = false;
                 let n = Self::param(params, 0, 1) as usize;
                 self.grid.scroll_up(n);
             }
             b'T' => {
+                self.cursor.pending_wrap = false;
                 let n = Self::param(params, 0, 1) as usize;
                 self.grid.scroll_down(n);
             }
@@ -2082,10 +2084,12 @@ impl Perform for Terminal {
             }
             b'm' => self.sgr(params),
             b'L' => {
+                self.cursor.pending_wrap = false;
                 self.grid
                     .insert_line(self.cursor.y, Self::param(params, 0, 1) as usize);
             }
             b'M' => {
+                self.cursor.pending_wrap = false;
                 self.grid
                     .delete_line(self.cursor.y, Self::param(params, 0, 1) as usize);
             }
