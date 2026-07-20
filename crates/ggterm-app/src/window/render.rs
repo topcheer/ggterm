@@ -3241,13 +3241,12 @@ impl DesktopApp {
         // as an underline-styled overlay at the cursor position.
         if let Some((preedit, ime_ccol, ime_crow, ime_bounds)) = ime_data {
             let char_count = preedit.chars().count();
-            let ime_top = (cell_h + 26.0).max(48.0) + 4.0;
             // Use content area x/y offset so preedit aligns with the actual
-            // cursor position, not the top-left of the window.
+            // cursor position. bounds.y already includes tab bar height.
             let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..char_count)
                 .map(|i| ggterm_render_wgpu::OverlayRect {
                     x: ime_bounds.x as f32 + (ime_ccol + i) as f32 * cell_w,
-                    y: ime_top + ime_bounds.y as f32 + (ime_crow + 1) as f32 * cell_h - 2.0,
+                    y: ime_bounds.y as f32 + (ime_crow + 1) as f32 * cell_h - 2.0,
                     w: cell_w,
                     h: 2.0,
                     color: (1.0, 1.0, 1.0),
@@ -3257,7 +3256,7 @@ impl DesktopApp {
             renderer.set_overlay_text(vec![ggterm_render_wgpu::OverlayTextSpec {
                 text: preedit,
                 left: ime_bounds.x as f32 + ime_ccol as f32 * cell_w,
-                top: ime_top + ime_bounds.y as f32 + ime_crow as f32 * cell_h,
+                top: ime_bounds.y as f32 + ime_crow as f32 * cell_h,
                 color: (255, 255, 255),
                 ..Default::default()
             }]);
