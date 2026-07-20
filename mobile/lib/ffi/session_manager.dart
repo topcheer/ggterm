@@ -32,6 +32,8 @@ class ScreenSnapshot {
   final bool cursorVisible;
   final int cursorStyle; // 0=Default, 1=BlinkBlock, 2=SteadyBlock, 3=BlinkUnderline, 4=SteadyUnderline, 5=BlinkBar, 6=SteadyBar
   final bool hasBell;
+  /// Whether bracketed paste mode (DECSET 2004) is active.
+  final bool bracketedPaste;
   /// Terminal title (OSC 0/2). Empty if not set.
   final String title;
   /// Current working directory (OSC 7). Empty if not reported.
@@ -46,6 +48,7 @@ class ScreenSnapshot {
     this.cursorVisible = true,
     this.cursorStyle = 0,
     this.hasBell = false,
+    this.bracketedPaste = false,
     this.title = '',
     this.cwd = '',
   });
@@ -248,6 +251,7 @@ class SessionManager {
       final cursorVisible = _ffi.sessionCursorVisible(id) != 0;
       final cursorStyle = _ffi.sessionCursorStyle(id);
       final bell = _ffi.sessionTakeBell(id) != 0;
+      final bracketedPaste = _ffi.sessionBracketedPaste(id) != 0;
       final title = _ffi.getSessionTitle(id);
       final cwd = _ffi.getSessionCwd(id);
 
@@ -260,6 +264,7 @@ class SessionManager {
         cursorVisible: cursorVisible,
         cursorStyle: cursorStyle,
         hasBell: bell,
+        bracketedPaste: bracketedPaste,
         title: title,
         cwd: cwd,
       );

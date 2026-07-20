@@ -14,6 +14,8 @@ pub struct ScreenData {
     pub cursor_col: usize,
     pub cursor_row: usize,
     pub cursor_visible: bool,
+    /// Whether bracketed paste mode (DECSET 2004) is active.
+    pub bracketed_paste: bool,
 }
 
 /// Error type for session operations.
@@ -105,6 +107,7 @@ impl SessionManager {
                 cursor_col: col,
                 cursor_row: row,
                 cursor_visible: s.handle.terminal.cursor_visible(),
+                bracketed_paste: s.handle.terminal.bracketed_paste(),
             }
         } else {
             ScreenData {
@@ -114,6 +117,7 @@ impl SessionManager {
                 cursor_col: 0,
                 cursor_row: 0,
                 cursor_visible: false,
+                bracketed_paste: false,
             }
         }
     }

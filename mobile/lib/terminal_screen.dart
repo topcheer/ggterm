@@ -462,8 +462,13 @@ class _TerminalScreenState extends State<TerminalScreen>
     }
     if (!mounted) return;
 
-    // Send text as UTF-8 bytes to the PTY.
-    final bytes = utf8.encode(text);
+    // Wrap in bracketed paste markers if the terminal requested it.
+    final bracketed = _screen.bracketedPaste;
+    final bytes = <int>[
+      if (bracketed) ...[0x1b, 0x5b, 0x32, 0x30, 0x30, 0x7e], // ESC[200~
+      ...utf8.encode(text),
+      if (bracketed) ...[0x1b, 0x5b, 0x32, 0x30, 0x31, 0x7e], // ESC[201~
+    ];
     _sendInput(bytes);
 
     _showCopiedSnackBar(

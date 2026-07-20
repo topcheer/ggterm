@@ -370,6 +370,19 @@ pub unsafe extern "C" fn ggterm_session_alt_screen(id: u32) -> i32 {
     0
 }
 
+/// Returns 1 if bracketed paste mode (DECSET 2004) is active.
+/// Mobile uses this to wrap pasted text in ESC[200~...ESC[201~ markers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_bracketed_paste(id: u32) -> i32 {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id)
+        && s.handle.terminal.bracketed_paste()
+    {
+        return 1;
+    }
+    0
+}
+
 /// Returns 1 if alternate scroll mode is enabled (DECSET 7727), 0 otherwise.
 /// When enabled, scroll wheel in alt screen sends arrow keys instead of
 /// scrolling (non-existent) scrollback.
