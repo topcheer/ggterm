@@ -2153,6 +2153,11 @@ impl ApplicationHandler for DesktopApp {
                     }
                     tab.active = i == self.active;
                     tab.index = i + 1;
+                    // Sync notification flags from session to tab bar so
+                    // bell/activity indicators appear on background tabs.
+                    tab.bell = session.has_bell();
+                    tab.dirty = session.has_unread_output();
+                    tab.cmd_done = session.command_completed();
                 }
             }
             self.tab_bar.visible = session_count > 1;
