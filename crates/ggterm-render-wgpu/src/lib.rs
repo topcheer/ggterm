@@ -816,8 +816,6 @@ impl GlyphonRenderer {
                     );
 
                     let px = col_idx as f32 * cell_w + self.viewport_offset.0;
-                    let x0 = px / screen_w * 2.0 - 1.0;
-                    let x1 = (px + cell_w) / screen_w * 2.0 - 1.0;
 
                     // Underline (SGR 4 or OSC 8 hyperlink)
                     if cell.flags.contains(ggterm_core::CellFlags::UNDERLINE)
@@ -835,49 +833,43 @@ impl GlyphonRenderer {
                             .flags
                             .contains(ggterm_core::CellFlags::UNDERLINE_DASHED);
 
+                        let base_y = row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
+
                         if has_dotted {
                             // Dotted: 3 short segments per cell.
                             for seg in 0..3 {
                                 let sx0 = px + cell_w * (seg as f32 * 0.33 + 0.04);
                                 let sx1 = sx0 + cell_w * 0.22;
-                                let py =
-                                    row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
-                                let y0 = 1.0 - py / screen_h * 2.0;
-                                let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                                let nx0 = sx0 / screen_w * 2.0 - 1.0;
-                                let nx1 = sx1 / screen_w * 2.0 - 1.0;
-                                for &(x, y) in &[
-                                    (nx0, y0),
-                                    (nx1, y0),
-                                    (nx0, y1),
-                                    (nx1, y0),
-                                    (nx1, y1),
-                                    (nx0, y1),
-                                ] {
-                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                                }
+                                push_decoration_quad(
+                                    &mut self.underline_verts_buf,
+                                    sx0,
+                                    sx1,
+                                    base_y,
+                                    base_y + thickness,
+                                    screen_w,
+                                    screen_h,
+                                    r,
+                                    g,
+                                    b,
+                                );
                             }
                         } else if has_dashed {
                             // Dashed: 2 segments per cell with gaps.
                             for seg in 0..2 {
                                 let sx0 = px + cell_w * (seg as f32 * 0.5 + 0.05);
                                 let sx1 = sx0 + cell_w * 0.4;
-                                let py =
-                                    row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
-                                let y0 = 1.0 - py / screen_h * 2.0;
-                                let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                                let nx0 = sx0 / screen_w * 2.0 - 1.0;
-                                let nx1 = sx1 / screen_w * 2.0 - 1.0;
-                                for &(x, y) in &[
-                                    (nx0, y0),
-                                    (nx1, y0),
-                                    (nx0, y1),
-                                    (nx1, y0),
-                                    (nx1, y1),
-                                    (nx0, y1),
-                                ] {
-                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                                }
+                                push_decoration_quad(
+                                    &mut self.underline_verts_buf,
+                                    sx0,
+                                    sx1,
+                                    base_y,
+                                    base_y + thickness,
+                                    screen_w,
+                                    screen_h,
+                                    r,
+                                    g,
+                                    b,
+                                );
                             }
                         } else if has_curly {
                             // Curly: approximate with 8 short wave segments.
@@ -887,46 +879,47 @@ impl GlyphonRenderer {
                                 let sx0 = px + cell_w * frac;
                                 let sx1 = px + cell_w * next_frac;
                                 let wave = if step % 2 == 0 { 0.0 } else { 2.0 };
-                                let py = row_idx as f32 * cell_h
-                                    + underline_y
-                                    + wave
-                                    + self.viewport_offset.1;
-                                let y0 = 1.0 - py / screen_h * 2.0;
-                                let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                                let nx0 = sx0 / screen_w * 2.0 - 1.0;
-                                let nx1 = sx1 / screen_w * 2.0 - 1.0;
-                                for &(x, y) in &[
-                                    (nx0, y0),
-                                    (nx1, y0),
-                                    (nx0, y1),
-                                    (nx1, y0),
-                                    (nx1, y1),
-                                    (nx0, y1),
-                                ] {
-                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                                }
+                                push_decoration_quad(
+                                    &mut self.underline_verts_buf,
+                                    sx0,
+                                    sx1,
+                                    base_y + wave,
+                                    base_y + wave + thickness,
+                                    screen_w,
+                                    screen_h,
+                                    r,
+                                    g,
+                                    b,
+                                );
                             }
                         } else {
                             // Solid underline (single or double).
-                            let py = row_idx as f32 * cell_h + underline_y + self.viewport_offset.1;
-                            let y0 = 1.0 - py / screen_h * 2.0;
-                            let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                            for &(x, y) in
-                                &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
-                            {
-                                self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                            }
+                            push_decoration_quad(
+                                &mut self.underline_verts_buf,
+                                px,
+                                px + cell_w,
+                                base_y,
+                                base_y + thickness,
+                                screen_w,
+                                screen_h,
+                                r,
+                                g,
+                                b,
+                            );
                             // Double underline: second line above the first.
                             if has_double {
-                                let py2 = row_idx as f32 * cell_h + underline_y - 3.0
-                                    + self.viewport_offset.1;
-                                let y2 = 1.0 - py2 / screen_h * 2.0;
-                                let y3 = 1.0 - (py2 + thickness) / screen_h * 2.0;
-                                for &(x, y) in
-                                    &[(x0, y2), (x1, y2), (x0, y3), (x1, y2), (x1, y3), (x0, y3)]
-                                {
-                                    self.underline_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                                }
+                                push_decoration_quad(
+                                    &mut self.underline_verts_buf,
+                                    px,
+                                    px + cell_w,
+                                    base_y - 3.0,
+                                    base_y - 3.0 + thickness,
+                                    screen_w,
+                                    screen_h,
+                                    r,
+                                    g,
+                                    b,
+                                );
                             }
                         }
                     }
@@ -934,23 +927,35 @@ impl GlyphonRenderer {
                     // Strikethrough (P13-A)
                     if cell.flags.contains(ggterm_core::CellFlags::STRIKETHROUGH) {
                         let py = row_idx as f32 * cell_h + strike_y + self.viewport_offset.1;
-                        let y0 = 1.0 - py / screen_h * 2.0;
-                        let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                        for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
-                        {
-                            self.strike_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                        }
+                        push_decoration_quad(
+                            &mut self.strike_verts_buf,
+                            px,
+                            px + cell_w,
+                            py,
+                            py + thickness,
+                            screen_w,
+                            screen_h,
+                            r,
+                            g,
+                            b,
+                        );
                     }
 
                     // Overline (SGR 53) — line at the very top of the cell.
                     if cell.flags.contains(ggterm_core::CellFlags::OVERLINE) {
                         let py = row_idx as f32 * cell_h + self.viewport_offset.1;
-                        let y0 = 1.0 - py / screen_h * 2.0;
-                        let y1 = 1.0 - (py + thickness) / screen_h * 2.0;
-                        for &(x, y) in &[(x0, y0), (x1, y0), (x0, y1), (x1, y0), (x1, y1), (x0, y1)]
-                        {
-                            self.strike_verts_buf.extend_from_slice(&[x, y, r, g, b]);
-                        }
+                        push_decoration_quad(
+                            &mut self.strike_verts_buf,
+                            px,
+                            px + cell_w,
+                            py,
+                            py + thickness,
+                            screen_w,
+                            screen_h,
+                            r,
+                            g,
+                            b,
+                        );
                     }
                 }
             }
@@ -1479,6 +1484,36 @@ fn push_ui_rect(
         ex0, ey0, r, g, b, a, elx0, ely0, half_w, half_h, p.0, p.1, // TL
         ex1, ey1, r, g, b, a, elx1, ely1, half_w, half_h, p.0, p.1, // BR
         ex0, ey1, r, g, b, a, elx0, ely1, half_w, half_h, p.0, p.1, // BL
+    ]);
+}
+
+/// Push a 6-vertex quad (two triangles) in NDC space for a decoration
+/// rectangle specified in pixel coordinates.
+///
+/// Used for underlines, strikethrough, and overline decorations.
+/// Converts pixel coords → NDC and pushes interleaved [x, y, r, g, b] vertices.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn push_decoration_quad(
+    buf: &mut Vec<f32>,
+    px_x0: f32,
+    px_x1: f32,
+    px_y0: f32,
+    px_y1: f32,
+    screen_w: f32,
+    screen_h: f32,
+    r: f32,
+    g: f32,
+    b: f32,
+) {
+    let nx0 = px_x0 / screen_w * 2.0 - 1.0;
+    let nx1 = px_x1 / screen_w * 2.0 - 1.0;
+    let ny0 = 1.0 - px_y0 / screen_h * 2.0;
+    let ny1 = 1.0 - px_y1 / screen_h * 2.0;
+    // Two triangles: (top-left, top-right, bottom-left) + (top-right, bottom-right, bottom-left)
+    buf.extend_from_slice(&[
+        nx0, ny0, r, g, b, nx1, ny0, r, g, b, nx0, ny1, r, g, b, nx1, ny0, r, g, b, nx1, ny1, r, g,
+        b, nx0, ny1, r, g, b,
     ]);
 }
 
