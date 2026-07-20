@@ -2548,6 +2548,25 @@ impl Perform for Terminal {
                                 | CellFlags::UNDERLINE_DASHED);
                             handled = true;
                         }
+                        // SGR 58:5:N — underline color from palette (colon syntax).
+                        (58, 5) => {
+                            if let Some(&n) = params.get(i + 2) {
+                                self.underline_color = Color::Indexed(n as u8);
+                            }
+                            handled = true;
+                        }
+                        // SGR 58:2:<colorspace>:R:G:B — underline color RGB (colon syntax).
+                        // The color space ID (params[i+2]) is skipped per ITU-T T.416.
+                        (58, 2) => {
+                            if i + 5 < params.len() {
+                                self.underline_color = Color::Rgb(
+                                    params[i + 3] as u8,
+                                    params[i + 4] as u8,
+                                    params[i + 5] as u8,
+                                );
+                            }
+                            handled = true;
+                        }
                         _ => {}
                     }
                     i += 2;
@@ -2559,13 +2578,20 @@ impl Perform for Terminal {
             // styles. If there are non-colon params mixed in (e.g. 4:3;31),
             // fall through to csi() so the regular SGR handler processes them.
             if handled {
-                // Build filtered params list — exclude colon-derived pairs.
+                // Build filtered params list — exclude colon-derived groups.
+                // A colon group starts at a param with sub=0 followed by
+                // params with sub!=0. Skip the entire group (e.g. 4:3 = 2
+                // params, 58:5:N = 3 params, 58:2::R:G:B = 6 params).
                 let mut filtered: Vec<u16> = Vec::new();
                 let mut j = 0;
                 while j < params.len() {
-                    let next_is_colon = subs.get(j + 1).copied().unwrap_or(0) != 0;
-                    if next_is_colon {
-                        j += 2; // skip the pair (e.g. 4:3)
+                    // If the NEXT param is colon-derived, this starts a group.
+                    // Skip all params until we reach one with sub=0 again.
+                    if subs.get(j + 1).copied().unwrap_or(0) != 0 {
+                        j += 1; // skip the root param
+                        while j < params.len() && subs.get(j).copied().unwrap_or(0) != 0 {
+                            j += 1; // skip colon-derived sub-params
+                        }
                     } else {
                         filtered.push(params[j]);
                         j += 1;
