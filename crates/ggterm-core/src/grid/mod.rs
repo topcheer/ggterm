@@ -122,44 +122,66 @@ impl Grid {
     /// into the visible area (if available), so the user sees more history
     /// after making the window taller. Shrinking behaves like normal resize.
     pub fn reflow_resize(&mut self, width: usize, height: usize) {
-        let old_height = self.rows.len();
-        let saved_offset = self.display_offset;
-
-        // Resize each existing row to new width
-        for row in &mut self.rows {
-            row.resize(width);
+        if width == self.width && height == self.height {
+            return;
         }
 
-        if height > old_height {
-            // Growing: pull rows back from scrollback to fill new space
-            let needed = height - old_height;
-            let pulled = self.scrollback.len().min(needed);
-            for _ in 0..pulled {
-                if let Some(sr) = self.scrollback.pop_front() {
-                    // Resize scrollback row to new width
-                    let mut row = sr;
-                    row.resize(width);
-                    self.rows.insert(0, row);
+        // Collect ALL rows (scrollback + visible) into a single flat list.
+        // We'll re-wrap the entire history, then redistribute into
+        // scrollback and visible rows.
+        let mut all_rows: Vec<Row> = self.scrollback.drain(..).collect();
+        all_rows.append(&mut self.rows);
+
+        // Re-wrap each logical line to the new width.
+        // A logical line is a sequence of rows connected by wrap=true.
+        let mut reflown: Vec<Row> = Vec::with_capacity(all_rows.len());
+        {
+            let mut current: Option<Row> = None; // accumulating a logical line
+            for row in all_rows {
+                if let Some(ref mut acc) = current {
+                    // Append this row's cells to the accumulator.
+                    acc.cells.extend(row.cells.iter().cloned());
+                    // Keep the wrap flag from the row being appended.
+                    acc.wrap = row.wrap;
+                } else {
+                    current = Some(row);
+                }
+
+                // If this row was NOT soft-wrapped, it's the end of a logical line.
+                if current.as_ref().is_some_and(|r| !r.wrap) {
+                    let line = current.take().unwrap();
+                    reflow_line(&mut reflown, line, width);
                 }
             }
-            // Add blank rows if still short
+            // Handle dangling soft-wrapped line at the very end.
+            if let Some(line) = current {
+                reflow_line(&mut reflown, line, width);
+            }
+        }
+
+        // Redistribute: scrollback gets excess rows, visible gets the rest.
+        if reflown.len() > height {
+            let split = reflown.len() - height;
+            self.scrollback = reflown[..split].iter().cloned().collect();
+            self.rows = reflown[split..].to_vec();
+        } else {
+            self.scrollback = VecDeque::new();
+            self.rows = reflown;
             while self.rows.len() < height {
                 self.rows.push(Row::new(width));
             }
-        } else if height < old_height {
-            // Shrinking: push excess rows to scrollback
-            let excess = old_height - height;
-            for _ in 0..excess {
-                let row = self.rows.remove(0);
-                self.push_scrollback(row);
-            }
+        }
+
+        // Enforce scrollback cap.
+        while self.scrollback.len() > self.max_scrollback {
+            self.scrollback.pop_front();
         }
 
         self.width = width;
         self.height = height;
         self.scroll_top = 0;
         self.scroll_bottom = height;
-        self.display_offset = saved_offset.min(self.scrollback.len());
+        self.display_offset = 0;
         self.damage = DamageTracker::new(width);
         self.damage.mark_all(height);
         self.content_dirty = true;
@@ -869,6 +891,59 @@ fn html_escape_char(ch: char) -> String {
         '"' => "&quot;".to_string(),
         '\'' => "&#39;".to_string(),
         _ => ch.to_string(),
+    }
+}
+
+/// Re-wrap a single logical line (already merged from soft-wrapped rows)
+/// into `width`-column rows. Appends each physical row to `out`.
+///
+/// Each physical row except the last gets `wrap = true`.
+/// Wide char boundaries are respected: if a wide char would straddle
+/// a line boundary, it's pushed to the next line.
+fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
+    use crate::grid::cell::CellFlags;
+
+    let cells = line.cells;
+    let total = cells.len();
+    if width == 0 || total == 0 {
+        out.push(Row::new(width.max(1)));
+        return;
+    }
+
+    let mut start = 0;
+    while start < total {
+        let mut end = (start + width).min(total);
+        // If the last cell in this chunk is a wide char lead (not a spacer),
+        // the spacer would be orphaned at the next line start — include it
+        // by extending end by 1 if possible.
+        if end < total && end > start && cells[end - 1].flags.contains(CellFlags::WIDE_CHAR) {
+            // The spacer is at `end`. Include it in this row.
+            end += 1;
+        }
+        // If the first cell of the next chunk is a wide spacer (orphaned),
+        // skip it — it was part of the current row's wide char.
+        if end < total && cells[end].flags.contains(CellFlags::WIDE_SPACER) {
+            end += 1; // consume the spacer here
+        }
+
+        let mut chunk: Vec<Cell> = cells[start..end].to_vec();
+        let is_last = end >= total;
+        let is_continued = !is_last; // this row continues on the next line
+
+        // Pad to width if short.
+        if chunk.len() < width {
+            chunk.resize(width, Cell::blank());
+        }
+        // Truncate if over (shouldn't normally happen, but safety).
+        if chunk.len() > width {
+            chunk.truncate(width);
+        }
+
+        out.push(Row {
+            cells: chunk,
+            wrap: is_continued,
+        });
+        start = end;
     }
 }
 
