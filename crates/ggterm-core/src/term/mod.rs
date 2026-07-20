@@ -1976,7 +1976,7 @@ impl Perform for Terminal {
                             self.grid.clear_line(r);
                             self.grid.set_row_wrap(r, false);
                         }
-                        self.grid.clear_line_to(self.cursor.x + 1, self.cursor.y);
+                        self.grid.clear_line_to(self.cursor.x, self.cursor.y);
                     }
                     2 => {
                         self.grid.clear();
