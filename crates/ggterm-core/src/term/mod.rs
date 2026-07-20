@@ -3213,12 +3213,15 @@ impl Perform for Terminal {
             // OSC 112 ST → reset cursor (OSC 12)
             Some(110) => {
                 self.dynamic_fg = None;
+                self.grid.mark_all_dirty();
             }
             Some(111) => {
                 self.dynamic_bg = None;
+                self.grid.mark_all_dirty();
             }
             Some(112) => {
                 self.dynamic_cursor = None;
+                self.grid.mark_all_dirty();
             }
             _ => {}
         }
