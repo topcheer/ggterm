@@ -2555,15 +2555,91 @@ impl Perform for Terminal {
                             }
                             handled = true;
                         }
-                        // SGR 58:2:<colorspace>:R:G:B — underline color RGB (colon syntax).
-                        // The color space ID (params[i+2]) is skipped per ITU-T T.416.
+                        // SGR 58:2 — underline color RGB (colon syntax).
+                        // Two formats exist in the wild:
+                        //   58:2:R:G:B          (no color space ID — kitty, foot)
+                        //   58:2:<cs>:R:G:B     (ITU-T T.416 — xterm, vte)
+                        // Count remaining colon sub-params to distinguish.
                         (58, 2) => {
-                            if i + 5 < params.len() {
-                                self.underline_color = Color::Rgb(
-                                    params[i + 3] as u8,
-                                    params[i + 4] as u8,
-                                    params[i + 5] as u8,
-                                );
+                            // Count remaining colon-derived sub-params after (58, 2).
+                            let mut sub_count = 0;
+                            let mut k = i + 2;
+                            while k < params.len() && subs.get(k).copied().unwrap_or(0) != 0 {
+                                sub_count += 1;
+                                k += 1;
+                            }
+                            match sub_count {
+                                3 => {
+                                    // 58:2:R:G:B (no color space ID)
+                                    self.underline_color = Color::Rgb(
+                                        params[i + 2] as u8,
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                    );
+                                }
+                                4 => {
+                                    // 58:2:<cs>:R:G:B (skip color space ID)
+                                    self.underline_color = Color::Rgb(
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                        params[i + 5] as u8,
+                                    );
+                                }
+                                _ => {}
+                            }
+                            handled = true;
+                        }
+                        // SGR 38:2 — foreground RGB (colon syntax).
+                        (38, 2) => {
+                            let mut sub_count = 0;
+                            let mut k = i + 2;
+                            while k < params.len() && subs.get(k).copied().unwrap_or(0) != 0 {
+                                sub_count += 1;
+                                k += 1;
+                            }
+                            match sub_count {
+                                3 => {
+                                    self.fg = Color::Rgb(
+                                        params[i + 2] as u8,
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                    );
+                                }
+                                4 => {
+                                    self.fg = Color::Rgb(
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                        params[i + 5] as u8,
+                                    );
+                                }
+                                _ => {}
+                            }
+                            handled = true;
+                        }
+                        // SGR 48:2 — background RGB (colon syntax).
+                        (48, 2) => {
+                            let mut sub_count = 0;
+                            let mut k = i + 2;
+                            while k < params.len() && subs.get(k).copied().unwrap_or(0) != 0 {
+                                sub_count += 1;
+                                k += 1;
+                            }
+                            match sub_count {
+                                3 => {
+                                    self.bg = Color::Rgb(
+                                        params[i + 2] as u8,
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                    );
+                                }
+                                4 => {
+                                    self.bg = Color::Rgb(
+                                        params[i + 3] as u8,
+                                        params[i + 4] as u8,
+                                        params[i + 5] as u8,
+                                    );
+                                }
+                                _ => {}
                             }
                             handled = true;
                         }
