@@ -3107,7 +3107,13 @@ impl Perform for Terminal {
             Some(1337) => {
                 let payload = parts.next().unwrap_or("");
                 if let Some(path) = payload.strip_prefix("CurrentDir=") {
-                    if let Ok(p) = std::path::PathBuf::from(path).canonicalize() {
+                    // When connected via SSH (RemoteHost set), the path refers
+                    // to the remote filesystem — do NOT canonicalize against
+                    // the local filesystem, as it could resolve to a different
+                    // local path that happens to share the same name.
+                    if self.remote_host.is_some() {
+                        self.cwd = Some(std::path::PathBuf::from(path));
+                    } else if let Ok(p) = std::path::PathBuf::from(path).canonicalize() {
                         self.cwd = Some(p);
                     } else {
                         self.cwd = Some(std::path::PathBuf::from(path));
