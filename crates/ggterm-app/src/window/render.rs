@@ -2827,6 +2827,17 @@ impl DesktopApp {
                 }
             }
 
+            // Show "No results" when search yields nothing.
+            if results.is_empty() && !self.command_palette.query.is_empty() {
+                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                    text: "No matching commands".to_string(),
+                    left: palette_x + 20.0,
+                    top: list_y + 5.0,
+                    color: (130, 130, 145),
+                    ..Default::default()
+                });
+            }
+
             // Hint at bottom.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: "↑↓ navigate  Enter: run  Esc: close".to_string(),
