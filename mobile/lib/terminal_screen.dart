@@ -430,7 +430,8 @@ class _TerminalScreenState extends State<TerminalScreen>
       return;
     }
 
-    final text = data.text!;
+    // Normalize CRLF → LF: some clipboard sources embed \r\n.
+    final text = data.text!.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
     // Safety: confirm before pasting multi-line content.
     // Multi-line paste can execute multiple commands accidentally.

@@ -954,9 +954,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 ),
               ] else ...[
                 FilledButton.icon(
-                  onPressed: _connect,
+                  onPressed: (_connecting ||
+                          _hostController.text.trim().isEmpty ||
+                          _userController.text.trim().isEmpty)
+                      ? null
+                      : _connect,
                   icon: const Icon(Icons.electrical_services),
-                  label: const Text('Connect'),
+                  label: Text(_connecting ? 'Connecting...' : 'Connect'),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                   ),
