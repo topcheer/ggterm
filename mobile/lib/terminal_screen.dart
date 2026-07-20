@@ -836,7 +836,7 @@ class _TerminalScreenState extends State<TerminalScreen>
       final i = row * _screen.cols + c;
       if (i < _screen.cells.length) {
         final cell = _screen.cells[i];
-        if (cell.charCode != 0) buf.write(cell.char);
+        if (cell.charCode != 0) buf.write(cell.charWithCombining);
       }
     }
 
@@ -864,7 +864,7 @@ class _TerminalScreenState extends State<TerminalScreen>
       }
       final cell = _screen.cells[i];
       if (cell.charCode != 0) {
-        buf.write(cell.char);
+        buf.write(cell.charWithCombining);
       } else {
         buf.write(' ');
       }
@@ -980,9 +980,7 @@ class _TerminalScreenState extends State<TerminalScreen>
       final idx = row * _screen.cols + col;
       if (idx < _screen.cells.length) {
         final cell = _screen.cells[idx];
-        if (cell.charCode != 0) {
-          buf.write(cell.char);
-        }
+        if (cell.charCode != 0) buf.write(cell.charWithCombining);
       }
     }
 
