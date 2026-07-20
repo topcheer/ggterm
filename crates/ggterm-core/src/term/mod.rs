@@ -7694,4 +7694,45 @@ mod tests {
         // print() is not called for escape sequences.
         assert!(t.last_output_time().is_none());
     }
+
+    // ── Wrap flag + scroll integration tests ─────────────────────
+
+    #[test]
+    fn t_wrap_flag_set_before_scroll_into_scrollback() {
+        // Feed exactly 80 chars to fill row 23 (bottom of 80x24),
+        // then one more char to trigger auto-wrap + scroll.
+        // The scrolled-off row (old row 0) must have wrap=true in scrollback.
+        let mut t = Terminal::new(4, 3);
+        // Fill all 3 rows completely (4 chars per row = 12 total).
+        feed(&mut t, b"ABCDEFGHIJKLMNOP");
+        // Row 0 should have scrolled into scrollback. Check its wrap flag.
+        let sb = t.grid().scrollback_row(0);
+        assert!(sb.is_some(), "should have scrollback");
+        let sb_row = sb.unwrap();
+        assert!(
+            sb_row.wrap,
+            "scrolled-off row should have wrap=true for reflow support"
+        );
+    }
+
+    #[test]
+    fn t_wrap_flag_cleared_on_hard_newline() {
+        // After CR+LF, the row should NOT have wrap=true.
+        let mut t = Terminal::new(8, 3);
+        feed(&mut t, b"ABCD\r\n");
+        // Row 0: "ABCD" with hard newline → wrap=false
+        let row0 = t.grid().row(0).unwrap();
+        assert!(!row0.wrap, "row with explicit CR+LF should have wrap=false");
+    }
+
+    #[test]
+    fn t_wrap_flag_set_on_soft_wrap() {
+        // Fill a row completely so the next char soft-wraps.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, b"ABCDE"); // 5 chars: row 0 = ABCD, wrap, row 1 = E
+        let row0 = t.grid().row(0).unwrap();
+        assert!(row0.wrap, "row 0 should have wrap=true after soft wrap");
+        let row1 = t.grid().row(1).unwrap();
+        assert!(!row1.wrap, "row 1 should have wrap=false (no continuation)");
+    }
 }
