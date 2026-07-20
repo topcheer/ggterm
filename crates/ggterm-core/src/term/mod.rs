@@ -2408,6 +2408,8 @@ impl Perform for Terminal {
                 self.modes.synchronized_output = false;
                 self.modes.reflow = true;
                 self.modes.focus_event = false;
+                // Reset SGR protection attribute (DECSCA).
+                self.protected_attr = false;
                 // Reset tab stops
                 let width = self.grid.width();
                 self.tab_stops = vec![false; width.max(1)];
@@ -5372,6 +5374,15 @@ mod tests {
         feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
         assert_eq!(t.cursor(), (0, 0));
         assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_decstr_resets_protected_attr() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[1\"q"); // DECSCA — set protected
+        assert!(t.protected_attr);
+        feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
+        assert!(!t.protected_attr, "DECSTR should reset protected_attr");
     }
 
     #[test]
