@@ -951,6 +951,7 @@ class _TerminalScreenState extends State<TerminalScreen>
       _sessionDestroyed = false;
       _connectedAt = DateTime.now();
       _lastFrameHash = 0;
+      _clearSelection(); // Stale indices from old session
       if (mounted) {
         setState(() {
           _reconnecting = false;
