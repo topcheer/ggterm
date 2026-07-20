@@ -878,12 +878,19 @@ class _TerminalScreenState extends State<TerminalScreen>
   /// Extend the selection end to the given position.
   void _extendSelection(Offset position) {
     if (_selStartIdx == null) return;
-    final col = (position.dx / _cellWidth).floor().clamp(0, _screen.cols - 1);
-    final row = (position.dy / _cellHeight).floor().clamp(0, _screen.rows - 1);
-    final idx = row * _screen.cols + col;
-    if (idx != _selEndIdx) {
+    final idx = _screenToIndex(position);
+    if (idx != null && idx != _selEndIdx) {
       setState(() => _selEndIdx = idx);
     }
+  }
+
+  /// Convert a pixel position to a cell index, clamped to screen bounds.
+  /// Returns null if the position is outside the terminal area.
+  int? _screenToIndex(Offset position) {
+    if (_screen.cols == 0 || _screen.rows == 0) return null;
+    final col = (position.dx / _cellWidth).floor().clamp(0, _screen.cols - 1);
+    final row = (position.dy / _cellHeight).floor().clamp(0, _screen.rows - 1);
+    return row * _screen.cols + col;
   }
 
   /// Clear the current selection.
@@ -1882,6 +1889,65 @@ class _TerminalScreenState extends State<TerminalScreen>
                               ),
                             ),
                           ),
+                        // Draggable selection handles — allow adjusting start/end.
+                        if (_selStartIdx != null && _selEndIdx != null) ...[
+                          Builder(builder: (context) {
+                            final lo = _selStartIdx! < _selEndIdx!
+                                ? _selStartIdx!
+                                : _selEndIdx!;
+                            final hi = _selStartIdx! < _selEndIdx!
+                                ? _selEndIdx!
+                                : _selStartIdx!;
+                            final colLo = lo % _screen.cols;
+                            final rowLo = lo ~/ _screen.cols;
+                            final colHi = hi % _screen.cols;
+                            final rowHi = hi ~/ _screen.cols;
+                            return Stack(children: [
+                              SelectionHandle(
+                                position: Offset(
+                                  colLo * _cellWidth + _cellWidth / 2,
+                                  rowLo * _cellHeight + _cellHeight,
+                                ),
+                                isStart: true,
+                                onDrag: (pos) {
+                                  final clamped = _screenToIndex(pos);
+                                  if (clamped != null &&
+                                      clamped != lo) {
+                                    setState(() {
+                                      // Update the lower boundary.
+                                      if (_selStartIdx! < _selEndIdx!) {
+                                        _selStartIdx = clamped;
+                                      } else {
+                                        _selEndIdx = clamped;
+                                      }
+                                    });
+                                  }
+                                },
+                              ),
+                              SelectionHandle(
+                                position: Offset(
+                                  colHi * _cellWidth + _cellWidth / 2,
+                                  rowHi * _cellHeight + _cellHeight,
+                                ),
+                                isStart: false,
+                                onDrag: (pos) {
+                                  final clamped = _screenToIndex(pos);
+                                  if (clamped != null &&
+                                      clamped != hi) {
+                                    setState(() {
+                                      // Update the upper boundary.
+                                      if (_selStartIdx! < _selEndIdx!) {
+                                        _selEndIdx = clamped;
+                                      } else {
+                                        _selStartIdx = clamped;
+                                      }
+                                    });
+                                  }
+                                },
+                              ),
+                            ]);
+                          }),
+                        ],
                         // Visual bell flash — red border when BEL fires.
                         if (_bellFlashFrames > 0)
                           Positioned.fill(

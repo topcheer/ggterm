@@ -19,6 +19,19 @@ class TerminalSelectionOverlay extends CustomPainter {
     required this.cellHeight,
   });
 
+  /// Get the pixel position of a cell index (top-left corner).
+  Offset cellPosition(int index) {
+    final row = index ~/ cols;
+    final col = index % cols;
+    return Offset(col * cellWidth, row * cellHeight);
+  }
+
+  /// Get the center-bottom of a cell (where handles sit).
+  Offset cellHandlePosition(int index) {
+    final pos = cellPosition(index);
+    return Offset(pos.dx + cellWidth / 2, pos.dy + cellHeight);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final lo = selStart < selEnd ? selStart : selEnd;
@@ -62,4 +75,51 @@ class TerminalSelectionOverlay extends CustomPainter {
   @override
   bool shouldRepaint(covariant TerminalSelectionOverlay old) =>
       selStart != old.selStart || selEnd != old.selEnd;
+}
+
+/// A draggable selection handle widget — a small teardrop shape
+/// positioned at the start or end of the selection.
+class SelectionHandle extends StatelessWidget {
+  final Offset position;
+  final bool isStart;
+  final ValueChanged<Offset> onDrag;
+
+  const SelectionHandle({
+    super.key,
+    required this.position,
+    required this.isStart,
+    required this.onDrag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: position.dx - 7,
+      top: position.dy - 2,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          onDrag(Offset(
+            position.dx + details.delta.dx,
+            position.dy + details.delta.dy,
+          ));
+        },
+        child: Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
