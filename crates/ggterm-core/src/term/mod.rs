@@ -1121,7 +1121,9 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, width: usize, height: usize) {
-        if self.modes.reflow {
+        // Reflow only on primary screen. In alt screen (vim, less, htop),
+        // programs manage their own layout and expect simple truncation.
+        if self.modes.reflow && !self.modes.alt_screen {
             self.grid.reflow_resize(width, height);
         } else {
             self.grid.resize(width, height);
@@ -7752,7 +7754,10 @@ mod tests {
         feed(&mut t, b"ABCDE"); // row 0 wrap=true, cursor on row 1
         // Move cursor to row 0 and erase that line.
         feed(&mut t, b"\x1b[1;1H\x1b[2K"); // cursor to row 0 + EL mode 2
-        assert!(!t.grid().row(0).unwrap().wrap, "EL 2 should clear wrap on row 0");
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "EL 2 should clear wrap on row 0"
+        );
     }
 
     #[test]
@@ -7767,5 +7772,29 @@ mod tests {
                 "row {r} should have wrap=false after ED 2"
             );
         }
+    }
+
+    #[test]
+    fn t_no_reflow_in_alt_screen() {
+        // In alt screen, resize should truncate (not reflow).
+        // Enter alt screen, fill a wide row, shrink, verify truncation.
+        let mut t = Terminal::new(8, 4);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        feed(&mut t, b"ABCDEFGH"); // fill row 0 completely (8 cols)
+        assert!(t.is_alt_screen());
+
+        // Shrink to 4 cols — should truncate, not reflow.
+        t.resize(4, 4);
+        // Content should NOT reflow: 'EFGH' should be lost (truncated),
+        // not wrapped to the next line.
+        let row0_text = t.grid().row(0).unwrap().text();
+        assert!(
+            row0_text.contains('A'),
+            "row 0 should still have A: {row0_text}"
+        );
+        assert!(
+            !row0_text.contains('E'),
+            "row 0 should NOT have E (truncated, not reflowed): {row0_text}"
+        );
     }
 }
