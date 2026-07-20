@@ -2011,4 +2011,163 @@ mod tests {
             "should contain Hi: {v2:?}"
         );
     }
+
+    // ── Reflow tests ──────────────────────────────────────────────
+
+    #[test]
+    fn reflow_shrink_splits_long_line() {
+        // One 80-col line with no wrap → after shrink to 40, should be two rows.
+        let mut g = Grid::new(80, 2);
+        for c in 0..80 {
+            g[(c, 0)] = Cell::with_char('X');
+        }
+        g.reflow_resize(40, 2);
+        assert_eq!(g.width(), 40);
+        // The content should be split across visible rows or scrollback.
+        let text = g.export_text();
+        let x_count = text.matches('X').count();
+        assert_eq!(x_count, 80, "all 80 X chars should survive shrink: {text}");
+    }
+
+    #[test]
+    fn reflow_grow_merges_soft_wrapped() {
+        // Two 40-col rows connected by wrap=true → grow to 80 should merge.
+        let mut g = Grid::new(40, 3);
+        for c in 0..40 {
+            g[(c, 0)] = Cell::with_char('A');
+        }
+        g.row_mut(0).unwrap().wrap = true; // soft-wrapped
+        for c in 0..40 {
+            g[(c, 1)] = Cell::with_char('B');
+        }
+        // Row 1 has wrap=false (hard newline)
+
+        g.reflow_resize(80, 3);
+        let text = g.export_text();
+        // Row 0+1 merged into one 80-col line: AAAA...BBBB...
+        assert!(
+            text.contains('A') && text.contains('B'),
+            "merged content should survive: {text}"
+        );
+        // There should be no gap between A and B (they're on the same line now)
+        let first_line = text.lines().next().unwrap_or("");
+        assert!(
+            first_line.contains('A') && first_line.contains('B'),
+            "A and B should be on the same line after merge: {first_line}"
+        );
+    }
+
+    #[test]
+    fn reflow_hard_newline_not_merged() {
+        // Two rows, both wrap=false → grow should NOT merge them.
+        let mut g = Grid::new(40, 3);
+        for c in 0..40 {
+            g[(c, 0)] = Cell::with_char('A');
+        }
+        // wrap defaults to false
+        for c in 0..40 {
+            g[(c, 1)] = Cell::with_char('B');
+        }
+
+        g.reflow_resize(80, 3);
+        let text = g.export_text();
+        let lines: Vec<&str> = text.lines().collect();
+        // Each line stays separate
+        let has_a = lines.iter().any(|l| l.contains('A'));
+        let has_b = lines.iter().any(|l| l.contains('B'));
+        assert!(has_a && has_b, "both lines should survive");
+        // Verify they're on different lines
+        let first_line = lines[0];
+        assert!(
+            !(first_line.contains('A') && first_line.contains('B')),
+            "A and B should NOT be merged when wrap=false"
+        );
+    }
+
+    #[test]
+    fn reflow_wide_char_boundary() {
+        // A wide char (CJK) at the boundary should move to the next line
+        // rather than being split.
+        use crate::grid::cell::CellFlags;
+        let mut g = Grid::new(10, 2);
+        // Fill cols 0-7 with 'A', put a wide char at col 8 (cells 8+9)
+        for c in 0..8 {
+            g[(c, 0)] = Cell::with_char('A');
+        }
+        let mut wide = Cell::with_char('\u{4E2D}'); // 中
+        wide.flags.insert(CellFlags::WIDE_CHAR);
+        g[(8, 0)] = wide;
+        let mut spacer = Cell::blank();
+        spacer.flags.insert(CellFlags::WIDE_SPACER);
+        g[(9, 0)] = spacer;
+
+        // Shrink to 9 cols — the wide char at col 8 would be split
+        // (only 1 col remaining). Reflow should push it to the next line.
+        g.reflow_resize(9, 2);
+        let text = g.export_text();
+        // The wide char should still exist
+        assert!(
+            text.contains('\u{4E2D}'),
+            "wide char should survive reflow: {text}"
+        );
+    }
+
+    #[test]
+    fn reflow_scrollback_preserved() {
+        // Content in scrollback should also be reflowed.
+        let mut g = Grid::new(10, 1);
+        // Fill the row and scroll it into scrollback by adding more lines.
+        for c in 0..10 {
+            g[(c, 0)] = Cell::with_char('S');
+        }
+        // Trigger scroll-up by line-feeding past the bottom.
+        // Simulate: push rows to scrollback manually via resize shrink.
+        g.reflow_resize(10, 1); // no-op but sets up state
+        // Directly test: shrink width, content should survive in scrollback.
+        g.reflow_resize(5, 1);
+        let text = g.export_text();
+        let s_count = text.matches('S').count();
+        assert_eq!(
+            s_count, 10,
+            "all S chars should survive in scrollback after shrink: {text}"
+        );
+    }
+
+    #[test]
+    fn reflow_then_grow_restores_content() {
+        // Shrink then grow should restore content (not lose chars).
+        let mut g = Grid::new(80, 5);
+        for c in 0..80 {
+            g[(c, 0)] = Cell::with_char('Z');
+        }
+        g.reflow_resize(40, 5);
+        let mid_text = g.export_text();
+        let mid_z = mid_text.matches('Z').count();
+        assert_eq!(mid_z, 80, "content preserved after shrink");
+
+        g.reflow_resize(80, 5);
+        let final_text = g.export_text();
+        let final_z = final_text.matches('Z').count();
+        assert_eq!(
+            final_z, 80,
+            "content preserved after grow-back: {final_text}"
+        );
+    }
+
+    #[test]
+    fn resize_non_reflow_preserves_wrap_field() {
+        // The non-reflow resize path should not panic with the new wrap field.
+        let mut g = Grid::new(20, 3);
+        for c in 0..20 {
+            g[(c, 0)] = Cell::with_char('X');
+        }
+        g.resize(10, 2);
+        assert_eq!(g.width(), 10);
+        // Wrap should default to false on all rows.
+        for r in 0..g.height() {
+            if let Some(row) = g.row(r) {
+                assert!(!row.wrap, "wrap should be false after non-reflow resize");
+            }
+        }
+    }
 }
