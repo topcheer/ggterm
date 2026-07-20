@@ -846,11 +846,15 @@ class _TerminalScreenState extends State<TerminalScreen>
     final hi = start < end ? end : lo;
     final buf = StringBuffer();
     for (var i = lo; i <= hi; i++) {
+      // Insert newline at row boundaries so multi-line selections
+      // preserve line structure even when the first cell of a row
+      // contains a non-empty character (e.g., full-width lines).
+      if (i > lo && i % _screen.cols == 0) {
+        buf.write('\n');
+      }
       final cell = _screen.cells[i];
       if (cell.charCode != 0) {
         buf.write(cell.char);
-      } else if (i > lo && i % _screen.cols == 0) {
-        buf.write('\n');
       } else {
         buf.write(' ');
       }
