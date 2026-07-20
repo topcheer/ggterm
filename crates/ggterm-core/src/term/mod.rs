@@ -2774,8 +2774,12 @@ impl Perform for Terminal {
                     self.bg = Color::Default;
                     self.underline_color = Color::Default;
                     self.flags = CellFlags::empty();
+                    self.g0_charset = Charset::Ascii;
+                    self.g1_charset = Charset::Ascii;
+                    self.active_g1 = false;
                     self.modes.auto_wrap = true;
                     self.modes.origin = false;
+                    self.protected_attr = false;
                 }
             }
             b'c' => {
