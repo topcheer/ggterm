@@ -317,6 +317,7 @@ impl DesktopApp {
             }
             Err(e) => {
                 log::error!("Failed to create new session: {e}");
+                self.show_toast(format!("Failed to start shell: {e}"));
             }
         }
         if let Some(ref window) = self.window {
@@ -338,6 +339,7 @@ impl DesktopApp {
             }
             Err(e) => {
                 log::error!("Failed to open tab: {e}");
+                self.show_toast(format!("Failed to open tab: {e}"));
             }
         }
     }
@@ -695,6 +697,7 @@ impl DesktopApp {
                 }
                 Err(e) => {
                     log::error!("Failed to restore tab '{}': {e}", tab_spec.title);
+                    self.show_toast(format!("Failed to restore '{}'", tab_spec.title));
                 }
             }
         }
@@ -2204,6 +2207,7 @@ impl DesktopApp {
                 }
                 Err(e) => {
                     log::error!("Failed to create new session: {e}");
+                    self.show_toast(format!("Failed to start shell: {e}"));
                 }
             }
         }
