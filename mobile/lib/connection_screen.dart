@@ -546,6 +546,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     }
   }
 
+  /// Clear error message when user starts editing a field.
+  void _clearError() {
+    if (_errorMessage != null) {
+      setState(() => _errorMessage = null);
+    }
+  }
+
   /// Convert raw SSH error strings into user-friendly messages.
   String _friendlyError(String raw) {
     final lower = raw.toLowerCase();
@@ -696,6 +703,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 autofocus: true,
                 autofillHints: const [AutofillHints.url],
                 textInputAction: TextInputAction.next,
+                onChanged: (_) => _clearError(),
                 decoration: InputDecoration(
                   labelText: 'Host',
                   hintText: 'example.com',
@@ -715,6 +723,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               TextFormField(
                 controller: _portController,
                 textInputAction: TextInputAction.next,
+                onChanged: (_) => _clearError(),
                 decoration: const InputDecoration(
                   labelText: 'Port',
                   prefixIcon: Icon(Icons.numbers),
@@ -752,6 +761,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 controller: _userController,
                 autofillHints: const [AutofillHints.username],
                 textInputAction: TextInputAction.next,
+                onChanged: (_) => _clearError(),
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   hintText: 'root',
@@ -816,6 +826,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   obscureText: _obscurePassword,
                   autofillHints: const [AutofillHints.password],
                   textInputAction: TextInputAction.go,
+                  onChanged: (_) => _clearError(),
                   onFieldSubmitted: (_) {
                     // Press "Go" on keyboard to connect immediately
                     if (!_connecting) _connect();
