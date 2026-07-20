@@ -2090,6 +2090,7 @@ impl Perform for Terminal {
                     .delete_line(self.cursor.y, Self::param(params, 0, 1) as usize);
             }
             b'P' => {
+                self.cursor.pending_wrap = false;
                 self.grid.delete_char(
                     self.cursor.x,
                     self.cursor.y,
@@ -2119,6 +2120,7 @@ impl Perform for Terminal {
                 }
             }
             b'Z' => {
+                self.cursor.pending_wrap = false;
                 let n = Self::param(params, 0, 1);
                 for _ in 0..n {
                     if self.cursor.x > 0 {
