@@ -1542,7 +1542,9 @@ impl Terminal {
                 // SGR 21 — doubly underlined (xterm). Equivalent to SGR 4:2.
                 21 => self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOUBLE,
                 22 => self.flags &= !(CellFlags::BOLD | CellFlags::DIM),
-                23 => self.flags &= !CellFlags::ITALIC,
+                // SGR 23 — not italic, not fraktur, not doubly underlined (xterm).
+                // Clears both ITALIC and UNDERLINE_DOUBLE (which was set by SGR 21).
+                23 => self.flags &= !(CellFlags::ITALIC | CellFlags::UNDERLINE_DOUBLE),
                 24 => {
                     self.flags &= !CellFlags::UNDERLINE;
                     self.flags &= !(CellFlags::UNDERLINE_DOUBLE
@@ -3634,6 +3636,30 @@ mod tests {
         let flags = t.grid().cell(0, 0).unwrap().flags;
         assert!(flags.contains(CellFlags::UNDERLINE));
         assert!(flags.contains(CellFlags::UNDERLINE_DOUBLE));
+    }
+
+    #[test]
+    fn t_sgr23_clears_double_underline() {
+        // SGR 21 sets double underline, SGR 23 should clear it.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[21mD\x1b[23mR");
+        let flags = t.grid().cell(1, 0).unwrap().flags;
+        assert!(
+            !flags.contains(CellFlags::UNDERLINE_DOUBLE),
+            "SGR 23 should clear UNDERLINE_DOUBLE"
+        );
+    }
+
+    #[test]
+    fn t_sgr23_clears_italic() {
+        // SGR 3 sets italic, SGR 23 should clear it.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[3mI\x1b[23mR");
+        let flags = t.grid().cell(1, 0).unwrap().flags;
+        assert!(
+            !flags.contains(CellFlags::ITALIC),
+            "SGR 23 should clear ITALIC"
+        );
     }
 
     #[test]
