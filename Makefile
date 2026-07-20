@@ -3,7 +3,7 @@
 TAGS := desktop,ai,plugin,plugin-lua,config-watch
 BINARY := target/release/ggterm
 
-.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps mobile-ios mobile-run mobile-analyze loc
+.PHONY: build release test test-ffi test-p2p clippy fmt check bundle macos linux windows clean install run ci-ci install-shell-integration audit deps mobile-ios mobile-run mobile-analyze loc install-hooks
 
 # Debug build
 build:
@@ -148,4 +148,11 @@ loc:
 	@echo "=== Rust ===" && find crates -name "*.rs" | xargs wc -l 2>/dev/null | tail -1
 	@echo "=== Dart ===" && find mobile/lib -name "*.dart" | xargs wc -l 2>/dev/null | tail -1
 	@echo "=== Shell scripts ===" && find shell -name "*.sh" -o -name "*.zsh" -o -name "*.fish" | xargs wc -l 2>/dev/null | tail -1
+
+# Install git pre-push hook (CI-equivalent checks before push)
+install-hooks:
+	@echo "Installing pre-push hook..."
+	@cp scripts/pre-push.sh .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "✓ pre-push hook installed (skip with: git push --no-verify)"
 
