@@ -2097,6 +2097,7 @@ impl Perform for Terminal {
                 );
             }
             b'@' => {
+                self.cursor.pending_wrap = false;
                 self.grid.insert_char(
                     self.cursor.x,
                     self.cursor.y,
@@ -2104,6 +2105,7 @@ impl Perform for Terminal {
                 );
             }
             b'X' => {
+                self.cursor.pending_wrap = false;
                 self.grid.erase_char(
                     self.cursor.x,
                     self.cursor.y,
