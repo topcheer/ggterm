@@ -1,5 +1,9 @@
 //! Frame rendering — render_frame() with multi-pane and overlay support.
 
+/// The "×" character used in tab close buttons — pre-allocated to avoid
+/// a String allocation per tab per frame.
+const CLOSE_BTN_CHAR: &str = "\u{00d7}";
+
 use super::*;
 
 impl DesktopApp {
@@ -401,7 +405,7 @@ impl DesktopApp {
                     }
                     let close_x = x + w - 16.0 - cell_w * 0.5;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                        text: "\u{00d7}".to_string(),
+                        text: CLOSE_BTN_CHAR.to_string(),
                         left: close_x,
                         top: tab_y + 5.0,
                         color: if close_btn_hovered {
