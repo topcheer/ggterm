@@ -384,12 +384,6 @@ impl CommandRegistry {
             shortcut: Some("Ctrl+Shift+Alt+P".into()),
         });
         r.register(Command {
-            id: "terminal.copy_last_output".into(),
-            label: "Copy Last Command Output".into(),
-            category: "Terminal".into(),
-            shortcut: None,
-        });
-        r.register(Command {
             id: "terminal.copy_command_with_output".into(),
             label: "Copy Last Command + Output".into(),
             category: "Terminal".into(),
