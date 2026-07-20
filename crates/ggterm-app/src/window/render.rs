@@ -1405,10 +1405,8 @@ impl DesktopApp {
             {
                 let (_, iy, _, _) = cm.item_rect(i);
 
-                // Separators before Split group and before Clear/Reset group.
-                if action == &crate::context_menu::ContextMenuAction::SplitHorizontal
-                    || action == &crate::context_menu::ContextMenuAction::Clear
-                {
+                // Separators between action groups.
+                if crate::context_menu::ContextMenuAction::separator_before(action) {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: mx + 8.0,
                         y: iy - 4.0,
@@ -1452,6 +1450,22 @@ impl DesktopApp {
                     },
                     ..Default::default()
                 });
+
+                // Right-aligned shortcut hint (dimmed, smaller spacing).
+                if let Some(sc) = action.shortcut() {
+                    let sc_w = sc.chars().count() as f32 * cell_w * 0.85;
+                    overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                        text: sc.to_string(),
+                        left: mx + menu_w - sc_w - 12.0,
+                        top: iy + 7.0,
+                        color: if is_hovered {
+                            (90, 90, 110)
+                        } else {
+                            (120, 125, 145)
+                        },
+                        ..Default::default()
+                    });
+                }
             }
             self.context_menu.effective_width = menu_w;
         }

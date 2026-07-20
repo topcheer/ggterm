@@ -64,6 +64,42 @@ impl ContextMenuAction {
             Self::Reset,
         ]
     }
+
+    /// Default keyboard shortcut text shown right-aligned in the menu.
+    /// Returns `None` for actions without a default shortcut.
+    pub fn shortcut(&self) -> Option<&'static str> {
+        if cfg!(target_os = "macos") {
+            match self {
+                Self::Copy => Some("\u{2318}C"),
+                Self::Paste => Some("\u{2318}V"),
+                Self::SelectAll => Some("\u{2318}A"),
+                Self::Search => Some("\u{2318}F"),
+                Self::Clear => Some("\u{2318}K"),
+                Self::SplitHorizontal => Some("\u{2318}D"),
+                Self::SplitVertical => Some("\u{21E7}\u{2318}D"),
+                _ => None,
+            }
+        } else {
+            match self {
+                Self::Copy => Some("Ctrl+Shift+C"),
+                Self::Paste => Some("Ctrl+Shift+V"),
+                Self::Search => Some("Ctrl+Shift+F"),
+                Self::Clear => Some("Ctrl+Shift+L"),
+                Self::SplitHorizontal => Some("Ctrl+Shift+D"),
+                Self::SplitVertical => Some("Ctrl+Shift+-"),
+                _ => None,
+            }
+        }
+    }
+
+    /// Indices of actions that should have a separator drawn *before* them.
+    /// Creates visual groups: [clipboard], [search], [splits], [actions].
+    pub fn separator_before(action: &Self) -> bool {
+        matches!(
+            action,
+            Self::Search | Self::SplitHorizontal | Self::Clear
+        )
+    }
 }
 
 /// Context menu state.
@@ -98,7 +134,8 @@ impl ContextMenuState {
     /// Menu padding in physical pixels.
     pub const PADDING: f32 = 10.0;
     /// Menu width in physical pixels.
-    pub const WIDTH: f32 = 220.0;
+    /// Wide enough to fit labels + shortcut hints.
+    pub const WIDTH: f32 = 260.0;
     /// Corner radius.
     pub const RADIUS: f32 = 8.0;
 
@@ -206,7 +243,7 @@ mod tests {
         let (x, y, w, h) = m.item_rect(0);
         assert!((x - 110.0).abs() < 0.01); // 100 + padding(10)
         assert!((y - 210.0).abs() < 0.01); // 200 + padding(10)
-        assert!((w - 200.0).abs() < 0.01); // 220 - 2*10
+        assert!((w - 240.0).abs() < 0.01); // 260 - 2*10
         assert!((h - 32.0).abs() < 0.01); // ITEM_HEIGHT
     }
 
@@ -224,5 +261,40 @@ mod tests {
         };
         m.show(0.0, 0.0);
         assert_eq!(m.hovered, None);
+    }
+
+    #[test]
+    fn t_shortcut_not_empty() {
+        for a in ContextMenuAction::all() {
+            if let Some(s) = a.shortcut() {
+                assert!(!s.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn t_copy_paste_have_shortcuts() {
+        assert!(ContextMenuAction::Copy.shortcut().is_some());
+        assert!(ContextMenuAction::Paste.shortcut().is_some());
+    }
+
+    #[test]
+    fn t_separator_before_search() {
+        assert!(ContextMenuAction::separator_before(&ContextMenuAction::Search));
+    }
+
+    #[test]
+    fn t_separator_before_splits() {
+        assert!(ContextMenuAction::separator_before(&ContextMenuAction::SplitHorizontal));
+    }
+
+    #[test]
+    fn t_separator_before_clear() {
+        assert!(ContextMenuAction::separator_before(&ContextMenuAction::Clear));
+    }
+
+    #[test]
+    fn t_no_separator_before_copy() {
+        assert!(!ContextMenuAction::separator_before(&ContextMenuAction::Copy));
     }
 }
