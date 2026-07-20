@@ -405,7 +405,7 @@ impl DesktopApp {
                     }
                     let close_x = x + w - 16.0 - cell_w * 0.5;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                        text: CLOSE_BTN_CHAR.to_string(),
+                        text: CLOSE_BTN_CHAR.into(),
                         left: close_x,
                         top: tab_y + 5.0,
                         color: if close_btn_hovered {
