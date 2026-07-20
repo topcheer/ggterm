@@ -1374,7 +1374,7 @@ impl DesktopApp {
         }
 
         // If this is a confirmed paste (from pending), use the stored text.
-        let text = if let Some(ref pending) = self.pending_large_paste {
+        let mut text = if let Some(ref pending) = self.pending_large_paste {
             let t = pending.clone();
             self.pending_large_paste = None;
             t
@@ -1389,6 +1389,15 @@ impl DesktopApp {
         }
 
         let bracketed = self.active_session().app().terminal().bracketed_paste();
+
+        // Normalize CRLF → LF: some clipboard sources (Windows apps, web
+        // pages) embed \r\n which causes stray \r bytes in the PTY stream.
+        // Also strip lone \r that aren't part of CRLF (rare but possible).
+        let text = if text.contains('\r') {
+            text.replace("\r\n", "\n").replace('\r', "\n")
+        } else {
+            text
+        };
 
         // Safety: if the program doesn't support bracketed paste and the
         // clipboard contains newlines, strip trailing newlines so an extra
