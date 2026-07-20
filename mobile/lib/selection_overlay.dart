@@ -74,7 +74,12 @@ class TerminalSelectionOverlay extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant TerminalSelectionOverlay old) =>
-      selStart != old.selStart || selEnd != old.selEnd;
+      selStart != old.selStart ||
+      selEnd != old.selEnd ||
+      cellWidth != old.cellWidth ||
+      cellHeight != old.cellHeight ||
+      cols != old.cols ||
+      rows != old.rows;
 }
 
 /// A draggable selection handle widget — a small teardrop shape

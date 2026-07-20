@@ -173,27 +173,27 @@ impl DesktopApp {
         // Update tab bar data — only when multiple tabs exist (visible).
         // Single-tab mode skips this to avoid per-frame Vec allocations.
         if self.sessions.len() > 1 {
-            // Prepend pin indicator for pinned tabs.
-            let titles: Vec<String> = self
-                .sessions
-                .iter()
-                .map(|s| {
-                    if s.is_pinned() {
-                        format!("\u{1f4cc}{}", s.title())
-                    } else {
-                        s.title().to_string()
-                    }
-                })
-                .collect();
-            let title_refs: Vec<&str> = titles.iter().map(|s| s.as_str()).collect();
-            let bell_flags: Vec<bool> = self.sessions.iter().map(|s| s.has_bell()).collect();
-            let cmd_done_flags: Vec<bool> = self
-                .sessions
-                .iter()
-                .map(|s| s.command_completed())
-                .collect();
-            self.tab_bar
-                .update_with_bells(&title_refs, self.active, &bell_flags, &cmd_done_flags);
+            // Reuse struct-level buffers to avoid per-frame allocation.
+            self.render_tab_titles.clear();
+            self.render_bell_flags.clear();
+            self.render_cmd_done_flags.clear();
+            for s in self.sessions.iter() {
+                if s.is_pinned() {
+                    self.render_tab_titles
+                        .push(format!("\u{1f4cc}{}", s.title()));
+                } else {
+                    self.render_tab_titles.push(s.title().to_string());
+                }
+                self.render_bell_flags.push(s.has_bell());
+                self.render_cmd_done_flags.push(s.command_completed());
+            }
+            let title_refs: Vec<&str> = self.render_tab_titles.iter().map(|s| s.as_str()).collect();
+            self.tab_bar.update_with_bells(
+                &title_refs,
+                self.active,
+                &self.render_bell_flags,
+                &self.render_cmd_done_flags,
+            );
         }
 
         // ── Tab bar: auto-fill width like browser tabs ─────────────────

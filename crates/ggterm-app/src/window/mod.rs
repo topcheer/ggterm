@@ -467,6 +467,11 @@ pub struct DesktopApp {
     /// Reset when the user scrolls to bottom. Shown on the scroll indicator
     /// to alert the user that new content arrived below.
     new_output_while_scrolled: usize,
+    /// Reusable render buffers — avoid per-frame allocation for tab bar data.
+    /// Cleared and refilled each frame in render_frame().
+    render_tab_titles: Vec<String>,
+    render_bell_flags: Vec<bool>,
+    render_cmd_done_flags: Vec<bool>,
     /// Scrollback browse mode: when active, keys navigate scrollback
     /// instead of being sent to the PTY (vim-style j/k/G/g/q).
     scroll_mode: bool,
@@ -810,6 +815,9 @@ impl DesktopApp {
             dragging_tab: None,
             pane_zoomed: false,
             new_output_while_scrolled: 0,
+            render_tab_titles: Vec::with_capacity(8),
+            render_bell_flags: Vec::with_capacity(8),
+            render_cmd_done_flags: Vec::with_capacity(8),
             scroll_mode: false,
             settings_window: None,
             pending_open_settings: false,
