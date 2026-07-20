@@ -210,7 +210,11 @@ impl TabSession {
 
     /// Get the tab title.
     pub fn title(&self) -> &str {
-        &self.title
+        if self.title.is_empty() {
+            "Shell"
+        } else {
+            &self.title
+        }
     }
 
     /// P29-B: Scroll all panes' viewports simultaneously (sync scroll).
