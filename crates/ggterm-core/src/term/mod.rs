@@ -2183,6 +2183,7 @@ impl Perform for Terminal {
             }
             // REP — repeat preceding printable character N times
             b'b' => {
+                self.cursor.pending_wrap = false;
                 let n = Self::param(params, 0, 1) as usize;
                 if let Some(ch) = self.last_printed_char {
                     for _ in 0..n {
