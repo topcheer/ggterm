@@ -1675,6 +1675,7 @@ impl Terminal {
                 }
             }
         }
+        self.grid_mut().mark_all_dirty();
     }
 
     /// Erase non-protected cells from start of screen to cursor position.
@@ -1698,6 +1699,7 @@ impl Terminal {
                 *cell = Cell::blank();
             }
         }
+        self.grid_mut().mark_all_dirty();
     }
 
     /// Erase all non-protected cells on the screen.
@@ -1713,6 +1715,7 @@ impl Terminal {
                 }
             }
         }
+        self.grid_mut().mark_all_dirty();
     }
 
     /// Simple base64 decoder for OSC 52 payloads.
