@@ -416,7 +416,7 @@ mod tests {
         // Connect creates a session immediately; the actual connection
         // failure is reported asynchronously via connect_status.
         assert!(id > 0, "expected non-zero session id, got {id}");
-        unsafe { ggterm_p2p_close(id) };
+        ggterm_p2p_close(id);
     }
 
     #[test]

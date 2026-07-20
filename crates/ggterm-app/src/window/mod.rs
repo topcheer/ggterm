@@ -2086,10 +2086,14 @@ impl ApplicationHandler for DesktopApp {
         // shows the current program name (e.g. "vim", "zsh") instead of
         // the static initial title.
         // Optimized: compare references first, only allocate String on change.
+        // Track whether any title changed — a title-only update (no visible
+        // output) still needs a redraw so the window/tab title reflects it.
+        let mut title_changed = false;
         for session in &mut self.sessions {
             let term_title = session.app().terminal().title();
             if !term_title.is_empty() && term_title != session.title() {
                 session.set_title(term_title.to_string());
+                title_changed = true;
             }
         }
 
@@ -2474,6 +2478,7 @@ impl ApplicationHandler for DesktopApp {
             || self.pending_close_tab.is_some()
             || active_bell
             || bg_bell
+            || title_changed
             || self.toast.is_some();
 
         let now = std::time::Instant::now();
