@@ -79,6 +79,8 @@ class _TerminalScreenState extends State<TerminalScreen>
   Timer? _blinkTimer;
   // Scroll position tracking.
   bool _isScrolledUp = false;
+  // New output lines received while scrolled up (for badge display).
+  int _newOutputWhileScrolled = 0;
   // Tap tracking for triple-tap line select.
   int _tapCount = 0;
   // Custom text selection range (for drag-to-select mode).
@@ -314,6 +316,13 @@ class _TerminalScreenState extends State<TerminalScreen>
       // Bell is always consumed by the frame that pumped the data (since
       // sessionTakeBell is a take, not a peek), so idle bell check is a no-op.
       final scrolledUp = widget.sessionManager.displayOffset(id) > 0;
+      // Track new output while scrolled up for badge display.
+      if (bytesPumped > 0 && _isScrolledUp) {
+        _newOutputWhileScrolled += bytesPumped;
+      }
+      if (!scrolledUp) {
+        _newOutputWhileScrolled = 0;
+      }
       if (bytesPumped == 0 &&
           alive == _transportAlive &&
           scrolledUp == _isScrolledUp) {
@@ -2031,17 +2040,48 @@ class _TerminalScreenState extends State<TerminalScreen>
                     Positioned(
                       bottom: 16,
                       right: 16,
-                      child: FloatingActionButton(
-                        mini: true,
-                        backgroundColor: Colors.blue.withValues(alpha: 0.85),
-                        foregroundColor: Colors.white,
-                        elevation: 4,
-                        onPressed: () {
-                          widget.sessionManager.resetViewport(_currentSessionId);
-                          _lastFrameHash = 0;
-                          _cancelInertia();
-                        },
-                        child: const Icon(Icons.arrow_downward, size: 20),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          FloatingActionButton(
+                            mini: true,
+                            backgroundColor: _newOutputWhileScrolled > 0
+                                ? Colors.orange.withValues(alpha: 0.9)
+                                : Colors.blue.withValues(alpha: 0.85),
+                            foregroundColor: Colors.white,
+                            elevation: 4,
+                            onPressed: () {
+                              widget.sessionManager.resetViewport(_currentSessionId);
+                              _lastFrameHash = 0;
+                              _cancelInertia();
+                            },
+                            child: const Icon(Icons.arrow_downward, size: 20),
+                          ),
+                          // New output badge.
+                          if (_newOutputWhileScrolled > 0)
+                            Positioned(
+                              top: -4,
+                              right: -4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.white, width: 1),
+                                ),
+                                child: Text(
+                                  _newOutputWhileScrolled >= 1000
+                                      ? '${(_newOutputWhileScrolled / 1000).toStringAsFixed(1)}K'
+                                      : _newOutputWhileScrolled.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                 ],
