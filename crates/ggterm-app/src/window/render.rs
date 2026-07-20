@@ -47,9 +47,11 @@ impl DesktopApp {
         let grid = session.app().grid();
 
         // P23-A: Cursor blink state — applied per-pane in the multi-pane loop.
+        // Per xterm spec: Ps=0 (Default) = blinking block (same as Ps=1).
         let is_blink_style = matches!(
             session.app().terminal().cursor_style(),
-            ggterm_core::CursorStyle::BlinkBlock
+            ggterm_core::CursorStyle::Default
+                | ggterm_core::CursorStyle::BlinkBlock
                 | ggterm_core::CursorStyle::BlinkUnderline
                 | ggterm_core::CursorStyle::BlinkBar
         );
