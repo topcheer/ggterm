@@ -2038,7 +2038,7 @@ impl Perform for Terminal {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     0 => self.grid.clear_line_from(self.cursor.x, self.cursor.y),
-                    1 => self.grid.clear_line_to(self.cursor.x + 1, self.cursor.y),
+                    1 => self.grid.clear_line_to(self.cursor.x, self.cursor.y),
                     2 => {
                         self.grid.clear_line(self.cursor.y);
                         // Clearing entire line means it's no longer soft-wrapped.
@@ -3562,6 +3562,39 @@ mod tests {
         feed(&mut t, b"Hello\x1b[0K");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H');
         assert_eq!(t.grid().cell(5, 0).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_el_mode1_clear_to_cursor() {
+        // EL mode 1: clear from start of line to cursor (inclusive).
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"Hello"); // cursor at col 5
+        feed(&mut t, b"\x1b[1K"); // clear from start to cursor (col 0..5)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "col 0 cleared");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "col 4 cleared");
+        assert_eq!(
+            t.grid().cell(5, 0).unwrap().ch,
+            ' ',
+            "col 5 = cursor cleared"
+        );
+        assert_eq!(
+            t.grid().cell(6, 0).unwrap().ch,
+            ' ',
+            "col 6 not part of Hello"
+        );
+    }
+
+    #[test]
+    fn t_el_mode1_preserves_after_cursor() {
+        // EL mode 1 should NOT clear cells after the cursor.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"ABCDEFG"); // cursor at col 7
+        feed(&mut t, b"\x1b[4G"); // move cursor to col 4 (1-based) = col 3 (0-based)
+        feed(&mut t, b"\x1b[1K"); // clear from start to col 3 inclusive
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'E', "col 4 preserved");
+        assert_eq!(t.grid().cell(6, 0).unwrap().ch, 'G', "col 6 preserved");
     }
 
     #[test]
