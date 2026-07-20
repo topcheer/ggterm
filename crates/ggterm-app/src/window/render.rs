@@ -118,6 +118,15 @@ impl DesktopApp {
             }
         };
 
+        // Pre-compute IME preedit data before mutable borrow of renderer.
+        let ime_data = if let Some(ref preedit) = self.ime_preedit {
+            let (ccol, crow) = self.sessions[self.active].app().terminal().cursor();
+            let bounds = self.content_area_bounds();
+            Some((preedit.clone(), ccol, crow, bounds))
+        } else {
+            None
+        };
+
         let (gpu, surface, renderer) = match (&mut self.gpu, &self.surface, &mut self.renderer) {
             (Some(g), Some(s), Some(r)) => (g, s, r),
             _ => return,
@@ -3230,14 +3239,15 @@ impl DesktopApp {
 
         // IME preedit text overlay — show in-progress CJK composition text
         // as an underline-styled overlay at the cursor position.
-        if let Some(ref preedit) = self.ime_preedit {
+        if let Some((preedit, ime_ccol, ime_crow, ime_bounds)) = ime_data {
             let char_count = preedit.chars().count();
-            let (ccol, crow) = self.sessions[self.active].app().terminal().cursor();
             let ime_top = (cell_h + 26.0).max(48.0) + 4.0;
+            // Use content area x/y offset so preedit aligns with the actual
+            // cursor position, not the top-left of the window.
             let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..char_count)
                 .map(|i| ggterm_render_wgpu::OverlayRect {
-                    x: (ccol + i) as f32 * cell_w,
-                    y: ime_top + (crow + 1) as f32 * cell_h - 2.0,
+                    x: ime_bounds.x as f32 + (ime_ccol + i) as f32 * cell_w,
+                    y: ime_top + ime_bounds.y as f32 + (ime_crow + 1) as f32 * cell_h - 2.0,
                     w: cell_w,
                     h: 2.0,
                     color: (1.0, 1.0, 1.0),
@@ -3245,9 +3255,9 @@ impl DesktopApp {
                 .collect();
             renderer.set_overlay_rects(ime_rects);
             renderer.set_overlay_text(vec![ggterm_render_wgpu::OverlayTextSpec {
-                text: preedit.clone(),
-                left: ccol as f32 * cell_w,
-                top: ime_top + crow as f32 * cell_h,
+                text: preedit,
+                left: ime_bounds.x as f32 + ime_ccol as f32 * cell_w,
+                top: ime_top + ime_bounds.y as f32 + ime_crow as f32 * cell_h,
                 color: (255, 255, 255),
                 ..Default::default()
             }]);
