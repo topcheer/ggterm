@@ -2041,6 +2041,20 @@ impl ApplicationHandler for DesktopApp {
         if active_had_data {
             self.cursor_blink.reset();
         }
+        // Refresh search results when new output arrives while the search
+        // panel is open — match positions (abs_row) would otherwise point
+        // at wrong rows after scrollback changes.
+        if active_had_data && self.search.visible {
+            let (query, regex_mode, case_insensitive) = {
+                let s = &self.search;
+                (s.query.clone(), s.regex_mode, s.case_insensitive)
+            };
+            let grid = self.active_session().app().grid().clone();
+            self.search.query.clear();
+            self.search.set_query(&query, &grid);
+            self.search.regex_mode = regex_mode;
+            self.search.case_insensitive = case_insensitive;
+        }
         // If the active session scrolled (scrollback grew or cursor advanced
         // to a new line), invalidate any active selection.
         let new_scrollback = self.active_session().app().grid().scrollback_len();

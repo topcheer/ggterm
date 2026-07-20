@@ -122,6 +122,10 @@ impl InputEncoder {
                 if mods.ctrl {
                     return b"\n".to_vec();
                 }
+                // Alt+Enter → ESC + CR (meta prefix, like xterm)
+                if mods.alt {
+                    return b"\x1b\r".to_vec();
+                }
                 return b"\r".to_vec();
             }
             '\t' => {
@@ -1308,7 +1312,7 @@ mod tests {
     #[test]
     fn test_alt_enter() {
         let enc = InputEncoder::new();
-        // Alt+Enter should still send CR (the named char check comes first)
+        // Alt+Enter sends ESC + CR (meta prefix, matching xterm behavior)
         let key = InputKey::char_mod(
             '\r',
             KeyModifiers {
@@ -1316,7 +1320,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(enc.encode(&key), b"\r");
+        assert_eq!(enc.encode(&key), b"\x1b\r");
     }
 
     // ── modifyOtherKeys ─────────────────────────────────────────

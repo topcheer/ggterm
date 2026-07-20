@@ -134,6 +134,15 @@ impl SearchState {
         self.execute_search(grid);
     }
 
+    /// Re-execute the current search against the updated grid.
+    /// Called when new terminal output arrives while the search panel
+    /// is open — keeps match positions in sync with scrollback changes.
+    pub fn refresh(&mut self, grid: &Grid) {
+        if self.visible && !self.query.is_empty() {
+            self.execute_search(grid);
+        }
+    }
+
     /// Execute the search across scrollback + visible grid.
     fn execute_search(&mut self, grid: &Grid) {
         self.matches.clear();
