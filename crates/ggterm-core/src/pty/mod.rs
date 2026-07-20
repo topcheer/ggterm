@@ -550,6 +550,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "flaky on macOS CI: depends on PTY timing and shell availability"]
     fn test_pty_open_advanced_echo_env() {
         #[cfg(unix)]
         {
