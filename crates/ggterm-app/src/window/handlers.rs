@@ -2795,7 +2795,26 @@ impl DesktopApp {
             (crate::mouse::MouseButton::Right, ElementState::Pressed) => {
                 // P27-C: Show context menu at mouse position.
                 let (px, py) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
-                self.context_menu.show(px, py);
+                // Clamp menu position to window bounds so it's never
+                // clipped off-screen at edges.
+                let menu_w = crate::context_menu::ContextMenuState::WIDTH;
+                let menu_h = self.context_menu.menu_height();
+                let (sw, sh) = if let Some(ref renderer) = self.renderer {
+                    (
+                        renderer.resolution_width() as f32,
+                        renderer.resolution_height() as f32,
+                    )
+                } else {
+                    (800.0, 600.0)
+                };
+                let clamped_x = px.min(sw - menu_w - 4.0).max(4.0);
+                let clamped_y = if py + menu_h > sh {
+                    // Flip up if menu would overflow bottom edge.
+                    (py - menu_h).max(4.0)
+                } else {
+                    py
+                };
+                self.context_menu.show(clamped_x, clamped_y);
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
