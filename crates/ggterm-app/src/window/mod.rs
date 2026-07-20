@@ -364,6 +364,10 @@ pub struct DesktopApp {
     /// Last applied cursor style from config. Used to detect actual changes
     /// so config reload doesn't override program-requested DECSCUSR cursor.
     last_applied_cursor_style: ggterm_core::CursorStyle,
+    /// Last cursor style set by the program (DECSCUSR), for change detection.
+    /// Separate from last_applied_cursor_style (config-driven) to detect
+    /// program-initiated changes that need a redraw.
+    last_program_cursor_style: ggterm_core::CursorStyle,
 
     // ── P23-A: Cursor blink animation ──
     /// Cursor blink phase tracker for smooth blink animation.
@@ -800,6 +804,7 @@ impl DesktopApp {
             settings_window: None,
             pending_open_settings: false,
             last_applied_cursor_style: ggterm_core::CursorStyle::BlinkBlock,
+            last_program_cursor_style: ggterm_core::CursorStyle::BlinkBlock,
             #[cfg(feature = "p2p")]
             p2p_share: crate::p2p_share::P2pShareState::new(),
             last_notified_cmd_duration: None,
@@ -2102,6 +2107,13 @@ impl ApplicationHandler for DesktopApp {
             }
         }
 
+        // Detect cursor style change (DECSCUSR) — a shape-only change
+        // (no grid content modification) still needs a redraw so the
+        // cursor shape updates immediately.
+        let program_cursor_style = self.active_session().app().terminal().cursor_style();
+        let cursor_style_changed = program_cursor_style != self.last_program_cursor_style;
+        self.last_program_cursor_style = program_cursor_style;
+
         // Update tab bar state — syncs tab titles, bell flags, and
         // sets visible = (tabs.len() > 1) for single-tab title bar mode.
         // Avoids Vec allocation by updating visible flag directly and
@@ -2484,6 +2496,7 @@ impl ApplicationHandler for DesktopApp {
             || active_bell
             || bg_bell
             || title_changed
+            || cursor_style_changed
             || self.toast.is_some();
 
         let now = std::time::Instant::now();
