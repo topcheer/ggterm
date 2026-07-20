@@ -379,6 +379,7 @@ impl Grid {
         if let Some(r) = self.rows.get_mut(row) {
             r.insert_char(col, count);
             self.damage.mark_row(row);
+            self.content_dirty = true;
         }
     }
 
@@ -387,6 +388,7 @@ impl Grid {
         if let Some(r) = self.rows.get_mut(row) {
             r.delete_char(col, count);
             self.damage.mark_row(row);
+            self.content_dirty = true;
         }
     }
 
@@ -395,6 +397,7 @@ impl Grid {
         if let Some(r) = self.rows.get_mut(row) {
             r.erase_char(col, count);
             self.damage.mark_rect(col, row, count, 1);
+            self.content_dirty = true;
         }
     }
 
