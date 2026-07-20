@@ -442,6 +442,8 @@ impl DesktopApp {
             self.selection.clear();
             self.selection_auto_scroll = 0;
             self.pending_close_tab = None;
+            self.hovered_link = None;
+            self.color_picker.clear();
             self.last_active_tab = Some(self.active);
             self.active = index;
             self.sessions[self.active].clear_unread();
@@ -459,6 +461,8 @@ impl DesktopApp {
             self.last_active_tab = Some(current);
             self.selection.clear();
             self.selection_auto_scroll = 0;
+            self.hovered_link = None;
+            self.color_picker.clear();
             self.sessions[self.active].clear_unread();
         }
     }
