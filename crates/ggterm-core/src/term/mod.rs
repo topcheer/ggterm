@@ -1945,16 +1945,21 @@ impl Perform for Terminal {
                         self.grid.clear_line_from(self.cursor.x, self.cursor.y);
                         for r in (self.cursor.y + 1)..self.grid.height() {
                             self.grid.clear_line(r);
+                            self.grid.set_row_wrap(r, false);
                         }
                     }
                     1 => {
                         for r in 0..self.cursor.y {
                             self.grid.clear_line(r);
+                            self.grid.set_row_wrap(r, false);
                         }
                         self.grid.clear_line_to(self.cursor.x + 1, self.cursor.y);
                     }
                     2 => {
                         self.grid.clear();
+                        for r in 0..self.grid.height() {
+                            self.grid.set_row_wrap(r, false);
+                        }
                     }
                     3 => {
                         // xterm: CSI 3J clears scrollback only.
@@ -2011,7 +2016,11 @@ impl Perform for Terminal {
                 match mode {
                     0 => self.grid.clear_line_from(self.cursor.x, self.cursor.y),
                     1 => self.grid.clear_line_to(self.cursor.x + 1, self.cursor.y),
-                    2 => self.grid.clear_line(self.cursor.y),
+                    2 => {
+                        self.grid.clear_line(self.cursor.y);
+                        // Clearing entire line means it's no longer soft-wrapped.
+                        self.grid.set_row_wrap(self.cursor.y, false);
+                    }
                     _ => {}
                 }
             }
@@ -7734,5 +7743,29 @@ mod tests {
         assert!(row0.wrap, "row 0 should have wrap=true after soft wrap");
         let row1 = t.grid().row(1).unwrap();
         assert!(!row1.wrap, "row 1 should have wrap=false (no continuation)");
+    }
+
+    #[test]
+    fn t_el_clears_wrap_flag() {
+        // EL mode 2 (erase entire line) should clear wrap flag on the cursor's row.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, b"ABCDE"); // row 0 wrap=true, cursor on row 1
+        // Move cursor to row 0 and erase that line.
+        feed(&mut t, b"\x1b[1;1H\x1b[2K"); // cursor to row 0 + EL mode 2
+        assert!(!t.grid().row(0).unwrap().wrap, "EL 2 should clear wrap on row 0");
+    }
+
+    #[test]
+    fn t_ed_clears_all_wrap_flags() {
+        // ED mode 2 (clear all) should clear all wrap flags.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, b"ABCDE"); // row 0 wrap=true
+        feed(&mut t, b"\r\x1b[2J"); // CR + ED mode 2
+        for r in 0..4 {
+            assert!(
+                !t.grid().row(r).unwrap().wrap,
+                "row {r} should have wrap=false after ED 2"
+            );
+        }
     }
 }
