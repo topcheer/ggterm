@@ -642,8 +642,14 @@ pub fn spawn_pty_reader(
                         break;
                     }
                 }
+                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                    // EINTR (signal interrupted the read) — retry the loop.
+                    // This happens when SIGCHLD arrives (child exited) or
+                    // other signals. Without retrying, we'd exit prematurely.
+                    continue;
+                }
                 Err(_e) => {
-                    // Read error — treat as exit.
+                    // Genuine read error — treat as exit.
                     let _ = sender.send(AppEvent::PtyExit);
                     break;
                 }
