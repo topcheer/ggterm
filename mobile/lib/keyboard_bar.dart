@@ -250,41 +250,41 @@ class _KeyboardBarState extends State<KeyboardBar> {
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Special keys
-            _keyButton('Enter', 'Enter'),
-            _keyButton('Esc', 'Escape'),
-            _keyButton('Tab', 'Tab'),
-            _keyButton('^C', 'CtrlC'), // SIGINT
-            _keyButton('^D', 'CtrlD'), // EOF
-            _keyButton('^Z', 'CtrlZ'), // SIGTSTP
-            _keyButton(r'^\', r'CtrlBackslash'), // SIGQUIT
-            _keyButton('^U', 'CtrlU'), // clear line
-            _keyButton('^O', 'CtrlO'), // vim: open file
-            _keyButton('^Y', 'CtrlY'), // redo / scroll up one line
-            _keyButton('^G', 'CtrlG'), // cancel (emacs help, vim beep)
-            _keyButton('^S', 'CtrlS'), // XOFF (pause output)
-            _keyButton('^Q', 'CtrlQ'), // XON (resume output)
-            _keyButton('^V', 'CtrlV'), // literal next (insert verbatim)
-            // Separator
-            Container(
-              width: 1,
-              height: 24,
-              color: Colors.grey.shade700,
-            ),
-            // Arrow keys — support long-press auto-repeat
+            // ── Tier 1: Most frequently used keys ──
+            // Arrow keys and Backspace are the most-used keys on mobile.
             _repeatableKeyButton('←', 'Left'),
             _repeatableKeyButton('↓', 'Down'),
             _repeatableKeyButton('↑', 'Up'),
             _repeatableKeyButton('→', 'Right'),
-            // Backspace — long-press repeat for fast deletion
             _repeatableKeyButton('⌫', 'Backspace'),
+            _keyButton('Enter', 'Enter'),
+            _keyButton('Esc', 'Escape'),
+            _keyButton('Tab', 'Tab'),
             // Separator
             Container(
               width: 1,
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Page keys — support long-press auto-repeat
+            // ── Tier 2: High-frequency control sequences ──
+            _keyButton('^C', 'CtrlC'), // SIGINT — most used Ctrl combo
+            _keyButton('^D', 'CtrlD'), // EOF
+            _keyButton('^Z', 'CtrlZ'), // SIGTSTP
+            _keyButton('^L', 'CtrlL'), // clear screen
+            _keyButton('^R', 'CtrlR'), // reverse search
+            _keyButton('^W', 'CtrlW'), // delete word
+            _keyButton('^U', 'CtrlU'), // clear line
+            _keyButton('^A', 'CtrlA'), // start of line
+            _keyButton('^E', 'CtrlE'), // end of line
+            _keyButton('^K', 'CtrlK'), // kill to end of line
+            _keyButton(r'^\', r'CtrlBackslash'), // SIGQUIT
+            // Separator
+            Container(
+              width: 1,
+              height: 24,
+              color: Colors.grey.shade700,
+            ),
+            // ── Tier 3: Navigation keys ──
             _repeatableKeyButton('PgUp', 'PageUp'),
             _repeatableKeyButton('PgDn', 'PageDown'),
             _keyButton('Home', 'Home'),
@@ -295,7 +295,7 @@ class _KeyboardBarState extends State<KeyboardBar> {
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Quick-access terminal symbols (painful to type on mobile keyboard)
+            // ── Tier 4: Shell/terminal symbols ──
             _keyButton('/', '/'),
             _keyButton('~', '~'),
             _keyButton('|', '|'),
@@ -304,7 +304,6 @@ class _KeyboardBarState extends State<KeyboardBar> {
             _keyButton('*', '*'),
             _keyButton('\$', '\$'),
             _keyButton('&&', '&&'),
-            // Programming symbols
             _keyButton('{', '{'),
             _keyButton('}', '}'),
             _keyButton('[', '['),
@@ -319,17 +318,17 @@ class _KeyboardBarState extends State<KeyboardBar> {
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Common Ctrl combos
-            _keyButton('^L', 'CtrlL'), // clear screen
-            _keyButton('^R', 'CtrlR'), // reverse search
-            _keyButton('^W', 'CtrlW'), // delete word
-            _keyButton('^A', 'CtrlA'), // start of line
-            _keyButton('^E', 'CtrlE'), // end of line
+            // ── Tier 5: Less common Ctrl combos ──
             _keyButton('^F', 'CtrlF'), // forward char
             _keyButton('^B', 'CtrlB'), // backward char / tmux prefix
-            _keyButton('^K', 'CtrlK'), // kill to end of line
             _keyButton('^P', 'CtrlP'), // previous history
             _keyButton('^N', 'CtrlN'), // next history
+            _keyButton('^S', 'CtrlS'), // XOFF (pause output)
+            _keyButton('^Q', 'CtrlQ'), // XON (resume output)
+            _keyButton('^O', 'CtrlO'), // vim: open file
+            _keyButton('^Y', 'CtrlY'), // redo / scroll up one line
+            _keyButton('^G', 'CtrlG'), // cancel (emacs help, vim beep)
+            _keyButton('^V', 'CtrlV'), // literal next (insert verbatim)
             _keyButton('^␣', 'CtrlSpace'), // NUL (vim autocomplete)
             // Separator
             Container(
@@ -337,7 +336,7 @@ class _KeyboardBarState extends State<KeyboardBar> {
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // F-keys (essential for vim, htop, man)
+            // ── Tier 6: F-keys (essential for vim, htop, man) ──
             _keyButton('F1', 'F1'),
             _keyButton('F2', 'F2'),
             _keyButton('F3', 'F3'),
@@ -356,7 +355,7 @@ class _KeyboardBarState extends State<KeyboardBar> {
               height: 24,
               color: Colors.grey.shade700,
             ),
-            // Git quick-send: sends full command + Enter
+            // ── Tier 7: Git quick-send ──
             _keyButton('git st', 'git status\r'),
             _keyButton('git lg', 'git log --oneline -10\r'),
             _keyButton('git df', 'git diff\r'),
