@@ -2165,7 +2165,11 @@ impl ApplicationHandler for DesktopApp {
         let session_count = self.sessions.len();
         if self.tab_bar.tabs.len() != session_count {
             // Tab count changed — full rebuild.
-            let tab_refs: Vec<&str> = self.sessions.iter().map(|s| s.title()).collect();
+            self.render_tab_titles.clear();
+            for s in self.sessions.iter() {
+                self.render_tab_titles.push(s.title().to_string());
+            }
+            let tab_refs: Vec<&str> = self.render_tab_titles.iter().map(|s| s.as_str()).collect();
             self.tab_bar.update(&tab_refs, self.active);
         } else {
             // Same count — just update titles and active index in-place.
