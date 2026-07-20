@@ -1374,7 +1374,7 @@ impl DesktopApp {
         }
 
         // If this is a confirmed paste (from pending), use the stored text.
-        let mut text = if let Some(ref pending) = self.pending_large_paste {
+        let text = if let Some(ref pending) = self.pending_large_paste {
             let t = pending.clone();
             self.pending_large_paste = None;
             t

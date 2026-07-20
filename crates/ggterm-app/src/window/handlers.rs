@@ -3055,14 +3055,9 @@ impl DesktopApp {
     fn window_edge_resize_direction(&self) -> Option<winit::window::ResizeDirection> {
         use winit::window::ResizeDirection;
 
-        let (screen_w, screen_h) = if let Some(ref renderer) = self.renderer {
-            (
-                renderer.resolution_width() as f32,
-                renderer.resolution_height() as f32,
-            )
-        } else {
-            return None;
-        };
+        let renderer = self.renderer.as_ref()?;
+        let screen_w = renderer.resolution_width() as f32;
+        let screen_h = renderer.resolution_height() as f32;
 
         let px = self.cursor_pos.0 as f32;
         let py = self.cursor_pos.1 as f32;
