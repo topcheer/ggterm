@@ -2030,7 +2030,12 @@ impl ApplicationHandler for DesktopApp {
         // are display-relative and would point at wrong rows).
         let prev_scrollback = self.active_session().app().grid().scrollback_len();
         let prev_cursor_y = self.active_session().app().terminal().cursor().1;
-        self.active_session_mut().pump();
+        let active_had_data = self.active_session_mut().pump();
+        // Reset cursor blink cycle on new output so the cursor is visible
+        // immediately (standard terminal behavior — iTerm2, Alacritty, etc.).
+        if active_had_data {
+            self.cursor_blink.reset();
+        }
         // If the active session scrolled (scrollback grew or cursor advanced
         // to a new line), invalidate any active selection.
         let new_scrollback = self.active_session().app().grid().scrollback_len();

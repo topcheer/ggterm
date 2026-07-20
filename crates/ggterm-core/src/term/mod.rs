@@ -3181,10 +3181,28 @@ impl Perform for Terminal {
                     "CO" | "COLORS" => Some("256".to_string()),
                     // Truecolor support
                     "RGB" => Some("8".to_string()),
-                    // Background color (xterm extension)
-                    "BG" => Some("rgb:0000/0000/0000".to_string()),
-                    // Foreground color
-                    "FG" => Some("rgb:cccc/cccc/cccc".to_string()),
+                    // Background color (xterm extension) — use dynamic if set
+                    "BG" => Some({
+                        let (r, g, b) = self
+                            .dynamic_bg
+                            .map(|c| match c {
+                                Color::Rgb(r, g, b) => (r, g, b),
+                                _ => (0, 0, 0),
+                            })
+                            .unwrap_or((0, 0, 0));
+                        format!("rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}")
+                    }),
+                    // Foreground color — use dynamic if set
+                    "FG" => Some({
+                        let (r, g, b) = self
+                            .dynamic_fg
+                            .map(|c| match c {
+                                Color::Rgb(r, g, b) => (r, g, b),
+                                _ => (0xcc, 0xcc, 0xcc),
+                            })
+                            .unwrap_or((0xcc, 0xcc, 0xcc));
+                        format!("rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}")
+                    }),
                     _ => None,
                 };
                 match value {
