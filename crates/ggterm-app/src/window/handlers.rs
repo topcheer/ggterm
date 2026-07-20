@@ -2881,6 +2881,12 @@ impl DesktopApp {
         if any_event || button_event {
             let held = self.button_held.is_some();
             if crate::mouse::should_report_motion(any_event, button_event, held) {
+                // Throttle: only report when cell position changes.
+                // Without this, every pixel-level motion event floods the PTY.
+                if self.last_mouse_cell == Some((col, row)) {
+                    return;
+                }
+                self.last_mouse_cell = Some((col, row));
                 let button = self.button_held.unwrap_or(crate::mouse::MouseButton::Left);
                 let mods = crate::mouse::MouseModifiers {
                     shift: self.mods.shift,

@@ -230,6 +230,10 @@ pub struct DesktopApp {
     last_ime_cursor_area: Option<(f64, f64, f64, f64)>,
     /// Mouse button currently held (for drag tracking).
     button_held: Option<crate::mouse::MouseButton>,
+    /// Last reported mouse cell (col, row) for motion throttling.
+    /// Avoids flooding PTY with redundant motion events when the mouse
+    /// moves within the same cell.
+    last_mouse_cell: Option<(u16, u16)>,
     /// P21-A: Active split separator drag (None = not dragging).
     drag_resize: Option<bool>,
     /// P27-B: Click count for double/triple-click detection.
@@ -701,6 +705,7 @@ impl DesktopApp {
             cursor_pos: (0.0, 0.0),
             last_ime_cursor_area: None,
             button_held: None,
+            last_mouse_cell: None,
             drag_resize: None,
             click_count: 0,
             drag_select_mode: crate::mouse::DragSelectMode::Char,
