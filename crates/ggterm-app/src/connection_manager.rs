@@ -695,11 +695,19 @@ Host my-key
     User me
     IdentityFile ~/.ssh/custom_key
 "#;
+        // Save and restore HOME to avoid interfering with other tests.
+        let saved_home = std::env::var("HOME").ok();
         // SAFETY: single-threaded test, no other code accessing HOME.
         unsafe {
             std::env::set_var("HOME", "/test/home");
         }
         let entries = parse_ssh_config(config);
+        // Restore HOME immediately after parsing.
+        if let Some(h) = saved_home {
+            unsafe {
+                std::env::set_var("HOME", h);
+            }
+        }
         assert_eq!(entries.len(), 1);
         assert_eq!(
             entries[0].key_path.as_deref(),

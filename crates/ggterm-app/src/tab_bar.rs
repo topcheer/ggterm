@@ -292,7 +292,11 @@ impl TabBarState {
 
         // Linux/Windows: reserve space for caption buttons.
         #[cfg(not(target_os = "macos"))]
+        #[cfg(feature = "desktop")]
         let right_margin = TAB_BAR_PADDING_H + crate::titlebar::CAPTION_BTN_W * 3.0;
+        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(feature = "desktop"))]
+        let right_margin = TAB_BAR_PADDING_H + 120.0;
         #[cfg(target_os = "macos")]
         let right_margin = TAB_BAR_PADDING_H;
 
