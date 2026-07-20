@@ -939,7 +939,7 @@ mod tests {
 
         let nav = CommandNavigator::new();
         let history = nav.command_history_all(&term);
-        assert!(history.len() >= 1);
+        assert!(!history.is_empty());
     }
 
     #[test]

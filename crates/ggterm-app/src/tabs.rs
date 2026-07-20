@@ -322,6 +322,14 @@ impl Default for TabManager {
 }
 
 #[cfg(test)]
+impl TabManager {
+    /// Test-only helper to get mutable access to all tabs.
+    fn tabs_mut_for_test(&mut self) -> &mut [TabInfo] {
+        &mut self.tabs
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -696,13 +704,5 @@ mod tests {
         let idx = mgr.open_tab().unwrap(); // Should get id=3 (not reused)
         let new_tab = &mgr.tabs()[idx];
         assert_eq!(new_tab.id, 3);
-    }
-}
-
-#[cfg(test)]
-impl TabManager {
-    /// Test-only helper to get mutable access to all tabs.
-    fn tabs_mut_for_test(&mut self) -> &mut [TabInfo] {
-        &mut self.tabs
     }
 }

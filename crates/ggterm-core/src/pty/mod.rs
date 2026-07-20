@@ -432,11 +432,11 @@ mod tests {
         // Retry loop: PTY creation can occasionally fail under parallel test
         // load due to system resource contention. This is not a code bug.
         for attempt in 0..3 {
-            if let Ok(mut pty) = PtySession::open(80, 24) {
-                if pty.resize(100, 30).is_ok() {
-                    assert_eq!(pty.size(), (100, 30));
-                    return;
-                }
+            if let Ok(mut pty) = PtySession::open(80, 24)
+                && pty.resize(100, 30).is_ok()
+            {
+                assert_eq!(pty.size(), (100, 30));
+                return;
             }
             if attempt < 2 {
                 std::thread::sleep(std::time::Duration::from_millis(100));

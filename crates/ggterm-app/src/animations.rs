@@ -328,11 +328,7 @@ mod tests {
         assert!((v - 1.0).abs() < 0.01, "spring at 1.0 should be ~1.0");
         // Spring might overshoot in the middle but settles at 1.0
         let mid = Easing::Spring.apply(0.5);
-        assert!(
-            mid >= 0.0 && mid <= 2.0,
-            "spring at 0.5 out of range: {}",
-            mid
-        );
+        assert!((0.0..=2.0).contains(&mid));
     }
 
     #[test]
@@ -348,7 +344,7 @@ mod tests {
         anim.start();
         // Right after start, progress should be very small but > 0
         let p = anim.progress();
-        assert!(p >= 0.0 && p <= 1.0);
+        assert!((0.0..=1.0).contains(&p));
     }
 
     #[test]
@@ -404,7 +400,7 @@ mod tests {
         assert!(mgr.is_animating());
         assert!(mgr.needs_redraw());
         let alpha = mgr.tab_switch_alpha();
-        assert!(alpha >= 0.0 && alpha <= 1.0);
+        assert!((0.0..=1.0).contains(&alpha));
     }
 
     #[test]
@@ -429,7 +425,7 @@ mod tests {
         mgr.split_expand();
         assert!(mgr.is_animating());
         let scale = mgr.split_expand_scale();
-        assert!(scale >= 0.0 && scale <= 1.0);
+        assert!((0.0..=1.0).contains(&scale));
     }
 
     #[test]
@@ -438,6 +434,6 @@ mod tests {
         mgr.overlay_slide();
         assert!(mgr.is_animating());
         let p = mgr.overlay_slide_progress();
-        assert!(p >= 0.0 && p <= 1.0);
+        assert!((0.0..=1.0).contains(&p));
     }
 }

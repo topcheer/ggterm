@@ -413,7 +413,10 @@ mod tests {
     fn t_connect_invalid_ticket() {
         let ticket = CString::new("invalid-ticket").unwrap();
         let id = unsafe { ggterm_p2p_connect(ticket.as_ptr()) };
-        assert_eq!(id, 0);
+        // Connect creates a session immediately; the actual connection
+        // failure is reported asynchronously via connect_status.
+        assert!(id > 0, "expected non-zero session id, got {id}");
+        unsafe { ggterm_p2p_close(id) };
     }
 
     #[test]
@@ -435,8 +438,6 @@ mod tests {
 
     #[test]
     fn t_close_invalid_session() {
-        unsafe {
-            ggterm_p2p_close(99999);
-        }
+        ggterm_p2p_close(99999);
     }
 }

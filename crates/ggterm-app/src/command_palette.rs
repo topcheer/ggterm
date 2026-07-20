@@ -853,8 +853,10 @@ mod tests {
     #[test]
     fn t_state_results_sorted_by_score() {
         let registry = CommandRegistry::defaults();
-        let mut st = CommandPaletteState::default();
-        st.query = "tab".to_string();
+        let st = CommandPaletteState {
+            query: "tab".to_string(),
+            ..Default::default()
+        };
         let results = st.results(&registry);
         assert!(!results.is_empty());
         // Results should be sorted descending by score.
@@ -872,16 +874,20 @@ mod tests {
             shortcut: None,
         };
         let results = vec![(&cmd, 50)];
-        let mut st = CommandPaletteState::default();
-        st.selected = 0;
+        let mut st = CommandPaletteState {
+            selected: 0,
+            ..Default::default()
+        };
         st.confirm(&results);
         assert_eq!(st.take_action(), Some("test.action".to_string()));
     }
 
     #[test]
     fn t_state_navigation() {
-        let mut st = CommandPaletteState::default();
-        st.visible = true;
+        let mut st = CommandPaletteState {
+            visible: true,
+            ..Default::default()
+        };
         st.move_down(5);
         assert_eq!(st.selected, 1);
         st.move_down(5);
@@ -895,10 +901,12 @@ mod tests {
 
     #[test]
     fn t_state_toggle_resets() {
-        let mut st = CommandPaletteState::default();
-        st.visible = true; // start visible so toggle() turns it off
-        st.query = "abc".to_string();
-        st.selected = 3;
+        let mut st = CommandPaletteState {
+            visible: true, // start visible so toggle() turns it off
+            query: "abc".to_string(),
+            selected: 3,
+            ..Default::default()
+        };
         st.toggle();
         assert!(!st.visible);
         assert!(st.query.is_empty());

@@ -266,6 +266,18 @@ impl P2pShareState {
     pub fn is_active(&self) -> bool {
         self.visible || self.status == P2pShareStatus::Connected
     }
+
+    /// Check if the P2P transport is still connected.
+    pub fn is_connected(&self) -> bool {
+        self.transport.as_ref().is_some_and(|t| t.is_connected())
+    }
+
+    /// Mark the connection as lost, clearing the transport.
+    pub fn mark_connection_lost(&mut self) {
+        self.status = P2pShareStatus::Error;
+        self.error = Some("Connection lost".into());
+        self.transport = None;
+    }
 }
 
 /// Generate a QR code matrix from a string.

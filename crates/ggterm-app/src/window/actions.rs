@@ -3388,15 +3388,8 @@ impl DesktopApp {
         // Read mobile input and forward to PTY.
         if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
             // Check if the connection is still alive.
-            let alive = self
-                .p2p_share
-                .transport
-                .as_ref()
-                .is_some_and(|t| t.is_connected());
-            if !alive {
-                self.p2p_share.status = crate::p2p_share::P2pShareStatus::Error;
-                self.p2p_share.error = Some("Connection lost".into());
-                self.p2p_share.transport = None;
+            if !self.p2p_share.is_connected() {
+                self.p2p_share.mark_connection_lost();
                 self.show_toast("P2P: Connection lost");
             } else {
                 let input = self.p2p_share.read_input();

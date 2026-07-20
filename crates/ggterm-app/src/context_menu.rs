@@ -218,8 +218,10 @@ mod tests {
 
     #[test]
     fn t_show_resets_hovered() {
-        let mut m = ContextMenuState::default();
-        m.hovered = Some(3);
+        let mut m = ContextMenuState {
+            hovered: Some(3),
+            ..Default::default()
+        };
         m.show(0.0, 0.0);
         assert_eq!(m.hovered, None);
     }

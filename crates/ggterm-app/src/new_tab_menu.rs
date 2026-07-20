@@ -222,8 +222,10 @@ mod tests {
 
     #[test]
     fn t_show_resets_hovered() {
-        let mut m = NewTabMenuState::default();
-        m.hovered = Some(2);
+        let mut m = NewTabMenuState {
+            hovered: Some(2),
+            ..Default::default()
+        };
         m.show(0.0, 0.0);
         assert_eq!(m.hovered, None);
     }

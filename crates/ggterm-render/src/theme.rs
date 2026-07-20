@@ -532,6 +532,75 @@ impl Default for ThemeManager {
     }
 }
 
+/// Detect whether the OS is in dark mode.
+///
+/// Platform implementations:
+/// - macOS: reads `defaults read -g AppleInterfaceStyle` (returns "Dark" or fails).
+/// - Linux: checks `$GTK_THEME` env var for `:dark` suffix.
+/// - Windows: checks registry `AppsUseLightTheme` (0 = dark, 1 = light).
+///
+/// Returns `true` if dark mode, `false` if light mode or detection fails.
+pub fn system_is_dark() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: `defaults read -g AppleInterfaceStyle` returns "Dark" in dark mode.
+        // In light mode, it returns nothing (exit code 1).
+        if let Ok(output) = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleInterfaceStyle"])
+            .output()
+            && output.status.success()
+        {
+            let s = String::from_utf8_lossy(&output.stdout);
+            return s.trim().eq_ignore_ascii_case("Dark");
+        }
+        // Detection failed — assume dark (safer for terminal).
+        true
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Linux: check GTK_THEME for ":dark" suffix.
+        if let Ok(theme) = std::env::var("GTK_THEME") {
+            return theme.to_lowercase().ends_with(":dark");
+        }
+        // Check prefers-color-scheme via gsettings (GNOME).
+        if let Ok(output) = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "color-scheme"])
+            .output()
+            && output.status.success()
+        {
+            let s = String::from_utf8_lossy(&output.stdout);
+            return s.contains("dark");
+        }
+        true
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: check registry for AppsUseLightTheme.
+        if let Ok(output) = std::process::Command::new("reg")
+            .args([
+                "query",
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                "/v",
+                "AppsUseLightTheme",
+            ])
+            .output()
+            && output.status.success()
+        {
+            let s = String::from_utf8_lossy(&output.stdout);
+            // 0x1 = light theme, 0x0 = dark theme.
+            return !s.contains("0x1");
+        }
+        true
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -877,74 +946,5 @@ mod tests {
     #[test]
     fn t_by_name_auto() {
         assert!(RenderTheme::by_name("auto").is_some());
-    }
-}
-
-/// Detect whether the OS is in dark mode.
-///
-/// Platform implementations:
-/// - macOS: reads `defaults read -g AppleInterfaceStyle` (returns "Dark" or fails).
-/// - Linux: checks `$GTK_THEME` env var for `:dark` suffix.
-/// - Windows: checks registry `AppsUseLightTheme` (0 = dark, 1 = light).
-///
-/// Returns `true` if dark mode, `false` if light mode or detection fails.
-pub fn system_is_dark() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: `defaults read -g AppleInterfaceStyle` returns "Dark" in dark mode.
-        // In light mode, it returns nothing (exit code 1).
-        if let Ok(output) = std::process::Command::new("defaults")
-            .args(["read", "-g", "AppleInterfaceStyle"])
-            .output()
-            && output.status.success()
-        {
-            let s = String::from_utf8_lossy(&output.stdout);
-            return s.trim().eq_ignore_ascii_case("Dark");
-        }
-        // Detection failed — assume dark (safer for terminal).
-        true
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux: check GTK_THEME for ":dark" suffix.
-        if let Ok(theme) = std::env::var("GTK_THEME") {
-            return theme.to_lowercase().ends_with(":dark");
-        }
-        // Check prefers-color-scheme via gsettings (GNOME).
-        if let Ok(output) = std::process::Command::new("gsettings")
-            .args(["get", "org.gnome.desktop.interface", "color-scheme"])
-            .output()
-            && output.status.success()
-        {
-            let s = String::from_utf8_lossy(&output.stdout);
-            return s.contains("dark");
-        }
-        true
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: check registry for AppsUseLightTheme.
-        if let Ok(output) = std::process::Command::new("reg")
-            .args([
-                "query",
-                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                "/v",
-                "AppsUseLightTheme",
-            ])
-            .output()
-            && output.status.success()
-        {
-            let s = String::from_utf8_lossy(&output.stdout);
-            // 0x1 = light theme, 0x0 = dark theme.
-            return !s.contains("0x1");
-        }
-        true
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    {
-        true
     }
 }

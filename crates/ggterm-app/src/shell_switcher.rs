@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn t_shell_switcher_detects_shells() {
         let state = ShellSwitcherState::new();
-        assert!(state.len() >= 1); // at least the default
+        assert!(!state.is_empty()); // at least the default
     }
 
     #[test]

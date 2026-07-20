@@ -4442,7 +4442,7 @@ mod tests {
         // The 'X' at col 1 should be red (SGR was processed).
         let x_cell = t.grid().cell(1, 0).unwrap();
         assert_eq!(x_cell.ch, 'X');
-        assert!(x_cell.flags.contains(CellFlags::BOLD) == false);
+        assert!(!x_cell.flags.contains(CellFlags::BOLD));
         assert_eq!(
             x_cell.fg,
             Color::Indexed(1),

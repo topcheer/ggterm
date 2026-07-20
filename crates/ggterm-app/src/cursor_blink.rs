@@ -225,6 +225,6 @@ mod tests {
         cf2.trigger();
         // With trigger, intensity should be in [0, 1]
         let i = cf2.intensity();
-        assert!(i >= 0.0 && i <= 1.0);
+        assert!((0.0..=1.0).contains(&i));
     }
 }

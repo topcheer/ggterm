@@ -2532,9 +2532,9 @@ impl ApplicationHandler for DesktopApp {
             #[cfg(feature = "p2p")]
             let sleep_ms = if self.window_occluded {
                 1000
-            } else if defer_render {
-                5
-            } else if self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected {
+            } else if defer_render
+                || self.p2p_share.status == crate::p2p_share::P2pShareStatus::Connected
+            {
                 5
             } else {
                 50
