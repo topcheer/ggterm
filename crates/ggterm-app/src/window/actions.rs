@@ -1276,6 +1276,29 @@ impl DesktopApp {
         let grid = self.active_session().app().grid();
         let width = grid.width();
         let row_count = (ey - sy + 1) as usize;
+
+        // Block (rectangular) selection: extract column range per row.
+        if self.selection.block_mode {
+            let col_start = sx.min(ex) as usize;
+            let col_end = sx.max(ex) as usize;
+            let mut text = String::with_capacity(row_count * (col_end - col_start + 1));
+            for row in sy..=ey {
+                for col in col_start..=col_end {
+                    let cell = grid.display_cell(col, row as usize);
+                    if cell.is_some_and(|c| !c.is_wide_spacer() && c.ch != '\0') {
+                        let cell = cell.unwrap();
+                        text.push(cell.ch);
+                        for &c in &cell.combining {
+                            text.push(c);
+                        }
+                    }
+                }
+                text.push('\n');
+            }
+            return text.trim().to_string();
+        }
+
+        // Normal (linear) selection.
         let mut text = String::with_capacity(row_count * width);
 
         for row in sy..=ey {
