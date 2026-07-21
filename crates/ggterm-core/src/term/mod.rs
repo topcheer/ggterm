@@ -3504,6 +3504,9 @@ impl Perform for Terminal {
                     self.mark_row = Some(self.cursor().1);
                 } else if payload == "ClearScrollback" {
                     self.grid_mut().clear_scrollback();
+                    // Clear all command marks since their absolute row
+                    // references are now invalid (scrollback is empty).
+                    self.command_marks.clear();
                 } else if let Some(rest) = payload.strip_prefix("SetUserVar=") {
                     // SetUserVar=name=value — store user variable
                     if let Some(eq_pos) = rest.find('=') {
