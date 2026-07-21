@@ -2428,7 +2428,7 @@ impl Perform for Terminal {
                 self.modes.insert = false;
                 self.modes.bracketed_paste = false;
                 self.modes.new_line_mode = false;
-                self.modes.keypad_app = false;
+                self.modes.sace_rectangle = false;
                 self.modes.synchronized_output = false;
                 self.modes.reflow = true;
                 self.modes.focus_event = false;
@@ -8644,6 +8644,18 @@ mod tests {
         // DECSACE Ps=1 → stream mode
         feed(&mut t, b"\x1b[1*q");
         assert!(!t.modes.sace_rectangle, "Ps=1 should set stream mode");
+    }
+
+    #[test]
+    fn t_decstr_resets_sace_rectangle() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[2*q"); // DECSACE → rectangle mode
+        assert!(t.modes.sace_rectangle);
+        feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
+        assert!(
+            !t.modes.sace_rectangle,
+            "DECSTR should reset sace_rectangle"
+        );
     }
 
     // ===== Robustness: extreme parameter values must not panic =====
