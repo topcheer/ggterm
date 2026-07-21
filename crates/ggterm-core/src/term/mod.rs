@@ -2575,6 +2575,35 @@ impl Perform for Terminal {
                     self.cursor.pending_wrap = false;
                 }
             }
+            // DECERA — Erase Rectangle Area (CSI Pt ; Pl ; Pb ; Pr $ z)
+            // Erase all non-protected cells in the rectangle to blank.
+            // Coordinates are 1-based, clamped to screen bounds.
+            // DECSCA protected cells are preserved (same as DECSED/DECSEL).
+            b'z' if intermediates.contains(&b'$') => {
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let width = self.grid.width();
+                let height = self.grid.height();
+                let top = top.min(height.saturating_sub(1));
+                let bottom = bottom.min(height.saturating_sub(1));
+                let left = left.min(width.saturating_sub(1));
+                let right = right.min(width.saturating_sub(1));
+                if top <= bottom && left <= right {
+                    for row in top..=bottom {
+                        for col in left..=right {
+                            if let Some(cell) = self.grid_mut().cell_mut(col, row)
+                                && !cell.flags.contains(CellFlags::PROTECTED)
+                            {
+                                *cell = Cell::blank();
+                            }
+                        }
+                    }
+                    self.grid_mut().mark_all_dirty();
+                    self.cursor.pending_wrap = false;
+                }
+            }
             // DECREQTPARM — Request Terminal Parameters (CSI Ps x)
             // Programs use this during startup to detect terminal type.
             // Response: CSI 2 ; 1 ; 0 ; 0 ; 0 ; 0 x
@@ -8071,5 +8100,101 @@ mod tests {
             r0[1..].starts_with("ELLO"),
             "rest should be unchanged: {r0:?}"
         );
+    }
+
+    // ===== DECERA — Erase Rectangle Area tests =====
+
+    #[test]
+    fn t_decera_erases_rectangle() {
+        let mut t = Terminal::new(10, 5);
+        // Fill text on multiple rows
+        feed(&mut t, b"ABCDEFGH\r\nIJKLMNOP\r\nQRSTUVWX");
+        // DECERA: erase rect rows 1-2, cols 1-3 (1-based) = rows 0-1, cols 0-2 (0-based)
+        feed(&mut t, b"\x1b[1;1;2;3$z");
+        // Row 0 cols 0-2 should be blank
+        for col in 0..3 {
+            assert!(
+                t.grid()[(col, 0)].is_blank(),
+                "col {col} row 0 should be blank after DECERA"
+            );
+        }
+        // Row 0 cols 3-7 should still have "DEFGH"
+        assert_eq!(t.grid()[(3, 0)].ch, 'D', "col 3 row 0 should be 'D'");
+        assert_eq!(t.grid()[(4, 0)].ch, 'E', "col 4 row 0 should be 'E'");
+        // Row 1 cols 0-2 should be blank
+        for col in 0..3 {
+            assert!(
+                t.grid()[(col, 1)].is_blank(),
+                "col {col} row 1 should be blank after DECERA"
+            );
+        }
+        // Row 2 should be unchanged
+        assert_eq!(t.grid()[(0, 2)].ch, 'Q', "row 2 col 0 should still be 'Q'");
+    }
+
+    #[test]
+    fn t_decera_preserves_protected_cells() {
+        let mut t = Terminal::new(10, 3);
+        // Enable protected attribute and write "AB"
+        feed(&mut t, b"\x1b[1\"qAB");
+        // Disable protected and write "CD"
+        feed(&mut t, b"\x1b[0\"qCD");
+        // DECERA: erase rect rows 1-1, cols 1-4 (entire row 0)
+        feed(&mut t, b"\x1b[1;1;1;4$z");
+        // Protected cells "AB" should survive
+        assert_eq!(t.grid()[(0, 0)].ch, 'A', "protected cell A should survive");
+        assert_eq!(t.grid()[(1, 0)].ch, 'B', "protected cell B should survive");
+        // Unprotected cells "CD" should be erased
+        assert!(
+            t.grid()[(2, 0)].is_blank(),
+            "unprotected cell C should be erased"
+        );
+        assert!(
+            t.grid()[(3, 0)].is_blank(),
+            "unprotected cell D should be erased"
+        );
+    }
+
+    #[test]
+    fn t_decera_clamps_to_screen_bounds() {
+        let mut t = Terminal::new(5, 3);
+        // Fill with text
+        feed(&mut t, b"HELLO\r\nWORLD\r\nTESTS");
+        // DECERA with huge coords should clamp and not panic
+        feed(&mut t, b"\x1b[1;1;100;100$z");
+        // Entire screen should be blanked
+        for row in 0..3 {
+            for col in 0..5 {
+                assert!(
+                    t.grid()[(col, row)].is_blank(),
+                    "cell ({col},{row}) should be blank after DECERA full-screen erase"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn t_decera_after_decfra_roundtrip() {
+        let mut t = Terminal::new(8, 3);
+        // DECFRA: fill rect rows 1-3, cols 1-4 with red bg (fill char defaults to space)
+        feed(&mut t, b"\x1b[41m\x1b[1;1;3;4$x");
+        // Verify filled with space and red bg
+        assert_eq!(t.grid()[(0, 0)].ch, ' ', "DECFRA fills with space");
+        assert_eq!(
+            t.grid()[(0, 0)].bg,
+            Color::Indexed(1),
+            "DECFRA should set red bg"
+        );
+        // DECERA: erase the same rect — should go back to blank (default bg)
+        feed(&mut t, b"\x1b[1;1;3;4$z");
+        // All cells should now be blank
+        for row in 0..3 {
+            for col in 0..4 {
+                assert!(
+                    t.grid()[(col, row)].is_blank(),
+                    "cell ({col},{row}) should be blank after DECERA"
+                );
+            }
+        }
     }
 }
