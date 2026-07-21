@@ -661,6 +661,34 @@ impl DesktopApp {
             }
         }
 
+        // ── F3 / Shift+F3 → continue search (next/prev match) ──
+        if let PhysicalKey::Code(KeyCode::F3) = &event.physical_key {
+            if is_repeat {
+                return;
+            }
+            if self.search.visible {
+                // Search bar open: just navigate.
+                let matched = if self.mods.shift {
+                    self.search.prev_match()
+                } else {
+                    self.search.next_match()
+                };
+                self.scroll_to_search_match(matched);
+            } else {
+                // Search bar closed: restore last query and navigate.
+                let grid = self.sessions[self.active].app().grid().clone();
+                if self.search.resume_from_last(&grid) {
+                    let matched = if self.mods.shift {
+                        self.search.prev_match()
+                    } else {
+                        self.search.next_match()
+                    };
+                    self.scroll_to_search_match(matched);
+                }
+            }
+            return;
+        }
+
         // ── P19-B: Split pane shortcuts (not configurable) ──
 
         // Ctrl+Shift+D → horizontal split (also Cmd+D on macOS)
@@ -1942,6 +1970,34 @@ impl DesktopApp {
     }
 
     // ── Scrollback search (P10-D) ───────────────────────────────
+
+    /// Scroll viewport to show a search match (shared by F3 and Enter).
+    fn scroll_to_search_match(&mut self, matched: Option<crate::search::SearchMatch>) {
+        if self.search.last_wrapped() {
+            self.show_toast("Search wrapped".to_string());
+        }
+        if let Some(m) = matched {
+            let scrollback_len = self.sessions[self.active].app().grid().scrollback_len();
+            let grid_height = self.sessions[self.active].app().grid().height();
+            let visible_row = m.abs_row as isize - scrollback_len as isize;
+            if visible_row < 0 {
+                let target_offset = scrollback_len - m.abs_row;
+                let grid = self.sessions[self.active]
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut();
+                let current_offset = grid.display_offset();
+                let desired_offset = target_offset
+                    .min(scrollback_len)
+                    .saturating_sub(grid_height / 3);
+                if desired_offset > current_offset {
+                    grid.scroll_up_viewport(desired_offset - current_offset);
+                } else if desired_offset < current_offset {
+                    grid.scroll_down_viewport(current_offset - desired_offset);
+                }
+            }
+        }
+    }
 
     /// Handle keyboard input when the search bar is open.
     pub(super) fn handle_search_input(&mut self, event: &KeyEvent) {

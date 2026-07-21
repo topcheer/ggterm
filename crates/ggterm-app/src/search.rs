@@ -37,6 +37,8 @@ pub struct SearchState {
     history_idx: Option<usize>,
     /// Query text saved before navigating history, for restoring.
     saved_query: String,
+    /// Last query when search was closed, for F3 continue-search.
+    last_closed_query: String,
 }
 
 /// A single search match location.
@@ -64,6 +66,7 @@ impl SearchState {
             history: Vec::new(),
             history_idx: None,
             saved_query: String::new(),
+            last_closed_query: String::new(),
         }
     }
 
@@ -77,6 +80,8 @@ impl SearchState {
 
     /// Close the search bar and clear state.
     pub fn close(&mut self) {
+        // Save query for F3 "continue search" before clearing.
+        self.last_closed_query = self.query.clone();
         // Save query to history before clearing.
         self.save_to_history();
         self.visible = false;
@@ -93,6 +98,18 @@ impl SearchState {
         } else {
             self.open();
         }
+    }
+
+    /// Resume search from last closed query (F3 / Shift+F3).
+    /// Returns true if a query was restored.
+    pub fn resume_from_last(&mut self, grid: &Grid) -> bool {
+        if self.last_closed_query.is_empty() {
+            return false;
+        }
+        self.query = self.last_closed_query.clone();
+        self.visible = true;
+        self.execute_search(grid);
+        true
     }
 
     /// Append a character to the search query and re-search.
