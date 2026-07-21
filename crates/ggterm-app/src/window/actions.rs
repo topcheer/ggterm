@@ -1004,16 +1004,23 @@ impl DesktopApp {
         }
 
         // URL-encode the query and open in browser.
-        let encoded: String = query
-            .chars()
-            .map(|c| match c {
-                ' ' => "+".into(),
-                c if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' => {
-                    c.to_string()
+        // Must encode UTF-8 bytes, not Unicode codepoints — e.g. "你" should
+        // become %E4%BD%A0 (3 UTF-8 bytes), not %4F60 (Unicode codepoint).
+        let mut encoded = String::with_capacity(query.len() * 3);
+        for &byte in query.as_bytes() {
+            match byte {
+                b' ' => encoded.push('+'),
+                b if b.is_ascii_alphanumeric()
+                    || b == b'-'
+                    || b == b'_'
+                    || b == b'.'
+                    || b == b'~' =>
+                {
+                    encoded.push(byte as char);
                 }
-                c => format!("%{:02X}", c as u32),
-            })
-            .collect();
+                _ => encoded.push_str(&format!("%{:02X}", byte)),
+            }
+        }
         let url = self
             .config_mgr
             .as_ref()
