@@ -2249,7 +2249,7 @@ impl Perform for Terminal {
                 }
             }
             // Text area size report (CSI Ps t)
-            b't' => {
+            b't' if !intermediates.contains(&b'$') => {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     18 => {
@@ -2737,6 +2737,46 @@ impl Perform for Terminal {
                                         | CellFlags::UNDERLINE_CURLY;
                                 }
                                 cell.flags |= add_flags;
+                            }
+                        }
+                    }
+                    self.grid_mut().mark_all_dirty();
+                    self.cursor.pending_wrap = false;
+                }
+            }
+            // DECRARA — Reverse Attributes in Rectangular Area (CSI Pt;Pl;Pb;Pr;Ps1;Ps2 $ t)
+            // Toggle (flip) SGR attributes on non-blank cells within the rectangle.
+            // Only BOLD(1), UNDERLINE(4), BLINK(5), REVERSE(7) are honored.
+            b't' if intermediates.contains(&b'$') => {
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let width = self.grid.width();
+                let height = self.grid.height();
+                let top = top.min(height.saturating_sub(1));
+                let bottom = bottom.min(height.saturating_sub(1));
+                let left = left.min(width.saturating_sub(1));
+                let right = right.min(width.saturating_sub(1));
+                if top <= bottom && left <= right {
+                    let sgr_vals: Vec<u16> = params.iter().skip(4).copied().collect();
+                    let mut toggle_flags = CellFlags::empty();
+                    for &v in &sgr_vals {
+                        match v {
+                            1 => toggle_flags |= CellFlags::BOLD,
+                            4 => toggle_flags |= CellFlags::UNDERLINE,
+                            5 => toggle_flags |= CellFlags::BLINK,
+                            7 => toggle_flags |= CellFlags::REVERSE,
+                            _ => {}
+                        }
+                    }
+                    for row in top..=bottom {
+                        for col in left..=right {
+                            if let Some(cell) = self.grid_mut().cell_mut(col, row) {
+                                if cell.is_blank() {
+                                    continue;
+                                }
+                                cell.flags ^= toggle_flags;
                             }
                         }
                     }
@@ -8645,5 +8685,73 @@ mod tests {
         feed(&mut t, b"\x1b[999;999H"); // out of bounds
         // Should still be alive — write text
         feed(&mut t, b"OK");
+    }
+
+    // ===== DECRARA — Reverse Attributes in Rectangular Area tests =====
+
+    #[test]
+    fn t_decrara_toggles_bold() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEF");
+        // DECRARA: toggle BOLD on rect row 1, cols 1-3
+        feed(&mut t, b"\x1b[1;1;1;3;1$t");
+        // A,B,C should now have BOLD
+        assert!(
+            t.grid()[(0, 0)].flags.contains(CellFlags::BOLD),
+            "A should gain BOLD"
+        );
+        assert!(
+            t.grid()[(1, 0)].flags.contains(CellFlags::BOLD),
+            "B should gain BOLD"
+        );
+        assert!(
+            t.grid()[(2, 0)].flags.contains(CellFlags::BOLD),
+            "C should gain BOLD"
+        );
+        // D,E,F should NOT
+        assert!(
+            !t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
+            "D should be unchanged"
+        );
+    }
+
+    #[test]
+    fn t_decrara_second_call_undoes() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB");
+        // First toggle: add BOLD
+        feed(&mut t, b"\x1b[1;1;1;2;1$t");
+        assert!(
+            t.grid()[(0, 0)].flags.contains(CellFlags::BOLD),
+            "first toggle adds BOLD"
+        );
+        // Second toggle: remove BOLD
+        feed(&mut t, b"\x1b[1;1;1;2;1$t");
+        assert!(
+            !t.grid()[(0, 0)].flags.contains(CellFlags::BOLD),
+            "second toggle removes BOLD"
+        );
+    }
+
+    #[test]
+    fn t_decrara_skips_blank_cells() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A");
+        // Move to col 3 and write "C"
+        feed(&mut t, b"\x1b[4GC");
+        // DECRARA: toggle BOLD on cols 1-5
+        feed(&mut t, b"\x1b[1;1;1;5;1$t");
+        // A at col 0 should have BOLD
+        assert!(t.grid()[(0, 0)].flags.contains(CellFlags::BOLD));
+        // Blank cols 1-2 should NOT
+        assert!(
+            !t.grid()[(1, 0)].flags.contains(CellFlags::BOLD),
+            "blank col 1 skipped"
+        );
+        // C at col 3 should have BOLD
+        assert!(
+            t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
+            "C should gain BOLD"
+        );
     }
 }
