@@ -592,6 +592,32 @@ impl Config {
             "cursor_line_highlight".into(),
             self.appearance.cursor_line_highlight.into(),
         );
+        // [appearance.colors] — only export when custom colors are set.
+        let has_colors = self.appearance.custom_palette.is_some()
+            || self.appearance.custom_fg.is_some()
+            || self.appearance.custom_bg.is_some()
+            || self.appearance.custom_cursor.is_some()
+            || self.appearance.custom_selection.is_some();
+        if has_colors {
+            let mut colors = toml::Table::new();
+            if let Some(ref palette) = self.appearance.custom_palette {
+                let ansi: Vec<toml::Value> = palette.iter().map(|c| c.clone().into()).collect();
+                colors.insert("ansi".into(), ansi.into());
+            }
+            if let Some(ref v) = self.appearance.custom_fg {
+                colors.insert("foreground".into(), v.clone().into());
+            }
+            if let Some(ref v) = self.appearance.custom_bg {
+                colors.insert("background".into(), v.clone().into());
+            }
+            if let Some(ref v) = self.appearance.custom_cursor {
+                colors.insert("cursor".into(), v.clone().into());
+            }
+            if let Some(ref v) = self.appearance.custom_selection {
+                colors.insert("selection".into(), v.clone().into());
+            }
+            appearance.insert("colors".into(), colors.into());
+        }
         root.insert("appearance".into(), appearance.into());
 
         // [terminal]

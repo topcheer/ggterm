@@ -2078,6 +2078,14 @@ impl DesktopApp {
             renderer.set_theme(theme);
             log::debug!("Theme applied to renderer");
         }
+        // Force redraw so existing cells pick up new colors.
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.terminal_mut().grid_mut().mark_all_dirty();
+                }
+            }
+        }
     }
 
     /// Cycle through available themes (P11-D).
@@ -2097,6 +2105,14 @@ impl DesktopApp {
         }
         self.last_applied_theme = name.clone();
         self.apply_theme_to_renderer();
+        // Force full redraw so existing cells pick up new colors.
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.terminal_mut().grid_mut().mark_all_dirty();
+                }
+            }
+        }
         self.show_toast(format!("Theme: {name}"));
         log::info!("Theme: {name}");
     }
