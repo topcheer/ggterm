@@ -57,7 +57,9 @@ impl client::Handler for ClientHandler {
         // Compute SHA-256 fingerprint of the server key for logging/display.
         let fingerprint = sha256_fingerprint(server_public_key);
         log::info!("SSH server key fingerprint: {}", fingerprint);
-        *self.server_fingerprint.lock().unwrap() = Some(fingerprint);
+        if let Ok(mut fp) = self.server_fingerprint.lock() {
+            *fp = Some(fingerprint);
+        }
 
         // Accept all server keys. For production use, this should verify
         // against ~/.ssh/known_hosts, but that requires a host key database
