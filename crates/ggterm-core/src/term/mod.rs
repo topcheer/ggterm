@@ -8951,4 +8951,36 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn fuzz_binary_garbage_never_panics() {
+        let mut t = Terminal::new(80, 24);
+        // Feed all 256 byte values in sequence.
+        let mut data = Vec::new();
+        for b in 0u8..=255 {
+            data.push(b);
+        }
+        feed(&mut t, &data);
+        // CSI prefix without terminator.
+        feed(&mut t, b"\x1b[12345");
+        feed(&mut t, b"\x1b[?9999");
+        // Truncated OSC.
+        feed(&mut t, b"\x1b]0;hello");
+        // DCS without ST.
+        feed(&mut t, b"\x1bP$q");
+        // Lots of ESC chars.
+        feed(&mut t, &[0x1b; 100]);
+        // Mixed valid + invalid.
+        feed(&mut t, b"echo hello\x00\x01\x02\xff\xfeWorld\r\n");
+        // Should still be alive.
+        feed(&mut t, b"ALIVE");
+    }
+
+    #[test]
+    fn fuzz_truncated_csi_does_not_hang() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[31");
+        feed(&mut t, b"mX");
+        assert!(t.grid().width() > 0);
+    }
 }
