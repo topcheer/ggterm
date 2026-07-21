@@ -1544,6 +1544,8 @@ impl DesktopApp {
         self.write_to_pty(b"\n");
         self.show_toast("Pasted and executed".to_string());
     }
+
+    /// Save full scrollback buffer to a timestamped file.
     ///
     /// Writes to `~/ggterm-export-{unix_timestamp}.txt`.
     /// Shows a toast with the file path on success.
