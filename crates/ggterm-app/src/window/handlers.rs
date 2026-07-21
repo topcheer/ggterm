@@ -2334,6 +2334,24 @@ impl DesktopApp {
                 if self.try_start_separator_drag() {
                     return; // Don't process as pane click or selection
                 }
+
+                // Check if clicking the scroll-to-bottom indicator pill.
+                if let Some((x, y, w, h)) = self.scroll_indicator_rect {
+                    let (mx, my) = (self.cursor_pos.0 as f32, self.cursor_pos.1 as f32);
+                    if mx >= x && mx < x + w && my >= y && my < y + h {
+                        self.active_session_mut()
+                            .app_mut()
+                            .terminal_mut()
+                            .grid_mut()
+                            .reset_viewport();
+                        self.new_output_while_scrolled = 0;
+                        self.smooth_scroll.reset();
+                        if let Some(ref window) = self.window {
+                            window.request_redraw();
+                        }
+                        return;
+                    }
+                }
             } else if state == ElementState::Released && self.drag_resize.is_some() {
                 self.drag_resize = None;
                 log::debug!("P21-A: separator drag ended");

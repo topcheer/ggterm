@@ -349,6 +349,10 @@ pub struct DesktopApp {
     /// Stores (url, start_col, end_col, row) for underline rendering.
     hovered_link: Option<(String, usize, usize, usize)>,
 
+    /// Bounding box of the scroll indicator pill (set during render,
+    /// checked during mouse click). None = indicator not shown.
+    pub(crate) scroll_indicator_rect: Option<(f32, f32, f32, f32)>,
+
     // ── Tab bar overlay (P19-C) ──
     /// Tab bar display state for visual tab strip rendering.
     tab_bar: crate::tab_bar::TabBarState,
@@ -778,6 +782,7 @@ impl DesktopApp {
             cached_cmd_duration: None,
             status_bar_visible: true,
             hovered_link: None,
+            scroll_indicator_rect: None,
             tab_bar: crate::tab_bar::TabBarState::new(),
             settings: crate::settings_ui::SettingsState::new(),
             about: crate::about_dialog::AboutDialog::new(),

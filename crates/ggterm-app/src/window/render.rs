@@ -1554,6 +1554,8 @@ impl DesktopApp {
                 let pill_w = cell_w * (label_len + 1.5);
                 let indicator_x =
                     content_bounds.x as f32 + content_bounds.width as f32 - pill_w - 4.0;
+                // Store rect for click detection.
+                self.scroll_indicator_rect = Some((indicator_x, indicator_y, pill_w, cell_h + 4.0));
                 // Pill background — accent color when new output is pending.
                 let pill_color = if new_lines > 0 {
                     (0.9, 0.5, 0.1, 0.85) // warm orange: attention needed
@@ -1578,6 +1580,8 @@ impl DesktopApp {
                     color: (255, 255, 255),
                     ..Default::default()
                 });
+            } else {
+                self.scroll_indicator_rect = None;
             }
         }
 
