@@ -330,6 +330,19 @@ impl DesktopApp {
                     });
                 }
 
+                // Drag highlight: when dragging this tab, add a blue stroke.
+                if self.dragging_tab == Some(tab_idx) {
+                    ui_rects.push(ggterm_render_wgpu::UiRect {
+                        x: x - 1.0,
+                        y: tab_y - 1.0,
+                        w: w + 2.0,
+                        h: tab_h + 2.0,
+                        color: (0.48, 0.64, 0.97, 0.8),
+                        radius: tab_radius + 1.0,
+                        stroke_width: 2.0,
+                    });
+                }
+
                 if tab.active {
                     // Active tab: brighter surface.
                     ui_rects.push(ggterm_render_wgpu::UiRect {
