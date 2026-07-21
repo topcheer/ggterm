@@ -115,7 +115,9 @@ impl P2pShareState {
 
                 // Set up accept channel.
                 let (tx, rx) = mpsc::channel::<P2pTransport>();
-                *self.connected_tx.lock().unwrap() = Some(rx);
+                if let Ok(mut guard) = self.connected_tx.lock() {
+                    *guard = Some(rx);
+                }
 
                 // Spawn background thread to accept connections.
                 let accept_tx = self.connected_tx.clone();
@@ -178,7 +180,9 @@ impl P2pShareState {
         // errors, the host is cleaned up.
         self.host = None;
         self.accept_thread = None;
-        *self.connected_tx.lock().unwrap() = None;
+        if let Ok(mut guard) = self.connected_tx.lock() {
+            *guard = None;
+        }
     }
 
     /// Toggle sharing on/off.
@@ -200,8 +204,10 @@ impl P2pShareState {
         }
 
         let rx = {
-            let guard = self.connected_tx.lock().unwrap();
-            guard.as_ref().map(|rx| rx.try_recv().ok())
+            let guard = self.connected_tx.lock().ok();
+            guard
+                .as_ref()
+                .and_then(|g| g.as_ref().map(|rx| rx.try_recv().ok()))
         };
 
         match rx.flatten() {
