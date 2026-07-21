@@ -1174,35 +1174,44 @@ impl DesktopApp {
 
     /// Copy the text of the last entered command (not its output).
     pub(super) fn copy_last_command(&mut self) {
-        let (scrollback, width) = {
-            let grid = self.active_session().app().grid();
-            (grid.scrollback_len(), grid.width())
-        };
+        if let Some(text) = self.extract_last_command_text() {
+            crate::clipboard::set_clipboard_bytes(text.as_bytes());
+            self.show_toast(format!("Copied {} chars", text.len()));
+        } else {
+            self.show_toast("No previous command found".to_string());
+        }
+    }
 
+    /// Extract last command text directly from grid (no clipboard, no selection).
+    fn extract_last_command_text(&self) -> Option<String> {
+        let grid = self.active_session().app().grid();
+        let scrollback = grid.scrollback_len();
+        let width = grid.width();
         let blocks = self.active_session().app().terminal().command_blocks();
-
-        // Find the last block with a command_row.
-        let last_block = blocks.iter().rev().find(|b| b.command_row.is_some());
-
-        if let Some(block) = last_block
-            && let Some(cmd_row) = block.command_row
-        {
-            let display_row = cmd_row.saturating_sub(scrollback);
-            if display_row < self.active_session().app().grid().height() {
-                self.selection.start(0, display_row as u16);
-                self.selection.extend(width as u16, display_row as u16);
-                self.selection.finish();
-                self.selection_auto_scroll = 0;
-                self.copy_selection_to_clipboard();
+        let block = blocks.iter().rev().find(|b| b.command_row.is_some())?;
+        let cmd_row = block.command_row?;
+        let display_row = cmd_row.saturating_sub(scrollback);
+        if display_row >= grid.height() {
+            return None;
+        }
+        let mut text = String::new();
+        for col in 0..width {
+            let cell = grid.display_cell(col, display_row);
+            if cell.is_some_and(|c| !c.is_wide_spacer()) {
+                text.push(cell.unwrap().ch);
             }
+        }
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
         }
     }
 
     /// Re-execute the last entered command.
     pub(super) fn rerun_last_command(&mut self) {
-        // First, extract command text via selection → clipboard.
-        self.copy_last_command();
-        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        let text = self.extract_last_command_text().unwrap_or_default();
 
         if text.trim().is_empty() {
             self.show_toast("No previous command to rerun".to_string());
@@ -1219,8 +1228,7 @@ impl DesktopApp {
 
     /// Re-execute the last command in a new tab.
     pub(super) fn rerun_in_new_tab(&mut self) {
-        self.copy_last_command();
-        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        let text = self.extract_last_command_text().unwrap_or_default();
 
         if text.trim().is_empty() {
             self.show_toast("No previous command to rerun".to_string());
@@ -1238,8 +1246,7 @@ impl DesktopApp {
 
     /// Re-execute the last command in a new split pane.
     pub(super) fn rerun_in_split(&mut self) {
-        self.copy_last_command();
-        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        let text = self.extract_last_command_text().unwrap_or_default();
 
         if text.trim().is_empty() {
             self.show_toast("No previous command to rerun".to_string());
