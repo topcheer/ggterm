@@ -1402,9 +1402,9 @@ impl DesktopApp {
 
     pub(super) fn paste_from_source(&mut self, source: crate::clipboard::PasteSource) {
         // Confirmed paste: use the stored pending text.
-        if source == crate::clipboard::PasteSource::Confirmed && self.pending_large_paste.is_some()
+        if source == crate::clipboard::PasteSource::Confirmed
+            && let Some(text) = self.pending_large_paste.take()
         {
-            let text = self.pending_large_paste.take().unwrap();
             let bracketed = self.active_session().app().terminal().bracketed_paste();
             let bytes = crate::clipboard::bracket_paste(&text, bracketed);
             log::debug!("Confirmed paste: {} bytes", bytes.len());

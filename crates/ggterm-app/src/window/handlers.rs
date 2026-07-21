@@ -312,8 +312,8 @@ impl DesktopApp {
         if self.pending_close_tab.is_some()
             && let PhysicalKey::Code(KeyCode::Enter) = &event.physical_key
             && !event.repeat
+            && let Some(idx) = self.pending_close_tab.take()
         {
-            let idx = self.pending_close_tab.take().unwrap();
             self.pending_close_tab = None;
             if idx < self.sessions.len() {
                 self.switch_tab(idx);
@@ -3766,6 +3766,7 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
     use super::*;
 
     #[cfg(feature = "ai")]

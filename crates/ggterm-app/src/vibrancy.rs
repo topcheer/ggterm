@@ -69,7 +69,7 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
     }
 
     // window = [ns_view window]
-    let window_sel = sel_registerName(CString::new("window").unwrap().as_ptr());
+    let window_sel = sel_registerName(CString::new("window").expect("static literal").as_ptr());
     let window = msg_obj(ns_view, window_sel);
     if window.is_null() {
         log::warn!("vibrancy: NSView has no window");
@@ -77,13 +77,17 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
     }
 
     // NSVisualEffectView *view = [[NSVisualEffectView alloc] init]
-    let veff_class = objc_getClass(CString::new("NSVisualEffectView").unwrap().as_ptr());
+    let veff_class = objc_getClass(
+        CString::new("NSVisualEffectView")
+            .expect("static literal")
+            .as_ptr(),
+    );
     if veff_class.is_null() {
         log::warn!("vibrancy: NSVisualEffectView not found");
         return;
     }
-    let alloc_sel = sel_registerName(CString::new("alloc").unwrap().as_ptr());
-    let init_sel = sel_registerName(CString::new("init").unwrap().as_ptr());
+    let alloc_sel = sel_registerName(CString::new("alloc").expect("static literal").as_ptr());
+    let init_sel = sel_registerName(CString::new("init").expect("static literal").as_ptr());
     let view = msg_obj(veff_class, alloc_sel);
     let view = msg_obj(view, init_sel);
 
@@ -94,7 +98,7 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
             *mut std::ffi::c_void,
         ) -> (f64, f64, f64, f64) =
             unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
-        let frame_sel = sel_registerName(CString::new("frame").unwrap().as_ptr());
+        let frame_sel = sel_registerName(CString::new("frame").expect("static literal").as_ptr());
         let (x, y, w, h) = read_frame(window, frame_sel);
 
         let set_frame: unsafe extern "C" fn(
@@ -105,40 +109,57 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
             f64,
             f64,
         ) = unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
-        let set_frame_sel = sel_registerName(CString::new("setFrame:").unwrap().as_ptr());
+        let set_frame_sel =
+            sel_registerName(CString::new("setFrame:").expect("static literal").as_ptr());
         set_frame(view, set_frame_sel, x, y, w, h);
     }
 
     // [view setBlendingMode: 0] — BehindWindow
     msg_void_i(
         view,
-        sel_registerName(CString::new("setBlendingMode:").unwrap().as_ptr()),
+        sel_registerName(
+            CString::new("setBlendingMode:")
+                .expect("static literal")
+                .as_ptr(),
+        ),
         0,
     );
 
     // [view setState: 1] — Active
     msg_void_i(
         view,
-        sel_registerName(CString::new("setState:").unwrap().as_ptr()),
+        sel_registerName(CString::new("setState:").expect("static literal").as_ptr()),
         1,
     );
 
     // [view setMaterial: 21] — UnderWindowBackground
     msg_void_i(
         view,
-        sel_registerName(CString::new("setMaterial:").unwrap().as_ptr()),
+        sel_registerName(
+            CString::new("setMaterial:")
+                .expect("static literal")
+                .as_ptr(),
+        ),
         21,
     );
 
     // [view setAutoresizingMask: 18] — widthSizable(2) | heightSizable(16)
     msg_void_i(
         view,
-        sel_registerName(CString::new("setAutoresizingMask:").unwrap().as_ptr()),
+        sel_registerName(
+            CString::new("setAutoresizingMask:")
+                .expect("static literal")
+                .as_ptr(),
+        ),
         18,
     );
 
     // contentView = [window contentView]
-    let cv_sel = sel_registerName(CString::new("contentView").unwrap().as_ptr());
+    let cv_sel = sel_registerName(
+        CString::new("contentView")
+            .expect("static literal")
+            .as_ptr(),
+    );
     let content_view = msg_obj(window, cv_sel);
 
     // [contentView addSubview:view positioned:NSWindowBelow relativeTo:nil]
@@ -153,7 +174,7 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
         ) = unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
         let add_sel = sel_registerName(
             CString::new("addSubview:positioned:relativeTo:")
-                .unwrap()
+                .expect("static literal")
                 .as_ptr(),
         );
         // NSWindowBelow = -1, NSWindowAbove = 1, NSWindowOut = 0
@@ -163,17 +184,21 @@ unsafe fn apply_vibrancy_inner(ns_view: *mut std::ffi::c_void) {
     // [window setOpaque: NO]
     msg_void_bool(
         window,
-        sel_registerName(CString::new("setOpaque:").unwrap().as_ptr()),
+        sel_registerName(CString::new("setOpaque:").expect("static literal").as_ptr()),
         false,
     );
 
     // [NSColor clearColor] → [window setBackgroundColor: clear]
-    let ns_color = objc_getClass(CString::new("NSColor").unwrap().as_ptr());
-    let clear_sel = sel_registerName(CString::new("clearColor").unwrap().as_ptr());
+    let ns_color = objc_getClass(CString::new("NSColor").expect("static literal").as_ptr());
+    let clear_sel = sel_registerName(CString::new("clearColor").expect("static literal").as_ptr());
     let clear_color = msg_obj(ns_color, clear_sel);
     msg_void_obj(
         window,
-        sel_registerName(CString::new("setBackgroundColor:").unwrap().as_ptr()),
+        sel_registerName(
+            CString::new("setBackgroundColor:")
+                .expect("static literal")
+                .as_ptr(),
+        ),
         clear_color,
     );
 
