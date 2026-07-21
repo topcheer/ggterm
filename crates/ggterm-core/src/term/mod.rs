@@ -2576,10 +2576,36 @@ impl Perform for Terminal {
                 }
             }
             // DECERA — Erase Rectangle Area (CSI Pt ; Pl ; Pb ; Pr $ z)
-            // Erase all non-protected cells in the rectangle to blank.
+            // Erase ALL cells in the rectangle to blank, including protected.
             // Coordinates are 1-based, clamped to screen bounds.
-            // DECSCA protected cells are preserved (same as DECSED/DECSEL).
+            // (Per DEC STD 070: DECERA ignores DECSCA protection.)
             b'z' if intermediates.contains(&b'$') => {
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let width = self.grid.width();
+                let height = self.grid.height();
+                let top = top.min(height.saturating_sub(1));
+                let bottom = bottom.min(height.saturating_sub(1));
+                let left = left.min(width.saturating_sub(1));
+                let right = right.min(width.saturating_sub(1));
+                if top <= bottom && left <= right {
+                    for row in top..=bottom {
+                        for col in left..=right {
+                            if let Some(cell) = self.grid_mut().cell_mut(col, row) {
+                                *cell = Cell::blank();
+                            }
+                        }
+                    }
+                    self.grid_mut().mark_all_dirty();
+                    self.cursor.pending_wrap = false;
+                }
+            }
+            // DECSERA — Selective Erase Rectangle Area (CSI Pt ; Pl ; Pb ; Pr $ {)
+            // Erase only non-protected cells in the rectangle.
+            // DECSCA protected cells are preserved (same as DECSED/DECSEL).
+            b'{' if intermediates.contains(&b'$') => {
                 let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
                 let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
                 let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
@@ -8133,7 +8159,8 @@ mod tests {
     }
 
     #[test]
-    fn t_decera_preserves_protected_cells() {
+    fn t_decera_erases_protected_cells() {
+        // Per DEC STD 070: DECERA erases ALL cells including protected.
         let mut t = Terminal::new(10, 3);
         // Enable protected attribute and write "AB"
         feed(&mut t, b"\x1b[1\"qAB");
@@ -8141,10 +8168,15 @@ mod tests {
         feed(&mut t, b"\x1b[0\"qCD");
         // DECERA: erase rect rows 1-1, cols 1-4 (entire row 0)
         feed(&mut t, b"\x1b[1;1;1;4$z");
-        // Protected cells "AB" should survive
-        assert_eq!(t.grid()[(0, 0)].ch, 'A', "protected cell A should survive");
-        assert_eq!(t.grid()[(1, 0)].ch, 'B', "protected cell B should survive");
-        // Unprotected cells "CD" should be erased
+        // ALL cells should be erased — DECERA ignores protection
+        assert!(
+            t.grid()[(0, 0)].is_blank(),
+            "protected cell A should be erased by DECERA"
+        );
+        assert!(
+            t.grid()[(1, 0)].is_blank(),
+            "protected cell B should be erased by DECERA"
+        );
         assert!(
             t.grid()[(2, 0)].is_blank(),
             "unprotected cell C should be erased"
@@ -8196,5 +8228,84 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ===== DECSERA — Selective Erase Rectangle Area tests =====
+
+    #[test]
+    fn t_decsera_erases_non_protected_cells() {
+        let mut t = Terminal::new(10, 3);
+        // Fill row 0 with text
+        feed(&mut t, b"ABCDEFGH");
+        // DECSERA: selective erase rect rows 1-1, cols 1-4 (row 0, cols 0-3)
+        feed(&mut t, b"\x1b[1;1;1;4${");
+        // Cols 0-3 should be blank
+        for col in 0..4 {
+            assert!(
+                t.grid()[(col, 0)].is_blank(),
+                "col {col} row 0 should be blank after DECSERA"
+            );
+        }
+        // Cols 4-7 should still have "EFGH"
+        assert_eq!(t.grid()[(4, 0)].ch, 'E');
+        assert_eq!(t.grid()[(5, 0)].ch, 'F');
+    }
+
+    #[test]
+    fn t_decsera_preserves_protected_cells() {
+        let mut t = Terminal::new(10, 3);
+        // Enable protected attribute and write "AB"
+        feed(&mut t, b"\x1b[1\"qAB");
+        // Disable protected and write "CD"
+        feed(&mut t, b"\x1b[0\"qCD");
+        // DECSERA: selective erase rect rows 1-1, cols 1-4 (entire row 0)
+        feed(&mut t, b"\x1b[1;1;1;4${");
+        // Protected cells "AB" should survive — DECSERA respects protection
+        assert_eq!(t.grid()[(0, 0)].ch, 'A', "protected cell A should survive");
+        assert_eq!(t.grid()[(1, 0)].ch, 'B', "protected cell B should survive");
+        // Unprotected cells "CD" should be erased
+        assert!(
+            t.grid()[(2, 0)].is_blank(),
+            "unprotected cell C should be erased"
+        );
+        assert!(
+            t.grid()[(3, 0)].is_blank(),
+            "unprotected cell D should be erased"
+        );
+    }
+
+    #[test]
+    fn t_decsera_clamps_to_screen_bounds() {
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"HELLO\r\nWORLD\r\nTESTS");
+        // DECSERA with huge coords should clamp and not panic
+        feed(&mut t, b"\x1b[1;1;100;100${");
+        // Entire screen should be blanked (no protected cells)
+        for row in 0..3 {
+            for col in 0..5 {
+                assert!(
+                    t.grid()[(col, row)].is_blank(),
+                    "cell ({col},{row}) should be blank after DECSERA"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn t_decsera_vs_decera_with_protected() {
+        // Direct comparison: DECERA erases protected, DECSERA preserves it.
+        let mut t1 = Terminal::new(10, 3);
+        let mut t2 = Terminal::new(10, 3);
+        // Both: protected "AB" + unprotected "CD"
+        feed(&mut t1, b"\x1b[1\"qAB\x1b[0\"qCD");
+        feed(&mut t2, b"\x1b[1\"qAB\x1b[0\"qCD");
+        // t1: DECERA (erases all)
+        feed(&mut t1, b"\x1b[1;1;1;4$z");
+        // t2: DECSERA (preserves protected)
+        feed(&mut t2, b"\x1b[1;1;1;4${");
+        // DECERA: everything gone
+        assert!(t1.grid()[(0, 0)].is_blank(), "DECERA erases protected A");
+        // DECSERA: protected survives
+        assert_eq!(t2.grid()[(0, 0)].ch, 'A', "DECSERA preserves protected A");
     }
 }
