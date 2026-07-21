@@ -1357,7 +1357,7 @@ impl DesktopApp {
         if !text.is_empty() {
             log::debug!("Clipboard copy: {} chars", text.len());
             crate::clipboard::set_clipboard_bytes(text.as_bytes());
-            // P30-C: Show toast feedback.
+            self.clipboard_feedback.trigger();
             self.show_toast(format!("Copied {} chars", text.len()));
         }
     }

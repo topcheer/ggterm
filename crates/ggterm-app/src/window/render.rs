@@ -3166,6 +3166,26 @@ impl DesktopApp {
             });
         }
 
+        // Clipboard feedback: green border flash on copy/paste.
+        let cb_intensity = self.clipboard_feedback.intensity();
+        if cb_intensity > 0.0 {
+            let (cb_x, cb_y, cb_w, cb_h) = (
+                content_bounds.x as f32,
+                content_bounds.y as f32,
+                content_bounds.width as f32,
+                content_bounds.height as f32,
+            );
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: cb_x,
+                y: cb_y,
+                w: cb_w,
+                h: cb_h,
+                color: (0.3, 0.8, 0.4, 0.5 * cb_intensity),
+                radius: 4.0,
+                stroke_width: 3.0,
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_text(overlay_texts);
 

@@ -376,6 +376,8 @@ pub struct DesktopApp {
     // ── P23-A: Cursor blink animation ──
     /// Cursor blink phase tracker for smooth blink animation.
     cursor_blink: crate::cursor_blink::CursorBlink,
+    /// Visual feedback for clipboard operations (copy/paste flash).
+    pub(crate) clipboard_feedback: crate::cursor_blink::ClipboardFeedback,
     // ── P23-C: Conditional redraw ──
     /// Last time a redraw was requested (for cursor blink timing).
     last_redraw: std::time::Instant,
@@ -781,6 +783,7 @@ impl DesktopApp {
             about: crate::about_dialog::AboutDialog::new(),
             restored_session: false,
             cursor_blink: crate::cursor_blink::CursorBlink::new(),
+            clipboard_feedback: crate::cursor_blink::ClipboardFeedback::new(),
             command_palette: crate::command_palette::CommandPaletteState::default(),
             command_registry: crate::command_palette::CommandRegistry::defaults(),
             broadcast: crate::broadcast_input::BroadcastState::default(),
