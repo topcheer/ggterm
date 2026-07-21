@@ -2468,17 +2468,33 @@ impl DesktopApp {
         let visible_bottom = scrollback_len + height - display_offset;
         let visible_center = visible_bottom.saturating_sub(height / 2);
 
+        // Count total prompts for position display.
+        let prompts: Vec<_> = marks
+            .iter()
+            .filter(|m| m.kind == CommandMarkKind::PromptStart)
+            .collect();
+        let total = prompts.len();
+
         if let Some(row) = marks
             .iter()
             .rev()
             .find(|m| m.kind == CommandMarkKind::PromptStart && m.row < visible_center)
             .map(|m| m.row)
         {
+            let pos = prompts
+                .iter()
+                .rev()
+                .position(|m| m.row == row)
+                .map(|p| total - p);
             self.active_session_mut()
                 .app_mut()
                 .terminal_mut()
                 .grid_mut()
                 .scroll_to_absolute_row(row);
+            // Show position toast.
+            if let Some(pos) = pos {
+                self.show_toast(format!("Command {pos}/{total}"));
+            }
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }
@@ -2499,16 +2515,27 @@ impl DesktopApp {
         let visible_bottom = scrollback_len + height - display_offset;
         let visible_center = visible_bottom.saturating_sub(height / 2);
 
+        // Count total prompts for position display.
+        let prompts: Vec<_> = marks
+            .iter()
+            .filter(|m| m.kind == CommandMarkKind::PromptStart)
+            .collect();
+        let total = prompts.len();
+
         if let Some(row) = marks
             .iter()
             .find(|m| m.kind == CommandMarkKind::PromptStart && m.row > visible_center)
             .map(|m| m.row)
         {
+            let pos = prompts.iter().position(|m| m.row == row).map(|p| p + 1);
             self.active_session_mut()
                 .app_mut()
                 .terminal_mut()
                 .grid_mut()
                 .scroll_to_absolute_row(row);
+            if let Some(pos) = pos {
+                self.show_toast(format!("Command {pos}/{total}"));
+            }
         } else {
             // No more prompts below — jump back to bottom.
             self.active_session_mut()
