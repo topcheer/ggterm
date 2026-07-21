@@ -39,6 +39,17 @@ impl DesktopApp {
         }
     }
 
+    /// Apply scrollback limit to all panes in all sessions.
+    fn apply_scrollback_all(&mut self, scrollback: usize) {
+        for session in &mut self.sessions {
+            for pane_id in session.pane_ids() {
+                if let Some(app) = session.pane_app_mut(pane_id) {
+                    app.terminal_mut().grid_mut().set_scrollback(scrollback);
+                }
+            }
+        }
+    }
+
     /// After removing a pane, the remaining pane is resized to fill the full
     /// content area, and a redraw is requested.
     pub(super) fn handle_pane_exit(&mut self) -> bool {
@@ -434,7 +445,12 @@ impl DesktopApp {
                 Some(&cwd),
             ) {
                 Ok(session) => {
+                    let scrollback = self
+                        .config_mgr
+                        .as_ref()
+                        .map_or(10_000, |m| m.config().terminal.scrollback_lines);
                     self.sessions.push(session);
+                    self.apply_scrollback_to_active(scrollback);
                     self.active = self.sessions.len() - 1;
                     self.selection.clear();
                     log::info!("Reopened closed tab in {:?}", cwd);
@@ -728,8 +744,13 @@ impl DesktopApp {
         }
 
         if !new_sessions.is_empty() {
+            let scrollback = self
+                .config_mgr
+                .as_ref()
+                .map_or(10_000, |m| m.config().terminal.scrollback_lines);
             self.sessions = new_sessions;
             self.active = plan.active_tab.min(self.sessions.len() - 1);
+            self.apply_scrollback_all(scrollback);
             log::info!(
                 "Restored {} tab(s), active={}",
                 self.sessions.len(),
@@ -831,7 +852,14 @@ impl DesktopApp {
             &shell,
             cwd.as_deref(),
         ) {
-            Ok(id) => log::info!("Horizontal split → new pane {id}"),
+            Ok(id) => {
+                let scrollback = self
+                    .config_mgr
+                    .as_ref()
+                    .map_or(10_000, |m| m.config().terminal.scrollback_lines);
+                self.apply_scrollback_to_active(scrollback);
+                log::info!("Horizontal split → new pane {id}");
+            }
             Err(e) => log::error!("Failed to split horizontal: {e}"),
         }
     }
@@ -851,7 +879,14 @@ impl DesktopApp {
             .active_session_mut()
             .split_vertical_with_cwd(cols, rows, &shell, cwd.as_deref())
         {
-            Ok(id) => log::info!("Vertical split → new pane {id}"),
+            Ok(id) => {
+                let scrollback = self
+                    .config_mgr
+                    .as_ref()
+                    .map_or(10_000, |m| m.config().terminal.scrollback_lines);
+                self.apply_scrollback_to_active(scrollback);
+                log::info!("Vertical split → new pane {id}");
+            }
             Err(e) => log::error!("Failed to split vertical: {e}"),
         }
     }
@@ -2238,6 +2273,11 @@ impl DesktopApp {
             ) {
                 Ok(new_session) => {
                     self.sessions[0] = new_session;
+                    let scrollback = self
+                        .config_mgr
+                        .as_ref()
+                        .map_or(10_000, |m| m.config().terminal.scrollback_lines);
+                    self.apply_scrollback_to_active(scrollback);
                 }
                 Err(e) => {
                     log::error!("Failed to create new session: {e}");
