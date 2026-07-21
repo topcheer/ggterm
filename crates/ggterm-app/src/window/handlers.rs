@@ -1659,6 +1659,30 @@ impl DesktopApp {
             return;
         }
 
+        // Alt+1..9 → switch to tab N (1-based, like browsers/IDEs)
+        // Alt+0 → switch to last tab
+        if self.mods.alt && !self.mods.ctrl && !self.mods.shift {
+            let tab_idx = match &event.physical_key {
+                PhysicalKey::Code(KeyCode::Digit1) => Some(0),
+                PhysicalKey::Code(KeyCode::Digit2) => Some(1),
+                PhysicalKey::Code(KeyCode::Digit3) => Some(2),
+                PhysicalKey::Code(KeyCode::Digit4) => Some(3),
+                PhysicalKey::Code(KeyCode::Digit5) => Some(4),
+                PhysicalKey::Code(KeyCode::Digit6) => Some(5),
+                PhysicalKey::Code(KeyCode::Digit7) => Some(6),
+                PhysicalKey::Code(KeyCode::Digit8) => Some(7),
+                PhysicalKey::Code(KeyCode::Digit9) => Some(8),
+                PhysicalKey::Code(KeyCode::Digit0) => Some(self.sessions.len().saturating_sub(1)),
+                _ => None,
+            };
+            if let Some(idx) = tab_idx {
+                if idx < self.sessions.len() && !is_repeat {
+                    self.switch_tab(idx);
+                }
+                return;
+            }
+        }
+
         // macOS: Cmd+Shift+] → next tab, Cmd+Shift+[ → prev tab (Safari/Chrome standard)
         if cfg!(target_os = "macos") && self.mods.super_key && self.mods.shift && !self.mods.alt {
             match &event.physical_key {

@@ -2720,7 +2720,8 @@ impl DesktopApp {
 
             // Hint text at bottom.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "Enter: next  Shift+Enter: prev  Tab: case  Esc: close".to_string(),
+                text: "Enter: next  Shift+Enter: prev  F3: find  Tab: regex  Esc: close"
+                    .to_string(),
                 left: bar_x + 12.0,
                 top: bar_y + bar_h + 4.0,
                 color: (110, 110, 130),
