@@ -366,7 +366,11 @@ impl Config {
     /// Parse a TOML string into a `Config`, applying defaults for missing keys.
     pub fn from_toml_str(s: &str) -> Result<Self, ConfigError> {
         let raw: raw::Config = toml::from_str(s).map_err(ConfigError::Parse)?;
-        Ok(Self::from_raw(raw))
+        let config = Self::from_raw(raw);
+        if let Err(ref e) = config.validate() {
+            log::warn!("Config validation: {e} (values clamped to valid ranges)");
+        }
+        Ok(config)
     }
 
     /// Load config from a file path.
