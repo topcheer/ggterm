@@ -995,9 +995,8 @@ impl DesktopApp {
             return;
         }
 
-        // Extract selected text via the clipboard pipeline.
-        self.copy_selection_to_clipboard();
-        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        // Extract selected text directly from grid (don't touch clipboard).
+        let text = self.extract_selection_text();
         let query = text.trim();
         if query.is_empty() {
             self.show_toast("Selection is empty".to_string());
@@ -1253,6 +1252,35 @@ impl DesktopApp {
         self.split_pane_horizontal();
         self.write_to_pty(&bytes);
         self.show_toast("Re-running in split".to_string());
+    }
+
+    /// Extract selected text from the grid without touching the clipboard.
+    pub(super) fn extract_selection_text(&self) -> String {
+        let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
+            return String::new();
+        };
+        let grid = self.active_session().app().grid();
+        let mut text = String::new();
+        for row in sy..=ey {
+            let x0 = if row == sy { sx as usize } else { 0 };
+            let x1 = if row == ey {
+                ex as usize
+            } else {
+                grid.width().saturating_sub(1)
+            };
+            for col in x0..=x1 {
+                let cell = grid.display_cell(col, row as usize);
+                if cell.is_some_and(|c| !c.is_wide_spacer()) {
+                    let cell = cell.unwrap();
+                    text.push(cell.ch);
+                    for &c in &cell.combining {
+                        text.push(c);
+                    }
+                }
+            }
+            text.push('\n');
+        }
+        text.trim().to_string()
     }
 
     pub(super) fn copy_selection_to_clipboard(&mut self) {
