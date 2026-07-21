@@ -1983,6 +1983,7 @@ impl ApplicationHandler for DesktopApp {
                             .grid_mut();
                         if grid.display_offset() > 0 {
                             grid.reset_viewport();
+                            self.new_output_while_scrolled = 0;
                         }
                         // cursor_blink.reset() is called inside write_to_pty().
                         self.write_to_pty(text.as_bytes());
