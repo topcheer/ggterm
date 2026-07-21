@@ -2536,6 +2536,45 @@ impl Perform for Terminal {
             b'q' if intermediates.contains(&b'$') => {
                 self.response_buffer.extend_from_slice(b"\x1bP0$r\x1b\\");
             }
+            // DECFRA — Fill Rectangle Area (CSI Pt ; Pl ; Pb ; Pr $ x)
+            // Fill the rectangle from (top,left) to (bottom,right) inclusive
+            // with the current SGR attributes (using char from Ps as fill char).
+            // Coordinates are 1-based. Ps determines the fill character:
+            //   numeric → that code point, but most apps use space (Ps=0 or omitted).
+            b'x' if intermediates.contains(&b'$') => {
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let width = self.grid.width();
+                let height = self.grid.height();
+                let top = top.min(height.saturating_sub(1));
+                let bottom = bottom.min(height.saturating_sub(1));
+                let left = left.min(width.saturating_sub(1));
+                let right = right.min(width.saturating_sub(1));
+                if top <= bottom && left <= right {
+                    let fill_char = params
+                        .first()
+                        .copied()
+                        .filter(|&c| c >= 0x20)
+                        .and_then(|c| char::from_u32(c as u32))
+                        .unwrap_or(' ');
+                    for row in top..=bottom {
+                        for col in left..=right {
+                            self.grid_mut()[(col, row)] = crate::Cell {
+                                ch: fill_char,
+                                combining: Vec::new(),
+                                fg: self.fg,
+                                bg: self.bg,
+                                flags: self.flags,
+                                hyperlink: None,
+                            };
+                        }
+                    }
+                    self.grid_mut().mark_all_dirty();
+                    self.cursor.pending_wrap = false;
+                }
+            }
             // DECREQTPARM — Request Terminal Parameters (CSI Ps x)
             // Programs use this during startup to detect terminal type.
             // Response: CSI 2 ; 1 ; 0 ; 0 ; 0 ; 0 x
@@ -7959,5 +7998,78 @@ mod tests {
         assert_eq!(parse_xcolor("#XYZ"), None);
         assert_eq!(parse_xcolor("rgb:zz/00/00"), None);
         assert_eq!(parse_xcolor("not-a-color"), None);
+    }
+
+    // ===== DECFRA — Fill Rectangle Area tests =====
+
+    #[test]
+    fn t_decfra_fills_rectangle_with_space() {
+        let mut t = Terminal::new(10, 5);
+        // Fill some text first
+        feed(&mut t, b"ABCDEFGH");
+        // DECFRA: fill rect rows 2-4, cols 2-5 (1-based) = rows 1-3, cols 1-4 (0-based)
+        // CSI 2;2;4;5 $ x
+        feed(&mut t, b"\x1b[2;2;4;5$x");
+        // Row 0 should be unchanged
+        let r0 = t.grid().row(0).unwrap().text();
+        assert!(r0.starts_with("ABCDEFGH"), "row 0 unchanged: {r0:?}");
+        // Row 1 (0-based) cols 1-4 should be spaces
+        for col in 1..=4 {
+            let cell = &t.grid()[(col, 1)];
+            assert_eq!(
+                cell.ch, ' ',
+                "col {col} row 1 should be space, got {:?}",
+                cell.ch
+            );
+        }
+        // Col 0 row 1 should be default (blank), not filled
+        let c0 = &t.grid()[(0, 1)];
+        assert_eq!(c0.ch, ' ', "col 0 row 1 should also be blank (default)");
+    }
+
+    #[test]
+    fn t_decfra_uses_current_sgr_colors() {
+        let mut t = Terminal::new(10, 4);
+        // Set bg to red (SGR 41)
+        feed(&mut t, b"\x1b[41m");
+        // DECFRA: fill rect rows 1-2, cols 1-3
+        feed(&mut t, b"\x1b[1;1;2;3$x");
+        // Check cells have red background
+        let cell = &t.grid()[(0, 0)];
+        assert_eq!(
+            cell.bg,
+            Color::Indexed(1),
+            "DECFRA should apply current bg color"
+        );
+    }
+
+    #[test]
+    fn t_decfra_clamps_to_screen_bounds() {
+        let mut t = Terminal::new(5, 3);
+        // DECFRA with out-of-bounds coords should clamp, not panic
+        feed(&mut t, b"\x1b[1;1;100;100$x");
+        // Should fill entire screen without panicking
+        for row in 0..3 {
+            for col in 0..5 {
+                let cell = &t.grid()[(col, row)];
+                assert_eq!(cell.ch, ' ', "cell ({col},{row}) should be space");
+            }
+        }
+    }
+
+    #[test]
+    fn t_decfra_default_params_fills_single_cell() {
+        let mut t = Terminal::new(5, 3);
+        // Pre-fill with text
+        feed(&mut t, b"HELLO");
+        // DECFRA with no params → defaults to 1;1;1;1 (single cell at 0,0)
+        feed(&mut t, b"\x1b[$x");
+        // Cell (0,0) should be space, rest of row 0 unchanged
+        let r0 = t.grid().row(0).unwrap().text();
+        assert_eq!(r0.chars().next(), Some(' '), "cell 0,0 should be space");
+        assert!(
+            r0[1..].starts_with("ELLO"),
+            "rest should be unchanged: {r0:?}"
+        );
     }
 }
