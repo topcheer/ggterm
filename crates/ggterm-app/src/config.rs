@@ -398,13 +398,13 @@ impl Config {
             config.appearance.font_family = v;
         }
         if let Some(v) = raw.appearance.font_size {
-            config.appearance.font_size = v;
+            config.appearance.font_size = v.clamp(6, 32);
         }
         if let Some(v) = raw.appearance.cell_width {
-            config.appearance.cell_width = v;
+            config.appearance.cell_width = v.clamp(4, 32);
         }
         if let Some(v) = raw.appearance.cell_height {
-            config.appearance.cell_height = v;
+            config.appearance.cell_height = v.clamp(4, 32);
         }
         if let Some(v) = raw.appearance.cursor_style {
             let normalized = v.to_lowercase();

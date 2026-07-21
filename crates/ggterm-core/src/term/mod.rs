@@ -1155,6 +1155,9 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, width: usize, height: usize) {
+        // Defensive: enforce minimum 1x1 to prevent zero-length allocations.
+        let width = width.max(1);
+        let height = height.max(1);
         // Reflow only on primary screen. In alt screen (vim, less, htop),
         // programs manage their own layout and expect simple truncation.
         if self.modes.reflow && !self.modes.alt_screen {
@@ -8824,5 +8827,15 @@ mod tests {
             t.modes.cursor_visible,
             "DECRQC should restore cursor_visible to default"
         );
+    }
+
+    #[test]
+    fn t_resize_to_zero_does_not_panic() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello");
+        // Resize to 0x0 — should be clamped to 1x1 internally.
+        t.resize(0, 0);
+        // Should be alive — write text
+        feed(&mut t, b"OK");
     }
 }
