@@ -2542,6 +2542,42 @@ word_chars = "-._/"
     }
 
     #[test]
+    fn test_custom_color_palette_parse() {
+        let toml = "[appearance.colors]\nansi = [\"#000000\", \"#cc0404\", \"#19cb00\", \"#cecb00\", \"#0d73cc\", \"#cb1ed1\", \"#0dcdcd\", \"#dddddd\", \"#767676\", \"#f2201f\", \"#23fd00\", \"#fffd00\", \"#1a8fff\", \"#fd28ff\", \"#14ffff\", \"#ffffff\"]\nforeground = \"#c0caf5\"\nbackground = \"#1a1b26\"\ncursor = \"#c0caf5\"\nselection = \"#33467c\"\n";
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.appearance.custom_palette.is_some());
+        let palette = config.appearance.custom_palette.as_ref().unwrap();
+        assert_eq!(palette.len(), 16);
+        assert_eq!(palette[0], "#000000");
+        assert_eq!(palette[15], "#ffffff");
+        assert_eq!(config.appearance.custom_fg.as_deref(), Some("#c0caf5"));
+        assert_eq!(config.appearance.custom_bg.as_deref(), Some("#1a1b26"));
+        assert_eq!(config.appearance.custom_cursor.as_deref(), Some("#c0caf5"));
+        assert_eq!(
+            config.appearance.custom_selection.as_deref(),
+            Some("#33467c")
+        );
+    }
+
+    #[test]
+    fn test_custom_color_palette_wrong_count_ignored() {
+        let toml = "[appearance.colors]\nansi = [\"#000000\", \"#ff0000\"]\n";
+        let config = Config::from_toml_str(toml).unwrap();
+        // Only 2 colors (not 16) → palette should be None.
+        assert!(config.appearance.custom_palette.is_none());
+    }
+
+    #[test]
+    fn test_custom_color_palette_partial() {
+        let toml = "[appearance.colors]\nforeground = \"#ffffff\"\nbackground = \"#000000\"\n";
+        let config = Config::from_toml_str(toml).unwrap();
+        assert!(config.appearance.custom_palette.is_none());
+        assert_eq!(config.appearance.custom_fg.as_deref(), Some("#ffffff"));
+        assert_eq!(config.appearance.custom_bg.as_deref(), Some("#000000"));
+        assert!(config.appearance.custom_cursor.is_none());
+    }
+
+    #[test]
     fn test_keybinding_conflict_detected() {
         let toml = r#"
 [keybindings]
