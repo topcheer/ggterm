@@ -156,11 +156,11 @@ impl DesktopApp {
         let term = self.sessions[self.active].app().terminal();
         renderer.set_dynamic_fg(term.dynamic_fg().map(|c| match c {
             ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
-            _ => unreachable!("dynamic_fg stores Rgb"),
+            _ => (240, 240, 240), // defensive fallback
         }));
         renderer.set_dynamic_bg(term.dynamic_bg().map(|c| match c {
             ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
-            _ => unreachable!("dynamic_bg stores Rgb"),
+            _ => (20, 20, 20), // defensive fallback
         }));
 
         // OSC 4: Sync custom palette overrides from terminal to renderer.
@@ -3377,11 +3377,11 @@ impl DesktopApp {
                         reverse_video: app.terminal().reverse_video(),
                         dynamic_fg: app.terminal().dynamic_fg().map(|c| match c {
                             ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
-                            _ => unreachable!("dynamic_fg stores Rgb"),
+                            _ => (240, 240, 240),
                         }),
                         dynamic_bg: app.terminal().dynamic_bg().map(|c| match c {
                             ggterm_core::Color::Rgb(r, g, b) => (*r, *g, *b),
-                            _ => unreachable!("dynamic_bg stores Rgb"),
+                            _ => (20, 20, 20),
                         }),
                         underline_color: match app.terminal().underline_color_ref() {
                             ggterm_core::Color::Rgb(r, g, b) => Some((*r, *g, *b)),
