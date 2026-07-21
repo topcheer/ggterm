@@ -3766,7 +3766,7 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(test)]
+    #[cfg(feature = "ai")]
     use super::*;
 
     #[cfg(feature = "ai")]

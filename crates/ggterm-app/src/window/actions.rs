@@ -220,10 +220,13 @@ impl DesktopApp {
             cfg.terminal.shell = draft.shell.clone();
             cfg.terminal.restore_session = draft.restore_session;
             cfg.ai.enabled = draft.ai_enabled;
-            let _ = mgr.save();
+            let save_ok = mgr.save().is_ok();
+            if save_ok {
+                self.show_toast("Settings saved");
+            } else {
+                self.show_toast("Settings applied (save to disk failed)");
+            }
         }
-
-        self.show_toast("Settings saved");
         log::info!("Settings applied from settings window");
     }
 
@@ -2255,8 +2258,11 @@ impl DesktopApp {
                 *mgr.config_mut() = new_config;
                 self.config_mgr = Some(mgr);
                 // Save to disk.
-                if let Some(ref mut mgr) = self.config_mgr {
-                    let _ = mgr.save();
+                if let Some(ref mut mgr) = self.config_mgr
+                    && mgr.save().is_err()
+                {
+                    log::warn!("Failed to save config to disk after import");
+                    self.show_toast("Config imported (save to disk failed)");
                 }
                 // Apply theme via theme manager.
                 self.active_session_mut()
@@ -2288,10 +2294,11 @@ impl DesktopApp {
         *mgr.config_mut() = default_config;
         self.config_mgr = Some(mgr);
         // Save to disk.
-        if let Some(ref mut mgr) = self.config_mgr {
-            let _ = mgr.save();
+        if let Some(ref mut mgr) = self.config_mgr
+            && mgr.save().is_err()
+        {
+            log::warn!("Failed to save config to disk after reset");
         }
-        // Apply theme.
         self.active_session_mut()
             .app_mut()
             .theme_manager()
