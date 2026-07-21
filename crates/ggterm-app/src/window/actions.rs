@@ -29,6 +29,16 @@ impl DesktopApp {
         result
     }
 
+    /// Apply scrollback limit to all panes in the active session.
+    fn apply_scrollback_to_active(&mut self, scrollback: usize) {
+        let session = &mut self.sessions[self.active];
+        for pane_id in session.pane_ids() {
+            if let Some(app) = session.pane_app_mut(pane_id) {
+                app.terminal_mut().grid_mut().set_scrollback(scrollback);
+            }
+        }
+    }
+
     /// After removing a pane, the remaining pane is resized to fill the full
     /// content area, and a redraw is requested.
     pub(super) fn handle_pane_exit(&mut self) -> bool {
@@ -332,7 +342,13 @@ impl DesktopApp {
         let cwd = self.active_session().cwd().map(|p| p.to_path_buf());
         match TabSession::new_with_cwd(cols, rows, self.shell(), cwd.as_deref()) {
             Ok(session) => {
+                // Apply configured scrollback limit to the new session.
+                let scrollback = self
+                    .config_mgr
+                    .as_ref()
+                    .map_or(10_000, |m| m.config().terminal.scrollback_lines);
                 self.sessions.push(session);
+                self.apply_scrollback_to_active(scrollback);
                 self.active = self.sessions.len() - 1;
                 self.selection.clear();
                 log::info!("Opened tab {}", self.active + 1);
@@ -477,7 +493,12 @@ impl DesktopApp {
             cwd.as_deref(),
         ) {
             Ok(session) => {
+                let scrollback = self
+                    .config_mgr
+                    .as_ref()
+                    .map_or(10_000, |m| m.config().terminal.scrollback_lines);
                 self.sessions.push(session);
+                self.apply_scrollback_to_active(scrollback);
                 self.active = self.sessions.len() - 1;
                 self.selection.clear();
                 log::info!("Duplicated tab {}", self.active);

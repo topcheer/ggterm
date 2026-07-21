@@ -703,6 +703,14 @@ impl Grid {
         self.scrollback.push_back(row);
     }
 
+    /// Update the scrollback capacity, evicting oldest rows if shrinking.
+    pub fn set_max_scrollback(&mut self, max: usize) {
+        self.max_scrollback = max;
+        while self.scrollback.len() > max {
+            self.scrollback.pop_front();
+        }
+    }
+
     // ------------------------------------------------------------------
     //  Viewport scrolling (mouse wheel scrollback)
     // ------------------------------------------------------------------

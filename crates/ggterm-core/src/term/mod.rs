@@ -640,6 +640,11 @@ pub fn color_for_index(idx: u8) -> (u8, u8, u8) {
 impl Terminal {
     /// Create a new terminal with the given dimensions.
     pub fn new(width: usize, height: usize) -> Self {
+        Self::with_scrollback(width, height, 10_000)
+    }
+
+    /// Create a terminal with a custom scrollback limit.
+    pub fn with_scrollback(width: usize, height: usize, max_scrollback: usize) -> Self {
         let mut tab_stops = vec![false; width.max(1)];
         let mut col = 0;
         while col < width {
@@ -647,7 +652,7 @@ impl Terminal {
             col += 8;
         }
         Self {
-            grid: Grid::new(width, height),
+            grid: Grid::with_scrollback(width, height, max_scrollback),
             cursor: Cursor::default(),
             saved_cursor: Cursor::default(),
             decsc_state: None,
@@ -705,6 +710,11 @@ impl Terminal {
     }
     pub fn grid_mut(&mut self) -> &mut Grid {
         &mut self.grid
+    }
+
+    /// Update the scrollback capacity (evicts oldest if shrinking).
+    pub fn set_scrollback_limit(&mut self, max: usize) {
+        self.grid.set_max_scrollback(max);
     }
     pub fn cursor(&self) -> (usize, usize) {
         (self.cursor.x, self.cursor.y)
