@@ -3798,6 +3798,28 @@ fn detect_language_hint(text: &str) -> &'static str {
     if first_line.trim_start().starts_with('{') || first_line.trim_start().starts_with('[') {
         return "json";
     }
+    // JavaScript/TypeScript.
+    if text.contains("npm ")
+        || text.contains("node ")
+        || text.contains("TypeError:")
+        || text.contains("undefined is not")
+        || text.contains("console.log")
+    {
+        return "javascript";
+    }
+    // Go.
+    if text.contains("goroutine")
+        || text.contains("go run")
+        || text.contains("go build")
+        || text.contains("panic:")
+        || text.contains(".go:")
+    {
+        return "go";
+    }
+    // Docker.
+    if text.contains("docker ") || text.contains("Dockerfile") || text.contains("=> [") {
+        return "dockerfile";
+    }
     // SQL.
     if text.to_uppercase().contains("SELECT ")
         || text.to_uppercase().contains("INSERT INTO")
