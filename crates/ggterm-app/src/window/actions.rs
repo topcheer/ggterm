@@ -3356,7 +3356,7 @@ impl DesktopApp {
             let default_toml = self
                 .config_mgr
                 .as_ref()
-                .and_then(|m| m.config().export_to_toml().ok())
+                .map(|m| m.config().generate_documented_template())
                 .unwrap_or_default();
             if std::fs::write(&path, &default_toml).is_err() {
                 self.show_toast("Failed to create config file");

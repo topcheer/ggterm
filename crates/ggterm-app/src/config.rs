@@ -724,6 +724,124 @@ impl Config {
         toml::to_string_pretty(&val).map_err(ConfigError::Export)
     }
 
+    /// Generate a user-friendly config template with explanatory comments.
+    ///
+    /// Used when creating a new config file for the first time.
+    /// Unlike `export_to_toml()`, this includes inline comments that
+    /// explain each setting, making it easy for new users to configure.
+    pub fn generate_documented_template(&self) -> String {
+        let mut s = String::new();
+        s.push_str("# GGTerm configuration file\n");
+        s.push_str("# Edit settings below, then save. Changes apply on reload.\n");
+        s.push_str("# Full documentation: https://github.com/topcheer/ggterm\n\n");
+
+        // Appearance
+        s.push_str("[appearance]\n");
+        s.push_str(&format!("theme = \"{}\"  # dark, light, dracula, solarized-dark, gruvbox, nord, tokyo-night, catppuccin-mocha\n", self.appearance.theme));
+        s.push_str(&format!(
+            "font_family = \"{}\"\n",
+            self.appearance.font_family
+        ));
+        s.push_str(&format!(
+            "font_size = {}  # 6-32\n",
+            self.appearance.font_size
+        ));
+        s.push_str(&format!(
+            "background_opacity = {:.1}  # 0.0 (transparent) to 1.0 (opaque)\n",
+            self.appearance.background_opacity
+        ));
+        s.push_str(&format!(
+            "padding = {}  # pixels around terminal content\n",
+            self.appearance.padding
+        ));
+        s.push_str(&format!(
+            "cursor_blink = {}\n",
+            self.appearance.cursor_blink
+        ));
+        s.push_str(&format!(
+            "cursor_line_highlight = {}\n\n",
+            self.appearance.cursor_line_highlight
+        ));
+
+        // Terminal
+        s.push_str("[terminal]\n");
+        s.push_str(&format!(
+            "scrollback_lines = {}  # max history lines kept in memory\n",
+            self.terminal.scrollback_lines
+        ));
+        s.push_str(&format!(
+            "shell = \"{}\"  # empty = use $SHELL\n",
+            self.terminal.shell
+        ));
+        s.push_str(&format!(
+            "bell_mode = \"{}\"  # none, visual, sound, both\n",
+            self.terminal.bell_mode
+        ));
+        s.push_str(&format!(
+            "copy_on_select = {}\n",
+            self.terminal.copy_on_select
+        ));
+        s.push_str(&format!(
+            "word_chars = \"{}\"  # chars treated as part of a word for double-click\n",
+            self.terminal.word_chars
+        ));
+        s.push_str(&format!(
+            "notify_on_complete = {}  # desktop notification when long commands finish\n\n",
+            self.terminal.notify_on_complete
+        ));
+
+        // Keybindings
+        s.push_str("[keybindings]\n");
+        s.push_str("# All keybindings are optional. Remove lines to use defaults.\n");
+        let km = &self.keybindings;
+        if let Some(ref v) = km.new_tab {
+            s.push_str(&format!("new_tab = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.close_tab {
+            s.push_str(&format!("close_tab = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.paste {
+            s.push_str(&format!("paste = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.copy {
+            s.push_str(&format!("copy = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.search {
+            s.push_str(&format!("search = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.zoom_in {
+            s.push_str(&format!("zoom_in = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.zoom_out {
+            s.push_str(&format!("zoom_out = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.zoom_reset {
+            s.push_str(&format!("zoom_reset = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.fullscreen {
+            s.push_str(&format!("fullscreen = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.clear {
+            s.push_str(&format!("clear = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.reset {
+            s.push_str(&format!("reset = \"{}\"\n", v));
+        }
+        if let Some(ref v) = km.cycle_theme {
+            s.push_str(&format!("cycle_theme = \"{}\"\n", v));
+        }
+
+        s.push_str("\n# Custom colors (optional — overrides theme palette)\n");
+        s.push_str("# [appearance.colors]\n");
+        s.push_str("# ansi = [\"#000000\", \"#cc0000\", \"#4e9a06\", \"#c4a000\", \"#3465a4\", \"#75507b\", \"#06989a\", \"#d3d7cf\", \"#555753\", \"#ef2929\", \"#8ae234\", \"#fce94f\", \"#729fcf\", \"#ad7fa8\", \"#34e2e2\", \"#eeeeec\"]\n");
+        s.push_str("# foreground = \"#c0caf5\"\n");
+        s.push_str("# background = \"#1a1b26\"\n");
+        s.push_str("# cursor = \"#c0caf5\"\n");
+        s.push_str("# selection = \"#33467c\"\n");
+
+        s
+    }
+
     /// Import configuration from a TOML string.
     ///
     /// This is the inverse of [`export_to_toml`]. Any fields missing from the
@@ -2495,6 +2613,37 @@ cursor_blink = false
 
         // Default is true
         assert!(Config::default().appearance.cursor_blink);
+    }
+
+    #[test]
+    fn test_documented_template_is_valid() {
+        let config = Config::default();
+        let template = config.generate_documented_template();
+        // Template should have comments.
+        assert!(template.starts_with("# GGTerm"));
+        // Template should be valid TOML when comments are stripped.
+        // (strip lines starting with # but keep inline values)
+        let clean: String = template
+            .lines()
+            .map(|l| {
+                if l.trim_start().starts_with('#') {
+                    ""
+                } else {
+                    // Remove inline comments
+                    if let Some(pos) = l.find("  #") {
+                        &l[..pos]
+                    } else {
+                        l
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed = Config::from_toml_str(&clean);
+        assert!(
+            parsed.is_ok(),
+            "documented template should parse as valid config"
+        );
     }
 
     #[test]
