@@ -3324,6 +3324,15 @@ impl DesktopApp {
         self.selection.start(start as u16, row);
         self.selection.extend(end as u16, row);
         self.selection.finish();
+        // Copy on select (consistent with drag selection).
+        if self.selection.is_active()
+            && self
+                .config_mgr
+                .as_ref()
+                .is_none_or(|m| m.config().terminal.copy_on_select)
+        {
+            self.copy_selection_to_clipboard();
+        }
     }
 
     /// P27-B: Select the entire line at the given row.
@@ -3337,6 +3346,14 @@ impl DesktopApp {
         self.selection.extend(width - 1, row);
         self.selection.finish();
         self.selection.line_select = true;
+        // Copy on select (consistent with drag selection).
+        if self
+            .config_mgr
+            .as_ref()
+            .is_none_or(|m| m.config().terminal.copy_on_select)
+        {
+            self.copy_selection_to_clipboard();
+        }
     }
 
     /// Extend selection word-by-word during drag (after double-click).
