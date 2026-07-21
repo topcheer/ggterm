@@ -421,6 +421,11 @@ pub struct Terminal {
     pub(crate) tab_stops: Vec<bool>,
     /// OSC 133 command marks accumulated from shell integration.
     pub(crate) command_marks: Vec<CommandMark>,
+    /// Total scrollback rows evicted since terminal start.
+    /// Used to adjust command mark absolute row references.
+    pub(crate) evicted_scrollback_rows: usize,
+    /// Running total of evicted rows already accounted for.
+    pub(crate) evicted_scrollback_rows_accum: usize,
     /// Terminal title (set via OSC 0/2).
     pub(crate) title: String,
     /// Title stack for CSI 22t/23t (push/pop title).
@@ -663,6 +668,8 @@ impl Terminal {
             flags: CellFlags::empty(),
             tab_stops,
             command_marks: Vec::new(),
+            evicted_scrollback_rows: 0,
+            evicted_scrollback_rows_accum: 0,
             title: String::new(),
             title_stack: Vec::new(),
             kitty_kb_stack: Vec::new(),
@@ -3264,6 +3271,20 @@ impl Perform for Terminal {
                     row: self.grid.scrollback_len() + self.cursor.y,
                     exit_code: if has_exit { exit_code } else { None },
                 });
+                // Sync eviction count from Grid before adjusting marks.
+                let total_evicted = self.grid.total_evicted();
+                // Net new evictions since last sync = total - already accounted.
+                let new_evictions =
+                    total_evicted.saturating_sub(self.evicted_scrollback_rows_accum);
+                self.evicted_scrollback_rows += new_evictions;
+                self.evicted_scrollback_rows_accum = total_evicted;
+                // Adjust mark rows for scrollback rows evicted since last mark.
+                if self.evicted_scrollback_rows > 0 {
+                    for m in &mut self.command_marks {
+                        m.row = m.row.saturating_sub(self.evicted_scrollback_rows);
+                    }
+                    self.evicted_scrollback_rows = 0;
+                }
                 // Prevent unbounded growth: keep at most 2000 marks (~500 commands).
                 // Command marks reference absolute row numbers that become stale
                 // when scrollback is trimmed, so old marks are useless anyway.
@@ -8895,5 +8916,36 @@ mod tests {
         t.resize(0, 0);
         // Should be alive — write text
         feed(&mut t, b"OK");
+    }
+
+    #[test]
+    fn t_command_marks_adjusted_on_scrollback_eviction() {
+        // Small scrollback to force eviction quickly.
+        let mut t = Terminal::with_scrollback(10, 3, 5);
+        // Command 1: prompt + command + output + end
+        feed(&mut t, b"\x1b]133;A\x07"); // PromptStart
+        feed(&mut t, b"cmd1\r\n"); // Scroll some content
+        feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
+        feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd
+        // First mark row
+        let row_before = t.command_marks()[0].row;
+        // Now generate enough output to evict scrollback rows.
+        for _ in 0..20 {
+            feed(&mut t, b"\x1b]133;A\x07"); // New prompt
+            feed(&mut t, b"cmd\r\n");
+            feed(&mut t, b"\x1b]133;D;0\x07");
+        }
+        // The old mark's row should have been adjusted downward
+        // (it can't exceed current scrollback_len).
+        let scrollback_len = t.grid().scrollback_len();
+        for m in t.command_marks() {
+            assert!(
+                m.row <= scrollback_len + t.grid().height(),
+                "mark row {} exceeds scrollback_len({}) + height({})",
+                m.row,
+                scrollback_len,
+                t.grid().height()
+            );
+        }
     }
 }

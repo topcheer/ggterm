@@ -53,6 +53,8 @@ pub struct Grid {
     display_offset: usize,
     /// Damage tracker for efficient partial rendering.
     damage: DamageTracker,
+    /// Total scrollback rows evicted since Grid creation (for mark adjustment).
+    total_evicted: usize,
     /// P23-C: Coarse dirty flag — set true on any content change.
     /// Used for conditional redraw (skip frames with no PTY data or interaction).
     content_dirty: bool,
@@ -77,6 +79,7 @@ impl Grid {
             scroll_bottom: height,
             display_offset: 0,
             damage: DamageTracker::new(width),
+            total_evicted: 0,
             content_dirty: true,
         }
     }
@@ -703,8 +706,14 @@ impl Grid {
     fn push_scrollback(&mut self, row: Row) {
         if self.scrollback.len() >= self.max_scrollback {
             self.scrollback.pop_front();
+            self.total_evicted += 1;
         }
         self.scrollback.push_back(row);
+    }
+
+    /// Total scrollback rows evicted since Grid creation.
+    pub fn total_evicted(&self) -> usize {
+        self.total_evicted
     }
 
     /// Update the scrollback capacity, evicting oldest rows if shrinking.
