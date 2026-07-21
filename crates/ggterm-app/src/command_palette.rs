@@ -708,6 +708,8 @@ pub struct CommandPaletteState {
     pub selected: usize,
     /// The selected command ID when Enter is pressed (consumed by caller).
     pub pending_action: Option<String>,
+    /// Recently used command IDs (most recent first).
+    pub recent_commands: Vec<String>,
 }
 
 impl CommandPaletteState {
@@ -718,6 +720,7 @@ impl CommandPaletteState {
             query: String::new(),
             selected: 0,
             pending_action: None,
+            recent_commands: Vec::new(),
         }
     }
 
@@ -763,10 +766,25 @@ impl CommandPaletteState {
     }
 
     /// Confirm selection. Sets pending_action to the selected command's ID.
+    /// Also records the command as recently used for prioritization.
     pub fn confirm(&mut self, results: &[(&Command, i32)]) {
         if let Some(&(cmd, _)) = results.get(self.selected) {
             self.pending_action = Some(cmd.id.clone());
+            self.record_recent(&cmd.id);
         }
+    }
+
+    fn record_recent(&mut self, id: &str) {
+        self.recent_commands.retain(|c| c != id);
+        self.recent_commands.insert(0, id.to_string());
+        if self.recent_commands.len() > 10 {
+            self.recent_commands.truncate(10);
+        }
+    }
+
+    /// Recency rank: 0 = most recent, higher = older, None = never used.
+    fn recency_rank(&self, id: &str) -> Option<usize> {
+        self.recent_commands.iter().position(|c| c == id)
     }
 
     /// Take the pending action (consumes it).
@@ -786,7 +804,16 @@ impl CommandPaletteState {
             })
             .filter(|(_, score)| *score > 0)
             .collect();
-        results.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
+        results.sort_by(|a, b| {
+            // Primary: fuzzy match score (higher first).
+            b.1.cmp(&a.1)
+                // Secondary: recency (lower rank = more recent = first).
+                .then_with(|| {
+                    let ra = self.recency_rank(&a.0.id).unwrap_or(usize::MAX);
+                    let rb = self.recency_rank(&b.0.id).unwrap_or(usize::MAX);
+                    ra.cmp(&rb)
+                })
+        });
         results
     }
 }
