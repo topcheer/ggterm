@@ -1416,6 +1416,7 @@ impl DesktopApp {
             let bytes = crate::clipboard::bracket_paste(&text, bracketed);
             log::debug!("Confirmed paste: {} bytes", bytes.len());
             self.write_to_pty(&bytes);
+            self.clipboard_feedback.trigger();
             return;
         }
 
@@ -1484,6 +1485,7 @@ impl DesktopApp {
         let bytes = crate::clipboard::bracket_paste(&text, bracketed);
         log::debug!("Paste: {} bytes (bracketed={})", bytes.len(), bracketed);
         self.write_to_pty(&bytes);
+        self.clipboard_feedback.trigger();
     }
 
     /// Paste clipboard content and press Enter to immediately execute.
