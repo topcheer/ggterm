@@ -1854,9 +1854,8 @@ impl DesktopApp {
                         self.show_toast("Nothing selected — select text first");
                         return;
                     }
-                    // Copy selection, pipe through shell command in background thread.
-                    self.copy_selection_to_clipboard();
-                    let input = crate::clipboard::read_clipboard().unwrap_or_default();
+                    // Extract selection text directly from grid (don't overwrite clipboard).
+                    let input = self.extract_selection_text();
                     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
                     let result = std::process::Command::new(&shell)
                         .arg("-c")
