@@ -8931,7 +8931,7 @@ mod tests {
         feed(&mut t, b"\x1b]133;C\x07"); // OutputStart
         feed(&mut t, b"\x1b]133;D;0\x07"); // CommandEnd
         // First mark row
-        let row_before = t.command_marks()[0].row;
+        let _row_before = t.command_marks()[0].row;
         // Now generate enough output to evict scrollback rows.
         for _ in 0..20 {
             feed(&mut t, b"\x1b]133;A\x07"); // New prompt

@@ -91,6 +91,7 @@ fn bench_row_to_runs(c: &mut Criterion) {
                         &[],
                         None,
                         None,
+                        None,
                         false,
                         &std::collections::HashMap::new(),
                     ));
@@ -113,6 +114,7 @@ fn bench_row_to_runs(c: &mut Criterion) {
                         &[],
                         None,
                         None,
+                        None,
                         false,
                         &std::collections::HashMap::new(),
                     ));
@@ -133,6 +135,7 @@ fn bench_row_to_runs(c: &mut Criterion) {
                         &theme,
                         Some(&cursor),
                         &[],
+                        None,
                         None,
                         None,
                         false,
@@ -259,6 +262,7 @@ fn bench_single_row(c: &mut Criterion) {
                     &[],
                     None,
                     None,
+                    None,
                     false,
                     &std::collections::HashMap::new(),
                 ))
@@ -275,6 +279,7 @@ fn bench_single_row(c: &mut Criterion) {
                     &theme,
                     Some(&cursor),
                     &[],
+                    None,
                     None,
                     None,
                     false,
