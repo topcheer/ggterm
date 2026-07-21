@@ -1164,8 +1164,12 @@ impl DesktopApp {
 
                     // Now copy it.
                     self.copy_selection_to_clipboard();
+                } else {
+                    self.show_toast("Command output not in visible area");
                 }
             }
+        } else {
+            self.show_toast("No completed command found");
         }
     }
 
