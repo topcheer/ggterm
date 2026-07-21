@@ -1692,6 +1692,13 @@ class _TerminalScreenState extends State<TerminalScreen>
                   }
                   HapticFeedback.selectionClick();
                   break;
+                case 'reset_terminal':
+                  // Send RIS (ESC c) — full terminal reset.
+                  _sendInput([0x1b, 0x63]);
+                  widget.sessionManager.flush(_currentSessionId);
+                  HapticFeedback.selectionClick();
+                  _showCopiedSnackBar('Terminal reset');
+                  break;
                 case 'disconnect':
                   widget.sessionManager.destroySession(_currentSessionId);
                   _sessionDestroyed = true;
@@ -1765,6 +1772,15 @@ class _TerminalScreenState extends State<TerminalScreen>
                   SizedBox(width: 12),
                   Text('Share terminal text',
                       style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'reset_terminal',
+                child: Row(children: [
+                  Icon(Icons.restart_alt, color: Colors.orangeAccent, size: 20),
+                  SizedBox(width: 12),
+                  Text('Reset terminal',
+                      style: TextStyle(color: Colors.orangeAccent)),
                 ]),
               ),
               const PopupMenuItem(
