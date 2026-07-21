@@ -2784,6 +2784,25 @@ impl Perform for Terminal {
                     self.cursor.pending_wrap = false;
                 }
             }
+            // DECRQC — Restore Mode (CSI Ps $ w)
+            // Restores a DEC private mode to its default value.
+            b'w' if intermediates.contains(&b'$') => {
+                let mode = params.first().copied().unwrap_or(0);
+                let defaults = Modes::defaults();
+                match mode {
+                    1 => self.modes.cursor_keys_app = defaults.cursor_keys_app,
+                    6 => self.modes.origin = defaults.origin,
+                    7 => self.modes.auto_wrap = defaults.auto_wrap,
+                    12 => self.modes.cursor_blink = defaults.cursor_blink,
+                    25 => self.modes.cursor_visible = defaults.cursor_visible,
+                    47 | 1047 | 1049 => self.modes.alt_screen = defaults.alt_screen,
+                    2004 => self.modes.bracketed_paste = defaults.bracketed_paste,
+                    2026 => self.modes.synchronized_output = defaults.synchronized_output,
+                    2027 => self.modes.reflow = defaults.reflow,
+                    7727 => self.modes.alternate_scroll = defaults.alternate_scroll,
+                    _ => {}
+                }
+            }
             // DECREQTPARM — Request Terminal Parameters (CSI Ps x)
             // Programs use this during startup to detect terminal type.
             // Response: CSI 2 ; 1 ; 0 ; 0 ; 0 ; 0 x
@@ -8752,6 +8771,36 @@ mod tests {
         assert!(
             t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
             "C should gain BOLD"
+        );
+    }
+
+    // ===== DECRQC — Restore Mode tests =====
+
+    #[test]
+    fn t_decrqc_restores_bracketed_paste() {
+        let mut t = Terminal::new(80, 24);
+        // Enable bracketed paste (default is off)
+        feed(&mut t, b"\x1b[?2004h");
+        assert!(t.modes.bracketed_paste);
+        // DECRQC restores to default (off)
+        feed(&mut t, b"\x1b[2004$w");
+        assert!(
+            !t.modes.bracketed_paste,
+            "DECRQC should restore bracketed_paste to default"
+        );
+    }
+
+    #[test]
+    fn t_decrqc_restores_cursor_visible() {
+        let mut t = Terminal::new(80, 24);
+        // Hide cursor (default is visible)
+        feed(&mut t, b"\x1b[?25l");
+        assert!(!t.modes.cursor_visible);
+        // DECRQC restores to default (visible)
+        feed(&mut t, b"\x1b[25$w");
+        assert!(
+            t.modes.cursor_visible,
+            "DECRQC should restore cursor_visible to default"
         );
     }
 }
