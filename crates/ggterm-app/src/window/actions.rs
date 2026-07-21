@@ -1267,17 +1267,20 @@ impl DesktopApp {
             return String::new();
         };
         let grid = self.active_session().app().grid();
-        let mut text = String::new();
+        let width = grid.width();
+        let row_count = (ey - sy + 1) as usize;
+        let mut text = String::with_capacity(row_count * width);
+
         for row in sy..=ey {
             let x0 = if row == sy { sx as usize } else { 0 };
             let x1 = if row == ey {
                 ex as usize
             } else {
-                grid.width().saturating_sub(1)
+                width.saturating_sub(1)
             };
             for col in x0..=x1 {
                 let cell = grid.display_cell(col, row as usize);
-                if cell.is_some_and(|c| !c.is_wide_spacer()) {
+                if cell.is_some_and(|c| !c.is_wide_spacer() && c.ch != '\0') {
                     let cell = cell.unwrap();
                     text.push(cell.ch);
                     for &c in &cell.combining {
