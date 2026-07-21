@@ -86,6 +86,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   // Custom text selection range (for drag-to-select mode).
   int? _selStartIdx;
   int? _selEndIdx;
+  int _selCharCount = 0; // live char count during drag-select
   DateTime _lastTapTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Visible input bar for typing.
@@ -895,7 +896,16 @@ class _TerminalScreenState extends State<TerminalScreen>
     if (_selStartIdx == null) return;
     final idx = _screenToIndex(position);
     if (idx != null && idx != _selEndIdx) {
-      setState(() => _selEndIdx = idx);
+      final lo = idx! < _selStartIdx! ? idx : _selStartIdx!;
+      final hi = idx > _selStartIdx! ? idx : _selStartIdx!;
+      var count = 0;
+      for (var i = lo; i <= hi && i < _screen.cells.length; i++) {
+        if (_screen.cells[i].charCode != 0) count++;
+      }
+      setState(() {
+        _selEndIdx = idx;
+        _selCharCount = count;
+      });
     }
   }
 
@@ -1975,6 +1985,25 @@ class _TerminalScreenState extends State<TerminalScreen>
                                   }
                                 },
                               ),
+                              // Char count badge above end handle.
+                              if (_selCharCount > 0)
+                                Positioned(
+                                  left: (colHi * _cellWidth + _cellWidth / 2 - 30).clamp(0.0, (_screen.cols * _cellWidth - 60).toDouble()),
+                                  top: (rowHi * _cellHeight - 24).clamp(0.0, double.maxFinite),
+                                  child: IgnorePointer(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade700,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '$_selCharCount chars',
+                                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ]);
                           }),
                         ],
