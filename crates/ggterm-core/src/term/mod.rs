@@ -2060,7 +2060,7 @@ impl Perform for Terminal {
                 let n = Self::param(params, 0, 1) as usize;
                 self.grid.scroll_down(n);
             }
-            b'r' if !is_private => {
+            b'r' if !is_private && !intermediates.contains(&b'$') => {
                 // CSI r (no params) or CSI 0;0r → reset to full screen
                 if params.is_empty() || params.iter().all(|&p| p == 0) {
                     self.grid.set_scroll_region(0, self.grid.height());
@@ -2668,6 +2668,60 @@ impl Perform for Terminal {
                                 if let Some(cell) = self.grid_mut().cell_mut(dc, dr) {
                                     *cell = buf[idx].clone();
                                 }
+                            }
+                        }
+                    }
+                    self.grid_mut().mark_all_dirty();
+                    self.cursor.pending_wrap = false;
+                }
+            }
+            // DECCARA — Change Attributes in Rectangular Area (CSI Pt;Pl;Pb;Pr;Ps1;Ps2 $ r)
+            // Add SGR attributes to non-blank cells within the rectangle.
+            // Only BOLD(1), UNDERLINE(4), BLINK(5), REVERSE(7) are honored.
+            // Ps1=0 clears existing attrs before setting the range.
+            b'r' if intermediates.contains(&b'$') => {
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let width = self.grid.width();
+                let height = self.grid.height();
+                let top = top.min(height.saturating_sub(1));
+                let bottom = bottom.min(height.saturating_sub(1));
+                let left = left.min(width.saturating_sub(1));
+                let right = right.min(width.saturating_sub(1));
+                if top <= bottom && left <= right {
+                    // Collect SGR attribute params starting at index 4.
+                    let sgr_vals: Vec<u16> = params.iter().skip(4).copied().collect();
+                    // Build the flag set to apply.
+                    let mut clear_first = false;
+                    let mut add_flags = CellFlags::empty();
+                    for &v in &sgr_vals {
+                        match v {
+                            0 => clear_first = true,
+                            1 => add_flags |= CellFlags::BOLD,
+                            4 => add_flags |= CellFlags::UNDERLINE,
+                            5 => add_flags |= CellFlags::BLINK,
+                            7 => add_flags |= CellFlags::REVERSE,
+                            _ => {}
+                        }
+                    }
+                    for row in top..=bottom {
+                        for col in left..=right {
+                            if let Some(cell) = self.grid_mut().cell_mut(col, row) {
+                                // Skip blank cells (spaces with no attributes) per spec.
+                                if cell.is_blank() {
+                                    continue;
+                                }
+                                if clear_first {
+                                    // Clear SGR-renderable flags only, keep structural ones.
+                                    cell.flags &= CellFlags::WIDE_CHAR
+                                        | CellFlags::WIDE_SPACER
+                                        | CellFlags::PROTECTED
+                                        | CellFlags::UNDERLINE_DOUBLE
+                                        | CellFlags::UNDERLINE_CURLY;
+                                }
+                                cell.flags |= add_flags;
                             }
                         }
                     }
@@ -8418,5 +8472,81 @@ mod tests {
         // After copy: col 1 = 'A', col 2 = 'B' (original col 1 'B' not read after overwrite)
         assert_eq!(t.grid()[(1, 0)].ch, 'A', "col 1 should be 'A' (copied)");
         assert_eq!(t.grid()[(2, 0)].ch, 'B', "col 2 should be 'B' (copied)");
+    }
+
+    // ===== DECCARA — Change Attributes in Rectangular Area tests =====
+
+    #[test]
+    fn t_deccara_adds_bold_to_rectangle() {
+        let mut t = Terminal::new(10, 3);
+        // Write "ABCDEF" on row 0
+        feed(&mut t, b"ABCDEF");
+        // DECCARA: add BOLD to rect rows 1-1, cols 1-3 (row 0, cols 0-2 0-based)
+        // CSI 1;1;1;3;1 $ r  (Ps1=1 → BOLD)
+        feed(&mut t, b"\x1b[1;1;1;3;1$r");
+        // Cells A,B,C should now have BOLD
+        assert!(
+            t.grid()[(0, 0)].flags.contains(CellFlags::BOLD),
+            "A should have BOLD"
+        );
+        assert!(
+            t.grid()[(1, 0)].flags.contains(CellFlags::BOLD),
+            "B should have BOLD"
+        );
+        assert!(
+            t.grid()[(2, 0)].flags.contains(CellFlags::BOLD),
+            "C should have BOLD"
+        );
+        // D,E,F should NOT have BOLD
+        assert!(
+            !t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
+            "D should not have BOLD"
+        );
+        assert!(
+            !t.grid()[(4, 0)].flags.contains(CellFlags::BOLD),
+            "E should not have BOLD"
+        );
+    }
+
+    #[test]
+    fn t_deccara_skips_blank_cells() {
+        let mut t = Terminal::new(10, 3);
+        // Write "AB" then move to col 4 and write "E"
+        feed(&mut t, b"AB\x1b[5GE");
+        // DECCARA: add BOLD to rect rows 1-1, cols 1-5 (row 0, cols 0-4)
+        feed(&mut t, b"\x1b[1;1;1;5;1$r");
+        // A,B at cols 0-1 should have BOLD
+        assert!(t.grid()[(0, 0)].flags.contains(CellFlags::BOLD));
+        assert!(t.grid()[(1, 0)].flags.contains(CellFlags::BOLD));
+        // Cols 2-3 are blank — should NOT get BOLD
+        assert!(
+            !t.grid()[(2, 0)].flags.contains(CellFlags::BOLD),
+            "blank col 2 should not get BOLD"
+        );
+        assert!(
+            !t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
+            "blank col 3 should not get BOLD"
+        );
+        // E at col 4 should have BOLD
+        assert!(
+            t.grid()[(4, 0)].flags.contains(CellFlags::BOLD),
+            "E should have BOLD"
+        );
+    }
+
+    #[test]
+    fn t_deccara_clamps_bounds() {
+        let mut t = Terminal::new(5, 3);
+        // Fill row 0 with text
+        feed(&mut t, b"ABCDE");
+        // DECCARA with huge coords — should clamp and not panic
+        feed(&mut t, b"\x1b[1;1;100;100;1$r");
+        // All of ABCDE should have BOLD
+        for col in 0..5 {
+            assert!(
+                t.grid()[(col, 0)].flags.contains(CellFlags::BOLD),
+                "col {col} should have BOLD after DECCARA clamp"
+            );
+        }
     }
 }
