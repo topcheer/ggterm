@@ -1409,24 +1409,20 @@ impl DesktopApp {
     /// Wraps the text in triple backticks for easy pasting into
     /// GitHub issues, docs, or chat.
     pub(super) fn copy_selection_as_markdown(&mut self) {
-        // Reuse the existing selection-to-text logic by copying to clipboard,
-        // then re-reading and wrapping.
-        self.copy_selection_to_clipboard();
-
-        // Read back the copied text.
-        if let Some(text) = crate::clipboard::read_clipboard() {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() {
-                // Determine language hint from content.
-                let lang = detect_language_hint(trimmed);
-                let markdown = if lang.is_empty() {
-                    format!("```\n{}\n```", trimmed)
-                } else {
-                    format!("```{}\n{}\n```", lang, trimmed)
-                };
-                crate::clipboard::set_clipboard_bytes(markdown.as_bytes());
-                self.show_toast(format!("Copied as Markdown ({} chars)", markdown.len()));
-            }
+        // Extract selected text directly from grid (don't touch clipboard).
+        let text = self.extract_selection_text();
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            let lang = detect_language_hint(trimmed);
+            let markdown = if lang.is_empty() {
+                format!("```\n{}\n```", trimmed)
+            } else {
+                format!("```{}\n{}\n```", lang, trimmed)
+            };
+            crate::clipboard::set_clipboard_bytes(markdown.as_bytes());
+            self.show_toast(format!("Copied as Markdown ({} chars)", markdown.len()));
+        } else {
+            self.show_toast("Selection is empty".to_string());
         }
     }
 
@@ -1582,9 +1578,8 @@ impl DesktopApp {
             return;
         }
 
-        // Copy to clipboard, then read back to get the text.
-        self.copy_selection_to_clipboard();
-        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        // Extract selected text directly from grid (don't touch clipboard).
+        let text = self.extract_selection_text();
 
         if text.trim().is_empty() {
             self.show_toast("Selection is empty".to_string());
