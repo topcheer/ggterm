@@ -2028,12 +2028,52 @@ impl DesktopApp {
     pub(super) fn apply_theme_to_renderer(&mut self) {
         // Clone the theme first to avoid borrow conflict between
         // active_session() and renderer.
-        let theme = self
+        let mut theme = self
             .active_session_mut()
             .app_mut()
             .theme_manager()
             .current()
             .clone();
+        // Apply custom color overrides from config.
+        let cfg = self.config_mgr.as_ref().map(|m| {
+            let c = m.config();
+            (
+                c.appearance.custom_palette.as_ref(),
+                c.appearance.custom_fg.as_deref(),
+                c.appearance.custom_bg.as_deref(),
+                c.appearance.custom_cursor.as_deref(),
+                c.appearance.custom_selection.as_deref(),
+            )
+        });
+        if let Some((palette, fg, bg, cursor, selection)) = cfg {
+            if let Some(palette) = palette {
+                for (i, hex) in palette.iter().enumerate() {
+                    if let Some(rgb) = parse_hex_color(hex) {
+                        theme.palette[i] = ggterm_core::Color::Rgb(rgb.0, rgb.1, rgb.2);
+                    }
+                }
+            }
+            if let Some(hex) = fg
+                && let Some(rgb) = parse_hex_color(hex)
+            {
+                theme.default_fg = ggterm_core::Color::Rgb(rgb.0, rgb.1, rgb.2);
+            }
+            if let Some(hex) = bg
+                && let Some(rgb) = parse_hex_color(hex)
+            {
+                theme.default_bg = ggterm_core::Color::Rgb(rgb.0, rgb.1, rgb.2);
+            }
+            if let Some(hex) = cursor
+                && let Some(rgb) = parse_hex_color(hex)
+            {
+                theme.cursor_bg = ggterm_core::Color::Rgb(rgb.0, rgb.1, rgb.2);
+            }
+            if let Some(hex) = selection
+                && let Some(rgb) = parse_hex_color(hex)
+            {
+                theme.selection_bg = ggterm_core::Color::Rgb(rgb.0, rgb.1, rgb.2);
+            }
+        }
         if let Some(ref mut renderer) = self.renderer {
             renderer.set_theme(theme);
             log::debug!("Theme applied to renderer");
@@ -3701,9 +3741,30 @@ fn detect_language_hint(text: &str) -> &'static str {
     ""
 }
 
+/// Parse a hex color string (#RRGGBB or RRGGBB) into (u8, u8, u8).
+fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
+    let s = s.strip_prefix('#').unwrap_or(s);
+    if s.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_hex_color() {
+        assert_eq!(parse_hex_color("#FF8800"), Some((0xFF, 0x88, 0x00)));
+        assert_eq!(parse_hex_color("ff8800"), Some((0xFF, 0x88, 0x00)));
+        assert_eq!(parse_hex_color("#fff"), None); // too short
+        assert_eq!(parse_hex_color(""), None);
+        assert_eq!(parse_hex_color("#GGGGGG"), None); // invalid hex
+    }
 
     #[test]
     fn test_detect_language_rust() {

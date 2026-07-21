@@ -146,6 +146,16 @@ pub struct AppearanceConfig {
     /// Whether to highlight the entire line where the cursor is positioned.
     /// Similar to Vim's `cursorline`. Default: false.
     pub cursor_line_highlight: bool,
+    /// Custom ANSI 16-color palette (hex strings). Overrides theme palette.
+    pub custom_palette: Option<[String; 16]>,
+    /// Custom foreground color (hex). Overrides theme.
+    pub custom_fg: Option<String>,
+    /// Custom background color (hex). Overrides theme.
+    pub custom_bg: Option<String>,
+    /// Custom cursor color (hex). Overrides theme.
+    pub custom_cursor: Option<String>,
+    /// Custom selection background color (hex). Overrides theme.
+    pub custom_selection: Option<String>,
 }
 
 /// Terminal behaviour configuration.
@@ -218,6 +228,11 @@ impl Default for AppearanceConfig {
             padding: 8,
             cursor_blink: true,
             cursor_line_highlight: false,
+            custom_palette: None,
+            custom_fg: None,
+            custom_bg: None,
+            custom_cursor: None,
+            custom_selection: None,
         }
     }
 }
@@ -316,6 +331,23 @@ mod raw {
         pub padding: Option<u32>,
         pub cursor_blink: Option<bool>,
         pub cursor_line_highlight: Option<bool>,
+        pub colors: Option<Colors>,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    #[serde(default)]
+    pub struct Colors {
+        /// 16 ANSI colors as hex strings: [black, red, green, yellow, blue,
+        /// magenta, cyan, white, bright_black, ..., bright_white].
+        pub ansi: Option<Vec<String>>,
+        /// Default foreground (text) color as hex string.
+        pub foreground: Option<String>,
+        /// Default background color as hex string.
+        pub background: Option<String>,
+        /// Cursor color as hex string.
+        pub cursor: Option<String>,
+        /// Selection background color as hex string.
+        pub selection: Option<String>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -430,6 +462,18 @@ impl Config {
         }
         if let Some(v) = raw.appearance.cursor_line_highlight {
             config.appearance.cursor_line_highlight = v;
+        }
+        // Apply custom color palette overrides.
+        if let Some(colors) = raw.appearance.colors {
+            config.appearance.custom_palette = colors
+                .ansi
+                .as_deref()
+                .filter(|a| a.len() == 16)
+                .map(|a| std::array::from_fn(|i| a[i].clone()));
+            config.appearance.custom_fg = colors.foreground;
+            config.appearance.custom_bg = colors.background;
+            config.appearance.custom_cursor = colors.cursor;
+            config.appearance.custom_selection = colors.selection;
         }
 
         if let Some(v) = raw.terminal.scrollback_lines {
