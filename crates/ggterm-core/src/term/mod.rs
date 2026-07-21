@@ -2630,6 +2630,51 @@ impl Perform for Terminal {
                     self.cursor.pending_wrap = false;
                 }
             }
+            // DECRA — Copy Rectangle Area (CSI Pt;Pl;Pb;Pr;Pk;Pp $ v)
+            // Copy the source rectangle to the destination top-left corner.
+            // Source and destination may overlap — data is buffered first.
+            // Coordinates are 1-based, clamped to screen bounds.
+            b'v' if intermediates.contains(&b'$') => {
+                let src_top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let src_left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let src_bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let src_right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let dst_row = params.get(4).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let dst_col = params.get(5).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let width = self.grid.width();
+                let height = self.grid.height();
+                let src_top = src_top.min(height.saturating_sub(1));
+                let src_bottom = src_bottom.min(height.saturating_sub(1));
+                let src_left = src_left.min(width.saturating_sub(1));
+                let src_right = src_right.min(width.saturating_sub(1));
+                if src_top <= src_bottom && src_left <= src_right {
+                    let rect_w = src_right - src_left + 1;
+                    let rect_h = src_bottom - src_top + 1;
+                    // Buffer source data first (handles overlap safely).
+                    let mut buf: Vec<Cell> = Vec::with_capacity(rect_w * rect_h);
+                    for r in src_top..=src_bottom {
+                        for c in src_left..=src_right {
+                            let cell = self.grid().cell(c, r).cloned().unwrap_or_default();
+                            buf.push(cell);
+                        }
+                    }
+                    // Write to destination, clamping each cell to screen bounds.
+                    for r in 0..rect_h {
+                        for c in 0..rect_w {
+                            let dr = dst_row + r;
+                            let dc = dst_col + c;
+                            if dr < height && dc < width {
+                                let idx = r * rect_w + c;
+                                if let Some(cell) = self.grid_mut().cell_mut(dc, dr) {
+                                    *cell = buf[idx].clone();
+                                }
+                            }
+                        }
+                    }
+                    self.grid_mut().mark_all_dirty();
+                    self.cursor.pending_wrap = false;
+                }
+            }
             // DECREQTPARM — Request Terminal Parameters (CSI Ps x)
             // Programs use this during startup to detect terminal type.
             // Response: CSI 2 ; 1 ; 0 ; 0 ; 0 ; 0 x
@@ -8307,5 +8352,71 @@ mod tests {
         assert!(t1.grid()[(0, 0)].is_blank(), "DECERA erases protected A");
         // DECSERA: protected survives
         assert_eq!(t2.grid()[(0, 0)].ch, 'A', "DECSERA preserves protected A");
+    }
+
+    // ===== DECRA — Copy Rectangle Area tests =====
+
+    #[test]
+    fn t_decra_basic_copy() {
+        let mut t = Terminal::new(10, 5);
+        // Write "ABCD" on row 0
+        feed(&mut t, b"ABCD");
+        // DECRA: copy rect rows 1-1, cols 1-4 to row 3, col 1
+        // CSI 1;1;1;4;3;1 $ v
+        feed(&mut t, b"\x1b[1;1;1;4;3;1$v");
+        // Row 3 should now have "ABCD"
+        assert_eq!(t.grid()[(0, 2)].ch, 'A', "row 2 col 0 should be 'A'");
+        assert_eq!(t.grid()[(1, 2)].ch, 'B', "row 2 col 1 should be 'B'");
+        assert_eq!(t.grid()[(2, 2)].ch, 'C', "row 2 col 2 should be 'C'");
+        assert_eq!(t.grid()[(3, 2)].ch, 'D', "row 2 col 3 should be 'D'");
+        // Source should be unchanged
+        assert_eq!(t.grid()[(0, 0)].ch, 'A', "source row 0 col 0 still 'A'");
+    }
+
+    #[test]
+    fn t_decra_copies_attributes() {
+        let mut t = Terminal::new(10, 5);
+        // Write "AB" with bold red fg (SGR 1;31)
+        feed(&mut t, b"\x1b[1;31mAB");
+        // DECRA: copy row 1 cols 1-2 to row 2 col 1
+        feed(&mut t, b"\x1b[1;1;1;2;2;1$v");
+        // Destination should have same attributes
+        let dst = &t.grid()[(0, 1)];
+        assert_eq!(dst.ch, 'A');
+        assert!(dst.flags.contains(CellFlags::BOLD), "bold should be copied");
+        assert_eq!(dst.fg, Color::Indexed(1), "red fg should be copied");
+        let dst2 = &t.grid()[(1, 1)];
+        assert_eq!(dst2.ch, 'B');
+        assert!(dst2.flags.contains(CellFlags::BOLD));
+    }
+
+    #[test]
+    fn t_decra_clamps_destination() {
+        let mut t = Terminal::new(5, 3);
+        // Write "ABCDE" on row 0
+        feed(&mut t, b"ABCDE");
+        // DECRA: copy rect rows 1-1, cols 1-5 to row 2, col 3
+        // Destination extends beyond screen — should clamp
+        feed(&mut t, b"\x1b[1;1;1;5;2;3$v");
+        // Only cols 2-4 on row 1 should get "ABC" (dst col 3,4,5 → 0-based 2,3,4)
+        assert_eq!(t.grid()[(2, 1)].ch, 'A', "dst col 2 row 1 = 'A'");
+        assert_eq!(t.grid()[(3, 1)].ch, 'B', "dst col 3 row 1 = 'B'");
+        assert_eq!(t.grid()[(4, 1)].ch, 'C', "dst col 4 row 1 = 'C'");
+    }
+
+    #[test]
+    fn t_decra_overlap_safe() {
+        // Source and destination overlap — buffer ensures correctness.
+        let mut t = Terminal::new(8, 3);
+        // Write "AB" at cols 0-1 row 0
+        feed(&mut t, b"AB");
+        // DECRA: copy cols 1-2 (0-based) row 1 to dst col 2 (0-based) row 1
+        // Source (0-based): row 0, cols 0-1 → "AB"
+        // Dest (0-based): row 0, col 1
+        // Overlap: dest col 1 overlaps source col 1
+        feed(&mut t, b"\x1b[1;1;1;2;1;2$v");
+        // After copy: col 1 = 'A', col 2 = 'B' (original col 1 'B' not read after overwrite)
+        assert_eq!(t.grid()[(1, 0)].ch, 'A', "col 1 should be 'A' (copied)");
+        assert_eq!(t.grid()[(2, 0)].ch, 'B', "col 2 should be 'B' (copied)");
     }
 }
