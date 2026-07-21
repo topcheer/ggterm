@@ -3798,11 +3798,13 @@ fn detect_language_hint(text: &str) -> &'static str {
     {
         return "bash";
     }
-    // Rust compiler output.
+    // Rust compiler/runtime output.
     if text.contains("cargo")
         || text.contains("rustc")
         || first_line.contains("-->")
         || text.contains("error[E")
+        || text.contains("panicked at")
+        || text.contains("thread '")
     {
         return "rust";
     }
