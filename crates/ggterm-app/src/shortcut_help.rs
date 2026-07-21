@@ -764,6 +764,30 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+G".into(),
+            description: "Search web for selected text".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+S".into(),
+            description: "Save scrollback to file".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+H".into(),
+            description: "Copy selection as HTML (rich text)".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+E".into(),
+            description: "Export config to clipboard".into(),
+            category: ShortcutCategory::Effects,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Shift+Alt+C".into(),
             description: "Copy current directory path".into(),
             category: ShortcutCategory::Effects,
