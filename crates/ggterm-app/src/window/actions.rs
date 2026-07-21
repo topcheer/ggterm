@@ -2432,32 +2432,24 @@ impl DesktopApp {
     /// Run the current selection as a shell command.
     /// Copies selection to clipboard, then writes it + newline to PTY.
     pub(super) fn run_selection_as_command(&mut self) {
-        self.copy_selection_to_clipboard();
-
-        if let Some(text) = crate::clipboard::read_clipboard() {
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
-                self.show_toast("No text selected");
-                return;
-            }
-
-            // Write the command + Enter to PTY.
-            let mut input = trimmed.to_string();
-            input.push('\n');
-            self.write_to_pty(input.as_bytes());
-            self.show_toast(format!("Running: {}", truncate_for_toast(trimmed)));
-        } else {
+        let text = self.extract_selection_text();
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
             self.show_toast("No text selected");
+            return;
         }
+
+        // Write the command + Enter to PTY.
+        let mut input = trimmed.to_string();
+        input.push('\n');
+        self.write_to_pty(input.as_bytes());
+        self.show_toast(format!("Running: {}", truncate_for_toast(trimmed)));
     }
 
     /// Open the current selection in the user's $EDITOR.
     /// Writes selection to a temp file, opens editor, then reads back.
     pub(super) fn edit_selection_in_editor(&mut self) {
-        // First, copy the selection to clipboard to extract text.
-        self.copy_selection_to_clipboard();
-
-        let text = crate::clipboard::read_clipboard().unwrap_or_default();
+        let text = self.extract_selection_text();
         let trimmed = text.trim();
         if trimmed.is_empty() {
             self.show_toast("No text selected");
