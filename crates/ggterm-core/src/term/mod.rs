@@ -2735,7 +2735,14 @@ impl Perform for Terminal {
                         }
                     }
                     for row in top..=bottom {
-                        for col in left..=right {
+                        // Stream mode: extend to full row width.
+                        // Rectangle mode: only modify the specified columns.
+                        let (col_start, col_end) = if self.modes.sace_rectangle {
+                            (left, right)
+                        } else {
+                            (0, width.saturating_sub(1))
+                        };
+                        for col in col_start..=col_end {
                             if let Some(cell) = self.grid_mut().cell_mut(col, row) {
                                 // Skip blank cells (spaces with no attributes) per spec.
                                 if cell.is_blank() {
@@ -2784,7 +2791,14 @@ impl Perform for Terminal {
                         }
                     }
                     for row in top..=bottom {
-                        for col in left..=right {
+                        // Stream mode: extend to full row width.
+                        // Rectangle mode: only modify the specified columns.
+                        let (col_start, col_end) = if self.modes.sace_rectangle {
+                            (left, right)
+                        } else {
+                            (0, width.saturating_sub(1))
+                        };
+                        for col in col_start..=col_end {
                             if let Some(cell) = self.grid_mut().cell_mut(col, row) {
                                 if cell.is_blank() {
                                     continue;
@@ -8568,6 +8582,8 @@ mod tests {
         let mut t = Terminal::new(10, 3);
         // Write "ABCDEF" on row 0
         feed(&mut t, b"ABCDEF");
+        // Enable rectangle mode (default is stream which extends to full row)
+        feed(&mut t, b"\x1b[2*q");
         // DECCARA: add BOLD to rect rows 1-1, cols 1-3 (row 0, cols 0-2 0-based)
         // CSI 1;1;1;3;1 $ r  (Ps1=1 → BOLD)
         feed(&mut t, b"\x1b[1;1;1;3;1$r");
@@ -8671,6 +8687,46 @@ mod tests {
         );
     }
 
+    #[test]
+    fn t_deccara_stream_mode_extends_to_full_row() {
+        // Default (stream mode): DECCARA should affect entire rows, not just the rect.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ"); // Fill row 0 with 10 chars
+        // DECCARA on cols 1-3 only (1-based) = cols 0-2 (0-based)
+        feed(&mut t, b"\x1b[1;1;1;3;1$r"); // Add BOLD
+        // In stream mode, ALL chars on row 0 should get BOLD
+        for col in 0..10 {
+            assert!(
+                t.grid()[(col, 0)].flags.contains(CellFlags::BOLD),
+                "col {col} should have BOLD in stream mode"
+            );
+        }
+    }
+
+    #[test]
+    fn t_deccara_rectangle_mode_stays_in_rect() {
+        // Rectangle mode: DECCARA should only affect cells within the rect.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        // Enable rectangle mode first
+        feed(&mut t, b"\x1b[2*q");
+        // DECCARA on cols 1-3 (1-based) = cols 0-2 (0-based)
+        feed(&mut t, b"\x1b[1;1;1;3;1$r"); // Add BOLD
+        // Only cols 0-2 should have BOLD
+        assert!(t.grid()[(0, 0)].flags.contains(CellFlags::BOLD), "col 0");
+        assert!(t.grid()[(1, 0)].flags.contains(CellFlags::BOLD), "col 1");
+        assert!(t.grid()[(2, 0)].flags.contains(CellFlags::BOLD), "col 2");
+        // Cols 3-9 should NOT have BOLD
+        assert!(
+            !t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
+            "col 3 no BOLD"
+        );
+        assert!(
+            !t.grid()[(9, 0)].flags.contains(CellFlags::BOLD),
+            "col 9 no BOLD"
+        );
+    }
+
     // ===== Robustness: extreme parameter values must not panic =====
 
     #[test]
@@ -8737,6 +8793,8 @@ mod tests {
     fn t_decrara_toggles_bold() {
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"ABCDEF");
+        // Enable rectangle mode (default stream extends to full row)
+        feed(&mut t, b"\x1b[2*q");
         // DECRARA: toggle BOLD on rect row 1, cols 1-3
         feed(&mut t, b"\x1b[1;1;1;3;1$t");
         // A,B,C should now have BOLD
