@@ -347,6 +347,10 @@ pub struct Modes {
     /// LNM — Line Feed/New Line Mode (ANSI mode 20).
     /// When enabled, LF/VT/FF also produce a carriage return (CR+LF behavior).
     pub new_line_mode: bool,
+    /// DECSACE — Select Attribute Change Extent.
+    /// false = stream (default), true = rectangle.
+    /// Controls whether DECCARA/DECRARA operate stream-wise or rectangle-wise.
+    pub sace_rectangle: bool,
     /// Kitty keyboard protocol active flags.
     /// Bit 0 = disambiguate escape keys
     /// Bit 1 = report event types
@@ -383,6 +387,7 @@ impl Modes {
             modify_other_keys: 0,
             kitty_keyboard: 0,
             new_line_mode: false,
+            sace_rectangle: false,
         }
     }
 }
@@ -2389,6 +2394,13 @@ impl Perform for Terminal {
                     6 => CursorStyle::SteadyBar,
                     _ => self.cursor_style,
                 };
+            }
+            // DECSACE — Select Attribute Change Extent (CSI Ps * q)
+            // Ps=1: stream mode (default), Ps=2: rectangle mode.
+            // Controls whether DECCARA/DECRARA modify a stream or rectangle.
+            b'q' if intermediates.contains(&b'*') => {
+                let mode = params.first().copied().unwrap_or(1);
+                self.modes.sace_rectangle = mode == 2;
             }
             // DECSTR — soft terminal reset (CSI ! p)
             // Resets SGR attributes, cursor position, scroll region, and modes
@@ -8548,5 +8560,27 @@ mod tests {
                 "col {col} should have BOLD after DECCARA clamp"
             );
         }
+    }
+
+    // ===== DECSACE — Select Attribute Change Extent tests =====
+
+    #[test]
+    fn t_decsace_sets_rectangle_mode() {
+        let mut t = Terminal::new(10, 3);
+        assert!(!t.modes.sace_rectangle, "default should be stream mode");
+        // DECSACE Ps=2 → rectangle mode
+        feed(&mut t, b"\x1b[2*q");
+        assert!(t.modes.sace_rectangle, "Ps=2 should set rectangle mode");
+    }
+
+    #[test]
+    fn t_decsace_sets_stream_mode() {
+        let mut t = Terminal::new(10, 3);
+        // Set to rectangle first
+        feed(&mut t, b"\x1b[2*q");
+        assert!(t.modes.sace_rectangle);
+        // DECSACE Ps=1 → stream mode
+        feed(&mut t, b"\x1b[1*q");
+        assert!(!t.modes.sace_rectangle, "Ps=1 should set stream mode");
     }
 }
