@@ -2571,16 +2571,19 @@ impl Perform for Terminal {
                         .filter(|&c| c >= 0x20)
                         .and_then(|c| char::from_u32(c as u32))
                         .unwrap_or(' ');
+                    let (fg, bg, flags) = (self.fg, self.bg, self.flags);
                     for row in top..=bottom {
                         for col in left..=right {
-                            self.grid_mut()[(col, row)] = crate::Cell {
-                                ch: fill_char,
-                                combining: Vec::new(),
-                                fg: self.fg,
-                                bg: self.bg,
-                                flags: self.flags,
-                                hyperlink: None,
-                            };
+                            if let Some(cell) = self.grid_mut().cell_mut(col, row) {
+                                *cell = crate::Cell {
+                                    ch: fill_char,
+                                    combining: Vec::new(),
+                                    fg,
+                                    bg,
+                                    flags,
+                                    hyperlink: None,
+                                };
+                            }
                         }
                     }
                     self.grid_mut().mark_all_dirty();
@@ -8582,5 +8585,65 @@ mod tests {
         // DECSACE Ps=1 → stream mode
         feed(&mut t, b"\x1b[1*q");
         assert!(!t.modes.sace_rectangle, "Ps=1 should set stream mode");
+    }
+
+    // ===== Robustness: extreme parameter values must not panic =====
+
+    #[test]
+    fn fuzz_decfra_extreme_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[$x"); // all defaults
+        feed(&mut t, b"\x1b[0;0;0;0$x"); // all zeros
+        feed(&mut t, b"\x1b[65535;65535;65535;65535$x"); // max u16
+        feed(&mut t, b"\x1b[1;1;0;0$x"); // bottom < top
+        feed(&mut t, b"\x1b[0;1;1;0$x"); // right < left
+    }
+
+    #[test]
+    fn fuzz_decera_extreme_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[$z");
+        feed(&mut t, b"\x1b[0;0;0;0$z");
+        feed(&mut t, b"\x1b[65535;65535;65535;65535$z");
+        feed(&mut t, b"\x1b[1;1;0;0$z"); // inverted rect
+    }
+
+    #[test]
+    fn fuzz_decra_extreme_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[$v"); // minimal
+        feed(&mut t, b"\x1b[0;0;0;0$v");
+        feed(&mut t, b"\x1b[65535;65535;65535;65535;65535;65535$v");
+        // dest way out of bounds — should silently clamp
+        feed(&mut t, b"\x1b[1;1;1;1;65535;65535$v");
+    }
+
+    #[test]
+    fn fuzz_deccara_extreme_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"ABCDEFGH"); // some text
+        feed(&mut t, b"\x1b[$r"); // minimal — no SGR params
+        feed(&mut t, b"\x1b[0;0;0;0;0;0$r"); // all zeros
+        feed(&mut t, b"\x1b[65535;65535;65535;65535;999;999$r"); // max everything
+        feed(&mut t, b"\x1b[1;1;24;80;0$r"); // clear + apply to whole screen
+    }
+
+    #[test]
+    fn fuzz_decsera_extreme_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[${");
+        feed(&mut t, b"\x1b[0;0;0;0${");
+        feed(&mut t, b"\x1b[65535;65535;65535;65535${");
+    }
+
+    #[test]
+    fn fuzz_cup_extreme_params() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[H"); // no params
+        feed(&mut t, b"\x1b[0;0H"); // zeros
+        feed(&mut t, b"\x1b[65535;65535H"); // way out of bounds
+        feed(&mut t, b"\x1b[999;999H"); // out of bounds
+        // Should still be alive — write text
+        feed(&mut t, b"OK");
     }
 }
