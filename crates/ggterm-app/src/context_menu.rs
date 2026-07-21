@@ -95,10 +95,7 @@ impl ContextMenuAction {
     /// Indices of actions that should have a separator drawn *before* them.
     /// Creates visual groups: [clipboard], [search], [splits], [actions].
     pub fn separator_before(action: &Self) -> bool {
-        matches!(
-            action,
-            Self::Search | Self::SplitHorizontal | Self::Clear
-        )
+        matches!(action, Self::Search | Self::SplitHorizontal | Self::Clear)
     }
 }
 
@@ -280,21 +277,29 @@ mod tests {
 
     #[test]
     fn t_separator_before_search() {
-        assert!(ContextMenuAction::separator_before(&ContextMenuAction::Search));
+        assert!(ContextMenuAction::separator_before(
+            &ContextMenuAction::Search
+        ));
     }
 
     #[test]
     fn t_separator_before_splits() {
-        assert!(ContextMenuAction::separator_before(&ContextMenuAction::SplitHorizontal));
+        assert!(ContextMenuAction::separator_before(
+            &ContextMenuAction::SplitHorizontal
+        ));
     }
 
     #[test]
     fn t_separator_before_clear() {
-        assert!(ContextMenuAction::separator_before(&ContextMenuAction::Clear));
+        assert!(ContextMenuAction::separator_before(
+            &ContextMenuAction::Clear
+        ));
     }
 
     #[test]
     fn t_no_separator_before_copy() {
-        assert!(!ContextMenuAction::separator_before(&ContextMenuAction::Copy));
+        assert!(!ContextMenuAction::separator_before(
+            &ContextMenuAction::Copy
+        ));
     }
 }

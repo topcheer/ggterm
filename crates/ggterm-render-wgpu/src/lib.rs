@@ -131,6 +131,8 @@ pub struct GlyphonRenderer {
     strike_vertex_count: u32,
     /// Search-match highlights: (row, col_start, col_end) inclusive (P14-B).
     highlights: Vec<(usize, usize, usize)>,
+    /// The current/active search match for distinct highlighting (row, col_start, col_end).
+    current_highlight: Option<(usize, usize, usize)>,
     /// Dynamic foreground color (OSC 10) — overrides theme default fg.
     dynamic_fg: Option<(u8, u8, u8)>,
     /// Dynamic background color (OSC 11) — overrides theme default bg.
@@ -333,6 +335,7 @@ impl GlyphonRenderer {
             strike_vertex_buffer: None,
             strike_vertex_count: 0,
             highlights: Vec::new(),
+            current_highlight: None,
             dynamic_fg: None,
             dynamic_bg: None,
             palette_overrides: HashMap::new(),
@@ -422,6 +425,14 @@ impl GlyphonRenderer {
         grid.content_dirty() || !self.highlights.is_empty()
     }
 
+    /// Clear the current highlight when search is closed.
+    pub fn clear_search_state(&mut self) {
+        if !self.highlights.is_empty() {
+            self.highlights.clear();
+        }
+        self.current_highlight = None;
+    }
+
     /// Set the active render theme (P11-D).
     ///
     /// The theme controls default foreground/background colors, cursor color,
@@ -447,6 +458,12 @@ impl GlyphonRenderer {
         } else {
             self.highlights = highlights;
         }
+    }
+
+    /// Set the current/active search match for distinct highlighting.
+    /// Pass the (row, col_start, col_end) of the active match, or None to clear.
+    pub fn set_current_highlight(&mut self, highlight: Option<(usize, usize, usize)>) {
+        self.current_highlight = highlight;
     }
 
     /// Set dynamic foreground color (OSC 10). Pass None to reset to theme default.
@@ -579,12 +596,19 @@ impl GlyphonRenderer {
                 );
             }
 
+            // Check if this row contains the current match.
+            let row_current = self
+                .current_highlight
+                .filter(|&(r, _, _)| r == row_idx)
+                .map(|(_, s, e)| (s, e));
+
             let runs = converter::row_to_runs(
                 grid,
                 row_idx,
                 theme,
                 Some(cursor),
                 &row_highlights,
+                row_current,
                 self.dynamic_fg,
                 self.dynamic_bg,
                 self.reverse_video,
@@ -1566,6 +1590,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -1589,6 +1614,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -1607,6 +1633,7 @@ mod tests {
             &theme,
             None,
             &[],
+            None,
             None,
             None,
             false,

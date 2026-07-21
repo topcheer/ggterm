@@ -96,6 +96,22 @@ impl DesktopApp {
             Vec::new()
         };
 
+        // Extract the current/active match for distinct highlighting.
+        let current_highlight: Option<(usize, usize, usize)> = if self.search.visible {
+            let base = scrollback_len.saturating_sub(display_offset);
+            self.search.current().and_then(|m| {
+                m.abs_row.checked_sub(base).and_then(|visible_row| {
+                    if visible_row < grid_height {
+                        Some((visible_row, m.col, m.col + m.len.saturating_sub(1)))
+                    } else {
+                        None
+                    }
+                })
+            })
+        } else {
+            None
+        };
+
         // ── Cursor line highlight (Vim-style cursorline) ──────────────
         // Pre-compute before the mutable borrow at line 95.
         let cursor_line_rect = {
@@ -134,6 +150,7 @@ impl DesktopApp {
 
         // Apply search highlights before rendering.
         renderer.set_highlights(search_highlights);
+        renderer.set_current_highlight(current_highlight);
 
         // Apply dynamic colors (OSC 10/11) if set on the terminal.
         let term = self.sessions[self.active].app().terminal();

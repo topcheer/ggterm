@@ -26,6 +26,10 @@ pub struct TextRun {
 pub const HIGHLIGHT_BG: (u8, u8, u8) = (255, 200, 0);
 /// Foreground color used on highlighted cells (black for contrast).
 pub const HIGHLIGHT_FG: (u8, u8, u8) = (0, 0, 0);
+/// Background color for the current/active search match (orange).
+pub const CURRENT_HIGHLIGHT_BG: (u8, u8, u8) = (255, 120, 0);
+/// Foreground color for the current/active search match (white for contrast).
+pub const CURRENT_HIGHLIGHT_FG: (u8, u8, u8) = (255, 255, 255);
 
 /// Convert a single grid row into a vector of text runs.
 ///
@@ -34,6 +38,7 @@ pub const HIGHLIGHT_FG: (u8, u8, u8) = (0, 0, 0);
 ///
 /// `highlights` is a slice of `(col_start, col_end)` ranges (inclusive).
 /// Cells within a highlight range get `HIGHLIGHT_BG` / `HIGHLIGHT_FG`.
+/// `current_highlight` optionally marks the active match with a distinct color.
 #[allow(clippy::too_many_arguments)]
 pub fn row_to_runs(
     grid: &Grid,
@@ -41,6 +46,7 @@ pub fn row_to_runs(
     theme: &RenderTheme,
     cursor: Option<&CursorState>,
     highlights: &[(usize, usize)],
+    current_highlight: Option<(usize, usize)>,
     dynamic_fg: Option<(u8, u8, u8)>,
     dynamic_bg: Option<(u8, u8, u8)>,
     reverse_video: bool,
@@ -143,8 +149,13 @@ pub fn row_to_runs(
         }
 
         // P14-B: Search highlight — override to amber bg / black fg.
+        // Current match gets a distinct orange color for visual differentiation.
         let highlighted = highlights.iter().any(|&(s, e)| col >= s && col <= e);
-        if highlighted {
+        let is_current = current_highlight.is_some_and(|(s, e)| col >= s && col <= e);
+        if is_current {
+            bg_rgb = CURRENT_HIGHLIGHT_BG;
+            fg_rgb = CURRENT_HIGHLIGHT_FG;
+        } else if highlighted {
             bg_rgb = HIGHLIGHT_BG;
             fg_rgb = HIGHLIGHT_FG;
         }
@@ -163,6 +174,7 @@ pub fn row_to_runs(
         #[allow(clippy::collapsible_if)]
         if (cursor_here || cursor_on_wide_lead)
             && !highlighted
+            && !is_current
             && let Some(c) = cursor
         {
             if c.focused {
@@ -298,6 +310,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -321,6 +334,7 @@ mod tests {
             &theme,
             None,
             &[],
+            None,
             None,
             None,
             false,
@@ -350,6 +364,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -375,6 +390,7 @@ mod tests {
             &theme,
             None,
             &[],
+            None,
             None,
             None,
             false,
@@ -404,6 +420,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -429,6 +446,7 @@ mod tests {
             &theme,
             Some(&cursor),
             &[],
+            None,
             None,
             None,
             false,
@@ -492,6 +510,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -513,6 +532,7 @@ mod tests {
             &theme,
             None,
             &[],
+            None,
             None,
             None,
             false,
@@ -540,6 +560,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -549,6 +570,7 @@ mod tests {
             &theme,
             None,
             &[(99, 99)],
+            None,
             None,
             None,
             false,
@@ -577,6 +599,7 @@ mod tests {
             &theme,
             None,
             &[(1, 2)],
+            None,
             None,
             None,
             false,
@@ -615,6 +638,7 @@ mod tests {
             &[(0, 0), (3, 3)],
             None,
             None,
+            None,
             false,
             &std::collections::HashMap::new(),
         );
@@ -646,6 +670,7 @@ mod tests {
             &theme,
             None,
             &[(0, 1)],
+            None,
             None,
             None,
             false,
@@ -681,6 +706,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             true,
             &std::collections::HashMap::new(),
         );
@@ -709,6 +735,7 @@ mod tests {
             &theme,
             None,
             &[],
+            None,
             None,
             None,
             false,
@@ -740,7 +767,18 @@ mod tests {
         // Override color 1 (red) to a distinct value: (123, 45, 67)
         overrides.insert(1u8, (123u8, 45u8, 67u8));
 
-        let runs = row_to_runs(&grid, 0, &theme, None, &[], None, None, false, &overrides);
+        let runs = row_to_runs(
+            &grid,
+            0,
+            &theme,
+            None,
+            &[],
+            None,
+            None,
+            None,
+            false,
+            &overrides,
+        );
 
         // After REVERSE swap: fg=cell.bg=Indexed(1), bg=cell.fg=Default.
         // The palette override for Indexed(1) should be applied to fg_rgb.
@@ -774,6 +812,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
             true,
             &std::collections::HashMap::new(),
         );
@@ -805,6 +844,7 @@ mod tests {
             &theme,
             None,
             &[],
+            None,
             None,
             None,
             false,
