@@ -1003,31 +1003,15 @@ impl DesktopApp {
             return;
         }
 
-        // URL-encode the query and open in browser.
-        // Must encode UTF-8 bytes, not Unicode codepoints — e.g. "你" should
-        // become %E4%BD%A0 (3 UTF-8 bytes), not %4F60 (Unicode codepoint).
-        let mut encoded = String::with_capacity(query.len() * 3);
-        for &byte in query.as_bytes() {
-            match byte {
-                b' ' => encoded.push('+'),
-                b if b.is_ascii_alphanumeric()
-                    || b == b'-'
-                    || b == b'_'
-                    || b == b'.'
-                    || b == b'~' =>
-                {
-                    encoded.push(byte as char);
-                }
-                _ => encoded.push_str(&format!("%{:02X}", byte)),
-            }
-        }
+        // URL-encode the query (handles UTF-8 multi-byte properly).
+        let encoded = url_encode(query);
         let url = self
             .config_mgr
             .as_ref()
             .map(|m| m.config().terminal.search_engine.replace("%s", &encoded))
             .unwrap_or_else(|| format!("https://www.google.com/search?q={}", encoded));
         crate::mouse::open_url(&url);
-        self.show_toast(format!("Searching: {}", &query[..query.len().min(40)]));
+        self.show_toast(format!("Searching: {}", truncate_for_toast(query)));
     }
 
     #[cfg(feature = "ai")]
@@ -3638,8 +3622,10 @@ impl DesktopApp {
 
 /// Truncate a string for toast display (max 40 chars).
 fn truncate_for_toast(s: &str) -> String {
-    if s.len() > 40 {
-        format!("{}...", &s[..37])
+    const MAX: usize = 40;
+    if s.chars().count() > MAX {
+        let truncated: String = s.chars().take(MAX - 3).collect();
+        format!("{truncated}...")
     } else {
         s.to_string()
     }
