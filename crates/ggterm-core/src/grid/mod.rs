@@ -83,6 +83,8 @@ impl Grid {
 
     /// Resize the grid. Existing content is preserved where possible.
     pub fn resize(&mut self, width: usize, height: usize) {
+        let width = width.max(1);
+        let height = height.max(1);
         // Save the current scroll position — we restore it after resize
         // so the user doesn't lose their place in the scrollback.
         let saved_offset = self.display_offset;
@@ -122,6 +124,8 @@ impl Grid {
     /// into the visible area (if available), so the user sees more history
     /// after making the window taller. Shrinking behaves like normal resize.
     pub fn reflow_resize(&mut self, width: usize, height: usize) {
+        let width = width.max(1);
+        let height = height.max(1);
         if width == self.width && height == self.height {
             return;
         }
