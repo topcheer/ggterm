@@ -1769,6 +1769,7 @@ impl DesktopApp {
         let active = self.active;
         let mut active_bell = false;
         let mut any_tab_bell = false;
+        let mut bell_tab_title = String::new();
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if session.app_mut().terminal_mut().take_bell() {
                 any_tab_bell = true;
@@ -1777,6 +1778,14 @@ impl DesktopApp {
                 } else {
                     session.mark_unread();
                     session.mark_bell();
+                }
+                // Capture the title of the first tab that belled for the
+                // notification (avoids showing the wrong active tab title).
+                if bell_tab_title.is_empty() {
+                    let t = session.title();
+                    if !t.is_empty() {
+                        bell_tab_title = t.to_string();
+                    }
                 }
             }
         }
@@ -1798,14 +1807,11 @@ impl DesktopApp {
                 window.request_user_attention(Some(winit::window::UserAttentionType::Critical));
             }
             // Show a system notification for the bell.
-            let tab_title = self
-                .sessions
-                .get(self.active)
-                .and_then(|s| {
-                    let title = s.title().to_string();
-                    if title.is_empty() { None } else { Some(title) }
-                })
-                .unwrap_or_else(|| "GGTerm".to_string());
+            let tab_title = if bell_tab_title.is_empty() {
+                "GGTerm".to_string()
+            } else {
+                bell_tab_title
+            };
             self.show_desktop_notification("Terminal Bell", &format!("Bell in: {}", tab_title));
         }
     }
