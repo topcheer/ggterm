@@ -903,7 +903,20 @@ class _TerminalScreenState extends State<TerminalScreen>
       }
     }
     final s = buf.toString();
-    return s.isEmpty ? null : s;
+    if (s.isEmpty) return null;
+    // Trim trailing whitespace per line and remove empty leading/trailing
+    // lines — matches desktop extract_selection_text behavior.
+    final lines = s
+        .split('\n')
+        .map((l) => l.trimRight())
+        .toList();
+    while (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+    while (lines.isNotEmpty && lines.first.isEmpty) {
+      lines.removeAt(0);
+    }
+    return lines.isEmpty ? null : lines.join('\n');
   }
 
   /// Enter selection mode at the given position.
