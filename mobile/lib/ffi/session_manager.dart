@@ -94,6 +94,11 @@ class GGTermCellData {
   bool get dim => (flags & CellFlags.faint) != 0;
   bool get hidden => (flags & CellFlags.hidden) != 0;
   bool get reverse => (flags & CellFlags.reverse) != 0;
+  bool get underlineDouble => (flags & CellFlags.underlineDouble) != 0;
+  bool get underlineCurly => (flags & CellFlags.underlineCurly) != 0;
+  bool get underlineDotted => (flags & CellFlags.underlineDotted) != 0;
+  bool get underlineDashed => (flags & CellFlags.underlineDashed) != 0;
+  bool get overline => (flags & CellFlags.overline) != 0;
   bool get wide => (flags & CellFlags.wide) != 0;
 
   /// Resolved foreground RGB (0xRRGGBB).

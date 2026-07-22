@@ -36,6 +36,11 @@ class CellFlags {
   static const int strikethrough = 0x80;
   static const int wide = 0x200;
   static const int protected = 0x400;
+  static const int underlineDouble = 0x800;
+  static const int underlineCurly = 0x1000;
+  static const int underlineDotted = 0x2000;
+  static const int underlineDashed = 0x4000;
+  static const int overline = 0x8000;
 }
 
 /// Color packing helpers matching Rust's pack_color().

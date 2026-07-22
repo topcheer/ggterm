@@ -2383,6 +2383,7 @@ class _TerminalPainter extends CustomPainter {
       var runUnderline = false;
       var runStrikethrough = false;
       var runDim = false;
+      var runDecoStyle = TextDecorationStyle.solid;
 
       for (var col = 0; col <= cols; col++) {
         final idx = row * cols + col;
@@ -2408,12 +2409,17 @@ class _TerminalPainter extends CustomPainter {
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
             runDim = cell.dim;
+            runDecoStyle = cell.underlineDouble ? TextDecorationStyle.double
+                : cell.underlineCurly ? TextDecorationStyle.wavy
+                : cell.underlineDotted ? TextDecorationStyle.dotted
+                : cell.underlineDashed ? TextDecorationStyle.dashed
+                : TextDecorationStyle.solid;
             // Wide chars (CJK, emoji) are 2 cells wide — flush immediately
             // so subsequent text starts at the correct column.
             if (cell.wide) {
               _paintRun(canvas, runText.toString(), runStart, y,
                   runFg, runBold, runItalic, runUnderline,
-                  runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
+                  runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
               runStart = -1;
             }
           } else if (effectiveFg == runFg &&
@@ -2429,14 +2435,14 @@ class _TerminalPainter extends CustomPainter {
             if (cell.wide) {
               _paintRun(canvas, runText.toString(), runStart, y,
                   runFg, runBold, runItalic, runUnderline,
-                  runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
+                  runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
               runStart = -1;
             }
           } else {
             // Flush current run, start new one.
             _paintRun(canvas, runText.toString(), runStart, y,
                 runFg, runBold, runItalic, runUnderline,
-                runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
+                runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
             runStart = col;
             runText.clear();
             runText.write(cell.charWithCombining);
@@ -2446,12 +2452,17 @@ class _TerminalPainter extends CustomPainter {
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
             runDim = cell.dim;
+            runDecoStyle = cell.underlineDouble ? TextDecorationStyle.double
+                : cell.underlineCurly ? TextDecorationStyle.wavy
+                : cell.underlineDotted ? TextDecorationStyle.dotted
+                : cell.underlineDashed ? TextDecorationStyle.dashed
+                : TextDecorationStyle.solid;
           }
         } else if (runStart >= 0) {
           // Empty cell — flush current run.
           _paintRun(canvas, runText.toString(), runStart, y,
               runFg, runBold, runItalic, runUnderline,
-              runStrikethrough, runDim, cellWidth, cellHeight, fontSize);
+              runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
           runStart = -1;
         }
       }
@@ -2513,6 +2524,7 @@ class _TerminalPainter extends CustomPainter {
     bool underline,
     bool strikethrough,
     bool dim,
+    TextDecorationStyle decorationStyle,
     double cellW,
     double cellH,
     double fontSize,
@@ -2533,6 +2545,7 @@ class _TerminalPainter extends CustomPainter {
         if (underline) TextDecoration.underline,
         if (strikethrough) TextDecoration.lineThrough,
       ]),
+      decorationStyle: decorationStyle,
     );
 
     // Reuse static TextPainter — avoids constructor + GC per text run.
