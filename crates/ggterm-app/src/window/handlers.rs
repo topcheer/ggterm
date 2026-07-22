@@ -1369,6 +1369,34 @@ impl DesktopApp {
                         .move_down(self.command_palette.results(&self.command_registry).len());
                     return;
                 }
+                // PageUp/PageDown — jump by viewport page.
+                PhysicalKey::Code(KeyCode::PageUp) => {
+                    let len = self.command_palette.results(&self.command_registry).len();
+                    for _ in 0..8 {
+                        self.command_palette.move_up(len);
+                    }
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::PageDown) => {
+                    let len = self.command_palette.results(&self.command_registry).len();
+                    for _ in 0..8 {
+                        self.command_palette.move_down(len);
+                    }
+                    return;
+                }
+                // Home — jump to first result.
+                PhysicalKey::Code(KeyCode::Home) => {
+                    self.command_palette.selected = 0;
+                    return;
+                }
+                // End — jump to last result.
+                PhysicalKey::Code(KeyCode::End) => {
+                    let len = self.command_palette.results(&self.command_registry).len();
+                    if len > 0 {
+                        self.command_palette.selected = len - 1;
+                    }
+                    return;
+                }
                 PhysicalKey::Code(KeyCode::Backspace) => {
                     self.command_palette.backspace();
                     return;
