@@ -349,7 +349,7 @@ pub fn parse_ssh_config(content: &str) -> Vec<HostEntry> {
             }
             "identityfile" => {
                 if let Some(ref mut entry) = current {
-                    let path = expand_tilde(value);
+                    let path = expand_tilde(value, std::env::var("HOME").ok().as_deref());
                     entry.auth_method = AuthMethod::Key;
                     entry.key_path = Some(path);
                 }
@@ -370,9 +370,9 @@ pub fn parse_ssh_config(content: &str) -> Vec<HostEntry> {
 }
 
 /// Expand `~` to the home directory in a path.
-fn expand_tilde(path: &str) -> String {
+fn expand_tilde(path: &str, home: Option<&str>) -> String {
     if let Some(rest) = path.strip_prefix("~/")
-        && let Ok(home) = std::env::var("HOME")
+        && let Some(home) = home
     {
         return format!("{home}/{rest}");
     }
@@ -689,29 +689,18 @@ Host incomplete
 
     #[test]
     fn t_parse_ssh_config_identityfile_expand() {
-        let config = r#"
-Host my-key
-    HostName server.com
-    User me
-    IdentityFile ~/.ssh/custom_key
-"#;
-        // Save and restore HOME to avoid interfering with other tests.
-        let saved_home = std::env::var("HOME").ok();
-        // SAFETY: single-threaded test, no other code accessing HOME.
-        unsafe {
-            std::env::set_var("HOME", "/test/home");
-        }
-        let entries = parse_ssh_config(config);
-        // Restore HOME immediately after parsing.
-        if let Some(h) = saved_home {
-            unsafe {
-                std::env::set_var("HOME", h);
-            }
-        }
-        assert_eq!(entries.len(), 1);
+        // Test expand_tilde directly to avoid env var race conditions.
         assert_eq!(
-            entries[0].key_path.as_deref(),
-            Some("/test/home/.ssh/custom_key")
+            expand_tilde("~/.ssh/custom_key", Some("/test/home")),
+            "/test/home/.ssh/custom_key"
+        );
+        assert_eq!(
+            expand_tilde("~/.ssh/id_rsa", None),
+            "~/.ssh/id_rsa"
+        );
+        assert_eq!(
+            expand_tilde("/absolute/path", Some("/test/home")),
+            "/absolute/path"
         );
     }
 }

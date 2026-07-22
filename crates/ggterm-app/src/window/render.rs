@@ -16,8 +16,6 @@ impl DesktopApp {
         // Compute content area bounds BEFORE any borrows of self.
         // This is shared with mouse handlers for coordinate consistency.
         let content_bounds = self.content_area_bounds();
-        // P32: Pre-compute scrolled state for indicator.
-        let is_scrolled = self.sessions[active].app().terminal().grid().is_scrolled();
         let (br, bg, bb) = {
             let session = &self.sessions[active];
             let theme = session.app().theme();
@@ -2425,18 +2423,29 @@ impl DesktopApp {
 
         // ── P30-C: Toast notification ─────────────────────────────────
         if let Some((msg, frames)) = &self.toast {
-            // Hold at full opacity for first 80% of lifetime, then fade out.
-            let alpha = if *frames > 24 {
-                1.0
-            } else {
-                *frames as f32 / 24.0
-            };
+            // Total lifetime = 120 frames (~2s at 60fps).
+            // Fade-in: first 12 frames (frames > 108).
+            // Full opacity: 108 >= frames > 24.
+            // Fade-out: last 24 frames.
+            let fade_in = ((120 - *frames) as f32 / 12.0).min(1.0);
+            let fade_out = if *frames > 24 { 1.0 } else { *frames as f32 / 24.0 };
+            let alpha = fade_in.min(fade_out);
+
+            // Slide-up offset: start 10px lower during fade-in.
+            let slide = (1.0 - fade_in) * 10.0;
+
             // Use char count for width (not byte length — CJK/emoji are multi-byte).
             let char_count = msg.chars().count() as f32;
             let toast_w = (char_count * cell_w + 24.0).max(80.0);
             let toast_h = 32.0;
             let tx = (screen_w - toast_w) / 2.0;
-            let ty = screen_h - 50.0; // bottom of screen
+            // Position above status bar to avoid overlap.
+            let bottom_margin = if self.status_bar_visible {
+                cell_h + 8.0 + 6.0 // status bar height + gap
+            } else {
+                16.0
+            };
+            let ty = screen_h - bottom_margin - toast_h + slide;
 
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: tx,
@@ -2504,58 +2513,6 @@ impl DesktopApp {
                     left: rx + 8.0,
                     top: ry + 5.0,
                     color: (240, 240, 250),
-                    ..Default::default()
-                });
-            }
-        }
-
-        // ── P32: Scroll-to-bottom indicator ──────────────────────────
-        {
-            if is_scrolled {
-                let display_offset = self.sessions[active]
-                    .app()
-                    .terminal()
-                    .grid()
-                    .display_offset();
-                let scrollback_total = self.sessions[active]
-                    .app()
-                    .terminal()
-                    .grid()
-                    .scrollback_len();
-                // Show scroll position: Top / percentage / line count.
-                let indicator_text = if scrollback_total > 0 {
-                    if display_offset >= scrollback_total {
-                        "↓ Top".to_string()
-                    } else {
-                        let pct = (display_offset * 100 / scrollback_total).min(100);
-                        if pct >= 1 {
-                            format!("↓ {}%", pct)
-                        } else {
-                            format!("↓ {}L", display_offset)
-                        }
-                    }
-                } else {
-                    format!("↓ {}L", display_offset)
-                };
-                let indicator_w = (indicator_text.chars().count() as f32 * 7.0 + 24.0).max(60.0);
-                let indicator_h = 24.0;
-                let ix = screen_w - indicator_w - 20.0;
-                let iy = screen_h - indicator_h - 40.0;
-
-                ui_rects.push(ggterm_render_wgpu::UiRect {
-                    x: ix,
-                    y: iy,
-                    w: indicator_w,
-                    h: indicator_h,
-                    color: (0.15, 0.25, 0.50, 0.9),
-                    radius: 12.0,
-                    stroke_width: 0.0,
-                });
-                overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: indicator_text,
-                    left: ix + 12.0,
-                    top: iy + 4.0,
-                    color: (200, 220, 255),
                     ..Default::default()
                 });
             }
