@@ -300,9 +300,6 @@ pub struct DesktopApp {
     last_idle_secs: u64,
     /// Cached command elapsed tenths-of-seconds for timer throttling.
     last_cmd_tenths: u128,
-    /// Cached grid dimensions to avoid per-frame format! allocation.
-    cached_grid_w: usize,
-    cached_grid_h: usize,
 
     // ── Font zoom (P11-A) ──
     /// Tracks current font size and zoom level for Ctrl+=/-/0.
@@ -329,14 +326,10 @@ pub struct DesktopApp {
     /// Last applied font family from config (for change detection on hot-reload).
     #[cfg(feature = "config-watch")]
     last_applied_font_family: String,
-    /// Cached terminal dimensions "WxH" — only reformat on resize.
-    cached_dims: String,
     /// Cached uptime in minutes — avoids per-frame format! when minute hasn't changed.
     cached_uptime_mins: u64,
     /// Cached raw CWD path — compare before formatting display string.
     cached_cwd_raw: Option<std::path::PathBuf>,
-    /// Cached raw shell path — compare before rebuilding display label.
-    cached_shell_raw: String,
     /// Cached last command Duration — skip format! when unchanged.
     cached_cmd_duration: Option<std::time::Duration>,
 
@@ -756,8 +749,6 @@ impl DesktopApp {
             last_spinner_tick: std::time::Instant::now(),
             last_idle_secs: 0,
             last_cmd_tenths: 0,
-            cached_grid_w: 0,
-            cached_grid_h: 0,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
             status_bar: crate::status_bar::StatusBar::new(),
@@ -775,10 +766,8 @@ impl DesktopApp {
                 .as_ref()
                 .map(|m| m.config().appearance.font_family.clone())
                 .unwrap_or_default(),
-            cached_dims: String::new(),
             cached_uptime_mins: 0,
             cached_cwd_raw: None,
-            cached_shell_raw: String::new(),
             cached_cmd_duration: None,
             status_bar_visible: true,
             hovered_link: None,
@@ -1683,39 +1672,9 @@ impl ApplicationHandler for DesktopApp {
                 if self.status_bar.theme_name != self.last_applied_theme {
                     self.status_bar.theme_name = self.last_applied_theme.clone();
                 }
-                // Terminal dimensions — only reformat when size changes.
-                let grid = self.active_session().app().grid();
-                let gw = grid.width();
-                let gh = grid.height();
-                if gw != self.cached_grid_w || gh != self.cached_grid_h {
-                    self.cached_grid_w = gw;
-                    self.cached_grid_h = gh;
-                    let dims = format!("{}×{}", gw, gh);
-                    self.cached_dims = dims.clone();
-                    self.status_bar.dimensions = dims;
-                }
 
-                // P28: Update Phase 28 status bar indicators.
-                // Only allocate when values actually change.
-                let ws_name = self.workspaces.active_name();
-                if self.status_bar.workspace_name != ws_name {
-                    self.status_bar.workspace_name = ws_name.to_string();
-                }
-                self.status_bar.sound_enabled = self.sound_player.is_enabled();
-                // shell_name: only rebuild "Shell: <name>" when shell path changes.
-                {
-                    let current = self.shell_switcher.current_shell_str();
-                    if current != self.cached_shell_raw {
-                        self.cached_shell_raw = current.to_string();
-                        self.status_bar.shell_name = self.shell_switcher.status_bar_label();
-                    }
-                }
                 self.status_bar.pane_zoomed = self.pane_zoomed;
                 self.status_bar.font_size = self.font_zoom.current_size();
-                self.status_bar.cursor_line = self
-                    .config_mgr
-                    .as_ref()
-                    .is_some_and(|m| m.config().appearance.cursor_line_highlight);
                 self.status_bar.scroll_mode = self.scroll_mode;
                 // CWD from OSC 7 (pane-level cwd tracking) — abbreviate $HOME to ~.
                 // Optimized: compare raw path first, only format when changed.
