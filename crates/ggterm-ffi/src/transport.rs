@@ -383,6 +383,19 @@ pub unsafe extern "C" fn ggterm_session_bracketed_paste(id: u32) -> i32 {
     0
 }
 
+/// Returns 1 if cursor keys are in application mode (DECCKM, DECSET 1).
+/// Mobile uses this to send correct arrow key sequences for vim/less/htop.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ggterm_session_cursor_keys_app(id: u32) -> i32 {
+    let map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = map.get(&id)
+        && s.handle.terminal.cursor_keys_app()
+    {
+        return 1;
+    }
+    0
+}
+
 /// Returns 1 if alternate scroll mode is enabled (DECSET 7727), 0 otherwise.
 /// When enabled, scroll wheel in alt screen sends arrow keys instead of
 /// scrolling (non-existent) scrollback.
@@ -1198,5 +1211,32 @@ mod tests {
     #[test]
     fn t_scrollback_len_invalid_session() {
         assert_eq!(ggterm_session_scrollback_len(99999), 0);
+    }
+
+    #[test]
+    fn t_session_cursor_keys_app() {
+        let id = ggterm_session_create(80, 24);
+        // Default: normal mode.
+        assert_eq!(unsafe { ggterm_session_cursor_keys_app(id) }, 0);
+
+        // Enter application cursor mode (DECSET 1 = DECCKM).
+        let data = b"\x1b[?1h";
+        unsafe {
+            ggterm_session_process_bytes(id, data.as_ptr(), data.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_keys_app(id) }, 1);
+
+        // Exit (DECRST 1).
+        let data = b"\x1b[?1l";
+        unsafe {
+            ggterm_session_process_bytes(id, data.as_ptr(), data.len());
+        }
+        assert_eq!(unsafe { ggterm_session_cursor_keys_app(id) }, 0);
+        unsafe { ggterm_session_destroy(id) };
+    }
+
+    #[test]
+    fn t_session_cursor_keys_app_invalid() {
+        assert_eq!(unsafe { ggterm_session_cursor_keys_app(99999) }, 0);
     }
 }

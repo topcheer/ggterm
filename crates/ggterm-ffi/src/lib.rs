@@ -323,6 +323,23 @@ pub unsafe extern "C" fn ggterm_take_bell(handle: *mut TerminalHandle) -> c_int 
     }
 }
 
+/// Check if cursor keys are in application mode (DECCKM).
+///
+/// When true, arrow keys should send `ESC O A/B/C/D` instead of
+/// `ESC [ A/B/C/D`. This is needed for vim, less, htop, etc.
+///
+/// # Safety
+/// Handle must be valid or null (null is safe, returns 0).
+pub unsafe extern "C" fn ggterm_cursor_keys_app(handle: *mut TerminalHandle) -> c_int {
+    if handle.is_null() {
+        return 0;
+    }
+    unsafe {
+        let h = &*handle;
+        if h.terminal.cursor_keys_app() { 1 } else { 0 }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,6 +521,24 @@ mod tests {
             assert_eq!(cols, 120);
             assert_eq!(rows, 40);
 
+            ggterm_free(h);
+        }
+    }
+
+    #[test]
+    fn t_ffi_cursor_keys_app() {
+        unsafe {
+            let h = ggterm_new(80, 24);
+            // Default: normal mode (0).
+            assert_eq!(ggterm_cursor_keys_app(h), 0);
+            // Enter application cursor mode: DECSET 1 (DECCKM).
+            let data = b"\x1b[?1h";
+            ggterm_process_bytes(h, data.as_ptr(), data.len());
+            assert_eq!(ggterm_cursor_keys_app(h), 1);
+            // Exit: DECRST 1.
+            let data = b"\x1b[?1l";
+            ggterm_process_bytes(h, data.as_ptr(), data.len());
+            assert_eq!(ggterm_cursor_keys_app(h), 0);
             ggterm_free(h);
         }
     }

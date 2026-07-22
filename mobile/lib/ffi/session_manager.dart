@@ -278,6 +278,10 @@ class SessionManager {
   /// Returns true if the alternate screen buffer is active (vim/less).
   bool isAltScreen(int id) => _ffi.sessionAltScreen(id) != 0;
 
+  /// Returns true if cursor keys are in application mode (DECCKM).
+  /// When active (vim/less/htop), arrow keys must use SS3 sequences.
+  bool cursorKeysApp(int id) => _ffi.sessionCursorKeysApp(id) != 0;
+
   /// Returns true if alternate scroll mode is enabled (DECSET 7727).
   /// When true, scroll in alt screen should send arrow keys, not scroll viewport.
   bool altScrollEnabled(int id) => _ffi.sessionAltScroll(id) != 0;

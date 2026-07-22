@@ -409,7 +409,11 @@ class _TerminalScreenState extends State<TerminalScreen>
   }
 
   void _sendKey(String keyName) {
-    final codes = _keyNameToBytes(keyName);
+    // Check if cursor keys are in application mode (DECCKM).
+    // When active (vim/less/htop), arrow keys and Home/End must use
+    // ESC O A/B/C/D instead of ESC [ A/B/C/D.
+    final appCursor = widget.sessionManager.cursorKeysApp(_currentSessionId);
+    final codes = _keyNameToBytes(keyName, appCursor);
     _sendInput(codes);
   }
 
@@ -557,7 +561,7 @@ class _TerminalScreenState extends State<TerminalScreen>
   }
 
   /// Convert special key names to terminal escape sequences.
-  List<int> _keyNameToBytes(String name) {
+  List<int> _keyNameToBytes(String name, [bool appCursor = false]) {
     switch (name) {
       case 'Enter':
         return [0x0D];
@@ -578,17 +582,29 @@ class _TerminalScreenState extends State<TerminalScreen>
       case 'CtrlU':
         return [0x15]; // Ctrl+U — clear line
       case 'Up':
-        return [0x1B, 0x5B, 0x41]; // ESC [ A
+        return appCursor
+            ? [0x1B, 0x4F, 0x41] // ESC O A
+            : [0x1B, 0x5B, 0x41]; // ESC [ A
       case 'Down':
-        return [0x1B, 0x5B, 0x42];
+        return appCursor
+            ? [0x1B, 0x4F, 0x42]
+            : [0x1B, 0x5B, 0x42];
       case 'Right':
-        return [0x1B, 0x5B, 0x43];
+        return appCursor
+            ? [0x1B, 0x4F, 0x43]
+            : [0x1B, 0x5B, 0x43];
       case 'Left':
-        return [0x1B, 0x5B, 0x44];
+        return appCursor
+            ? [0x1B, 0x4F, 0x44]
+            : [0x1B, 0x5B, 0x44];
       case 'Home':
-        return [0x1B, 0x5B, 0x48]; // ESC [ H
+        return appCursor
+            ? [0x1B, 0x4F, 0x48] // ESC O H
+            : [0x1B, 0x5B, 0x48]; // ESC [ H
       case 'End':
-        return [0x1B, 0x5B, 0x46]; // ESC [ F
+        return appCursor
+            ? [0x1B, 0x4F, 0x46] // ESC O F
+            : [0x1B, 0x5B, 0x46]; // ESC [ F
       case 'PageUp':
         return [0x1B, 0x5B, 0x35, 0x7E]; // ESC [ 5 ~
       case 'PageDown':
@@ -1384,6 +1400,9 @@ class _TerminalScreenState extends State<TerminalScreen>
     final ctrl = HardwareKeyboard.instance.isControlPressed;
     final alt = HardwareKeyboard.instance.isAltPressed;
 
+    // Check DECCKM for correct arrow/Home/End sequences.
+    final appCursor = widget.sessionManager.cursorKeysApp(_currentSessionId);
+
     // Map common special keys using Flutter LogicalKeyboardKey constants.
     switch (key) {
       case LogicalKeyboardKey.tab:
@@ -1398,25 +1417,37 @@ class _TerminalScreenState extends State<TerminalScreen>
       case LogicalKeyboardKey.enter:
         _sendInput([0x0D]);
         return KeyEventResult.handled;
-      // Arrow keys
+      // Arrow keys — use application mode sequences when DECCKM is active.
       case LogicalKeyboardKey.arrowUp:
-        _sendInput([0x1B, 0x5B, 0x41]);
+        _sendInput(appCursor
+            ? [0x1B, 0x4F, 0x41]
+            : [0x1B, 0x5B, 0x41]);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowDown:
-        _sendInput([0x1B, 0x5B, 0x42]);
+        _sendInput(appCursor
+            ? [0x1B, 0x4F, 0x42]
+            : [0x1B, 0x5B, 0x42]);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowRight:
-        _sendInput([0x1B, 0x5B, 0x43]);
+        _sendInput(appCursor
+            ? [0x1B, 0x4F, 0x43]
+            : [0x1B, 0x5B, 0x43]);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowLeft:
-        _sendInput([0x1B, 0x5B, 0x44]);
+        _sendInput(appCursor
+            ? [0x1B, 0x4F, 0x44]
+            : [0x1B, 0x5B, 0x44]);
         return KeyEventResult.handled;
       // Navigation keys
       case LogicalKeyboardKey.home:
-        _sendInput([0x1B, 0x5B, 0x48]);
+        _sendInput(appCursor
+            ? [0x1B, 0x4F, 0x48]
+            : [0x1B, 0x5B, 0x48]);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.end:
-        _sendInput([0x1B, 0x5B, 0x46]);
+        _sendInput(appCursor
+            ? [0x1B, 0x4F, 0x46]
+            : [0x1B, 0x5B, 0x46]);
         return KeyEventResult.handled;
       case LogicalKeyboardKey.pageUp:
         _sendInput([0x1B, 0x5B, 0x35, 0x7E]);
