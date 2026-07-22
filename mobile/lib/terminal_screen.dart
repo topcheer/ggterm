@@ -1008,7 +1008,10 @@ class _TerminalScreenState extends State<TerminalScreen>
     if (line.isEmpty) return;
 
     Clipboard.setData(ClipboardData(text: line));
-    _showCopiedSnackBar('Copied line: ${line.length > 40 ? '${line.substring(0, 40)}...' : line}');
+    // Use runes for correct CJK/emoji character count.
+    final preview = line.runes.take(40).join();
+    final suffix = line.runes.length > 40 ? '...' : '';
+    _showCopiedSnackBar('Copied line: $preview$suffix');
   }
 
   /// Double-tap → select and copy the word at the tap position.
@@ -1881,8 +1884,9 @@ class _TerminalScreenState extends State<TerminalScreen>
                       if (_selStartIdx != null) {
                         final text = _getSelectedText();
                         if (text != null && text.trim().isNotEmpty) {
+                          final charCount = text.trim().runes.length;
                           Clipboard.setData(ClipboardData(text: text));
-                          _showCopiedSnackBar('Copied ${text.trim().length} chars');
+                          _showCopiedSnackBar('Copied $charCount chars');
                         }
                         _clearSelection();
                         return;

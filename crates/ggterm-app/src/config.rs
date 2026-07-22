@@ -420,6 +420,19 @@ impl Config {
             if path.exists() {
                 return Self::load(&path);
             }
+            // First run: create a documented config file so users know
+            // what options are available. This is a "best effort" — if
+            // file creation fails, we just use defaults silently.
+            let config = Self::default();
+            if let Some(parent) = path.parent()
+                && std::fs::create_dir_all(parent).is_ok()
+            {
+                let template = config.generate_documented_template();
+                if std::fs::write(&path, template).is_ok() {
+                    log::info!("Created default config at {}", path.display());
+                }
+            }
+            return Ok(config);
         }
         Ok(Self::default())
     }
