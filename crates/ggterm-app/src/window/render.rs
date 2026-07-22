@@ -3458,12 +3458,13 @@ impl DesktopApp {
         }
 
         // P19-C: Debug log tab bar state (data already updated before render).
-        if self.tab_bar.visible {
+        // Guard with log_enabled! to avoid format() allocation when debug logging is off.
+        if self.tab_bar.visible && log::log_enabled!(log::Level::Debug) {
             log::debug!("tab_bar: {}", self.tab_bar.format());
         }
 
         // P19-C: Settings overlay logging.
-        if self.settings.visible {
+        if self.settings.visible && log::log_enabled!(log::Level::Debug) {
             log::debug!("settings: {}", self.settings.format_summary());
         }
     }
