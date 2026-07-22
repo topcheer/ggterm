@@ -47,7 +47,7 @@ class TerminalScreen extends StatefulWidget {
 
 class _TerminalScreenState extends State<TerminalScreen>
     with WidgetsBindingObserver {
-  static final _wordCharRe = RegExp(r'[A-Za-z0-9/._\-~]');
+  static final _wordCharRe = RegExp(r'[\p{L}\p{N}/._\-~+@]', unicode: true);
   double _fontSize = 13.0;
   static const _fontSizeFile = 'font_size.json';
   static const _themeFile = 'terminal_theme.json';
