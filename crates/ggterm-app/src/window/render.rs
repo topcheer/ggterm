@@ -3048,9 +3048,14 @@ impl DesktopApp {
                     ..Default::default()
                 });
             } else if ai.is_busy() && ai.content().is_none() {
-                // Show "Thinking..." with animated dots.
+                // Show "Thinking" with animated dots.
+                let dots = match self.frame_count / 20 % 4 {
+                    0 => ".  ",
+                    1 => ".. ",
+                    _ => "...",
+                };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                    text: "Thinking...".to_string(),
+                    text: format!("Thinking{dots}"),
                     left: panel_x + 16.0,
                     top: content_y,
                     color: (130, 130, 140),
