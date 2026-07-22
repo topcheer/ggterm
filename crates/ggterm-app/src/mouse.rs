@@ -354,9 +354,18 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
             }
             // Trim trailing punctuation that's unlikely part of the URL.
             while j > url_start + scheme_len
-                && matches!(chars[j - 1], '.' | ',' | ';' | ')' | ']' | '}' | '\'')
+                && matches!(chars[j - 1], '.' | ',' | ';' | ']' | '}' | '\'' | '>')
             {
                 j -= 1;
+            }
+            // Parenthesis balancing: trim trailing ')' if it's unbalanced
+            // (more closes than opens in the full URL text).
+            if j > url_start + scheme_len && chars[j - 1] == ')' {
+                let open_count = chars[url_start..j].iter().filter(|&&c| c == '(').count();
+                let close_count = chars[url_start..j].iter().filter(|&&c| c == ')').count();
+                if close_count > open_count {
+                    j -= 1;
+                }
             }
 
             if j > url_start + scheme_len {
@@ -391,9 +400,17 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
                     }
                     // Trim trailing punctuation
                     while j > host_end
-                        && matches!(chars[j - 1], '.' | ',' | ';' | ')' | ']' | '}' | '\'')
+                        && matches!(chars[j - 1], '.' | ',' | ';' | ']' | '}' | '\'' | '>')
                     {
                         j -= 1;
+                    }
+                    // Parenthesis balancing for bare hostnames too.
+                    if j > host_end && chars[j - 1] == ')' {
+                        let open_count = chars[i..j].iter().filter(|&&c| c == '(').count();
+                        let close_count = chars[i..j].iter().filter(|&&c| c == ')').count();
+                        if close_count > open_count {
+                            j -= 1;
+                        }
                     }
                     // Require path/port after hostname (avoid linking bare "example.com")
                     if j > host_end && (chars[host_end] == '/' || chars[host_end] == ':') {
@@ -990,8 +1007,37 @@ mod tests {
 
         let urls2 = find_urls("See (https://example.com) here");
         assert_eq!(urls2.len(), 1);
-        // Trailing ) should be trimmed
+        // Trailing ) should be trimmed (unbalanced)
         assert_eq!(urls2[0].1, "https://example.com");
+    }
+
+    #[test]
+    fn test_url_angle_bracket_trimmed() {
+        let urls = find_urls("See <https://example.com/path> for details");
+        assert_eq!(urls.len(), 1);
+        // Trailing > should be trimmed
+        assert_eq!(urls[0].1, "https://example.com/path");
+    }
+
+    #[test]
+    fn test_url_balanced_parentheses_preserved() {
+        // Wikipedia-style URLs with balanced parens should NOT be trimmed.
+        let urls = find_urls("https://en.wikipedia.org/wiki/Foo_(disambiguation)");
+        assert_eq!(urls.len(), 1);
+        assert_eq!(
+            urls[0].1,
+            "https://en.wikipedia.org/wiki/Foo_(disambiguation)"
+        );
+
+        // Nested balanced parens
+        let urls2 = find_urls("https://example.com/f(a(b)c)");
+        assert_eq!(urls2.len(), 1);
+        assert_eq!(urls2[0].1, "https://example.com/f(a(b)c)");
+
+        // Unbalanced: trailing ) outside URL scope
+        let urls3 = find_urls("(see https://example.com)");
+        assert_eq!(urls3.len(), 1);
+        assert_eq!(urls3[0].1, "https://example.com");
     }
 
     #[test]
