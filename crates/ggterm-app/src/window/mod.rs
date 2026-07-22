@@ -1540,24 +1540,9 @@ impl ApplicationHandler for DesktopApp {
                             self.status_bar.spinner_frame.wrapping_add(1);
                     }
                 } else {
-                    // Command not running — show idle timer if idle > 5s.
+                    // Command not running — clear timer.
                     self.status_bar.command_timer.clear();
-                    let last = self.active_session().app().terminal().last_output_time();
-                    if let Some(t) = last {
-                        let idle = std::time::Instant::now().duration_since(t);
-                        let idle_secs = idle.as_secs();
-                        if idle_secs >= 5 {
-                            // Only reformat when the second changes — avoids
-                            // per-frame String allocation for the idle timer.
-                            if idle_secs != self.last_idle_secs {
-                                self.last_idle_secs = idle_secs;
-                                self.status_bar.command_timer =
-                                    crate::status_bar::format_duration(idle);
-                            }
-                        } else {
-                            self.last_idle_secs = 0;
-                        }
-                    }
+                    self.last_idle_secs = 0;
                 }
 
                 // Selection character/word count (live feedback while selecting).
