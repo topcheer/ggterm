@@ -2501,7 +2501,9 @@ impl DesktopApp {
         let term = self.active_session().app().terminal();
 
         // Check if mouse tracking is active.
-        if term.mouse_tracking_enabled() {
+        // Shift bypasses mouse tracking, allowing text selection in programs
+        // that capture the mouse (vim, htop, tmux). Standard terminal behavior.
+        if term.mouse_tracking_enabled() && !self.mods.shift {
             let sgr = term.mouse_sgr_enabled() || term.mouse_sgr_pixel_enabled();
             let sgr_pixel = term.mouse_sgr_pixel_enabled();
             let urxvt = term.mouse_urxvt_enabled();
@@ -3589,7 +3591,8 @@ impl DesktopApp {
         let term = self.active_session().app().terminal();
 
         // When mouse tracking is on, send wheel as button events.
-        if term.mouse_tracking_enabled() {
+        // Shift bypasses mouse tracking for normal scrollback scrolling.
+        if term.mouse_tracking_enabled() && !self.mods.shift {
             let sgr = term.mouse_sgr_enabled();
             let urxvt = term.mouse_urxvt_enabled();
 
