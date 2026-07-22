@@ -1831,6 +1831,7 @@ impl DesktopApp {
                 Ok(Ok((stdout, stderr))) => {
                     let text = String::from_utf8_lossy(&stdout);
                     crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                    self.clipboard_feedback.trigger();
                     if !stderr.is_empty() {
                         let err = String::from_utf8_lossy(&stderr);
                         self.show_toast(format!("Error: {}", err.trim()));
@@ -2312,6 +2313,7 @@ impl DesktopApp {
         match mgr.config().export_to_toml() {
             Ok(toml) => {
                 crate::clipboard::set_clipboard_bytes(toml.as_bytes());
+                self.clipboard_feedback.trigger();
                 self.show_toast(format!("Config exported ({} bytes)", toml.len()));
             }
             Err(e) => {
@@ -2888,6 +2890,7 @@ impl DesktopApp {
             "terminal.copy_cwd" => {
                 if let Some(cwd) = self.active_session().cwd() {
                     crate::clipboard::set_clipboard_bytes(cwd.to_string_lossy().as_bytes());
+                    self.clipboard_feedback.trigger();
                     self.show_toast("Copied path");
                 } else {
                     self.show_toast("No path available");
@@ -2966,6 +2969,7 @@ impl DesktopApp {
                 match cwd {
                     Some(path) => {
                         crate::clipboard::set_clipboard_bytes(path.to_string_lossy().as_bytes());
+                        self.clipboard_feedback.trigger();
                         self.show_toast(format!("Copied: {}", path.display()));
                     }
                     None => {
@@ -3003,6 +3007,7 @@ impl DesktopApp {
                     }
                     Err(_) => {
                         crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                        self.clipboard_feedback.trigger();
                         self.show_toast(format!("Copied {lines} lines (no HOME dir)"));
                     }
                 }
@@ -3022,6 +3027,7 @@ impl DesktopApp {
                 match text {
                     Some(t) if !t.is_empty() => {
                         crate::clipboard::set_clipboard_bytes(t.as_bytes());
+                        self.clipboard_feedback.trigger();
                         let lines = t.lines().count();
                         self.show_toast(format!("Copied command + {lines} lines"));
                     }
@@ -3046,6 +3052,7 @@ impl DesktopApp {
             "terminal.copy_visible" => {
                 let text = self.active_session().app().grid().export_visible_text();
                 crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                self.clipboard_feedback.trigger();
                 self.show_toast(format!(
                     "Copied {} chars (visible screen)",
                     text.chars().count()
