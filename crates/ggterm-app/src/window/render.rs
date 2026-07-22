@@ -435,7 +435,7 @@ impl DesktopApp {
                             y: tab_y + 4.0,
                             w: 18.0,
                             h: tab_h - 8.0,
-                            color: (220.0, 80.0, 80.0, 0.2),
+                            color: (0.86, 0.31, 0.31, 0.2),
                             radius: 9.0,
                             stroke_width: 0.0,
                         });
