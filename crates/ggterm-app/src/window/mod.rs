@@ -326,12 +326,8 @@ pub struct DesktopApp {
     /// Last applied font family from config (for change detection on hot-reload).
     #[cfg(feature = "config-watch")]
     last_applied_font_family: String,
-    /// Cached uptime in minutes — avoids per-frame format! when minute hasn't changed.
-    cached_uptime_mins: u64,
     /// Cached raw CWD path — compare before formatting display string.
     cached_cwd_raw: Option<std::path::PathBuf>,
-    /// Cached last command Duration — skip format! when unchanged.
-    cached_cmd_duration: Option<std::time::Duration>,
 
     // ── Status bar visibility (P17-D) ──
     /// Whether the status bar overlay is visible.
@@ -766,9 +762,7 @@ impl DesktopApp {
                 .as_ref()
                 .map(|m| m.config().appearance.font_family.clone())
                 .unwrap_or_default(),
-            cached_uptime_mins: 0,
             cached_cwd_raw: None,
-            cached_cmd_duration: None,
             status_bar_visible: true,
             hovered_link: None,
             scroll_indicator_rect: None,
@@ -1513,25 +1507,6 @@ impl ApplicationHandler for DesktopApp {
                 // P17-E: Update exit code from terminal's last command.
                 self.status_bar
                     .set_exit_code(self.active_session().app().terminal().last_exit_code());
-                // Last command output line count.
-                self.status_bar.last_output_lines = self
-                    .active_session()
-                    .app()
-                    .terminal()
-                    .last_command_output_lines();
-                // Command execution duration — only format when the
-                // underlying Duration changes (new command completes).
-                let cmd_dur = self
-                    .active_session()
-                    .app()
-                    .terminal()
-                    .last_command_duration();
-                if cmd_dur != self.cached_cmd_duration {
-                    self.cached_cmd_duration = cmd_dur;
-                    self.status_bar.command_duration = cmd_dur
-                        .map(crate::status_bar::format_duration)
-                        .unwrap_or_default();
-                }
                 // Running command indicator.
                 let was_running = self.status_bar.command_running;
                 self.status_bar.command_running =
@@ -1541,7 +1516,6 @@ impl ApplicationHandler for DesktopApp {
                 // misleading "exit:0" / "5.7s" while the new command runs.
                 if self.status_bar.command_running && !was_running {
                     self.status_bar.set_exit_code(None);
-                    self.status_bar.command_duration.clear();
                     self.last_cmd_tenths = 0;
                 }
                 if self.status_bar.command_running {
@@ -1592,35 +1566,15 @@ impl ApplicationHandler for DesktopApp {
 
                 // Selection character/word count (live feedback while selecting).
                 // Single pass — avoids traversing the selection twice per frame.
-                let (sel_chars, sel_words) = if self.selection.is_active() {
-                    self.count_selection()
+                let sel_chars = if self.selection.is_active() {
+                    self.count_selection().0
                 } else {
-                    (0, 0)
+                    0
                 };
                 self.status_bar.selection_count = sel_chars;
-                self.status_bar.selection_words = sel_words;
 
                 // Terminal lock state.
                 self.status_bar.locked = self.locked;
-
-                // Session uptime (only show after 1 minute).
-                // Only reformat when the minute changes to avoid per-frame allocation.
-                let uptime = self.active_session().uptime();
-                let uptime_mins = uptime.as_secs() / 60;
-                if uptime_mins != self.cached_uptime_mins {
-                    self.cached_uptime_mins = uptime_mins;
-                    self.status_bar.uptime = if uptime_mins >= 1 {
-                        let h = uptime_mins / 60;
-                        let m = uptime_mins % 60;
-                        if h > 0 {
-                            format!("{}h{}m", h, m)
-                        } else {
-                            format!("{}m", m)
-                        }
-                    } else {
-                        String::new()
-                    };
-                }
 
                 // Git branch (throttled: check every ~5s / 300 frames).
                 self.git_check_counter = self.git_check_counter.wrapping_add(1);
@@ -1668,9 +1622,6 @@ impl ApplicationHandler for DesktopApp {
                 // Only clone when changed — avoids per-frame String allocation.
                 if self.status_bar.git_branch != self.git_branch_cache {
                     self.status_bar.git_branch = self.git_branch_cache.clone();
-                }
-                if self.status_bar.theme_name != self.last_applied_theme {
-                    self.status_bar.theme_name = self.last_applied_theme.clone();
                 }
 
                 self.status_bar.pane_zoomed = self.pane_zoomed;
