@@ -3290,11 +3290,11 @@ impl DesktopApp {
     /// A "word" is a run of non-whitespace characters. Finds the word
     /// boundaries by scanning left and right from the clicked cell.
     /// Get configured word characters for boundary detection.
-    fn word_chars_config(&self) -> String {
+    fn word_chars_config(&self) -> &str {
         self.config_mgr
             .as_ref()
-            .map(|m| m.config().terminal.word_chars.clone())
-            .unwrap_or_else(|| ".-/:@~+#?=&%$".to_string())
+            .map(|m| m.config().terminal.word_chars.as_str())
+            .unwrap_or(".-/:@~+#?=&%$")
     }
 
     pub(super) fn select_word_at(&mut self, col: u16, row: u16) {
