@@ -1872,10 +1872,18 @@ impl DesktopApp {
             // Terminal output (OSC 9/777) can contain arbitrary text from
             // remote programs — must not allow AppleScript code injection.
             fn esc(s: &str) -> String {
-                s.replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('{', "\\{")
-                    .replace('}', "\\}")
+                let mut out = String::with_capacity(s.len());
+                for ch in s.chars() {
+                    match ch {
+                        '\\' => out.push_str("\\\\"),
+                        '"' => out.push_str("\\\""),
+                        '{' => out.push_str("\\{"),
+                        '}' => out.push_str("\\}"),
+                        '\n' | '\r' => out.push(' '),
+                        _ => out.push(ch),
+                    }
+                }
+                out
             }
             let script = format!(
                 "display notification \"{}\" with title \"{}\"",
