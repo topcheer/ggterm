@@ -92,10 +92,22 @@ impl ContextMenuAction {
         }
     }
 
-    /// Indices of actions that should have a separator drawn *before* them.
-    /// Creates visual groups: [clipboard], [search], [splits], [actions].
+    /// Separator before action groups: [clipboard], [search], [splits], [actions].
     pub fn separator_before(action: &Self) -> bool {
         matches!(action, Self::Search | Self::SplitHorizontal | Self::Clear)
+    }
+
+    /// Whether this action is currently applicable given the app state.
+    ///
+    /// Disabled items are rendered dimmed and cannot be activated.
+    pub fn is_enabled(&self, has_selection: bool, has_url: bool, clipboard_has_text: bool) -> bool {
+        match self {
+            Self::Copy => has_selection,
+            Self::Paste => clipboard_has_text,
+            Self::SearchWeb => has_selection,
+            Self::OpenUrl => has_url,
+            _ => true, // SelectAll, Search, splits, Clear, Export, Reset always available
+        }
     }
 }
 

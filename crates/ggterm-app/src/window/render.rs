@@ -1467,8 +1467,13 @@ impl DesktopApp {
                     && cur_y >= iy
                     && cur_y < iy + crate::context_menu::ContextMenuState::ITEM_HEIGHT;
 
-                // Hover highlight — inverted: bright bg + dark text.
-                if is_hovered {
+                // Context-aware enable/disable.
+                let has_selection = self.selection.is_active();
+                let has_url = self.hovered_link.is_some();
+                let is_enabled = action.is_enabled(has_selection, has_url, true);
+
+                // Hover highlight — only for enabled items.
+                if is_hovered && is_enabled {
                     ui_rects.push(ggterm_render_wgpu::UiRect {
                         x: mx + 4.0,
                         y: iy,
@@ -1480,12 +1485,14 @@ impl DesktopApp {
                     });
                 }
 
-                // Item text — dark on hover, light otherwise.
+                // Item text — dimmed if disabled, dark on hover, light otherwise.
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: action.label().to_string(),
                     left: mx + 16.0,
                     top: iy + 7.0,
-                    color: if is_hovered {
+                    color: if !is_enabled {
+                        (90, 90, 100) // dimmed — action unavailable
+                    } else if is_hovered {
                         (20, 20, 30)
                     } else {
                         (210, 215, 230)
@@ -1500,7 +1507,9 @@ impl DesktopApp {
                         text: sc.to_string(),
                         left: mx + menu_w - sc_w - 12.0,
                         top: iy + 7.0,
-                        color: if is_hovered {
+                        color: if !is_enabled {
+                            (60, 60, 70)
+                        } else if is_hovered {
                             (90, 90, 110)
                         } else {
                             (120, 125, 145)
@@ -2428,7 +2437,11 @@ impl DesktopApp {
             // Full opacity: 108 >= frames > 24.
             // Fade-out: last 24 frames.
             let fade_in = ((120 - *frames) as f32 / 12.0).min(1.0);
-            let fade_out = if *frames > 24 { 1.0 } else { *frames as f32 / 24.0 };
+            let fade_out = if *frames > 24 {
+                1.0
+            } else {
+                *frames as f32 / 24.0
+            };
             let alpha = fade_in.min(fade_out);
 
             // Slide-up offset: start 10px lower during fade-in.
@@ -2685,7 +2698,7 @@ impl DesktopApp {
                 } else {
                     (200u8, 100, 100)
                 };
-                let count_w = count_text.len() as f32 * cell_w;
+                let count_w = count_text.chars().count() as f32 * cell_w;
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: count_text,
                     left: bar_x + bar_w - count_w - 14.0,
@@ -2921,7 +2934,7 @@ impl DesktopApp {
             });
 
             // Tooltip showing the full URL.
-            let tooltip_w = (url.len() as f32 * cell_w + 24.0).min(400.0);
+            let tooltip_w = (url.chars().count() as f32 * cell_w + 24.0).min(400.0);
             let tooltip_h = 24.0;
             let px = self.cursor_pos.0 as f32 + 14.0;
             let py = self.cursor_pos.1 as f32 + 14.0;

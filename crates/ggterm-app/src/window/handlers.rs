@@ -3443,7 +3443,14 @@ impl DesktopApp {
         if index >= actions.len() {
             return;
         }
-        match actions[index] {
+        let action = actions[index];
+        // Guard: skip disabled items.
+        let has_selection = self.selection.is_active();
+        let has_url = self.hovered_link.is_some();
+        if !action.is_enabled(has_selection, has_url, true) {
+            return;
+        }
+        match action {
             crate::context_menu::ContextMenuAction::Copy => {
                 self.copy_selection_to_clipboard();
             }
