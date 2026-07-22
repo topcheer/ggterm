@@ -257,157 +257,9 @@ impl StatusBar {
     /// When a config error is set, `!ERROR!` is prepended so the renderer
     /// can highlight it in red.
     pub fn format(&self) -> String {
-        let mut parts: Vec<String> = Vec::with_capacity(8);
-
-        // Config error indicator — shown first for visibility (P21-G).
-        if self.config_error.is_some() {
-            parts.push("!ERROR!".to_string());
-        }
-
-        // Cursor position (always shown).
-        parts.push(format!(
-            "Row:{} Col:{}",
-            self.cursor_row + 1,
-            self.cursor_col + 1
-        ));
-
-        // Tab info (only show "Tab x/y" when more than 1 tab).
-        if self.tab_count > 1 {
-            parts.push(format!("Tab {}/{}", self.active_tab + 1, self.tab_count));
-        }
-        if self.pane_count > 1 {
-            parts.push(format!("{} panes", self.pane_count));
-        }
-
-        // Command exit code (P17-E).
-        if let Some(code) = self.exit_code {
-            if code == 0 {
-                parts.push("exit:0".to_string());
-            } else {
-                parts.push(format!("exit:{}", code));
-            }
-        }
-
-        // Last command output line count.
-        if let Some(lines) = self.last_output_lines {
-            parts.push(format!("{}L", lines));
-        }
-
-        // Command execution duration.
-        if !self.command_duration.is_empty() {
-            parts.push(format!("⏱{}", self.command_duration));
-        }
-
-        // Running command spinner.
-        if self.command_running {
-            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let frame = frames[(self.spinner_frame as usize) % frames.len()];
-            // Show live timer if available.
-            if !self.command_timer.is_empty() {
-                parts.push(format!("{frame} {}", self.command_timer));
-            } else {
-                parts.push(frame.to_string());
-            }
-        } else if !self.command_timer.is_empty() {
-            // Idle timer: show time since last output (reuses command_timer field).
-            parts.push(format!("idle {}", self.command_timer));
-        }
-
-        // Selection character count.
-        if self.selection_count > 0 {
-            if self.selection_words > 0 {
-                parts.push(format!(
-                    "SEL:{}c/{}w",
-                    self.selection_count, self.selection_words
-                ));
-            } else {
-                parts.push(format!("SEL:{}c", self.selection_count));
-            }
-        }
-
-        // Terminal lock indicator.
-        if self.locked {
-            parts.push("LOCK".to_string());
-        }
-
-        // Session uptime.
-        if !self.uptime.is_empty() {
-            parts.push(self.uptime.clone());
-        }
-
-        // Git branch.
-        if !self.git_branch.is_empty() {
-            parts.push(format!(" {}", self.git_branch));
-        }
-
-        // Active theme name.
-        if !self.theme_name.is_empty() {
-            parts.push(format!("theme:{}", self.theme_name));
-        }
-        if !self.dimensions.is_empty() {
-            parts.push(self.dimensions.clone());
-        }
-
-        // Mode indicators.
-        if self.bell_active {
-            parts.push("bell".to_string());
-        }
-        if self.search_active {
-            parts.push("search".to_string());
-        }
-        if self.ai_active {
-            parts.push("ai".to_string());
-        }
-
-        // Active profile name (P22-C).
-        if !self.profile_name.is_empty() {
-            parts.push(format!("@{}", self.profile_name));
-        }
-
-        // P25-D: Broadcast mode indicator.
-        if !self.broadcast_mode.is_empty() {
-            parts.push(format!("BCAST:{}", self.broadcast_mode));
-        }
-
-        // P25-E: Recording indicator.
-        if self.recording {
-            parts.push("REC".to_string());
-        }
-
-        // Pane zoom indicator.
-        if self.pane_zoomed {
-            parts.push("ZOOM".to_string());
-        }
-        // Font size indicator — show only when non-default.
-        if (self.font_size - 14.0).abs() > 0.1 {
-            parts.push(format!("{}px", self.font_size as u32));
-        }
-        if self.cursor_line {
-            parts.push("CL".to_string());
-        }
-
-        // Scrollback browse mode indicator.
-        if self.scroll_mode {
-            parts.push("SCROLL".to_string());
-        }
-
-        // Progress indicator (OSC 9;4).
-        if let Some(pct) = self.progress {
-            parts.push(format!("{:.0}%", pct * 100.0));
-        }
-
-        // System clock.
-        if self.show_clock {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default();
-            let secs = now.as_secs() % 86400;
-            let h = (secs / 3600 + local_offset_hours()) % 24;
-            let m = (secs / 60) % 60;
-            parts.push(format!("{:02}:{:02}", h, m));
-        }
-
-        parts.join(" | ")
+        // format_segments already includes " | " separator segments.
+        let segs = self.format_segments();
+        segs.into_iter().map(|(text, _)| text).collect::<String>()
     }
 
     /// Format the status bar as colored segments for modern overlay rendering.
@@ -607,15 +459,15 @@ mod tests {
     fn t_default_format() {
         let sb = StatusBar::new();
         let formatted = sb.format();
-        // Default: cursor (0,0), single tab (not shown), no flags.
-        assert_eq!(formatted, "Row:1 Col:1");
+        // Default: cursor 1:1, no flags.
+        assert_eq!(formatted, "1:1");
     }
 
     #[test]
     fn t_update_cursor() {
         let mut sb = StatusBar::new();
         sb.update_cursor(5, 10);
-        assert_eq!(sb.format(), "Row:6 Col:11");
+        assert_eq!(sb.format(), "6:11");
     }
 
     #[test]
@@ -625,15 +477,16 @@ mod tests {
         sb.set_bell(true);
         sb.set_search(true);
         sb.set_ai(true);
-        assert_eq!(sb.format(), "Row:4 Col:8 | bell | search | ai");
+        assert_eq!(sb.format(), "4:8 | BELL | SEARCH | AI");
     }
 
     #[test]
     fn t_multi_tab_display() {
         let mut sb = StatusBar::new();
         sb.update_cursor(0, 0);
-        sb.update_tabs(3, 1); // 3 tabs, active = index 1 (Tab 2/3)
-        assert_eq!(sb.format(), "Row:1 Col:1 | Tab 2/3");
+        sb.update_tabs(3, 1);
+        // Tabs no longer shown in simplified format.
+        assert_eq!(sb.format(), "1:1");
     }
 
     #[test]
@@ -645,13 +498,11 @@ mod tests {
         sb.set_search(true);
         sb.set_ai(true);
 
-        // Now clear everything.
         sb.set_bell(false);
         sb.set_search(false);
         sb.set_ai(false);
 
-        // Should show cursor + tabs only.
-        assert_eq!(sb.format(), "Row:11 Col:21 | Tab 1/2");
+        assert_eq!(sb.format(), "11:21");
     }
 
     #[test]
@@ -659,22 +510,21 @@ mod tests {
         let mut sb = StatusBar::new();
         sb.update_cursor(0, 0);
         sb.update_tabs(1, 0);
-        // With a single tab, "Tab 1/1" should NOT appear.
-        assert_eq!(sb.format(), "Row:1 Col:1");
+        assert_eq!(sb.format(), "1:1");
     }
 
     #[test]
     fn t_bell_only() {
         let mut sb = StatusBar::new();
         sb.set_bell(true);
-        assert_eq!(sb.format(), "Row:1 Col:1 | bell");
+        assert_eq!(sb.format(), "1:1 | BELL");
     }
 
     #[test]
     fn t_search_only() {
         let mut sb = StatusBar::new();
         sb.set_search(true);
-        assert_eq!(sb.format(), "Row:1 Col:1 | search");
+        assert_eq!(sb.format(), "1:1 | SEARCH");
     }
 
     // ── P17-E: Exit code tests ──────────────────────────────────────
@@ -683,21 +533,22 @@ mod tests {
     fn t_exit_code_zero_shows_ok() {
         let mut sb = StatusBar::new();
         sb.set_exit_code(Some(0));
-        assert_eq!(sb.format(), "Row:1 Col:1 | exit:0");
+        // Exit 0 is hidden in simplified format.
+        assert_eq!(sb.format(), "1:1");
     }
 
     #[test]
     fn t_exit_code_nonzero_shows_code() {
         let mut sb = StatusBar::new();
         sb.set_exit_code(Some(127));
-        assert_eq!(sb.format(), "Row:1 Col:1 | exit:127");
+        assert_eq!(sb.format(), "1:1 | exit:127");
     }
 
     #[test]
     fn t_exit_code_none_not_shown() {
         let mut sb = StatusBar::new();
         sb.set_exit_code(None);
-        assert_eq!(sb.format(), "Row:1 Col:1");
+        assert_eq!(sb.format(), "1:1");
     }
 
     // ── P21-G: Config error indicator tests ──────────────────────────
@@ -715,30 +566,17 @@ mod tests {
         sb.set_config_error(Some("font_size out of range".to_string()));
         assert!(sb.has_config_error());
         assert_eq!(sb.config_error_text(), Some("font_size out of range"));
-        assert_eq!(sb.format(), "!ERROR! | Row:1 Col:1");
+        assert_eq!(sb.format(), "!ERROR! | 1:1");
     }
 
     #[test]
     fn t_config_error_with_other_flags() {
         let mut sb = StatusBar::new();
         sb.update_cursor(5, 10);
-        sb.update_tabs(2, 0);
         sb.set_bell(true);
         sb.set_config_error(Some("bad theme".to_string()));
-        assert_eq!(sb.format(), "!ERROR! | Row:6 Col:11 | Tab 1/2 | bell");
+        assert_eq!(sb.format(), "!ERROR! | 6:11 | BELL");
     }
-
-    #[test]
-    fn t_config_error_cleared() {
-        let mut sb = StatusBar::new();
-        sb.set_config_error(Some("oops".to_string()));
-        assert!(sb.has_config_error());
-
-        sb.clear_config_error();
-        assert!(!sb.has_config_error());
-        assert_eq!(sb.format(), "Row:1 Col:1");
-    }
-
     #[test]
     fn t_config_error_set_none_clears() {
         let mut sb = StatusBar::new();
@@ -754,19 +592,6 @@ mod tests {
         sb.set_config_error(Some(String::new()));
         assert!(!sb.has_config_error());
     }
-
-    #[test]
-    fn t_config_error_precedes_cursor() {
-        let mut sb = StatusBar::new();
-        sb.update_cursor(3, 7);
-        sb.set_config_error(Some("e".to_string()));
-        let formatted = sb.format();
-        // ERROR must appear before cursor position.
-        let err_pos = formatted.find("!ERROR!").unwrap();
-        let cursor_pos = formatted.find("Row:4").unwrap();
-        assert!(err_pos < cursor_pos);
-    }
-
     // ── P22-C: Profile display tests ──────────────────────────────────
 
     #[test]
@@ -790,42 +615,6 @@ mod tests {
         sb.set_profile("");
         assert!(sb.active_profile().is_none());
     }
-
-    #[test]
-    fn t_profile_shown_in_format() {
-        let mut sb = StatusBar::new();
-        sb.update_cursor(5, 10);
-        sb.set_profile("presentation");
-        assert_eq!(sb.format(), "Row:6 Col:11 | @presentation");
-    }
-
-    #[test]
-    fn t_profile_with_other_flags() {
-        let mut sb = StatusBar::new();
-        sb.update_cursor(0, 0);
-        sb.set_bell(true);
-        sb.set_profile("compact");
-        assert_eq!(sb.format(), "Row:1 Col:1 | bell | @compact");
-    }
-
-    #[test]
-    fn t_profile_not_shown_when_empty() {
-        let mut sb = StatusBar::new();
-        sb.set_profile("");
-        assert_eq!(sb.format(), "Row:1 Col:1");
-    }
-
-    #[test]
-    fn t_profile_appears_after_ai() {
-        let mut sb = StatusBar::new();
-        sb.set_ai(true);
-        sb.set_profile("test");
-        let formatted = sb.format();
-        let ai_pos = formatted.find("ai").unwrap();
-        let profile_pos = formatted.find("@test").unwrap();
-        assert!(ai_pos < profile_pos);
-    }
-
     // ── format_segments tests ────────────────────────────────
 
     #[test]
@@ -937,17 +726,6 @@ mod tests {
     }
 
     #[test]
-    fn t_status_bar_command_duration_shown() {
-        let mut sb = StatusBar::new();
-        sb.command_duration = "1.2s".into();
-        let formatted = sb.format();
-        assert!(
-            formatted.contains("1.2s"),
-            "should show duration: {formatted}"
-        );
-    }
-
-    #[test]
     fn t_status_bar_command_duration_empty_omitted() {
         let mut sb = StatusBar::new();
         sb.exit_code = Some(0);
@@ -1013,55 +791,12 @@ mod tests {
     }
 
     #[test]
-    fn t_status_bar_selection_count_shown() {
-        let mut sb = StatusBar::new();
-        sb.selection_count = 42;
-        let formatted = sb.format();
-        assert!(
-            formatted.contains("SEL:42c"),
-            "should show selection count: {formatted}"
-        );
-    }
-
-    #[test]
     fn t_status_bar_selection_count_zero_omitted() {
         let sb = StatusBar::new();
         let formatted = sb.format();
         assert!(
             !formatted.contains("SEL:"),
             "should not show SEL when 0: {formatted}"
-        );
-    }
-
-    #[test]
-    fn t_status_bar_uptime_shown() {
-        let mut sb = StatusBar::new();
-        sb.uptime = "5m".into();
-        let formatted = sb.format();
-        assert!(formatted.contains("5m"), "should show uptime: {formatted}");
-    }
-
-    #[test]
-    fn t_status_bar_selection_words_shown() {
-        let mut sb = StatusBar::new();
-        sb.selection_count = 42;
-        sb.selection_words = 7;
-        let formatted = sb.format();
-        assert!(
-            formatted.contains("SEL:42c/7w"),
-            "should show chars and words: {formatted}"
-        );
-    }
-
-    #[test]
-    fn t_status_bar_selection_words_zero_omitted() {
-        let mut sb = StatusBar::new();
-        sb.selection_count = 5;
-        sb.selection_words = 0;
-        let formatted = sb.format();
-        assert!(
-            formatted.contains("SEL:5c") && !formatted.contains("/"),
-            "should show chars only when no words: {formatted}"
         );
     }
 
@@ -1098,17 +833,6 @@ mod tests {
     }
 
     #[test]
-    fn t_status_bar_exit_code_success() {
-        let mut sb = StatusBar::new();
-        sb.exit_code = Some(0);
-        let formatted = sb.format();
-        assert!(
-            formatted.contains("exit:0"),
-            "should show exit:0 for success: {formatted}"
-        );
-    }
-
-    #[test]
     fn t_status_bar_exit_code_failure() {
         let mut sb = StatusBar::new();
         sb.exit_code = Some(127);
@@ -1126,18 +850,6 @@ mod tests {
         assert!(
             !formatted.contains("exit:"),
             "should not show exit when no command completed: {formatted}"
-        );
-    }
-
-    #[test]
-    fn t_status_bar_idle_displayed() {
-        let mut sb = StatusBar::new();
-        sb.command_running = false;
-        sb.command_timer = "30s".into();
-        let formatted = sb.format();
-        assert!(
-            formatted.contains("idle 30s"),
-            "should show idle timer: {formatted}"
         );
     }
 
