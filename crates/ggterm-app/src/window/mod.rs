@@ -1541,14 +1541,19 @@ impl ApplicationHandler for DesktopApp {
                     self.status_bar.command_timer.clear();
                 }
 
-                // Selection character/word count (live feedback while selecting).
-                // Single pass — avoids traversing the selection twice per frame.
+                // Selection count (live feedback while selecting).
                 let sel_chars = if self.selection.is_active() {
                     self.count_selection()
                 } else {
                     0
                 };
+                let sel_lines = self
+                    .selection
+                    .normalized()
+                    .map(|((_, sy), (_, ey))| (ey - sy + 1) as usize)
+                    .unwrap_or(0);
                 self.status_bar.selection_count = sel_chars;
+                self.status_bar.selection_lines = sel_lines;
 
                 // Terminal lock state.
                 self.status_bar.locked = self.locked;

@@ -1825,9 +1825,9 @@ impl DesktopApp {
                         self.show_toast(format!("Error: {}", err.trim()));
                     } else {
                         self.show_toast(format!(
-                            "Piped through '{}': {} bytes",
+                            "Piped through '{}': {} chars",
                             result.command,
-                            text.len()
+                            text.chars().count()
                         ));
                     }
                 }

@@ -76,6 +76,8 @@ pub struct StatusBar {
     pub spinner_frame: u32,
     /// Character count of current text selection (0 = no selection).
     pub selection_count: usize,
+    /// Line count of current text selection (0 = no selection).
+    pub selection_lines: usize,
     /// True when terminal input is locked (read-only mode).
     pub locked: bool,
     /// Git branch name (empty = not in a git repo).
@@ -120,6 +122,7 @@ impl StatusBar {
             command_timer: String::new(),
             spinner_frame: 0,
             selection_count: 0,
+            selection_lines: 0,
             locked: false,
             git_branch: String::new(),
             last_exit_code: None,
@@ -284,9 +287,16 @@ impl StatusBar {
             );
         }
 
-        // Selection character count (only while selecting).
+        // Selection count — multi-line shows line count, single-line shows char count.
         if self.selection_count > 0 {
-            seg!(format!("SEL:{}", self.selection_count), warn_color);
+            if self.selection_lines > 1 {
+                seg!(
+                    format!("SEL:{}L {}c", self.selection_lines, self.selection_count),
+                    warn_color
+                );
+            } else {
+                seg!(format!("SEL:{}", self.selection_count), warn_color);
+            }
         }
 
         // ── Alerts (only when triggered) ──
