@@ -281,10 +281,10 @@ impl SshSession {
 
         runtime.spawn(async move {
             let mut channel = channel;
-            // Keepalive: send SSH protocol keepalive every ~200 loop iterations
-            // (~1 second at 5ms poll). This uses the SSH transport layer
-            // (SSH_MSG_GLOBAL_REQUEST) rather than channel data, so it doesn't
-            // interfere with terminal output.
+            // Keepalive: send window_change every ~30s to prevent NAT/firewall
+            // timeouts. Uses SSH_MSG_CHANNEL_REQUEST (PTY resize) with the last
+            // known dimensions — a no-op for the remote terminal but keeps the
+            // SSH connection alive without injecting data into the stream.
             let mut tick: u32 = 0;
             const KEEPALIVE_INTERVAL: u32 = 6000; // ~30s at 5ms poll
             // Track current terminal dimensions for keepalive window_change.
