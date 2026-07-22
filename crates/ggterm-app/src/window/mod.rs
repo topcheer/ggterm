@@ -296,8 +296,6 @@ pub struct DesktopApp {
     git_check_counter: u32,
     /// Last time spinner frame was advanced (for ~12fps throttle).
     last_spinner_tick: std::time::Instant,
-    /// Cached idle seconds to avoid per-frame String allocation for idle timer.
-    last_idle_secs: u64,
     /// Cached command elapsed tenths-of-seconds for timer throttling.
     last_cmd_tenths: u128,
 
@@ -743,7 +741,6 @@ impl DesktopApp {
             git_branch_cache: String::new(),
             git_check_counter: 0,
             last_spinner_tick: std::time::Instant::now(),
-            last_idle_secs: 0,
             last_cmd_tenths: 0,
             font_zoom: crate::font::FontZoom::default_size(),
             visual_bell_frames: 0,
@@ -1542,13 +1539,12 @@ impl ApplicationHandler for DesktopApp {
                 } else {
                     // Command not running — clear timer.
                     self.status_bar.command_timer.clear();
-                    self.last_idle_secs = 0;
                 }
 
                 // Selection character/word count (live feedback while selecting).
                 // Single pass — avoids traversing the selection twice per frame.
                 let sel_chars = if self.selection.is_active() {
-                    self.count_selection().0
+                    self.count_selection()
                 } else {
                     0
                 };

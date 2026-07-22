@@ -1074,16 +1074,13 @@ impl DesktopApp {
     ///
     /// Extracts text from the grid between selection start and end.
     /// Count characters in the current selection for status bar display.
-    /// Count characters and words in the current text selection in a single pass.
-    /// Returns (char_count, word_count) to avoid traversing the selection twice per frame.
-    pub(super) fn count_selection(&self) -> (usize, usize) {
+    /// Count characters in the current text selection for status bar display.
+    pub(super) fn count_selection(&self) -> usize {
         let Some(((sx, sy), (ex, ey))) = self.selection.normalized() else {
-            return (0, 0);
+            return 0;
         };
         let grid = self.active_session().app().grid();
         let mut chars = 0usize;
-        let mut words = 0usize;
-        let mut in_word = false;
         for row in sy..=ey {
             let (row_start, row_end) = if sy == ey {
                 (sx as usize, ex as usize)
@@ -1097,25 +1094,14 @@ impl DesktopApp {
             for col in row_start..row_end {
                 if let Some(cell) = grid.display_cell(col, row as usize)
                     && !cell.is_wide_spacer()
+                    && cell.ch != ' '
+                    && cell.ch != '\t'
                 {
-                    if cell.ch == ' ' || cell.ch == '\t' {
-                        if in_word {
-                            words += 1;
-                            in_word = false;
-                        }
-                    } else {
-                        chars += 1 + cell.combining.len();
-                        in_word = true;
-                    }
+                    chars += 1 + cell.combining.len();
                 }
             }
-            // End of row counts as a word boundary.
-            if in_word {
-                words += 1;
-                in_word = false;
-            }
         }
-        (chars, words)
+        chars
     }
 
     /// Select and copy the output of the last completed command.
