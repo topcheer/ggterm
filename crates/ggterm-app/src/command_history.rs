@@ -253,9 +253,10 @@ pub fn format_entry_short(entry: &CommandHistoryEntry, max_width: usize) -> Stri
         (false, None) => "??".to_string(),
     };
 
-    let cmd = if entry.command.len() > max_width.saturating_sub(status.len() + 3) {
+    let cmd = if entry.command.chars().count() > max_width.saturating_sub(status.len() + 3) {
         let trim = max_width.saturating_sub(status.len() + 6);
-        format!("{}...", &entry.command[..trim])
+        let trimmed: String = entry.command.chars().take(trim).collect();
+        format!("{trimmed}...")
     } else {
         entry.command.clone()
     };

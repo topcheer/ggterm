@@ -955,7 +955,8 @@ impl DesktopApp {
         if let Some(ref link) = self.hovered_link {
             let url = link.0.clone();
             crate::mouse::open_url(&url);
-            self.show_toast(format!("Opened: {}", &url[..url.len().min(60)]));
+            let preview: String = url.chars().take(60).collect();
+            self.show_toast(format!("Opened: {preview}"));
             return;
         }
 
@@ -973,7 +974,8 @@ impl DesktopApp {
             && let Some(ref link) = row_data.cells[col].hyperlink
         {
             crate::mouse::open_url(link);
-            self.show_toast(format!("Opened: {}", &link[..link.len().min(60)]));
+            let preview: String = link.chars().take(60).collect();
+            self.show_toast(format!("Opened: {preview}"));
             return;
         }
 
@@ -981,7 +983,8 @@ impl DesktopApp {
         let line: String = row_data.text();
         if let Some((_, _, url)) = crate::mouse::detect_url_at_position(&line, col) {
             crate::mouse::open_url(&url);
-            self.show_toast(format!("Opened: {}", &url[..url.len().min(60)]));
+            let preview: String = url.chars().take(60).collect();
+            self.show_toast(format!("Opened: {preview}"));
         } else {
             self.show_toast("No URL at cursor");
         }

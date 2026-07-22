@@ -676,8 +676,9 @@ impl DesktopApp {
                 self.scroll_to_search_match(matched);
             } else {
                 // Search bar closed: restore last query and navigate.
-                let grid = self.sessions[self.active].app().grid().clone();
-                if self.search.resume_from_last(&grid) {
+                // Disjoint borrow avoids cloning the entire grid.
+                let grid = self.sessions[self.active].app().grid();
+                if self.search.resume_from_last(grid) {
                     let matched = if self.mods.shift {
                         self.search.prev_match()
                     } else {
