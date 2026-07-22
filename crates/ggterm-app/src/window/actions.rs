@@ -3305,6 +3305,14 @@ impl DesktopApp {
             }
             "view.status_bar" => {
                 self.status_bar_visible = !self.status_bar_visible;
+                self.show_toast(if self.status_bar_visible {
+                    "Status bar: visible"
+                } else {
+                    "Status bar: hidden"
+                });
+                // Trigger content area recompute — rows change when bar toggles.
+                let bounds = self.content_area_bounds();
+                self.pending_resize = Some((bounds.width, bounds.height));
                 if let Some(ref window) = self.window {
                     window.request_redraw();
                 }
