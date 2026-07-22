@@ -882,6 +882,14 @@ impl DesktopApp {
         }
 
         // ── Step 9: Create winit event loop and run ──
+        // Set WM_CLASS on Linux for window manager integration.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let event_loop = {
+            let builder = winit::event_loop::EventLoop::builder();
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            builder.with_name("ggterm", "ggterm").build()?
+        };
+        #[cfg(not(all(unix, not(target_os = "macos"))))]
         let event_loop = EventLoop::new()?;
         event_loop.run_app(&mut desktop)?;
 
