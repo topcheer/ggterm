@@ -143,10 +143,10 @@ Key settings:
 
 ## Testing
 
-- ~2150+ tests across all crates (500+ in core, 1250+ in app, 56 in FFI)
+- ~2300 tests across all crates (580+ in core, 1282 in app, 65+ in FFI)
 - Core tests: terminal protocol (CSI, OSC, SGR), grid operations, VTE parsing
 - App tests: config, splits, tab bar, command palette, snippets, broadcast, search
-- FFI tests: session lifecycle, echo transport, multi-session, cursor, bell, combining chars
+- FFI tests: session lifecycle, echo transport, multi-session, cursor, bell, combining chars, DECCKM
 - Env-var tests in ggterm-ai use a shared Mutex to prevent parallel races
 
 ## Commit Convention
@@ -166,10 +166,15 @@ Always append: `Co-Authored-By: ggcode <noreply@ggcode.dev>`
 ## Current Phase Status
 
 Active development through Phase 55+. Recent work focused on:
+- Mobile DECCKM support: arrow keys/Home/End respect application cursor mode for vim/less/htop
+- Mobile CJK word selection: Unicode property classes in double-tap regex
+- Mobile selection text: trailing whitespace stripping per line
+- Desktop search bar UX: red border on no-match, corrected hint text
+- Desktop first-run: auto-creates documented config.toml on first launch
+- Desktop dead code: StatusBar 14 dead fields + 6 cached fields removed
+- Desktop performance: grid clone eliminated in search refresh, log_enabled! guard
+- CJK correctness: char count (not byte count) in all copy/paste toasts
 - Combining character correctness across all text paths (renderer, FFI, extraction, export)
 - CLI flags: -e, --hold, --config, --fullscreen, --maximize
 - Shell integration OSC 7 CWD tracking (bash/zsh/fish)
-- Performance: cached timezone offset, fast .git/HEAD read
-- UX: status bar clock, output line count, hold mode exit code display
 - Code quality: no panic-prone unwrap() in non-test code, helper function extraction
-- Code cleanup (dead code removal, duplicate comments)
