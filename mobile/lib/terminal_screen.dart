@@ -2383,6 +2383,7 @@ class _TerminalPainter extends CustomPainter {
       var runUnderline = false;
       var runStrikethrough = false;
       var runDim = false;
+      var runOverline = false;
       var runDecoStyle = TextDecorationStyle.solid;
 
       for (var col = 0; col <= cols; col++) {
@@ -2409,6 +2410,7 @@ class _TerminalPainter extends CustomPainter {
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
             runDim = cell.dim;
+            runOverline = cell.overline;
             runDecoStyle = cell.underlineDouble ? TextDecorationStyle.double
                 : cell.underlineCurly ? TextDecorationStyle.wavy
                 : cell.underlineDotted ? TextDecorationStyle.dotted
@@ -2419,7 +2421,7 @@ class _TerminalPainter extends CustomPainter {
             if (cell.wide) {
               _paintRun(canvas, runText.toString(), runStart, y,
                   runFg, runBold, runItalic, runUnderline,
-                  runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
+                  runStrikethrough, runDim, runDecoStyle, runOverline, cellWidth, cellHeight, fontSize);
               runStart = -1;
             }
           } else if (effectiveFg == runFg &&
@@ -2427,7 +2429,8 @@ class _TerminalPainter extends CustomPainter {
               cell.italic == runItalic &&
               cell.underline == runUnderline &&
               cell.strikethrough == runStrikethrough &&
-              cell.dim == runDim) {
+              cell.dim == runDim &&
+              cell.overline == runOverline) {
             // Continue current run.
             runText.write(cell.charWithCombining);
             // Wide chars (CJK, emoji) take 2 cells. Flush immediately
@@ -2435,14 +2438,14 @@ class _TerminalPainter extends CustomPainter {
             if (cell.wide) {
               _paintRun(canvas, runText.toString(), runStart, y,
                   runFg, runBold, runItalic, runUnderline,
-                  runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
+                  runStrikethrough, runDim, runDecoStyle, runOverline, cellWidth, cellHeight, fontSize);
               runStart = -1;
             }
           } else {
             // Flush current run, start new one.
             _paintRun(canvas, runText.toString(), runStart, y,
                 runFg, runBold, runItalic, runUnderline,
-                runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
+                runStrikethrough, runDim, runDecoStyle, runOverline, cellWidth, cellHeight, fontSize);
             runStart = col;
             runText.clear();
             runText.write(cell.charWithCombining);
@@ -2452,6 +2455,7 @@ class _TerminalPainter extends CustomPainter {
             runUnderline = cell.underline;
             runStrikethrough = cell.strikethrough;
             runDim = cell.dim;
+            runOverline = cell.overline;
             runDecoStyle = cell.underlineDouble ? TextDecorationStyle.double
                 : cell.underlineCurly ? TextDecorationStyle.wavy
                 : cell.underlineDotted ? TextDecorationStyle.dotted
@@ -2462,7 +2466,7 @@ class _TerminalPainter extends CustomPainter {
           // Empty cell — flush current run.
           _paintRun(canvas, runText.toString(), runStart, y,
               runFg, runBold, runItalic, runUnderline,
-              runStrikethrough, runDim, runDecoStyle, cellWidth, cellHeight, fontSize);
+              runStrikethrough, runDim, runDecoStyle, runOverline, cellWidth, cellHeight, fontSize);
           runStart = -1;
         }
       }
@@ -2525,6 +2529,7 @@ class _TerminalPainter extends CustomPainter {
     bool strikethrough,
     bool dim,
     TextDecorationStyle decorationStyle,
+    bool overline,
     double cellW,
     double cellH,
     double fontSize,
@@ -2544,6 +2549,7 @@ class _TerminalPainter extends CustomPainter {
       decoration: TextDecoration.combine([
         if (underline) TextDecoration.underline,
         if (strikethrough) TextDecoration.lineThrough,
+        if (overline) TextDecoration.overline,
       ]),
       decorationStyle: decorationStyle,
     );
