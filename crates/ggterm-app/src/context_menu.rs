@@ -83,6 +83,7 @@ impl ContextMenuAction {
             match self {
                 Self::Copy => Some("Ctrl+Shift+C"),
                 Self::Paste => Some("Ctrl+Shift+V"),
+                Self::SelectAll => Some("Ctrl+Shift+A"),
                 Self::Search => Some("Ctrl+Shift+F"),
                 Self::Clear => Some("Ctrl+Shift+L"),
                 Self::SplitHorizontal => Some("Ctrl+Shift+D"),
