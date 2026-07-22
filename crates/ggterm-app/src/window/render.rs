@@ -1946,9 +1946,21 @@ impl DesktopApp {
         // ── P28-B: Color picker hover swatch ──────────────────────────
         if let Some(ref hovered) = self.color_picker.hovered {
             let (cx, cy) = self.cursor_pos;
-            let swatch_x = cx as f32 + 16.0;
-            let swatch_y = cy as f32 + 16.0;
             let swatch_size = 24.0_f32;
+            let hex_text_w = hovered.text.chars().count() as f32 * cell_w + 6.0;
+            let total_w = swatch_size + hex_text_w;
+            // Flip horizontally if near right edge.
+            let swatch_x = if cx as f32 + 16.0 + total_w > screen_w {
+                cx as f32 - total_w - 8.0
+            } else {
+                cx as f32 + 16.0
+            };
+            // Flip vertically if near bottom edge.
+            let swatch_y = if cy as f32 + 16.0 + swatch_size > screen_h {
+                cy as f32 - swatch_size - 8.0
+            } else {
+                cy as f32 + 16.0
+            };
 
             // Color swatch (filled rounded rect).
             let (r, g, b) = hovered.rgb;
