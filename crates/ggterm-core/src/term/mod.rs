@@ -1953,6 +1953,24 @@ impl Perform for Terminal {
                 let col = Self::param(params, 0, 1) as usize;
                 self.set_cursor(col.saturating_sub(1), self.cursor.y);
             }
+            // HPA — Horizontal Position Absolute (CSI ` Ps `).
+            // Equivalent to CHA (CSI Ps G).
+            b'`' => {
+                let col = Self::param(params, 0, 1) as usize;
+                self.set_cursor(col.saturating_sub(1), self.cursor.y);
+            }
+            // VPR — Vertical Position Relative (CSI Ps e).
+            // Moves cursor down Ps rows, column unchanged. Like CUU but downward.
+            b'e' => {
+                let n = Self::param(params, 0, 1) as usize;
+                let (_, bottom) = self.grid.scroll_region();
+                let new_y = self
+                    .cursor
+                    .y
+                    .saturating_add(n)
+                    .min(bottom.saturating_sub(1));
+                self.set_cursor(self.cursor.x, new_y);
+            }
             b'H' | b'f' => {
                 let row = Self::param(params, 0, 1) as usize;
                 let col = Self::param(params, 1, 1) as usize;
@@ -3861,6 +3879,24 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[30G");
         assert_eq!(t.cursor().0, 29);
+    }
+
+    #[test]
+    fn t_csi_hpa() {
+        // HPA (CSI Ps `) — same as CHA, sets column.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[20`");
+        assert_eq!(t.cursor().0, 19);
+    }
+
+    #[test]
+    fn t_csi_vpr() {
+        // VPR (CSI Ps e) — move down Ps rows, column unchanged.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;10H"); // row 5, col 10
+        assert_eq!(t.cursor(), (9, 4));
+        feed(&mut t, b"\x1b[3e"); // move down 3
+        assert_eq!(t.cursor(), (9, 7));
     }
 
     #[test]
