@@ -427,7 +427,6 @@ impl StatusBar {
     /// The Vec is cleared first. Use this in render hot paths to avoid
     /// per-frame Vec allocation.
     pub fn format_segments_into(&self, segs: &mut Vec<(String, (u8, u8, u8))>) {
-        let text_color: (u8, u8, u8) = (180, 180, 190);
         let dim_color: (u8, u8, u8) = (90, 90, 100);
         let accent_color: (u8, u8, u8) = (120, 180, 255);
         let warn_color: (u8, u8, u8) = (230, 180, 80);
@@ -450,88 +449,54 @@ impl StatusBar {
             seg!("!ERROR!".to_string(), err_color);
         }
 
-        // Cursor position (1-indexed — terminal convention).
+        // ── Core status (always relevant) ──
+
+        // Cursor position.
         seg!(
             format!("{}:{}", self.cursor_row + 1, self.cursor_col + 1),
             accent_color
         );
 
-        // Tab info.
-        if self.tab_count > 1 {
-            seg!(
-                format!("Tab {}/{}", self.active_tab + 1, self.tab_count),
-                text_color
-            );
-        }
-        // Pane count (shown only when splits exist).
-        if self.pane_count > 1 {
-            seg!(format!("{} panes", self.pane_count), accent_color);
+        // CWD (from OSC 7). Show basename only for compactness.
+        if !self.cwd.is_empty() {
+            let display = std::path::Path::new(&self.cwd)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&self.cwd);
+            seg!(display.to_string(), dim_color);
         }
 
-        // Exit code.
-        if let Some(code) = self.exit_code {
-            let color = if code == 0 { ok_color } else { err_color };
-            seg!(format!("exit:{}", code), color);
-        }
-
-        // Last command output line count (shown as "~5L" for 5 lines).
-        if let Some(lines) = self.last_output_lines {
-            seg!(format!("{}L", lines), dim_color);
-        }
-
-        // Command execution duration.
-        if !self.command_duration.is_empty() {
-            seg!(self.command_duration.clone(), dim_color);
-        }
-
-        // Running command spinner with live timer.
-        if self.command_running {
-            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let frame = frames[(self.spinner_frame as usize) % frames.len()];
-            let label = if !self.command_timer.is_empty() {
-                format!("{frame} {}", self.command_timer)
-            } else {
-                frame.to_string()
-            };
-            seg!(label, accent_color);
-        } else if !self.command_timer.is_empty() {
-            seg!(format!("idle {}", self.command_timer), dim_color);
-        }
-
-        // Selection character count.
-        if self.selection_count > 0 {
-            let label = if self.selection_words > 0 {
-                format!("SEL:{}c/{}w", self.selection_count, self.selection_words)
-            } else {
-                format!("SEL:{}c", self.selection_count)
-            };
-            seg!(label, warn_color);
-        }
-
-        // Terminal lock indicator.
-        if self.locked {
-            seg!("LOCK".to_string(), err_color);
-        }
-
-        // Session uptime.
-        if !self.uptime.is_empty() {
-            seg!(self.uptime.clone(), dim_color);
-        }
-
-        // Git branch (shown in accent green).
+        // Git branch.
         if !self.git_branch.is_empty() {
             seg!(format!(" {}", self.git_branch), (120u8, 200, 120));
         }
 
-        // Active theme name (dim color — informational only).
-        if !self.theme_name.is_empty() {
-            seg!(format!("theme:{}", self.theme_name), dim_color);
-        }
-        if !self.dimensions.is_empty() {
-            seg!(self.dimensions.clone(), dim_color);
+        // ── Activity indicators (only when active) ──
+
+        // Running command spinner + timer.
+        if self.command_running {
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let frame = frames[(self.spinner_frame as usize) % frames.len()];
+            seg!(
+                if !self.command_timer.is_empty() {
+                    format!("{frame} {}", self.command_timer)
+                } else {
+                    frame.to_string()
+                },
+                accent_color
+            );
         }
 
-        // Mode indicators.
+        // Selection character count (only while selecting).
+        if self.selection_count > 0 {
+            seg!(format!("SEL:{}", self.selection_count), warn_color);
+        }
+
+        // ── Alerts (only when triggered) ──
+
+        if self.locked {
+            seg!("LOCK".to_string(), err_color);
+        }
         if self.bell_active {
             seg!("BELL".to_string(), warn_color);
         }
@@ -541,102 +506,56 @@ impl StatusBar {
         if self.ai_active {
             seg!("AI".to_string(), accent_color);
         }
-
-        // Profile.
-        if !self.profile_name.is_empty() {
-            seg!(format!("@{}", self.profile_name), text_color);
-        }
-
-        // Broadcast mode.
-        if !self.broadcast_mode.is_empty() {
-            seg!(format!("BCAST:{}", self.broadcast_mode), warn_color);
-        }
-
-        // Recording.
-        if self.recording {
-            seg!("REC".to_string(), warn_color);
-        }
-
-        // Pane zoom.
-        if self.pane_zoomed {
-            seg!("ZOOM".to_string(), accent_color);
-        }
-        // Font size indicator — show only when zoomed (non-default).
-        if (self.font_size - 14.0).abs() > 0.1 {
-            seg!(format!("{}px", self.font_size as u32), dim_color);
-        }
-        if self.cursor_line {
-            seg!("CL".to_string(), dim_color);
-        }
-
-        // Scrollback browse mode.
         if self.scroll_mode {
             seg!("SCROLL".to_string(), accent_color);
         }
 
-        // P28-D: Workspace.
-        if !self.workspace_name.is_empty() && self.workspace_name != "default" {
-            seg!(format!("WS:{}", self.workspace_name), accent_color);
-        }
-
-        // P28-G: Sound indicator.
-        if self.sound_enabled {
-            seg!("SND".to_string(), ok_color);
-        }
-
-        // P28-H: Shell name.
-        if !self.shell_name.is_empty() {
-            seg!(self.shell_name.clone(), text_color);
-        }
-
-        // Remote SSH host (from OSC 1337 RemoteHost=).
-        if !self.remote_host.is_empty() {
-            seg!(format!("SSH:{}", self.remote_host), accent_color);
-        }
-
-        // CWD (from OSC 7). Show basename only for compactness.
-        if !self.cwd.is_empty() {
-            let display = std::path::Path::new(&self.cwd)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&self.cwd);
-            let home = dirs_or_home();
-            let display = if let Some(ref home) = home {
-                display.replace(home.as_str(), "~")
-            } else {
-                display.to_string()
-            };
-            seg!(display, dim_color);
-        }
-
-        // Progress indicator (OSC 9;4).
-        if let Some(pct) = self.progress {
-            seg!(format!("{:.0}%", pct * 100.0), ok_color);
-        }
-
-        // Last command exit code — show only when non-zero (failure).
-        if let Some(code) = self.last_exit_code
+        // Exit code — only show on failure (check both fields).
+        let exit_code = self.last_exit_code.or(self.exit_code);
+        if let Some(code) = exit_code
             && code != 0
         {
             seg!(format!("exit:{}", code), err_color);
         }
 
-        // Hovered URL/hyperlink preview.
+        // ── Context (only when relevant) ──
+
+        // Pane zoom.
+        if self.pane_zoomed {
+            seg!("ZOOM".to_string(), accent_color);
+        }
+        // Broadcast mode.
+        if !self.broadcast_mode.is_empty() {
+            seg!("BCAST".to_string(), warn_color);
+        }
+        // Remote SSH host.
+        if !self.remote_host.is_empty() {
+            seg!(format!("SSH:{}", self.remote_host), accent_color);
+        }
+        // P2P sharing.
+        if self.p2p_active {
+            seg!("SHARE".to_string(), accent_color);
+        }
+        // Hovered URL preview.
         if let Some(ref link) = self.hovered_link {
-            let display = if link.len() > 60 {
-                format!("{}...", &link[..57])
+            let display = if link.chars().count() > 50 {
+                let truncated: String = link.chars().take(47).collect();
+                format!("{truncated}...")
             } else {
                 link.clone()
             };
             seg!(display, accent_color);
         }
-
-        // P2P sharing indicator.
-        if self.p2p_active {
-            seg!("SHARE".to_string(), accent_color);
+        // Font zoom indicator.
+        if (self.font_size - 14.0).abs() > 0.1 {
+            seg!(format!("{}px", self.font_size as u32), dim_color);
+        }
+        // Progress.
+        if let Some(pct) = self.progress {
+            seg!(format!("{:.0}%", pct * 100.0), ok_color);
         }
 
-        // System clock — always shown at the end (like tmux status-right).
+        // System clock.
         if self.show_clock {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -676,11 +595,6 @@ fn local_offset_hours() -> u64 {
             0
         }
     })
-}
-
-/// Helper to get home directory (avoids adding a dependency to this function's scope).
-fn dirs_or_home() -> Option<String> {
-    std::env::var("HOME").ok()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -944,19 +858,19 @@ mod tests {
     #[test]
     fn t_segments_exit_code_colors() {
         let mut sb = StatusBar::new();
+        // Exit 0 is now hidden (simplified — only errors shown).
         sb.set_exit_code(Some(0));
         let segs = sb.format_segments();
         let exit_seg = segs.iter().find(|(t, _)| t.starts_with("exit:"));
-        assert!(exit_seg.is_some());
-        // Exit 0 should be green-ish (high green channel).
-        let (_, color) = exit_seg.unwrap();
-        assert!(color.1 > color.0 && color.1 > color.2); // g > r && g > b
+        assert!(exit_seg.is_none());
 
+        // Exit 1 should be red-ish (high red channel).
         sb.set_exit_code(Some(1));
         let segs = sb.format_segments();
         let exit_seg = segs.iter().find(|(t, _)| t.starts_with("exit:"));
+        assert!(exit_seg.is_some());
         let (_, color) = exit_seg.unwrap();
-        assert!(color.0 > color.1); // r > g for error
+        assert!(color.0 > color.1 && color.0 > color.2); // r > g && r > b
     }
 
     #[test]
@@ -970,24 +884,6 @@ mod tests {
         assert!(texts.contains(&"BELL"));
         assert!(texts.contains(&"SEARCH"));
         assert!(texts.contains(&"AI"));
-    }
-
-    #[test]
-    fn t_segments_profile() {
-        let mut sb = StatusBar::new();
-        sb.set_profile("dark");
-        let segs = sb.format_segments();
-        let texts: Vec<&str> = segs.iter().map(|(t, _)| t.as_str()).collect();
-        assert!(texts.contains(&"@dark"));
-    }
-
-    #[test]
-    fn t_segments_recording() {
-        let mut sb = StatusBar::new();
-        sb.recording = true;
-        let segs = sb.format_segments();
-        let texts: Vec<&str> = segs.iter().map(|(t, _)| t.as_str()).collect();
-        assert!(texts.contains(&"REC"));
     }
 
     #[test]

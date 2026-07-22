@@ -3936,7 +3936,7 @@ mod tests {
     #[test]
     fn test_truncate_utf8_safe() {
         // Multi-byte chars should not panic on truncation.
-        let s = "你好世界测试中文字符串很长很长很长很长";
+        let s = "你好世界测试中文字符串很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长";
         let t = truncate_for_toast(s);
         assert!(t.ends_with("..."));
         assert!(t.chars().count() <= 40);
