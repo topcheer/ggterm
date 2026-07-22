@@ -167,6 +167,10 @@ class _TerminalScreenState extends State<TerminalScreen>
     super.initState();
     _currentSessionId = _currentSessionId;
     WidgetsBinding.instance.addObserver(this);
+    // Auto-hide keyboard bar when a hardware keyboard is connected
+    // (e.g. iPad Pro with Magic Keyboard). User can still toggle it
+    // manually via the keyboard icon in the app bar.
+    _showKeyboardBar = !HardwareKeyboard.instance.physicalKeysPressed.isNotEmpty;
     _connectedAt = DateTime.now();
     // Keep screen awake while terminal is active — prevents screen timeout
     // during long-running commands, log monitoring, etc.
