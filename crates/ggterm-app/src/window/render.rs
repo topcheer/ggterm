@@ -2625,13 +2625,19 @@ impl DesktopApp {
                 radius: 10.0,
                 stroke_width: 0.0,
             });
-            // Accent border.
+            // Accent border — red when no matches found, blue otherwise.
+            let no_match = !self.search.query.is_empty() && self.search.match_count() == 0;
+            let border_color = if no_match {
+                (0.8, 0.3, 0.3, 0.8)
+            } else {
+                (0.35, 0.42, 0.60, 0.8)
+            };
             ui_rects.push(ggterm_render_wgpu::UiRect {
                 x: bar_x,
                 y: bar_y,
                 w: bar_w,
                 h: bar_h,
-                color: (0.35, 0.42, 0.60, 0.8),
+                color: border_color,
                 radius: 10.0,
                 stroke_width: 1.5,
             });
@@ -2722,8 +2728,7 @@ impl DesktopApp {
 
             // Hint text at bottom.
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "Enter: next  Shift+Enter: prev  F3: find  Tab: regex  Esc: close"
-                    .to_string(),
+                text: "\u{21b5}next  Shift+\u{21b5}prev  Tab: case  Esc: close".to_string(),
                 left: bar_x + 12.0,
                 top: bar_y + bar_h + 4.0,
                 color: (110, 110, 130),

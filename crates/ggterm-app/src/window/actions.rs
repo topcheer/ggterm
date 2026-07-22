@@ -1327,7 +1327,7 @@ impl DesktopApp {
             let text = lines.join("\n");
 
             if !text.is_empty() {
-                log::debug!("Block copy: {} chars", text.len());
+                log::debug!("Block copy: {} bytes", text.len());
                 crate::clipboard::set_clipboard_bytes(text.as_bytes());
                 self.show_toast(format!("Copied {} chars (block)", text.chars().count()));
             }
@@ -1724,7 +1724,7 @@ impl DesktopApp {
                     // unwanted auto-scroll, broadcast, and cursor blink reset.
                     self.active_session_mut().write_to_pty(resp.as_bytes());
                     log::debug!(
-                        "OSC 52 clipboard query: responded with {} chars",
+                        "OSC 52 clipboard query: responded with {} bytes",
                         text.len()
                     );
                 }
@@ -3034,7 +3034,10 @@ impl DesktopApp {
             "terminal.copy_visible" => {
                 let text = self.active_session().app().grid().export_visible_text();
                 crate::clipboard::set_clipboard_bytes(text.as_bytes());
-                self.show_toast(format!("Copied {} chars (visible screen)", text.len()));
+                self.show_toast(format!(
+                    "Copied {} chars (visible screen)",
+                    text.chars().count()
+                ));
             }
             "terminal.copy_markdown" => {
                 self.copy_selection_as_markdown();
