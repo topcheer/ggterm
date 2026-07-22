@@ -33,12 +33,6 @@ pub struct StatusBar {
     pub cursor_row: usize,
     /// Cursor column (0-based terminal column).
     pub cursor_col: usize,
-    /// Total number of open tabs.
-    pub tab_count: usize,
-    /// Number of panes in the active tab (>1 means splits exist).
-    pub pane_count: usize,
-    /// Index of the active tab (0-based).
-    pub active_tab: usize,
     /// Whether the terminal bell was recently triggered.
     pub bell_active: bool,
     /// Whether the scrollback search bar is open.
@@ -59,14 +53,6 @@ pub struct StatusBar {
     pub profile_name: String,
     /// P25-D: Broadcast input mode label (empty = none).
     pub broadcast_mode: String,
-    /// P25-E: Whether session recording is active.
-    pub recording: bool,
-    /// P28-D: Active workspace name (empty = default).
-    pub workspace_name: String,
-    /// P28-G: Whether sound is enabled.
-    pub sound_enabled: bool,
-    /// P28-H: Active shell name (e.g., "zsh", "bash").
-    pub shell_name: String,
     /// Current working directory (OSC 7). Empty = unknown.
     pub cwd: String,
     /// Remote SSH host (OSC 1337 RemoteHost=). Empty = local.
@@ -75,17 +61,12 @@ pub struct StatusBar {
     pub pane_zoomed: bool,
     /// Current font size for zoom indicator (shown when non-default).
     pub font_size: f32,
-    /// True when cursor line highlight is enabled.
-    pub cursor_line: bool,
     /// True when scrollback browse mode is active (vim-style navigation).
     pub scroll_mode: bool,
     /// Task progress (0.0–1.0) from OSC 9;4. None = no active progress.
     pub progress: Option<f32>,
     /// Whether P2P terminal sharing is active.
     pub p2p_active: bool,
-    /// Duration of the last completed command (e.g., "1.2s").
-    /// Empty = no command has completed or shell integration inactive.
-    pub command_duration: String,
     /// True when a command is currently executing (between OSC 133;B and 133;D).
     pub command_running: bool,
     /// Live elapsed time of the currently running command (e.g., "3.2s").
@@ -95,27 +76,16 @@ pub struct StatusBar {
     pub spinner_frame: u32,
     /// Character count of current text selection (0 = no selection).
     pub selection_count: usize,
-    /// Number of words in the current selection (0 when no selection).
-    pub selection_words: usize,
     /// True when terminal input is locked (read-only mode).
     pub locked: bool,
-    /// Session uptime as a formatted string (e.g., "5m", "1h23m").
-    pub uptime: String,
     /// Git branch name (empty = not in a git repo).
     pub git_branch: String,
-    /// Active theme name (e.g., "dark", "tokyo-night").
-    pub theme_name: String,
-    /// Terminal dimensions as "COLS×ROWS" (e.g., "120×40").
-    pub dimensions: String,
     /// Exit code of the last completed command (None = no command completed or shell integration inactive).
     /// Displayed in status bar as a red segment when non-zero.
     pub last_exit_code: Option<i32>,
     /// Whether to show a system clock at the end of the status bar.
     /// Default: false (enabled at runtime in the event loop).
     pub show_clock: bool,
-    /// Number of output lines from the last completed command.
-    /// Shown as "~5L" in the status bar (L = lines).
-    pub last_output_lines: Option<usize>,
     /// Hovered URL or hyperlink (OSC 8). Shown in status bar for link preview.
     pub hovered_link: Option<String>,
 }
@@ -132,9 +102,6 @@ impl StatusBar {
         Self {
             cursor_row: 0,
             cursor_col: 0,
-            tab_count: 1,
-            pane_count: 1,
-            active_tab: 0,
             bell_active: false,
             search_active: false,
             ai_active: false,
@@ -142,33 +109,22 @@ impl StatusBar {
             config_error: None,
             profile_name: String::new(),
             broadcast_mode: String::new(),
-            recording: false,
-            workspace_name: String::new(),
-            sound_enabled: false,
-            shell_name: String::new(),
             cwd: String::new(),
             remote_host: String::new(),
             pane_zoomed: false,
             font_size: 14.0,
-            cursor_line: false,
             scroll_mode: false,
             progress: None,
             p2p_active: false,
-            command_duration: String::new(),
             command_running: false,
             command_timer: String::new(),
             spinner_frame: 0,
             selection_count: 0,
-            selection_words: 0,
             locked: false,
-            uptime: String::new(),
             git_branch: String::new(),
-            theme_name: String::new(),
-            dimensions: String::new(),
             last_exit_code: None,
             hovered_link: None,
             show_clock: false,
-            last_output_lines: None,
         }
     }
 
@@ -176,17 +132,6 @@ impl StatusBar {
     pub fn update_cursor(&mut self, row: usize, col: usize) {
         self.cursor_row = row;
         self.cursor_col = col;
-    }
-
-    /// Update tab information.
-    pub fn update_tabs(&mut self, count: usize, active: usize) {
-        self.tab_count = count;
-        self.active_tab = active;
-    }
-
-    /// Set the number of panes in the active tab.
-    pub fn update_pane_count(&mut self, count: usize) {
-        self.pane_count = count;
     }
 
     /// Set the bell indicator.
@@ -484,7 +429,6 @@ mod tests {
     fn t_multi_tab_display() {
         let mut sb = StatusBar::new();
         sb.update_cursor(0, 0);
-        sb.update_tabs(3, 1);
         // Tabs no longer shown in simplified format.
         assert_eq!(sb.format(), "1:1");
     }
@@ -493,7 +437,6 @@ mod tests {
     fn t_all_flags_cleared() {
         let mut sb = StatusBar::new();
         sb.update_cursor(10, 20);
-        sb.update_tabs(2, 0);
         sb.set_bell(true);
         sb.set_search(true);
         sb.set_ai(true);
@@ -509,7 +452,6 @@ mod tests {
     fn t_single_tab_not_shown() {
         let mut sb = StatusBar::new();
         sb.update_cursor(0, 0);
-        sb.update_tabs(1, 0);
         assert_eq!(sb.format(), "1:1");
     }
 
