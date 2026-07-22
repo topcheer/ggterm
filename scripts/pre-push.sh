@@ -7,6 +7,7 @@
 #   3. cargo clippy --workspace --features "$FEATURES" -- -D warnings
 #   4. cargo test --workspace                            (default features)
 #   5. cargo test --workspace --features "$FEATURES"
+#   6. flutter analyze (if flutter is installed)
 #
 # Skip with: git push --no-verify
 
@@ -34,5 +35,13 @@ echo "▶ test (full features)..."
 cargo test --workspace --features "$FEATURES" 2>&1 | grep -E "^test result" | grep -v "0 failed" && {
     echo "✗ tests failed (full features)"; exit 1
 } || true
+
+# Flutter analyze — only if flutter is available and mobile/ exists.
+if command -v flutter >/dev/null 2>&1 && [ -d mobile ]; then
+    echo "▶ flutter analyze..."
+    (cd mobile && flutter analyze --no-fatal-infos)
+else
+    echo "▶ flutter analyze... (skipped: flutter not found)"
+fi
 
 echo "━━━ all checks passed ✓ ━━━"
