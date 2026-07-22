@@ -3805,11 +3805,12 @@ fn extract_ai_command(text: &str) -> String {
 /// Truncate a string to `max` chars, appending "..." if truncated.
 #[cfg(feature = "ai")]
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    let char_count = s.chars().count();
+    if char_count <= max {
         s.to_string()
     } else {
-        let end = s.ceil_char_boundary(max.min(s.len()));
-        format!("{}...", &s[..end])
+        let truncated: String = s.chars().take(max).collect();
+        format!("{truncated}...")
     }
 }
 
@@ -3901,8 +3902,11 @@ mod tests {
     #[test]
     fn test_truncate_str_utf8_safe() {
         // Multi-byte UTF-8 characters should not be split.
-        let result = truncate_str("你好世界测试", 6);
+        let result = truncate_str("你好世界测试文字", 6);
         assert!(result.ends_with("..."));
+        // Short enough — should NOT be truncated.
+        let result2 = truncate_str("你好", 6);
+        assert!(!result2.ends_with("..."));
         // Should not panic.
     }
 }
