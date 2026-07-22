@@ -2233,7 +2233,15 @@ impl DesktopApp {
         let bounds = self.content_area_bounds();
         let px = self.cursor_pos.0 - bounds.x as f64;
         let py = self.cursor_pos.1 - bounds.y as f64;
-        crate::mouse::pixel_to_cell(px, py, cw, ch)
+        let (col, row) = crate::mouse::pixel_to_cell(px, py, cw, ch);
+
+        // Clamp to grid bounds — prevents out-of-range mouse tracking
+        // events being sent to vim/htop/etc. when the cursor is in the
+        // tab bar or status bar gap.
+        let grid = self.active_session().app().grid();
+        let max_col = (grid.width() - 1) as u16;
+        let max_row = (grid.height() - 1) as u16;
+        (col.min(max_col), row.min(max_row))
     }
 
     /// P20-D: Check if the cursor is over a different pane and switch focus.
