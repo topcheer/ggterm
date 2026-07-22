@@ -1360,26 +1360,28 @@ impl DesktopApp {
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowUp) => {
-                    self.command_palette
-                        .move_up(self.command_palette.results(&self.command_registry).len());
+                    let len = self.command_palette.results_len(&self.command_registry);
+                    self.command_palette.move_up(len);
                     return;
                 }
                 PhysicalKey::Code(KeyCode::ArrowDown) => {
-                    self.command_palette
-                        .move_down(self.command_palette.results(&self.command_registry).len());
+                    let len = self.command_palette.results_len(&self.command_registry);
+                    self.command_palette.move_down(len);
                     return;
                 }
                 // PageUp/PageDown — jump by viewport page.
                 PhysicalKey::Code(KeyCode::PageUp) => {
-                    let len = self.command_palette.results(&self.command_registry).len();
-                    for _ in 0..8 {
+                    let len = self.command_palette.results_len(&self.command_registry);
+                    let step = 8.min(len);
+                    for _ in 0..step {
                         self.command_palette.move_up(len);
                     }
                     return;
                 }
                 PhysicalKey::Code(KeyCode::PageDown) => {
-                    let len = self.command_palette.results(&self.command_registry).len();
-                    for _ in 0..8 {
+                    let len = self.command_palette.results_len(&self.command_registry);
+                    let step = 8.min(len);
+                    for _ in 0..step {
                         self.command_palette.move_down(len);
                     }
                     return;
@@ -1391,7 +1393,7 @@ impl DesktopApp {
                 }
                 // End — jump to last result.
                 PhysicalKey::Code(KeyCode::End) => {
-                    let len = self.command_palette.results(&self.command_registry).len();
+                    let len = self.command_palette.results_len(&self.command_registry);
                     if len > 0 {
                         self.command_palette.selected = len - 1;
                     }

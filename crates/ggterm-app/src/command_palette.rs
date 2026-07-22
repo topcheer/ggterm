@@ -816,6 +816,20 @@ impl CommandPaletteState {
         });
         results
     }
+
+    /// Count matching results without allocating a Vec.
+    /// Used by keyboard navigation to avoid per-keystroke allocation.
+    pub fn results_len(&self, registry: &CommandRegistry) -> usize {
+        registry
+            .all()
+            .iter()
+            .filter(|cmd| {
+                let score =
+                    fuzzy_score(&self.query, &cmd.label).max(fuzzy_score(&self.query, &cmd.id));
+                score > 0
+            })
+            .count()
+    }
 }
 
 #[cfg(test)]
