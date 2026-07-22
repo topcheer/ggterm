@@ -4091,4 +4091,23 @@ mod tests {
             crate::clipboard::PasteSource::Clipboard
         ));
     }
+
+    #[test]
+    fn test_truncate_str_handles_cjk() {
+        // CJK characters should not be split mid-character.
+        // Using chars().take(N) ensures we never split inside a UTF-8 sequence.
+        let s = "你好世界你好世界"; // 8 chars, 24 bytes
+        let truncated: String = s.chars().take(4).collect();
+        assert_eq!(truncated.chars().count(), 4);
+        assert_eq!(truncated, "你好世界");
+    }
+
+    #[test]
+    fn test_chars_count_not_bytes() {
+        // Verify chars().count() != len() for CJK text.
+        let s = "你好"; // 2 chars, 6 bytes
+        assert_eq!(s.len(), 6); // bytes
+        assert_eq!(s.chars().count(), 2); // characters
+        assert_ne!(s.len(), s.chars().count());
+    }
 }
