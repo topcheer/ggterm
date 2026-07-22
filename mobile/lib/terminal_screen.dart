@@ -710,16 +710,23 @@ class _TerminalScreenState extends State<TerminalScreen>
       final id = _currentSessionId;
       final mgr = widget.sessionManager;
       if (mgr.isAltScreen(id) && mgr.altScrollEnabled(id)) {
+        final appCursor = mgr.cursorKeysApp(id);
+        final upSeq = appCursor
+            ? [0x1B, 0x4F, 0x41] // ESC O A
+            : [0x1B, 0x5B, 0x41]; // ESC [ A
+        final downSeq = appCursor
+            ? [0x1B, 0x4F, 0x42]
+            : [0x1B, 0x5B, 0x42];
         // Each "row" of scroll → one arrow key.
         _scrollAccumulator += dy;
         final threshold = _cellHeight;
         while (_scrollAccumulator.abs() >= threshold) {
           if (_scrollAccumulator < 0) {
             // Drag up → Up arrow
-            _sendInput([0x1b, 0x5b, 0x41]); // ESC [ A
+            _sendInput(upSeq);
           } else {
             // Drag down → Down arrow
-            _sendInput([0x1b, 0x5b, 0x42]); // ESC [ B
+            _sendInput(downSeq);
           }
           _scrollAccumulator -= threshold * (_scrollAccumulator.sign);
         }
