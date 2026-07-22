@@ -1896,8 +1896,9 @@ impl DesktopApp {
             });
 
             // File name.
-            let name_display = if preview.name.len() > 30 {
-                format!("{}...", &preview.name[..27])
+            let name_display = if preview.name.chars().count() > 30 {
+                let truncated: String = preview.name.chars().take(27).collect();
+                format!("{truncated}...")
             } else {
                 preview.name.clone()
             };
