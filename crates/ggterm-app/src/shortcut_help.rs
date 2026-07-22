@@ -628,6 +628,24 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             category: ShortcutCategory::Shell,
             configurable: false,
         },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Up/Down".into(),
+            description: "Jump to previous/next command prompt".into(),
+            category: ShortcutCategory::Shell,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+Up".into(),
+            description: "Jump to scrollback mark".into(),
+            category: ShortcutCategory::Shell,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Alt+Up/Down".into(),
+            description: "Navigate command blocks".into(),
+            category: ShortcutCategory::Shell,
+            configurable: false,
+        },
         // Terminal
         ShortcutEntry {
             keys: "Ctrl+Shift+K".into(),

@@ -574,7 +574,7 @@ impl SettingsWindowState {
 
             // Right-align value by estimating text width.
             let char_w = self.ui_font_size * scale * 0.6;
-            let approx_w = value_text.len() as f32 * char_w;
+            let approx_w = value_text.chars().count() as f32 * char_w;
             let value_x = margin + content_w - approx_w - 12.0 * scale;
 
             // Selected non-boolean field: show ◀ ▶ arrows to indicate adjustability.

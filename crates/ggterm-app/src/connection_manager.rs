@@ -694,10 +694,7 @@ Host incomplete
             expand_tilde("~/.ssh/custom_key", Some("/test/home")),
             "/test/home/.ssh/custom_key"
         );
-        assert_eq!(
-            expand_tilde("~/.ssh/id_rsa", None),
-            "~/.ssh/id_rsa"
-        );
+        assert_eq!(expand_tilde("~/.ssh/id_rsa", None), "~/.ssh/id_rsa");
         assert_eq!(
             expand_tilde("/absolute/path", Some("/test/home")),
             "/absolute/path"

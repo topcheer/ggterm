@@ -2574,6 +2574,7 @@ impl DesktopApp {
         let grid = self.active_session().app().grid();
         let marks = self.active_session().app().terminal().command_marks();
         if marks.is_empty() {
+            self.show_toast("No command marks (shell integration needed)");
             return;
         }
         let scrollback_len = grid.scrollback_len();
@@ -2612,6 +2613,8 @@ impl DesktopApp {
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }
+        } else {
+            self.show_toast("Already at first command");
         }
     }
 
@@ -2621,6 +2624,7 @@ impl DesktopApp {
         let grid = self.active_session().app().grid();
         let marks = self.active_session().app().terminal().command_marks();
         if marks.is_empty() {
+            self.show_toast("No command marks (shell integration needed)");
             return;
         }
         let scrollback_len = grid.scrollback_len();
@@ -2657,6 +2661,7 @@ impl DesktopApp {
                 .terminal_mut()
                 .grid_mut()
                 .reset_viewport();
+            self.show_toast("Jumped to bottom");
         }
         if let Some(ref window) = self.window {
             window.request_redraw();
