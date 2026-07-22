@@ -3902,6 +3902,47 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_language_rust_panic() {
+        assert_eq!(
+            detect_language_hint("thread 'main' panicked at src/main.rs:5"),
+            "rust"
+        );
+    }
+
+    #[test]
+    fn test_detect_language_javascript() {
+        assert_eq!(
+            detect_language_hint("TypeError: Cannot read properties of undefined"),
+            "javascript"
+        );
+    }
+
+    #[test]
+    fn test_detect_language_go() {
+        assert_eq!(
+            detect_language_hint("go run main.go\ngoroutine 1 [running]"),
+            "go"
+        );
+    }
+
+    #[test]
+    fn test_detect_language_docker() {
+        assert_eq!(
+            detect_language_hint("docker build -t myapp ."),
+            "dockerfile"
+        );
+    }
+
+    #[test]
+    fn test_truncate_utf8_safe() {
+        // Multi-byte chars should not panic on truncation.
+        let s = "你好世界测试中文字符串很长很长很长很长";
+        let t = truncate_for_toast(s);
+        assert!(t.ends_with("..."));
+        assert!(t.chars().count() <= 40);
+    }
+
+    #[test]
     fn test_url_encode_basic() {
         assert_eq!(url_encode("hello"), "hello");
         assert_eq!(url_encode("hello world"), "hello+world");
