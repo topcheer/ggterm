@@ -1156,7 +1156,7 @@ impl DesktopApp {
     pub(super) fn copy_last_command(&mut self) {
         if let Some(text) = self.extract_last_command_text() {
             crate::clipboard::set_clipboard_bytes(text.as_bytes());
-            self.show_toast(format!("Copied {} chars", text.len()));
+            self.show_toast(format!("Copied {} chars", text.chars().count()));
         } else {
             self.show_toast("No previous command found".to_string());
         }
@@ -1329,7 +1329,7 @@ impl DesktopApp {
             if !text.is_empty() {
                 log::debug!("Block copy: {} chars", text.len());
                 crate::clipboard::set_clipboard_bytes(text.as_bytes());
-                self.show_toast(format!("Copied {} chars (block)", text.len()));
+                self.show_toast(format!("Copied {} chars (block)", text.chars().count()));
             }
             return;
         }
@@ -1404,10 +1404,10 @@ impl DesktopApp {
         }
 
         if !text.is_empty() {
-            log::debug!("Clipboard copy: {} chars", text.len());
+            log::debug!("Clipboard copy: {} bytes", text.len());
             crate::clipboard::set_clipboard_bytes(text.as_bytes());
             self.clipboard_feedback.trigger();
-            self.show_toast(format!("Copied {} chars", text.len()));
+            self.show_toast(format!("Copied {} chars", text.chars().count()));
         }
     }
 
@@ -1426,7 +1426,10 @@ impl DesktopApp {
                 format!("```{}\n{}\n```", lang, trimmed)
             };
             crate::clipboard::set_clipboard_bytes(markdown.as_bytes());
-            self.show_toast(format!("Copied as Markdown ({} chars)", markdown.len()));
+            self.show_toast(format!(
+                "Copied as Markdown ({} chars)",
+                markdown.chars().count()
+            ));
         } else {
             self.show_toast("Selection is empty".to_string());
         }
