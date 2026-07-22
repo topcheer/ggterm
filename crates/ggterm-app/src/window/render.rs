@@ -568,8 +568,9 @@ impl DesktopApp {
                 .first()
                 .map(|t| t.title.as_str())
                 .unwrap_or("ggterm");
-            let display_title = if title.len() > 50 {
-                format!("{}…", &title[..title.ceil_char_boundary(49)])
+            let display_title = if title.chars().count() > 50 {
+                let truncated: String = title.chars().take(49).collect();
+                format!("{truncated}…")
             } else {
                 title.to_string()
             };
@@ -1816,8 +1817,9 @@ impl DesktopApp {
 
                 // Command text (truncated).
                 let max_cmd_chars = ((sb_w - 70.0) / (renderer.cell_width() as f32)) as usize;
-                let cmd_display = if entry.command.len() > max_cmd_chars {
-                    format!("{}...", &entry.command[..max_cmd_chars])
+                let cmd_display = if entry.command.chars().count() > max_cmd_chars {
+                    let truncated: String = entry.command.chars().take(max_cmd_chars).collect();
+                    format!("{truncated}...")
                 } else {
                     entry.command.clone()
                 };
