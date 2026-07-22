@@ -896,7 +896,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     if (_selStartIdx == null) return;
     final idx = _screenToIndex(position);
     if (idx != null && idx != _selEndIdx) {
-      final lo = idx! < _selStartIdx! ? idx : _selStartIdx!;
+      final lo = idx < _selStartIdx! ? idx : _selStartIdx!;
       final hi = idx > _selStartIdx! ? idx : _selStartIdx!;
       var count = 0;
       for (var i = lo; i <= hi && i < _screen.cells.length; i++) {
