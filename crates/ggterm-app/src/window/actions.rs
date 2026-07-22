@@ -1990,9 +1990,10 @@ impl DesktopApp {
                 };
 
                 let body = if let Some(ref cmd) = cmd_text {
-                    // Truncate long commands.
-                    let short = if cmd.len() > 60 {
-                        format!("{}…", &cmd[..57])
+                    // Truncate long commands (char-safe to avoid UTF-8 panic).
+                    let short = if cmd.chars().count() > 60 {
+                        let truncated: String = cmd.chars().take(57).collect();
+                        format!("{truncated}…")
                     } else {
                         cmd.clone()
                     };

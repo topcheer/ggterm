@@ -1106,14 +1106,17 @@ impl DesktopApp {
             MenuAction::ZoomIn => {
                 self.font_zoom.zoom_in();
                 self.apply_font_size();
+                self.show_toast(format!("Font: {:.1}px", self.font_zoom.current_size()));
             }
             MenuAction::ZoomOut => {
                 self.font_zoom.zoom_out();
                 self.apply_font_size();
+                self.show_toast(format!("Font: {:.1}px", self.font_zoom.current_size()));
             }
             MenuAction::ZoomReset => {
                 self.font_zoom.reset();
                 self.apply_font_size();
+                self.show_toast(format!("Font: {:.1}px", self.font_zoom.current_size()));
             }
             MenuAction::ToggleFullscreen => self.toggle_fullscreen(),
             MenuAction::ToggleStatusBar => {

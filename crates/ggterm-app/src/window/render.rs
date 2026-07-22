@@ -1108,7 +1108,7 @@ impl DesktopApp {
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: line.to_string(),
                     left: px + 20.0,
-                    top: py + 16.0 + i as f32 * cell_h,
+                    top: py + 16.0 + (i + 1) as f32 * cell_h,
                     color: if i == 0 {
                         (122, 162, 247) // accent for title
                     } else {
