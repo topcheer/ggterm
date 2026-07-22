@@ -3163,6 +3163,27 @@ impl DesktopApp {
             });
         }
 
+        // ── Terminal lock indicator: persistent amber border ──
+        // Shows when input is locked so the user never wonders why
+        // keyboard input is being ignored.
+        if self.locked {
+            let (lx, ly, lw, lh) = (
+                content_bounds.x as f32,
+                content_bounds.y as f32,
+                content_bounds.width as f32,
+                content_bounds.height as f32,
+            );
+            ui_rects.push(ggterm_render_wgpu::UiRect {
+                x: lx,
+                y: ly,
+                w: lw,
+                h: lh,
+                color: (0.9, 0.6, 0.1, 0.35),
+                radius: 4.0,
+                stroke_width: 2.0,
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_text(overlay_texts);
 
