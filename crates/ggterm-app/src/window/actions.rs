@@ -1156,6 +1156,7 @@ impl DesktopApp {
     pub(super) fn copy_last_command(&mut self) {
         if let Some(text) = self.extract_last_command_text() {
             crate::clipboard::set_clipboard_bytes(text.as_bytes());
+            self.clipboard_feedback.trigger();
             self.show_toast(format!("Copied {} chars", text.chars().count()));
         } else {
             self.show_toast("No previous command found".to_string());
@@ -1337,6 +1338,7 @@ impl DesktopApp {
             if !text.is_empty() {
                 log::debug!("Block copy: {} bytes", text.len());
                 crate::clipboard::set_clipboard_bytes(text.as_bytes());
+                self.clipboard_feedback.trigger();
                 self.show_toast(format!("Copied {} chars (block)", text.chars().count()));
             }
             return;
@@ -1434,6 +1436,7 @@ impl DesktopApp {
                 format!("```{}\n{}\n```", lang, trimmed)
             };
             crate::clipboard::set_clipboard_bytes(markdown.as_bytes());
+            self.clipboard_feedback.trigger();
             self.show_toast(format!(
                 "Copied as Markdown ({} chars)",
                 markdown.chars().count()
@@ -2459,6 +2462,7 @@ impl DesktopApp {
             self.show_toast("No text selected");
         } else {
             crate::clipboard::set_clipboard_bytes(html.as_bytes());
+            self.clipboard_feedback.trigger();
             self.show_toast("Copied as HTML");
         }
     }
