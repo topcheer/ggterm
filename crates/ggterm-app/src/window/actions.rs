@@ -1293,7 +1293,15 @@ impl DesktopApp {
             }
             text.push('\n');
         }
-        text.trim().to_string()
+        // Trim trailing whitespace per line and remove empty leading/trailing lines.
+        let mut lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        while lines.first().is_some_and(|l| l.is_empty()) {
+            lines.remove(0);
+        }
+        lines.join("\n")
     }
 
     pub(super) fn copy_selection_to_clipboard(&mut self) {
