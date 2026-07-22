@@ -2470,6 +2470,7 @@ impl Perform for Terminal {
                 self.modes.synchronized_output = false;
                 self.modes.reflow = true;
                 self.modes.focus_event = false;
+                self.modes.alternate_scroll = true; // xterm default: enabled
                 // Reset tab stops
                 let width = self.grid.width();
                 self.tab_stops = vec![false; width.max(1)];
@@ -5816,6 +5817,10 @@ mod tests {
         assert!(
             t.modes.cursor_visible,
             "DECSTR should restore cursor_visible=true"
+        );
+        assert!(
+            t.modes.alternate_scroll,
+            "DECSTR should restore alternate_scroll=true"
         );
     }
 
