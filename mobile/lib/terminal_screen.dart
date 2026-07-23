@@ -876,6 +876,12 @@ class _TerminalScreenState extends State<TerminalScreen>
     final word = buf.toString();
     if (word.isEmpty) return;
 
+    // Set selection highlight so user sees what was copied.
+    final startIdx = row * _screen.cols + startCol;
+    final endIdx = row * _screen.cols + endCol;
+    _selStartIdx = startIdx;
+    _selEndIdx = endIdx;
+
     Clipboard.setData(ClipboardData(text: word));
     _showCopiedSnackBar('Copied: $word');
   }
