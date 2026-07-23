@@ -2849,6 +2849,9 @@ impl DesktopApp {
             "tab.next" => {
                 self.next_tab();
             }
+            "tab.prev" => {
+                self.prev_tab();
+            }
             "tab.toggle_last" => {
                 self.toggle_last_tab();
             }
@@ -2877,6 +2880,26 @@ impl DesktopApp {
             }
             "split.zoom" => {
                 self.toggle_pane_zoom();
+            }
+            "split.horizontal" => {
+                self.split_pane_horizontal();
+            }
+            "split.vertical" => {
+                self.split_pane_vertical();
+            }
+            "split.focus_next" => {
+                self.selection.clear();
+                self.active_session_mut().focus_next_pane();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            "split.focus_prev" => {
+                self.selection.clear();
+                self.active_session_mut().focus_prev_pane();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
             }
             "tab.toggle_pin" => {
                 self.toggle_pin_tab();
@@ -3331,6 +3354,9 @@ impl DesktopApp {
             }
             "view.fullscreen" => {
                 self.toggle_fullscreen();
+            }
+            "view.maximize" => {
+                self.toggle_maximized();
             }
             "view.status_bar" => {
                 self.status_bar_visible = !self.status_bar_visible;
