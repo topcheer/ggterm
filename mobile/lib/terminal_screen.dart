@@ -1973,16 +1973,18 @@ class _TerminalScreenState extends State<TerminalScreen>
                       }
                     },
                     onPanEnd: (_) {
-                      // Auto-copy when drag selection ends (if text selected).
+                      // Auto-copy when drag selection ends (if enough text selected).
                       if (_selStartIdx != null) {
                         final text = _getSelectedText();
-                        if (text != null && text.trim().isNotEmpty) {
+                        if (text != null && text.trim().length >= 2) {
                           final charCount = text.trim().runes.length;
                           Clipboard.setData(ClipboardData(text: text));
                           _showCopiedSnackBar('Copied $charCount chars');
+                          // Keep selection visible until next tap.
+                        } else if (text != null && text.trim().isEmpty) {
+                          // Accidental micro-selection — clear without SnackBar.
+                          _clearSelection();
                         }
-                        // Keep selection visible until next tap — user can
-                        // see what was copied. Cleared on next tap.
                       }
                     },
                     onLongPressStart: _onLongPress,
