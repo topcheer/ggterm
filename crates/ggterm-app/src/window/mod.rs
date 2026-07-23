@@ -51,23 +51,39 @@ fn parse_cursor_style(s: &str) -> ggterm_core::CursorStyle {
     }
 }
 
-/// Fast git branch detection by reading .git/HEAD directly.
-/// Avoids spawning a subprocess for the common case.
-/// Returns None if not in a git repo or HEAD is detached (caller
-/// should fall back to subprocess for detached HEAD display).
+/// Fast git branch detection by reading `.git/HEAD` directly.
+///
+/// Walks up the directory tree from `cwd` to find `.git/HEAD`,
+/// avoiding a subprocess in the common case of being inside a
+/// git repo subdirectory.
+///
+/// Returns `None` if not in a git repo, `.git` is a file (worktree),
+/// or HEAD is detached (caller should fall back to subprocess).
 fn read_git_head(cwd: &std::path::Path) -> Option<String> {
-    let head_path = cwd.join(".git").join("HEAD");
-    let head = std::fs::read_to_string(&head_path).ok()?;
-    let head = head.trim();
-    // Format: "ref: refs/heads/branchname"
-    if let Some(ref_pos) = head.find("refs/heads/") {
-        let branch = &head[ref_pos + "refs/heads/".len()..];
-        let branch = branch.trim();
-        if !branch.is_empty() {
-            return Some(branch.to_string());
+    // Walk up the directory tree to find .git/HEAD.
+    // This avoids spawning `git` when inside a subdirectory of a repo.
+    let mut dir = cwd;
+    loop {
+        let head_path = dir.join(".git").join("HEAD");
+        if let Ok(head) = std::fs::read_to_string(&head_path) {
+            let head = head.trim();
+            // Format: "ref: refs/heads/branchname"
+            if let Some(ref_pos) = head.find("refs/heads/") {
+                let branch = &head[ref_pos + "refs/heads/".len()..];
+                let branch = branch.trim();
+                if !branch.is_empty() {
+                    return Some(branch.to_string());
+                }
+            }
+            // Detached HEAD (hash) — let caller handle with subprocess.
+            return None;
+        }
+        // Move to parent directory.
+        match dir.parent() {
+            Some(parent) if parent != dir => dir = parent,
+            _ => break,
         }
     }
-    // Detached HEAD (hash) — let caller handle with subprocess.
     None
 }
 use winit::application::ApplicationHandler;
@@ -2906,6 +2922,26 @@ mod tests {
 
         let branch = read_git_head(&dir);
         assert!(branch.is_none(), "non-git directory should return None");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_read_git_head_subdirectory() {
+        let dir = std::env::temp_dir().join(format!("ggterm-git-test5-{}", std::process::id()));
+        let git_dir = dir.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        // Create a subdirectory.
+        let subdir = dir.join("src").join("deep");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let branch = read_git_head(&subdir);
+        assert_eq!(
+            branch.as_deref(),
+            Some("main"),
+            "should find .git/HEAD from subdirectory"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
