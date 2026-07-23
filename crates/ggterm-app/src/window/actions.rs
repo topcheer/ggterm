@@ -1416,6 +1416,9 @@ impl DesktopApp {
         if !text.is_empty() {
             log::debug!("Clipboard copy: {} bytes", text.len());
             crate::clipboard::set_clipboard_bytes(text.as_bytes());
+            // Also write to PRIMARY on Linux so middle-click paste works
+            // immediately after any copy operation.
+            crate::clipboard::write_primary_selection(&text);
             self.clipboard_feedback.trigger();
             self.show_toast(format!("Copied {} chars", text.chars().count()));
         }
