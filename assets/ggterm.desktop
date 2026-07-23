@@ -8,4 +8,4 @@ Icon=ggterm
 Terminal=false
 Categories=System;TerminalEmulator;Development;
 Keywords=terminal;emulator;console;shell;
-StartupWMClass=GGTerm
+StartupWMClass=ggterm
