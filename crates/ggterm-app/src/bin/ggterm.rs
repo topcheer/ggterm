@@ -108,6 +108,11 @@ struct Cli {
     /// List available themes and exit.
     #[arg(long)]
     list_themes: bool,
+
+    /// Print a documented config template to stdout and exit.
+    /// Pipe to a file: ggterm --print-config > ~/.ggterm/config.toml
+    #[arg(long)]
+    print_config: bool,
 }
 
 fn main() -> ExitCode {
@@ -129,6 +134,13 @@ fn main() -> ExitCode {
         ] {
             println!("  {theme}");
         }
+        return ExitCode::SUCCESS;
+    }
+
+    // Handle --print-config early exit.
+    if cli.print_config {
+        let config = ggterm_app::config::Config::default();
+        print!("{}", config.generate_documented_template());
         return ExitCode::SUCCESS;
     }
 
