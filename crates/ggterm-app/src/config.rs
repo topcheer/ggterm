@@ -1883,7 +1883,7 @@ close_tab = "Ctrl+W"
 paste = "Ctrl+Shift+V"
 search = "Ctrl+Shift+F"
 fullscreen = "F11"
-cycle_theme = "Ctrl+Shift+T"
+cycle_theme = "Ctrl+Shift+Alt+T"
 "#;
         let config = Config::from_toml_str(toml).unwrap();
         assert_eq!(config.keybindings.new_tab.as_deref(), Some("Ctrl+T"));
@@ -1893,7 +1893,7 @@ cycle_theme = "Ctrl+Shift+T"
         assert_eq!(config.keybindings.fullscreen.as_deref(), Some("F11"));
         assert_eq!(
             config.keybindings.cycle_theme.as_deref(),
-            Some("Ctrl+Shift+T")
+            Some("Ctrl+Shift+Alt+T")
         );
         // Unspecified fields stay None
         assert!(config.keybindings.copy.is_none());

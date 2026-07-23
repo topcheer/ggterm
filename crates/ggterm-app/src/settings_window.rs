@@ -68,6 +68,17 @@ impl SettingsField {
             SettingsField::AiEnabled => "AI Assistant",
         }
     }
+
+    /// Section group for visual separation in the settings list.
+    /// Returns Some(label) for the first field in each section.
+    pub fn section(self) -> Option<&'static str> {
+        match self {
+            SettingsField::Theme => Some("Appearance"),
+            SettingsField::Scrollback => Some("Terminal"),
+            SettingsField::AiEnabled => Some("AI"),
+            _ => None,
+        }
+    }
 }
 
 /// Draft settings values held in the settings window until applied.
@@ -534,6 +545,17 @@ impl SettingsWindowState {
         for (i, &field) in fields.iter().enumerate() {
             let y = start_y + i as f32 * row_h;
             let is_selected = field == self.selected;
+
+            // Section header (rendered above the first field in each section).
+            if let Some(section) = field.section() {
+                texts.push(OverlayTextSpec {
+                    text: section.to_string(),
+                    left: margin + 4.0 * scale,
+                    top: y - 4.0 * scale,
+                    color: (120, 160, 220), // dim blue
+                    ..Default::default()
+                });
+            }
 
             // Selected row background.
             if is_selected {

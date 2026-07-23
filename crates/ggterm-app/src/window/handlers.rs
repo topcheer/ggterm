@@ -597,7 +597,7 @@ impl DesktopApp {
                 self.active_session_mut().restart_active_shell();
                 return;
             }
-            // Ctrl+Shift+T → cycle theme
+            // cycle_theme (configurable, default: Ctrl+Shift+Alt+T)
             if self.check_keybinding(
                 "cycle_theme",
                 self.mods.ctrl,

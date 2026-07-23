@@ -124,7 +124,7 @@ pub static MENU_DEFINITIONS: &[MenuDefinition] = &[
                 "Ctrl+Shift+B",
                 MenuAction::ToggleStatusBar,
             ),
-            MenuItem::item("Cycle Theme", "Ctrl+Shift+T", MenuAction::CycleTheme),
+            MenuItem::item("Cycle Theme", "Ctrl+Shift+Alt+T", MenuAction::CycleTheme),
         ],
     },
     MenuDefinition {
