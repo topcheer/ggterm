@@ -319,4 +319,27 @@ mod tests {
             &ContextMenuAction::Copy
         ));
     }
+
+    /// Regression: CopyOutput is in all() and has correct label.
+    #[test]
+    fn t_copy_output_in_all() {
+        let all = ContextMenuAction::all();
+        assert!(
+            all.iter().any(|a| *a == ContextMenuAction::CopyOutput),
+            "CopyOutput must be in all()"
+        );
+    }
+
+    #[test]
+    fn t_copy_output_label() {
+        assert_eq!(ContextMenuAction::CopyOutput.label(), "Copy Output");
+    }
+
+    /// Regression: is_enabled for CopyOutput is always true (output may or
+    /// may not exist, but the action handles that with a toast).
+    #[test]
+    fn t_copy_output_always_enabled() {
+        assert!(ContextMenuAction::CopyOutput.is_enabled(false, false, false));
+        assert!(ContextMenuAction::CopyOutput.is_enabled(true, true, true));
+    }
 }

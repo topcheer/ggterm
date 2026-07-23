@@ -953,4 +953,35 @@ mod tests {
         assert!(st.query.is_empty());
         assert_eq!(st.selected, 0);
     }
+
+    /// Regression: all registered command IDs must be unique.
+    #[test]
+    fn t_all_command_ids_unique() {
+        let r = CommandRegistry::defaults();
+        let mut ids: Vec<&str> = r.all().iter().map(|c| c.id.as_str()).collect();
+        ids.sort();
+        for i in 1..ids.len() {
+            assert_ne!(ids[i - 1], ids[i], "duplicate command ID: {}", ids[i]);
+        }
+    }
+
+    /// Regression: every command must have a non-empty label and category.
+    #[test]
+    fn t_all_commands_have_label_and_category() {
+        let r = CommandRegistry::defaults();
+        for cmd in r.all() {
+            assert!(!cmd.label.is_empty(), "empty label for {}", cmd.id);
+            assert!(!cmd.category.is_empty(), "empty category for {}", cmd.id);
+        }
+    }
+
+    /// Regression: fuzzy subsequence matching (e.g. "tlk" → "Toggle Terminal Lock").
+    #[test]
+    fn t_fuzzy_subsequence_match() {
+        assert!(fuzzy_score("tlk", "Toggle Terminal Lock") > 0);
+        assert!(fuzzy_score("cp", "Copy") > 0);
+        assert!(fuzzy_score("spl", "Split Horizontal") > 0);
+        // "tls" should NOT match (no 's' in "Toggle Terminal Lock").
+        assert_eq!(fuzzy_score("tls", "Toggle Terminal Lock"), 0);
+    }
 }
