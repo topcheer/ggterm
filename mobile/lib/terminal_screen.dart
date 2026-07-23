@@ -1972,6 +1972,19 @@ class _TerminalScreenState extends State<TerminalScreen>
                         _extendSelection(details.localPosition);
                       }
                     },
+                    onPanEnd: (_) {
+                      // Auto-copy when drag selection ends (if text selected).
+                      if (_selStartIdx != null) {
+                        final text = _getSelectedText();
+                        if (text != null && text.trim().isNotEmpty) {
+                          final charCount = text.trim().runes.length;
+                          Clipboard.setData(ClipboardData(text: text));
+                          _showCopiedSnackBar('Copied $charCount chars');
+                        }
+                        // Keep selection visible until next tap — user can
+                        // see what was copied. Cleared on next tap.
+                      }
+                    },
                     onLongPressStart: _onLongPress,
                     child: Stack(
                       children: [
