@@ -1195,9 +1195,10 @@ impl DesktopApp {
         }
         let mut text = String::new();
         for col in 0..width {
-            let cell = grid.display_cell(col, display_row);
-            if cell.is_some_and(|c| !c.is_wide_spacer()) {
-                text.push(cell.unwrap().ch);
+            if let Some(c) = grid.display_cell(col, display_row)
+                && !c.is_wide_spacer()
+            {
+                text.push(c.ch);
             }
         }
         let trimmed = text.trim();
@@ -1276,12 +1277,13 @@ impl DesktopApp {
             let mut text = String::with_capacity(row_count * (col_end - col_start + 1));
             for row in sy..=ey {
                 for col in col_start..=col_end {
-                    let cell = grid.display_cell(col, row as usize);
-                    if cell.is_some_and(|c| !c.is_wide_spacer() && c.ch != '\0') {
-                        let cell = cell.unwrap();
-                        text.push(cell.ch);
-                        for &c in &cell.combining {
-                            text.push(c);
+                    if let Some(c) = grid.display_cell(col, row as usize)
+                        && !c.is_wide_spacer()
+                        && c.ch != '\0'
+                    {
+                        text.push(c.ch);
+                        for &cc in &c.combining {
+                            text.push(cc);
                         }
                     }
                 }
@@ -1301,12 +1303,13 @@ impl DesktopApp {
                 width.saturating_sub(1)
             };
             for col in x0..=x1 {
-                let cell = grid.display_cell(col, row as usize);
-                if cell.is_some_and(|c| !c.is_wide_spacer() && c.ch != '\0') {
-                    let cell = cell.unwrap();
-                    text.push(cell.ch);
-                    for &c in &cell.combining {
-                        text.push(c);
+                if let Some(c) = grid.display_cell(col, row as usize)
+                    && !c.is_wide_spacer()
+                    && c.ch != '\0'
+                {
+                    text.push(c.ch);
+                    for &cc in &c.combining {
+                        text.push(cc);
                     }
                 }
             }
