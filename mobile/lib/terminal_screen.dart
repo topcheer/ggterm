@@ -818,7 +818,8 @@ class _TerminalScreenState extends State<TerminalScreen>
       return;
     }
 
-    // Single tap shows input bar for typing.
+    // Single tap: clear any existing selection, show input bar.
+    _clearSelection();
     if (!_showInputBar) {
       setState(() {
         _showInputBar = true;
