@@ -1665,58 +1665,41 @@ impl ApplicationHandler for DesktopApp {
                 // Optimized: compare &str first, only allocate when changed.
                 let term_title = self.active_session().app().terminal().title();
                 let multi_tab = self.sessions.len() > 1;
-                // In multi-tab mode, only rebuild title if any tab title or
-                // bell/alt state actually changed. This avoids per-frame
-                // String allocation for each tab when nothing changed.
-                let need_rebuild = multi_tab && {
-                    // Check if any tab's title differs from cached tab_bar title.
-                    self.sessions.iter().enumerate().any(|(i, s)| {
-                        if i < self.tab_bar.tabs.len() {
-                            s.title() != self.tab_bar.tabs[i].title
-                        } else {
-                            true
-                        }
-                    }) || self.visual_bell_frames > 0
-                        || self.last_title.is_empty()
-                };
+                // Only rebuild title if active tab title changed, bell is
+                // ringing, or title is empty. No need to iterate all tabs
+                // since the OS title now shows only the active tab.
+                let need_rebuild =
+                    multi_tab && (self.visual_bell_frames > 0 || self.last_title.is_empty());
                 if term_title != self.last_title.as_str() || need_rebuild {
                     let title = term_title.to_string();
                     self.last_title = title;
                     if let Some(ref window) = self.window {
                         let display = if multi_tab {
-                            // Multi-tab: show tab bar in title bar.
-                            let titles: Vec<String> = self
-                                .sessions
-                                .iter()
-                                .enumerate()
-                                .map(|(i, s)| {
-                                    let t = s.app().terminal().title();
-                                    let label = if t.is_empty() {
-                                        format!("Tab {}", i + 1)
-                                    } else {
-                                        t.to_string()
-                                    };
-                                    let truncated: String = label.chars().take(20).collect();
-                                    // P16-D: Add alt-screen indicator.
-                                    let alt = if s.app().terminal().is_alt_screen() {
-                                        " (alt)"
-                                    } else {
-                                        ""
-                                    };
-                                    if i == self.active {
-                                        format!("[{}*{}]", truncated, alt)
-                                    } else {
-                                        format!("[{}{}]", truncated, alt)
-                                    }
-                                })
-                                .collect();
-                            // P16-D: Add bell indicator.
+                            // Multi-tab: show active tab title + tab count.
+                            // The tab bar overlay already shows all tabs
+                            // visually; the OS title only needs the active
+                            // session name for taskbar/dock identification.
+                            let active_title = {
+                                let t = self.active_session().app().terminal().title();
+                                if t.is_empty() {
+                                    format!("Tab {}", self.active + 1)
+                                } else {
+                                    t.to_string()
+                                }
+                            };
+                            let truncated: String = active_title.chars().take(30).collect();
                             let bell = if self.visual_bell_frames > 0 {
                                 " \u{1F514}"
                             } else {
                                 ""
                             };
-                            format!("GGTerm — {}{}", titles.join(" "), bell)
+                            format!(
+                                "GGTerm — {}  ({}/{}){}",
+                                truncated,
+                                self.active + 1,
+                                self.sessions.len(),
+                                bell
+                            )
                         } else if self.last_title.is_empty() {
                             format!("GGTerm {}", env!("CARGO_PKG_VERSION"))
                         } else {
