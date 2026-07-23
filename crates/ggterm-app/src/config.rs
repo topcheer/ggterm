@@ -2854,4 +2854,66 @@ paste = "Ctrl+Shift+C"
         let config = Config::from_toml_str(toml).unwrap();
         assert!(config.validate().is_ok());
     }
+
+    #[test]
+    fn test_export_import_round_trip() {
+        // Set non-default values on every field that export_to_toml writes.
+        let original = Config {
+            appearance: AppearanceConfig {
+                theme: "dracula".into(),
+                font_family: "Test Mono".into(),
+                font_size: 14,
+                cell_width: 9,
+                cell_height: 18,
+                cursor_style: "underline".into(),
+                background_opacity: 0.85,
+                padding: 4,
+                cursor_blink: false,
+                cursor_line_highlight: false,
+                custom_palette: None,
+                custom_fg: None,
+                custom_bg: None,
+                custom_cursor: None,
+                custom_selection: None,
+            },
+            terminal: TerminalConfig {
+                scrollback_lines: 5000,
+                shell: "/bin/dash".into(),
+                bell_mode: "visual".into(),
+                copy_on_select: true,
+                word_chars: "-_".into(),
+                restore_session: true,
+                shell_integration: false,
+                notify_on_complete: true,
+                search_engine: "https://duckduckgo.com/?q=%s".into(),
+                min_notify_duration_secs: 10,
+            },
+            ..Default::default()
+        };
+
+        let toml_str = original.export_to_toml().expect("export failed");
+        let parsed = Config::from_toml_str(&toml_str).expect("import failed");
+
+        // Assert the three fields that were previously missing from export.
+        assert_eq!(parsed.appearance.cursor_style, "underline");
+        assert_eq!(parsed.terminal.restore_session, true);
+        assert_eq!(parsed.terminal.notify_on_complete, true);
+
+        // Assert all other exported fields.
+        assert_eq!(parsed.appearance.theme, "dracula");
+        assert_eq!(parsed.appearance.font_family, "Test Mono");
+        assert_eq!(parsed.appearance.font_size, 14);
+        assert_eq!(parsed.appearance.cell_width, 9);
+        assert_eq!(parsed.appearance.cell_height, 18);
+        assert_eq!(parsed.appearance.background_opacity, 0.85);
+        assert_eq!(parsed.appearance.padding, 4);
+        assert_eq!(parsed.appearance.cursor_blink, false);
+        assert_eq!(parsed.terminal.scrollback_lines, 5000);
+        assert_eq!(parsed.terminal.shell, "/bin/dash");
+        assert_eq!(parsed.terminal.bell_mode, "visual");
+        assert_eq!(parsed.terminal.copy_on_select, true);
+        assert_eq!(parsed.terminal.word_chars, "-_");
+        assert_eq!(parsed.terminal.shell_integration, false);
+        assert_eq!(parsed.terminal.search_engine, "https://duckduckgo.com/?q=%s");
+    }
 }
