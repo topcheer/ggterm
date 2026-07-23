@@ -3043,6 +3043,13 @@ impl DesktopApp {
             "terminal.export_html" => {
                 self.export_html();
             }
+            "terminal.copy_as_html" => {
+                if self.selection.is_active() {
+                    self.copy_selection_as_html();
+                } else {
+                    self.show_toast("Select text first");
+                }
+            }
             "terminal.export_text" => {
                 let text = self.active_session().app().grid().export_text();
                 let lines = text.lines().count();
