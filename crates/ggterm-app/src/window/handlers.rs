@@ -2803,6 +2803,17 @@ impl DesktopApp {
                 }
 
                 // Terminal content area: multi-click already tracked above.
+                // Ctrl+Click on terminal area → open URL at position.
+                if self.click_count == 1
+                    && self.mods.ctrl
+                    && let Some(url) = self.detect_url_at(col, row)
+                {
+                    crate::mouse::open_url(&url);
+                    let preview: String = url.chars().take(60).collect();
+                    self.show_toast(format!("Opened: {preview}"));
+                    return;
+                }
+
                 match self.click_count {
                     2 => {
                         // Double-click: select word at position.
@@ -3300,6 +3311,25 @@ impl DesktopApp {
             .as_ref()
             .map(|m| m.config().terminal.word_chars.as_str())
             .unwrap_or(".-/:@~+#?=&%$")
+    }
+
+    /// Detect a URL or OSC 8 hyperlink at the given terminal position.
+    /// Returns the URL string if found, None otherwise.
+    fn detect_url_at(&self, col: u16, row: u16) -> Option<String> {
+        let grid = &self.sessions[self.active].app().grid();
+        let row_data = grid.display_row(row as usize)?;
+
+        // Check OSC 8 hyperlink first.
+        let col_u = col as usize;
+        if col_u < row_data.cells.len()
+            && let Some(ref link) = row_data.cells[col_u].hyperlink
+        {
+            return Some(link.clone());
+        }
+
+        // Plain-text URL detection.
+        let line = row_data.text();
+        crate::mouse::detect_url_at_position(&line, col_u).map(|(_, _, url)| url)
     }
 
     pub(super) fn select_word_at(&mut self, col: u16, row: u16) {
