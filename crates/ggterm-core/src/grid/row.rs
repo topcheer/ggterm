@@ -349,4 +349,144 @@ mod tests {
         assert!(!row.cells[2].is_wide_spacer(), "spacer should be cleared");
         assert_eq!(row.cells[3].ch, 'B', "col 3 should be untouched");
     }
+
+    // ── insert_char (ICH) tests ─────────────────────────────────
+
+    #[test]
+    fn t_insert_char_basic() {
+        // "ABCDEF" insert 2 at col 1 → "A  BCDE" (blanks shift in, D,F lost)
+        let mut row = Row::new(7);
+        for (i, ch) in ['A', 'B', 'C', 'D', 'E', 'F'].iter().enumerate() {
+            row.cells[i].ch = *ch;
+        }
+        row.insert_char(1, 2);
+        assert_eq!(row.cells[0].ch, 'A');
+        assert_eq!(row.cells[1].ch, ' ', "col 1 should be blank");
+        assert_eq!(row.cells[2].ch, ' ', "col 2 should be blank");
+        assert_eq!(row.cells[3].ch, 'B');
+        assert_eq!(row.cells[4].ch, 'C');
+    }
+
+    #[test]
+    fn t_insert_char_at_end() {
+        let mut row = Row::new(5);
+        row.cells[0].ch = 'X';
+        row.insert_char(4, 3); // at last col — no effect
+        assert_eq!(row.cells[0].ch, 'X');
+    }
+
+    #[test]
+    fn t_insert_char_zero_count() {
+        let mut row = Row::new(5);
+        row.cells[0].ch = 'X';
+        row.insert_char(0, 0);
+        assert_eq!(row.cells[0].ch, 'X');
+    }
+
+    #[test]
+    fn t_insert_char_beyond_width() {
+        let mut row = Row::new(5);
+        row.cells[0].ch = 'X';
+        row.insert_char(10, 2); // beyond width — no effect
+        assert_eq!(row.cells[0].ch, 'X');
+    }
+
+    // ── delete_char (DCH) tests ─────────────────────────────────
+
+    #[test]
+    fn t_delete_char_basic() {
+        // "ABCDEF" delete 2 at col 1 → "CDEF  " (cells shift left)
+        let mut row = Row::new(6);
+        for (i, ch) in ['A', 'B', 'C', 'D', 'E', 'F'].iter().enumerate() {
+            row.cells[i].ch = *ch;
+        }
+        row.delete_char(1, 2);
+        assert_eq!(row.cells[0].ch, 'A');
+        assert_eq!(row.cells[1].ch, 'D', "D should shift to col 1");
+        assert_eq!(row.cells[2].ch, 'E');
+        assert_eq!(row.cells[3].ch, 'F');
+        assert_eq!(row.cells[4].ch, ' ', "tail should be blank");
+        assert_eq!(row.cells[5].ch, ' ');
+    }
+
+    #[test]
+    fn t_delete_char_entire_row() {
+        let mut row = Row::new(4);
+        for (i, ch) in ['A', 'B', 'C', 'D'].iter().enumerate() {
+            row.cells[i].ch = *ch;
+        }
+        row.delete_char(0, 4);
+        for cell in &row.cells {
+            assert_eq!(cell.ch, ' ', "all cells should be blank");
+        }
+    }
+
+    #[test]
+    fn t_delete_char_beyond_width() {
+        let mut row = Row::new(3);
+        row.cells[0].ch = 'X';
+        row.delete_char(5, 1); // no-op
+        assert_eq!(row.cells[0].ch, 'X');
+    }
+
+    // ── erase_char (ECH) tests ──────────────────────────────────
+
+    #[test]
+    fn t_erase_char_basic() {
+        // "ABCDEF" erase 2 at col 1 → "A  DEF" (no shift)
+        let mut row = Row::new(6);
+        for (i, ch) in ['A', 'B', 'C', 'D', 'E', 'F'].iter().enumerate() {
+            row.cells[i].ch = *ch;
+        }
+        row.erase_char(1, 2);
+        assert_eq!(row.cells[0].ch, 'A');
+        assert_eq!(row.cells[1].ch, ' ', "B erased");
+        assert_eq!(row.cells[2].ch, ' ', "C erased");
+        assert_eq!(row.cells[3].ch, 'D', "D untouched");
+        assert_eq!(row.cells[4].ch, 'E');
+    }
+
+    #[test]
+    fn t_erase_char_beyond_end() {
+        // Erase beyond row width should clamp
+        let mut row = Row::new(4);
+        for (i, ch) in ['A', 'B', 'C', 'D'].iter().enumerate() {
+            row.cells[i].ch = *ch;
+        }
+        row.erase_char(2, 100);
+        assert_eq!(row.cells[0].ch, 'A');
+        assert_eq!(row.cells[1].ch, 'B');
+        assert_eq!(row.cells[2].ch, ' ');
+        assert_eq!(row.cells[3].ch, ' ');
+    }
+
+    #[test]
+    fn t_erase_char_zero_count() {
+        let mut row = Row::new(4);
+        row.cells[0].ch = 'X';
+        row.erase_char(0, 0);
+        assert_eq!(row.cells[0].ch, 'X');
+    }
+
+    // ── resize tests ─────────────────────────────────────────────
+
+    #[test]
+    fn t_row_resize_grow() {
+        let mut row = Row::new(3);
+        row.cells[0].ch = 'A';
+        row.resize(5);
+        assert_eq!(row.cells.len(), 5);
+        assert_eq!(row.cells[0].ch, 'A');
+        assert_eq!(row.cells[3].ch, ' ', "new cells blank");
+    }
+
+    #[test]
+    fn t_row_resize_shrink() {
+        let mut row = Row::new(5);
+        row.cells[0].ch = 'A';
+        row.cells[3].ch = 'D';
+        row.resize(2);
+        assert_eq!(row.cells.len(), 2);
+        assert_eq!(row.cells[0].ch, 'A');
+    }
 }
