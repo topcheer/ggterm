@@ -141,6 +141,36 @@ impl DesktopApp {
             None
         };
 
+        // Pre-compute running command text for close-tab confirmation dialog.
+        // Must be done before the renderer borrow (which holds &mut self).
+        let close_cmd_hint: Option<String> = if self.pending_close_tab.is_some() {
+            let term = self.active_session().app().terminal();
+            let blocks = term.command_blocks();
+            let grid = term.grid();
+            blocks
+                .into_iter()
+                .rev()
+                .find(|b| b.end_row.is_none() && b.command_row.is_some())
+                .and_then(|b| {
+                    let cmd_row = b.command_row?;
+                    let sl = grid.scrollback_len();
+                    if cmd_row < sl {
+                        return None;
+                    }
+                    let row = grid.row(cmd_row - sl)?;
+                    let text: String = row
+                        .visible_cells()
+                        .skip_while(|(_, c)| c.ch.is_whitespace())
+                        .map(|(_, c)| if c.ch == '\0' { ' ' } else { c.ch })
+                        .collect::<String>()
+                        .trim()
+                        .to_string();
+                    if text.is_empty() { None } else { Some(text) }
+                })
+        } else {
+            None
+        };
+
         let (gpu, surface, renderer) = match (&mut self.gpu, &self.surface, &mut self.renderer) {
             (Some(g), Some(s), Some(r)) => (g, s, r),
             _ => return,
@@ -3275,7 +3305,13 @@ impl DesktopApp {
 
         // ── Tab close confirmation dialog ─────────────────────────
         if self.pending_close_tab.is_some() {
-            let msg = "Process still running. Close tab again to confirm.";
+            let msg = if let Some(ref cmd) = close_cmd_hint {
+                let display: String = cmd.chars().take(40).collect();
+                let suffix = if cmd.chars().count() > 40 { "…" } else { "" };
+                format!("Process running: {display}{suffix} — close again to confirm")
+            } else {
+                "Process still running. Close tab again to confirm.".to_string()
+            };
             let char_w = renderer.cell_width() as f32;
             let mut close_ui: Vec<ggterm_render_wgpu::UiRect> = Vec::with_capacity(3);
             close_ui.push(ggterm_render_wgpu::UiRect {
