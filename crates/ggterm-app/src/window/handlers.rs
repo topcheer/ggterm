@@ -525,6 +525,7 @@ impl DesktopApp {
                 key_name,
             )) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "v")
                 || (self.mods.shift && !self.mods.ctrl && !self.mods.alt && key_name == "insert")
+                || (self.mods.ctrl && self.mods.shift && key_name == "v")
             {
                 self.paste_from_clipboard();
                 return;
@@ -546,6 +547,7 @@ impl DesktopApp {
                     && self.mods.ctrl
                     && !self.mods.shift
                     && key_name == "insert")
+                || (self.mods.ctrl && self.mods.shift && key_name == "c")
             {
                 self.copy_selection_to_clipboard();
                 return;
