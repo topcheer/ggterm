@@ -491,6 +491,21 @@ pub(crate) fn is_url_char(c: char) -> bool {
 ///
 /// Uses `open` on macOS, `xdg-open` on Linux, `start` on Windows.
 pub fn open_url(url: &str) {
+    // Security: only allow safe URL schemes to prevent opening
+    // arbitrary files or executing dangerous protocols via crafted
+    // OSC 8 hyperlinks from untrusted terminal output.
+    let is_safe = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .or_else(|| url.strip_prefix("ftp://"))
+        .or_else(|| url.strip_prefix("mailto:"))
+        .is_some();
+
+    if !is_safe {
+        log::warn!("Refusing to open URL with unsafe scheme: {url}");
+        return;
+    }
+
     #[cfg(target_os = "macos")]
     let program = "open";
     #[cfg(all(unix, not(target_os = "macos")))]
