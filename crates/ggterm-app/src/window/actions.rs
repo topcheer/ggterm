@@ -433,7 +433,13 @@ impl DesktopApp {
     /// Open a new ggterm window by re-launching the binary.
     pub(super) fn open_new_window(&self) {
         let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("ggterm"));
-        match std::process::Command::new(&exe).spawn() {
+        let mut cmd = std::process::Command::new(&exe);
+        // Inherit CWD from the active session so the new window starts
+        // in the same directory (matching "Open Terminal Here" behavior).
+        if let Some(cwd) = self.active_session().cwd() {
+            cmd.current_dir(cwd);
+        }
+        match cmd.spawn() {
             Ok(_) => log::info!("Launched new ggterm window"),
             Err(e) => log::error!("Failed to open new window: {}", e),
         }
