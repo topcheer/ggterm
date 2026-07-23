@@ -113,6 +113,10 @@ struct Cli {
     /// Pipe to a file: ggterm --print-config > ~/.ggterm/config.toml
     #[arg(long)]
     print_config: bool,
+
+    /// Validate the config file and report errors without launching.
+    #[arg(long)]
+    check_config: bool,
 }
 
 fn main() -> ExitCode {
@@ -142,6 +146,26 @@ fn main() -> ExitCode {
         let config = ggterm_app::config::Config::default();
         print!("{}", config.generate_documented_template());
         return ExitCode::SUCCESS;
+    }
+
+    // Handle --check-config: validate config and report issues.
+    if cli.check_config {
+        match ggterm_app::config::ConfigManager::load_default() {
+            Ok(mgr) => match mgr.config().validate() {
+                Ok(()) => {
+                    println!("Config OK — no validation errors.");
+                    return ExitCode::SUCCESS;
+                }
+                Err(e) => {
+                    eprintln!("Config validation error: {e}");
+                    return ExitCode::FAILURE;
+                }
+            },
+            Err(e) => {
+                eprintln!("Config load error: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
     }
 
     // Initialize logging based on verbosity.
