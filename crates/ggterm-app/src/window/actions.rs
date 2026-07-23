@@ -1941,17 +1941,19 @@ impl DesktopApp {
         }
         #[cfg(target_os = "linux")]
         {
-            let et = title.replace('\'', "\\'");
-            let eb = body.replace('\'', "\\'");
+            // Command::args() passes arguments directly without shell,
+            // so no escaping needed — use title/body as-is.
             std::process::Command::new("notify-send")
-                .args([&et, &eb])
+                .args([title, body])
                 .spawn()
                 .ok();
         }
         #[cfg(target_os = "windows")]
         {
-            let et = title.replace('\'', "\\'");
-            let eb = body.replace('\'', "\\'");
+            // PowerShell single-quoted strings: escape ' by doubling ('' not \').
+            // This prevents code injection from terminal output (OSC 133).
+            let et = title.replace('\'', "''");
+            let eb = body.replace('\'', "''");
             let ps = format!(
                 "[reflection.assembly]::LoadWithPartialName('System.Windows.Forms'); \
                  $n = New-Object System.Windows.Forms.NotifyIcon; \
