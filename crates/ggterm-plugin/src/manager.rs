@@ -82,7 +82,9 @@ impl PluginManager {
             .cloned()
             .collect();
         for name in names {
-            let entry = self.plugins.get_mut(&name).unwrap();
+            let Some(entry) = self.plugins.get_mut(&name) else {
+                continue; // Plugin was removed during iteration
+            };
             match entry.plugin.init(ctx) {
                 Ok(()) => entry.state = PluginLifecycle::Active,
                 Err(e) => {
