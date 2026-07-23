@@ -42,6 +42,13 @@ impl GpuContext {
             .block_on()
             .map_err(GpuError::RequestDevice)?;
 
+        // Install uncaptured error handler to prevent wgpu from panicking
+        // on GPU errors (e.g. surface lost after display sleep/wake on macOS).
+        // These errors are recoverable — the next frame will reconfigure the surface.
+        device.on_uncaptured_error(std::sync::Arc::new(|e| {
+            log::warn!("GPU uncaptured error: {e}");
+        }));
+
         let caps = surface.get_capabilities(adapter);
 
         // Clamp surface dimensions to the device's maximum texture size.
