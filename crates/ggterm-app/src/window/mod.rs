@@ -920,13 +920,6 @@ impl DesktopApp {
         if desktop.saved_window_size.is_none()
             && let Some(ref ws) = crate::window_state::load()
         {
-            log::info!(
-                "Restoring window geometry: {}x{} at ({},{})",
-                ws.width,
-                ws.height,
-                ws.x,
-                ws.y
-            );
             desktop.saved_window_size = Some((ws.width, ws.height));
             desktop.saved_window_pos = Some((ws.x, ws.y));
             desktop.restore_maximized = ws.maximized;
@@ -1317,6 +1310,31 @@ impl ApplicationHandler for DesktopApp {
 
         if self.window.is_some() {
             return; // Already initialized with valid GPU.
+        }
+
+        // Validate saved window position against available monitors.
+        // If the saved position is off-screen (e.g. external monitor was
+        // disconnected since last run), discard the position but keep size.
+        if let Some((sx, sy)) = self.saved_window_pos {
+            let monitors: Vec<crate::window_state::MonitorRect> = event_loop
+                .available_monitors()
+                .map(|m| {
+                    let pos = m.position();
+                    let size = m.size();
+                    (pos.x, pos.y, size.width, size.height)
+                })
+                .collect();
+            let ws = crate::window_state::WindowState {
+                x: sx,
+                y: sy,
+                width: 0,
+                height: 0,
+                maximized: false,
+            };
+            if !ws.is_position_onscreen(&monitors) {
+                log::warn!("Saved window position ({sx},{sy}) is off-screen, resetting to default");
+                self.saved_window_pos = None;
+            }
         }
 
         log::info!("Initializing window + GPU");

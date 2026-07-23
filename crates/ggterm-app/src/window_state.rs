@@ -21,8 +21,36 @@ pub struct WindowState {
     pub maximized: bool,
 }
 
+impl WindowState {
+    /// Check whether the saved (x, y) position falls within any of the
+    /// given monitor rectangles.
+    ///
+    /// The check uses a generous threshold: the window only needs at least
+    /// 50px of its top-left corner visible on some monitor. This prevents
+    /// windows from being completely off-screen while allowing edge cases
+    /// like a window that straddles two monitors.
+    pub fn is_position_onscreen(&self, monitors: &[MonitorRect]) -> bool {
+        // If no monitors are reported, allow the position (can't validate).
+        if monitors.is_empty() {
+            return true;
+        }
+        monitors.iter().any(|&(mx, my, mw, mh)| {
+            // Check that the window's top-left corner is within the monitor
+            // bounds (with a small margin for window decorations).
+            let visible = 50; // minimum visible pixels
+            self.x + visible > mx
+                && self.x < mx + mw as i32 - visible
+                && self.y + visible > my
+                && self.y < my + mh as i32 - visible
+        })
+    }
+}
+
 /// File name for persisted window state.
 const FILE_NAME: &str = "window_state.toml";
+
+/// A monitor rectangle: (x, y, width, height) in logical pixels.
+pub type MonitorRect = (i32, i32, u32, u32);
 
 /// Cross-platform home directory lookup.
 /// Tries HOME (Unix) first, then USERPROFILE (Windows).
@@ -139,5 +167,74 @@ maximized = false
     fn test_home_dir_returns_some() {
         // On any reasonable test environment HOME or USERPROFILE exists.
         assert!(home_dir().is_some());
+    }
+
+    #[test]
+    fn test_is_position_onscreen_inside() {
+        let state = WindowState {
+            x: 100,
+            y: 100,
+            width: 800,
+            height: 600,
+            maximized: false,
+        };
+        // Single monitor at (0,0) 1920x1080.
+        let monitors = vec![(0, 0, 1920, 1080)];
+        assert!(state.is_position_onscreen(&monitors));
+    }
+
+    #[test]
+    fn test_is_position_onscreen_outside() {
+        let state = WindowState {
+            x: -5000,
+            y: -5000,
+            width: 800,
+            height: 600,
+            maximized: false,
+        };
+        let monitors = vec![(0, 0, 1920, 1080)];
+        assert!(!state.is_position_onscreen(&monitors));
+    }
+
+    #[test]
+    fn test_is_position_onscreen_multi_monitor() {
+        // Window on second monitor.
+        let state = WindowState {
+            x: 2000,
+            y: 100,
+            width: 800,
+            height: 600,
+            maximized: false,
+        };
+        let monitors = vec![(0, 0, 1920, 1080), (1920, 0, 1920, 1080)];
+        assert!(state.is_position_onscreen(&monitors));
+    }
+
+    #[test]
+    fn test_is_position_onscreen_no_monitors_allowed() {
+        // If no monitors reported, allow the position (can't validate).
+        let state = WindowState {
+            x: 99999,
+            y: 99999,
+            width: 800,
+            height: 600,
+            maximized: false,
+        };
+        assert!(state.is_position_onscreen(&[]));
+    }
+
+    #[test]
+    fn test_is_position_onscreen_edge_boundary() {
+        // Window at the very edge of screen — should be considered off-screen
+        // if less than 50px is visible.
+        let state = WindowState {
+            x: 1880, // only 40px from right edge (< 50 visible)
+            y: 100,
+            width: 800,
+            height: 600,
+            maximized: false,
+        };
+        let monitors = vec![(0, 0, 1920, 1080)];
+        assert!(!state.is_position_onscreen(&monitors));
     }
 }
