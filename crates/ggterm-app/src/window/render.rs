@@ -2448,19 +2448,33 @@ impl DesktopApp {
                 ..Default::default()
             });
 
-            // Message.
+            // Count running processes across all sessions.
+            let running_count = self
+                .sessions
+                .iter()
+                .filter(|s| s.app().terminal().is_command_running())
+                .count();
+
+            // Message — adapt based on whether processes are running.
+            let msg1 = if running_count > 0 {
+                format!("{running_count} session(s) have running processes.")
+            } else {
+                "All sessions are at a shell prompt.".to_string()
+            };
+            let msg2 = "Session state will be saved.".to_string();
+
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "All running processes in your sessions will be".to_string(),
+                text: msg1,
                 left: dx + 24.0,
                 top: dy + 52.0,
                 color: (200, 200, 210),
                 ..Default::default()
             });
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
-                text: "terminated. Session state will be saved.".to_string(),
+                text: msg2,
                 left: dx + 24.0,
                 top: dy + 70.0,
-                color: (200, 200, 210),
+                color: (160, 160, 170),
                 ..Default::default()
             });
 
