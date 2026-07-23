@@ -17,7 +17,6 @@ jobs:
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -78,9 +77,9 @@ jobs:
             libxcb-dri3-dev \
             libegl1-mesa-dev
       - name: Test (default features)
-        run: cargo test --workspace
+        run: cargo test -j 2 --workspace
       - name: Test (full features)
-        run: cargo test --workspace --features "${{ env.FEATURES }}"
+        run: cargo test -j 2 --workspace --features "${{ env.FEATURES }}"
 
   # ─────────────────────────────────────────────────────────────────────
   # FFI tests — verify mobile FFI bridge compiles and tests pass
@@ -97,7 +96,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test FFI (with SSH)
-        run: cargo test -p ggterm-ffi --features ssh --lib
+        run: cargo test -j 2 -p ggterm-ffi --features ssh --lib
 
   # ─────────────────────────────────────────────────────────────────────
   # Release build — verify clean release compilation on all platforms
@@ -175,7 +174,7 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Generate coverage
-        run: cargo tarpaulin --workspace --features "${{ env.FEATURES }}" --out xml --skip-clean
+        run: cargo tarpaulin -j 2 --workspace --features "${{ env.FEATURES }}" --out xml --skip-clean
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:
