@@ -614,6 +614,10 @@ impl Config {
             (self.appearance.background_opacity as f64).into(),
         );
         appearance.insert("padding".into(), (self.appearance.padding as i64).into());
+        appearance.insert(
+            "cursor_style".into(),
+            self.appearance.cursor_style.clone().into(),
+        );
         appearance.insert("cursor_blink".into(), self.appearance.cursor_blink.into());
         appearance.insert(
             "cursor_line_highlight".into(),
@@ -660,6 +664,14 @@ impl Config {
         terminal.insert(
             "shell_integration".into(),
             self.terminal.shell_integration.into(),
+        );
+        terminal.insert(
+            "restore_session".into(),
+            self.terminal.restore_session.into(),
+        );
+        terminal.insert(
+            "notify_on_complete".into(),
+            self.terminal.notify_on_complete.into(),
         );
         terminal.insert(
             "search_engine".into(),
