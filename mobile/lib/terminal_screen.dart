@@ -690,14 +690,15 @@ class _TerminalScreenState extends State<TerminalScreen>
     // newSize = startSize * cumulativeScale, not fontSize * scale.
     if ((details.scale - 1.0).abs() > 0.01) {
       final newSize = (_gestureStartFontSize * details.scale).clamp(8.0, 32.0);
-      // Show font size toast when it changes by at least 0.5pt
-      if ((newSize - _fontSize).abs() >= 0.5) {
-        _showCopiedSnackBar('Font size: ${newSize.toStringAsFixed(1)}pt');
+      // Update font size immediately (smooth visual feedback) but don't
+      // spam SnackBar on every 0.5pt step — toast shown on gesture end
+      // via onScaleEnd instead.
+      if (newSize != _fontSize) {
+        setState(() {
+          _fontSize = newSize;
+        });
+        _saveFontSize();
       }
-      setState(() {
-        _fontSize = newSize;
-      });
-      _saveFontSize();
       return;
     }
 
@@ -1964,6 +1965,13 @@ class _TerminalScreenState extends State<TerminalScreen>
                       _gestureStartFontSize = _fontSize;
                     },
                     onScaleUpdate: _onScale,
+                    onScaleEnd: (_) {
+                      // Show final font size once after pinch gesture ends.
+                      if (_fontSize != _gestureStartFontSize) {
+                        _showCopiedSnackBar(
+                            'Font size: ${_fontSize.toStringAsFixed(1)}pt');
+                      }
+                    },
                     onTapUp: (details) {
                       // If in selection mode, tap to copy and exit.
                       if (_selStartIdx != null) {
