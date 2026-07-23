@@ -2487,6 +2487,22 @@ impl ApplicationHandler for DesktopApp {
         let alt_now = self.active_session().app().terminal().is_alt_screen();
         if alt_now != self.prev_alt_screen {
             self.selection.clear();
+            // Close search bar on alt-screen switch — search highlights
+            // reference absolute row numbers that are meaningless after
+            // the screen buffer swap (vim/less/tmux use alt-screen).
+            if self.search.visible {
+                self.search.close();
+            }
+            // Reset scrollback viewport to bottom when entering alt-screen
+            // so programs like vim start at the correct position.
+            if alt_now {
+                self.active_session_mut()
+                    .app_mut()
+                    .terminal_mut()
+                    .grid_mut()
+                    .reset_viewport();
+                self.new_output_while_scrolled = 0;
+            }
             self.prev_alt_screen = alt_now;
         }
 
