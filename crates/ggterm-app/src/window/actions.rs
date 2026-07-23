@@ -428,6 +428,10 @@ impl DesktopApp {
         if self.active >= self.sessions.len() {
             self.active = self.sessions.len() - 1;
         }
+        // Show hint that the tab can be reopened — matches browser UX.
+        if !self.closed_tab_history.is_empty() {
+            self.show_toast("Tab closed — Ctrl+Shift+T to reopen");
+        }
         log::info!("Closed tab, active={}", self.active + 1);
         self.save_session_on_exit();
         if let Some(ref window) = self.window {
