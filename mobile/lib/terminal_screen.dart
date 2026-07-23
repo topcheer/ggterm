@@ -1049,6 +1049,12 @@ class _TerminalScreenState extends State<TerminalScreen>
     final line = buf.toString().trimRight();
     if (line.isEmpty) return;
 
+    // Set selection highlight for the full row.
+    final startIdx = row * _screen.cols;
+    final endIdx = startIdx + _screen.cols - 1;
+    _selStartIdx = startIdx;
+    _selEndIdx = endIdx;
+
     Clipboard.setData(ClipboardData(text: line));
     // Use runes for correct CJK/emoji character count.
     final preview = line.runes.take(40).join();
