@@ -2914,6 +2914,9 @@ paste = "Ctrl+Shift+C"
         assert_eq!(parsed.terminal.copy_on_select, true);
         assert_eq!(parsed.terminal.word_chars, "-_");
         assert_eq!(parsed.terminal.shell_integration, false);
-        assert_eq!(parsed.terminal.search_engine, "https://duckduckgo.com/?q=%s");
+        assert_eq!(
+            parsed.terminal.search_engine,
+            "https://duckduckgo.com/?q=%s"
+        );
     }
 }
