@@ -325,7 +325,7 @@ mod tests {
     fn t_copy_output_in_all() {
         let all = ContextMenuAction::all();
         assert!(
-            all.iter().any(|a| *a == ContextMenuAction::CopyOutput),
+            all.contains(&ContextMenuAction::CopyOutput),
             "CopyOutput must be in all()"
         );
     }
