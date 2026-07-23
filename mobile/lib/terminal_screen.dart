@@ -1529,6 +1529,19 @@ class _TerminalScreenState extends State<TerminalScreen>
         _sendInput([0x00]);
         return KeyEventResult.handled;
       }
+      // Ctrl+[ = ESC, Ctrl+\ = FS, Ctrl+] = GS, Ctrl+M = CR (Enter)
+      if (key == LogicalKeyboardKey.bracketLeft) {
+        _sendInput([0x1B]);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.backslash) {
+        _sendInput([0x1C]);
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.bracketRight) {
+        _sendInput([0x1D]);
+        return KeyEventResult.handled;
+      }
     }
 
     // Regular printable characters — let TextField handle them
