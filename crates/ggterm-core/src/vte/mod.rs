@@ -5,6 +5,8 @@
 
 mod parser;
 mod perform;
+#[cfg(test)]
+mod vte_tests;
 
 pub use parser::Parser;
 pub use perform::Perform;
