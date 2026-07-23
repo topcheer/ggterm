@@ -3423,6 +3423,25 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            "session.save" => {
+                let data = self.capture_session();
+                match crate::session::save_session(&data) {
+                    Ok(()) => {
+                        self.show_toast(format!("Session saved ({} tab(s))", data.tabs.len()));
+                    }
+                    Err(e) => {
+                        self.show_toast(format!("Save failed: {e}"));
+                    }
+                }
+            }
+            "session.profile" => {
+                self.cycle_profile();
+            }
+            "ssh.manager" => {
+                self.show_toast(
+                    "SSH manager: use --ssh flag or connection screen on mobile".to_string(),
+                );
+            }
             _ => {
                 log::debug!("Unhandled command palette action: {}", id);
             }
