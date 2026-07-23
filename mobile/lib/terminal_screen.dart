@@ -945,8 +945,10 @@ class _TerminalScreenState extends State<TerminalScreen>
     if (idx != null && idx != _selEndIdx) {
       final lo = idx < _selStartIdx! ? idx : _selStartIdx!;
       final hi = idx > _selStartIdx! ? idx : _selStartIdx!;
+      // Count characters in range — capped to avoid jank on large selections.
       var count = 0;
-      for (var i = lo; i <= hi && i < _screen.cells.length; i++) {
+      final maxScan = (hi - lo + 1).clamp(0, 2000);
+      for (var i = lo; i < lo + maxScan && i < _screen.cells.length; i++) {
         if (_screen.cells[i].charCode != 0) count++;
       }
       setState(() {
