@@ -1212,4 +1212,17 @@ mod tests {
             Some("src/main.rs:15:5".to_string())
         );
     }
+
+    #[test]
+    fn test_url_scheme_whitelist() {
+        // Safe schemes should be detected and openable.
+        assert!(find_urls("https://example.com").len() == 1);
+        assert!(find_urls("http://example.com").len() == 1);
+        assert!(find_urls("ftp://example.com").len() == 1);
+
+        // Unsafe schemes should not be detected as URLs (no scheme prefix match).
+        // file:// has no registered scheme in find_urls, so won't be detected.
+        assert!(find_urls("file:///etc/passwd").is_empty());
+        assert!(find_urls("javascript:alert(1)").is_empty());
+    }
 }
