@@ -185,14 +185,17 @@ impl DesktopApp {
         });
 
         // P19-G: Build overlay data (tab bar + settings + about).
+        // Reuse Vecs from struct to avoid per-frame allocation.
         let cell_h = renderer.cell_height() as f32;
         let cell_w = renderer.cell_width() as f32;
         let screen_w = renderer.resolution_width() as f32;
         let screen_h = renderer.resolution_height() as f32;
-        let mut overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec> = Vec::with_capacity(32);
-        let mut ui_rects: Vec<ggterm_render_wgpu::UiRect> = Vec::with_capacity(16);
-        // Reuse status bar segments Vec across frames (avoids per-frame allocation).
-        let mut status_segments: Vec<(String, (u8, u8, u8))> = Vec::with_capacity(24);
+        let mut overlay_texts = std::mem::take(&mut self.render_overlay_texts);
+        let mut ui_rects = std::mem::take(&mut self.render_ui_rects);
+        let mut status_segments = std::mem::take(&mut self.render_status_segs);
+        overlay_texts.clear();
+        ui_rects.clear();
+        status_segments.clear();
 
         // Theme background as normalized f32 — used for tab bar/status bar
         // so they match the terminal content instead of hardcoded colors.
@@ -3475,6 +3478,12 @@ impl DesktopApp {
         if self.settings.visible && log::log_enabled!(log::Level::Debug) {
             log::debug!("settings: {}", self.settings.format_summary());
         }
+
+        // status_segments was a local scratch buffer — move it back so
+        // next frame can reuse the capacity. overlay_texts/ui_rects were
+        // consumed by renderer via set_ui_rects()/set_overlay_text();
+        // std::mem::take left empty Vecs in the struct fields.
+        self.render_status_segs = status_segments;
     }
 }
 

@@ -465,6 +465,11 @@ pub struct DesktopApp {
     render_tab_titles: Vec<String>,
     render_bell_flags: Vec<bool>,
     render_cmd_done_flags: Vec<bool>,
+    /// Reusable overlay/UI Vecs — cleared and refilled each render frame.
+    /// Avoids 3 heap allocations per frame (overlay_texts, ui_rects, status_segments).
+    render_overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec>,
+    render_ui_rects: Vec<ggterm_render_wgpu::UiRect>,
+    render_status_segs: Vec<(String, (u8, u8, u8))>,
     /// Scrollback browse mode: when active, keys navigate scrollback
     /// instead of being sent to the PTY (vim-style j/k/G/g/q).
     scroll_mode: bool,
@@ -812,6 +817,9 @@ impl DesktopApp {
             render_tab_titles: Vec::with_capacity(8),
             render_bell_flags: Vec::with_capacity(8),
             render_cmd_done_flags: Vec::with_capacity(8),
+            render_overlay_texts: Vec::with_capacity(32),
+            render_ui_rects: Vec::with_capacity(16),
+            render_status_segs: Vec::with_capacity(24),
             scroll_mode: false,
             settings_window: None,
             pending_open_settings: false,
