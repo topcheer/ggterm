@@ -394,7 +394,11 @@ impl SearchState {
                 }
             }
         }
-        self.query = self.history[self.history_idx.unwrap()].clone();
+        let idx = self.history_idx.unwrap_or(0);
+        if idx >= self.history.len() {
+            return false;
+        }
+        self.query = self.history[idx].clone();
         self.execute_search(grid);
         true
     }
@@ -781,7 +785,8 @@ impl RegexParser {
                     return None;
                 }
                 if branches.len() == 1 {
-                    Some(RegexNode::Group(branches.into_iter().next().unwrap()))
+                    let branch = branches.into_iter().next()?;
+                    Some(RegexNode::Group(branch))
                 } else {
                     Some(RegexNode::Group(vec![RegexNode::Alternation(branches)]))
                 }
