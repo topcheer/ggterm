@@ -237,7 +237,7 @@ impl CommandRegistry {
             id: "terminal.copy_last_output".into(),
             label: "Copy Last Command Output".into(),
             category: "Terminal".into(),
-            shortcut: None,
+            shortcut: Some("Ctrl+Shift+Alt+O".into()),
         });
         r.register(Command {
             id: "terminal.copy_last_command".into(),
@@ -249,7 +249,7 @@ impl CommandRegistry {
             id: "terminal.rerun".into(),
             label: "Re-run Last Command".into(),
             category: "Terminal".into(),
-            shortcut: None,
+            shortcut: Some("Ctrl+Alt+R".into()),
         });
         r.register(Command {
             id: "terminal.rerun_new_tab".into(),
