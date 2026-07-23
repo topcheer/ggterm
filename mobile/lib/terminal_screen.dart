@@ -1519,6 +1519,15 @@ class _TerminalScreenState extends State<TerminalScreen>
 
     // Ctrl+letter combos (a-z)
     if (ctrl) {
+      // Ctrl+V or Cmd+V → paste from clipboard (before a-z handling,
+      // so 'v' doesn't get sent as 0x16 SYN to the terminal).
+      if (!alt &&
+          key == LogicalKeyboardKey.keyV &&
+          (HardwareKeyboard.instance.isShiftPressed ||
+              HardwareKeyboard.instance.isMetaPressed)) {
+        _pasteFromClipboard();
+        return KeyEventResult.handled;
+      }
       final char = key.keyLabel.toLowerCase();
       if (char.length == 1 && char.codeUnitAt(0) >= 0x61 && char.codeUnitAt(0) <= 0x7A) {
         _sendInput([char.codeUnitAt(0) - 0x60]); // Ctrl+a = 0x01, etc.
