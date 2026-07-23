@@ -200,7 +200,8 @@ pub struct DesktopApp {
     /// Index of the previously active tab (for Ctrl+Tab toggle).
     last_active_tab: Option<usize>,
     /// Last closed tab's cwd (for "reopen closed tab" feature).
-    last_closed_cwd: Option<std::path::PathBuf>,
+    /// History of recently closed tabs' CWDs (max 10) for Ctrl+Shift+T reopen.
+    closed_tab_history: Vec<std::path::PathBuf>,
     /// Terminal input lock (read-only mode). When true, keyboard input
     /// is not forwarded to the PTY.
     locked: bool,
@@ -745,7 +746,7 @@ impl DesktopApp {
             sessions: vec![session],
             active: 0,
             last_active_tab: None,
-            last_closed_cwd: None,
+            closed_tab_history: Vec::with_capacity(10),
             locked: false,
             config: desktop_config,
             mods: ModsState::default(),

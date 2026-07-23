@@ -414,8 +414,14 @@ impl DesktopApp {
         }
         self.pending_close_tab = None;
 
-        // Save the cwd of the active pane for "reopen closed tab".
-        self.last_closed_cwd = self.sessions[self.active].cwd().map(|p| p.to_path_buf());
+        // Save the cwd of the active pane for "reopen closed tab" (Ctrl+Shift+T).
+        // Keep a history of up to 10 recently closed tabs.
+        if let Some(cwd) = self.sessions[self.active].cwd().map(|p| p.to_path_buf()) {
+            if self.closed_tab_history.len() >= 10 {
+                self.closed_tab_history.remove(0);
+            }
+            self.closed_tab_history.push(cwd);
+        }
         self.sessions.remove(self.active);
         self.selection.clear();
         self.selection_auto_scroll = 0;
@@ -446,7 +452,7 @@ impl DesktopApp {
     }
 
     pub(super) fn reopen_closed_tab(&mut self) {
-        if let Some(cwd) = self.last_closed_cwd.take() {
+        if let Some(cwd) = self.closed_tab_history.pop() {
             match TabSession::new_with_cwd(
                 self.config.cols,
                 self.config.rows,
