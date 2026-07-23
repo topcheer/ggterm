@@ -478,6 +478,12 @@ pub struct DesktopApp {
     /// Tracks the last command duration we already notified about (prevents duplicate notifications).
     /// Set to Some(duration) after sending a notification; reset to None when a new command starts.
     last_notified_cmd_duration: Option<std::time::Duration>,
+    /// Pending file paths from a multi-file drag-drop, collected during
+    /// a short batching window then flushed to the PTY as a single command.
+    pending_drops: Vec<String>,
+    /// Timestamp of the first pending drop — used to flush the batch
+    /// after a short delay even if no HoveredFileCancelled arrives.
+    pending_drop_time: Option<std::time::Instant>,
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -814,6 +820,8 @@ impl DesktopApp {
             #[cfg(feature = "p2p")]
             p2p_share: crate::p2p_share::P2pShareState::new(),
             last_notified_cmd_duration: None,
+            pending_drops: Vec::new(),
+            pending_drop_time: None,
         };
 
         // ── Step 7b: P22-A Try restore saved session ──
@@ -1446,10 +1454,14 @@ impl ApplicationHandler for DesktopApp {
                 }
             }
 
-            // P22-E: Drag & drop file support.
+            // P22-E: Drag & drop file support — batch multiple files.
             WindowEvent::DroppedFile(path) => {
                 self.file_preview.hide();
-                self.handle_dropped_file(&path);
+                let path_str = path.to_string_lossy().to_string();
+                if self.pending_drops.is_empty() {
+                    self.pending_drop_time = Some(std::time::Instant::now());
+                }
+                self.pending_drops.push(path_str);
             }
 
             // P28-E: Show file preview card during drag-hover.
@@ -1908,6 +1920,20 @@ impl ApplicationHandler for DesktopApp {
 
         // Check for command completion notifications before settings.
         // (handled inline in background pump above via maybe_notify)
+
+        // Flush batched file drops: if files were dropped within the last
+        // 100ms, wait for more (multi-file drop); otherwise write them all
+        // as a single command line.
+        if !self.pending_drops.is_empty() {
+            let flush = self
+                .pending_drop_time
+                .is_some_and(|t| t.elapsed() >= std::time::Duration::from_millis(100));
+            if flush {
+                let paths = std::mem::take(&mut self.pending_drops);
+                self.pending_drop_time = None;
+                self.flush_dropped_files(&paths);
+            }
+        }
 
         if self.pending_open_settings {
             self.pending_open_settings = false;

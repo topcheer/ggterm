@@ -614,7 +614,8 @@ impl SettingsWindowState {
         // ── Footer ──
         let footer_y = self.height as f32 - margin - footer_h;
         texts.push(OverlayTextSpec {
-            text: "Up/Down: select  Left/Right: adjust  Esc: close".to_string(),
+            text: "\u{2191}\u{2193} select   \u{2190}\u{2192}/Wheel: adjust   Esc: close (changes apply live)"
+                .to_string(),
             left: margin,
             top: footer_y,
             color: footer_color,

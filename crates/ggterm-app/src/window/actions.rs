@@ -774,16 +774,24 @@ impl DesktopApp {
     ///
     /// Converts the file path to a quoted string and writes it to the
     /// active pane's PTY.
-    pub(super) fn handle_dropped_file(&mut self, path: &std::path::Path) {
+    /// Flush batched file drops as a single command line.
+    ///
+    /// Multiple files dropped at once are joined with spaces and written
+    /// as one line, so the shell receives them as arguments to a single
+    /// command (e.g. `file1.txt file2.txt file3.txt\n`) rather than
+    /// three separate commands.
+    pub(super) fn flush_dropped_files(&mut self, paths: &[String]) {
         if self.locked {
             self.show_toast("Terminal locked — drop ignored");
             return;
         }
-        let path_str = path.to_string_lossy();
-        let quoted = quote_shell_path(&path_str);
-        let bytes = format!("{quoted}\n").into_bytes();
-        log::info!("Dropped file: {} → writing to PTY", path_str);
-        self.active_session_mut().write_to_pty(&bytes);
+        if paths.is_empty() {
+            return;
+        }
+        let quoted: Vec<String> = paths.iter().map(|p| quote_shell_path(p)).collect();
+        let line = format!("{}\n", quoted.join(" "));
+        log::info!("Flushed {} dropped file(s) → writing to PTY", paths.len());
+        self.active_session_mut().write_to_pty(line.as_bytes());
     }
 
     /// Write encoded keyboard bytes to the active PTY.
