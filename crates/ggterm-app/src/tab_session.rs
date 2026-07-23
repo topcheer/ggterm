@@ -198,6 +198,11 @@ impl TabSession {
         self.active_pane().pty.as_ref()
     }
 
+    /// Get the shell name used by the active pane.
+    pub fn shell_name(&self) -> &str {
+        &self.active_pane().shell
+    }
+
     /// Get the active pane's PTY session mutably.
     pub fn pty_mut(&mut self) -> Option<&mut PtySession> {
         self.active_pane_mut().pty.as_mut()

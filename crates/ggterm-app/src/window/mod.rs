@@ -667,7 +667,23 @@ impl DesktopApp {
         desktop_config.shell = Some(effective_shell.clone());
 
         // ── Step 3: Create initial tab session ──
-        let mut session = TabSession::new(cols, rows, &effective_shell)?;
+        // If the configured shell doesn't exist (e.g. user set /bin/fish
+        // but it's not installed), fall back to the system default shell
+        // instead of crashing the entire app.
+        let mut session = match TabSession::new(cols, rows, &effective_shell) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!(
+                    "Failed to start shell '{effective_shell}': {e}; falling back to default"
+                );
+                let fallback = default_shell_string();
+                if fallback == effective_shell {
+                    // Default shell also failed — propagate the error.
+                    return Err(e);
+                }
+                TabSession::new(cols, rows, &fallback)?
+            }
+        };
         if let Some(ref mgr) = config_mgr {
             let cfg = mgr.config();
             session
@@ -683,15 +699,25 @@ impl DesktopApp {
 
         // ── Step 3b: Welcome message ──
         // Print a brief, helpful banner before the shell starts.
-        let shell_name = std::path::Path::new(&effective_shell)
+        let actual_shell = session.shell_name().to_string();
+        let shell_name = std::path::Path::new(&actual_shell)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("shell");
-        let welcome = format!(
-            "\x1b[90m GGTerm v{} ({}) \x1b[0m\x1b[90mCtrl+Shift+? for help\x1b[0m\r\n",
-            env!("CARGO_PKG_VERSION"),
-            shell_name,
-        );
+        let welcome = if actual_shell != effective_shell {
+            // Shell fallback occurred — warn the user.
+            format!(
+                "\x1b[33m\u{26a0} Shell '{effective_shell}' not found, using '{actual_shell}' instead\x1b[0m\r\n\x1b[90m GGTerm v{} ({}) \x1b[0m\x1b[90mCtrl+Shift+? for help\x1b[0m\r\n",
+                env!("CARGO_PKG_VERSION"),
+                shell_name,
+            )
+        } else {
+            format!(
+                "\x1b[90m GGTerm v{} ({}) \x1b[0m\x1b[90mCtrl+Shift+? for help\x1b[0m\r\n",
+                env!("CARGO_PKG_VERSION"),
+                shell_name,
+            )
+        };
         session
             .app_mut()
             .handle_event(crate::event::AppEvent::PtyBytes(welcome.into_bytes()));
