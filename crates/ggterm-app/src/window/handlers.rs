@@ -444,6 +444,7 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "=")
+                || (self.mods.ctrl && !self.mods.shift && key_name == "=")
                 || (self.mods.ctrl && self.mods.shift && key_name == "+")
             {
                 if self.font_zoom.zoom_in() {
@@ -460,6 +461,7 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "-")
+                || (self.mods.ctrl && !self.mods.shift && key_name == "-")
             {
                 if self.font_zoom.zoom_out() {
                     self.apply_font_size();
@@ -475,6 +477,7 @@ impl DesktopApp {
                 self.mods.alt,
                 key_name,
             ) || (cfg!(target_os = "macos") && self.mods.super_key && key_name == "0")
+                || (self.mods.ctrl && !self.mods.shift && key_name == "0")
             {
                 if self.font_zoom.reset() {
                     self.apply_font_size();
