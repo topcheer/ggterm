@@ -468,6 +468,8 @@ pub struct DesktopApp {
     saved_window_pos: Option<(i32, i32)>,
     /// P31: Saved window size from previous session.
     saved_window_size: Option<(u32, u32)>,
+    /// Whether to restore the window maximized (from window_state.toml).
+    restore_maximized: bool,
     /// P23-E: Tab drag state (Some(tab_idx) when dragging).
     dragging_tab: Option<usize>,
     /// Pane zoom mode: when true, only the active pane is rendered at full size.
@@ -853,6 +855,7 @@ impl DesktopApp {
             pending_close_tab: None,
             saved_window_pos: None,
             saved_window_size: None,
+            restore_maximized: false,
             dragging_tab: None,
             pane_zoomed: false,
             new_output_while_scrolled: 0,
@@ -908,6 +911,25 @@ impl DesktopApp {
             }
         } else {
             log::info!("Session restore disabled in config, starting fresh");
+        }
+
+        // ── Step 7b: Load window geometry (independent of session restore) ──
+        // Window position/size should persist across restarts even when
+        // restore_session = false. This loads from ~/.ggterm/window_state.toml.
+        // Session restore geometry takes priority if both exist.
+        if desktop.saved_window_size.is_none()
+            && let Some(ref ws) = crate::window_state::load()
+        {
+            log::info!(
+                "Restoring window geometry: {}x{} at ({},{})",
+                ws.width,
+                ws.height,
+                ws.x,
+                ws.y
+            );
+            desktop.saved_window_size = Some((ws.width, ws.height));
+            desktop.saved_window_pos = Some((ws.x, ws.y));
+            desktop.restore_maximized = ws.maximized;
         }
 
         // ── Step 7c: Load config-driven keybindings (P14-D) ──
@@ -1219,6 +1241,27 @@ impl DesktopApp {
                 .spawn();
         }
     }
+
+    /// Save window geometry to ~/.ggterm/window_state.toml.
+    /// Called on quit, independent of session restore setting.
+    pub(crate) fn save_window_geometry(&self) {
+        let Some(ref window) = self.window else {
+            return;
+        };
+        let scale = window.scale_factor();
+        let inner = window.inner_size();
+        let logical_w = (inner.width as f64 / scale) as u32;
+        let logical_h = (inner.height as f64 / scale) as u32;
+        let pos = window.outer_position().ok();
+        let state = crate::window_state::WindowState {
+            x: pos.map(|p| p.x).unwrap_or(0),
+            y: pos.map(|p| p.y).unwrap_or(0),
+            width: logical_w,
+            height: logical_h,
+            maximized: window.is_maximized(),
+        };
+        crate::window_state::save(&state);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1310,6 +1353,10 @@ impl ApplicationHandler for DesktopApp {
         }
         // --maximize flag: start maximized.
         if std::env::var("GGTERM_MAXIMIZE").as_deref() == Ok("1") {
+            attrs = attrs.with_maximized(true);
+        }
+        // Restore maximized state from saved window geometry.
+        if self.restore_maximized {
             attrs = attrs.with_maximized(true);
         }
 
@@ -2006,6 +2053,8 @@ impl ApplicationHandler for DesktopApp {
         // P29-C: Check if we should quit after confirmation.
         if self.should_quit {
             self.send_terminal_reset();
+            // Save window geometry (independent of session restore).
+            self.save_window_geometry();
             self.save_session_on_exit();
             event_loop.exit();
             return;

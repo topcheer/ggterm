@@ -76,6 +76,8 @@ pub mod ui_theme;
 pub mod version_info;
 #[cfg(all(feature = "desktop", target_os = "macos"))]
 pub mod vibrancy;
+#[cfg(feature = "desktop")]
+pub mod window_state;
 
 #[cfg(feature = "ai")]
 pub mod ai_bridge;
