@@ -829,6 +829,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 TextFormField(
                   controller: _passController,
                   obscureText: _obscurePassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   autofillHints: const [AutofillHints.password],
                   textInputAction: TextInputAction.go,
                   onChanged: (_) => _clearError(),
