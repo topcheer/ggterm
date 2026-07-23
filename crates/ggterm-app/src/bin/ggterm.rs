@@ -104,10 +104,33 @@ struct Cli {
     /// Overrides --cols/--rows if COLSxROWS is specified.
     #[arg(short = 'g', long)]
     geometry: Option<String>,
+
+    /// List available themes and exit.
+    #[arg(long)]
+    list_themes: bool,
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    // Handle --list-themes early exit.
+    if cli.list_themes {
+        println!("Available themes:");
+        for theme in [
+            "dark",
+            "light",
+            "dracula",
+            "solarized-dark",
+            "solarized-light",
+            "gruvbox",
+            "nord",
+            "tokyo-night",
+            "catppuccin-mocha",
+        ] {
+            println!("  {theme}");
+        }
+        return ExitCode::SUCCESS;
+    }
 
     // Initialize logging based on verbosity.
     let log_level = match cli.verbose {
