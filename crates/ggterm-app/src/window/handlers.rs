@@ -2897,6 +2897,13 @@ impl DesktopApp {
                         .is_none_or(|m| m.config().terminal.copy_on_select)
                 {
                     self.copy_selection_to_clipboard();
+                } else if self.selection.is_active() {
+                    // Even without copy_on_select, write to PRIMARY on Linux
+                    // so middle-click paste works (standard X11 behavior).
+                    let text = self.extract_selection_text();
+                    if !text.is_empty() {
+                        crate::clipboard::write_primary_selection(&text);
+                    }
                 }
                 if let Some(ref window) = self.window {
                     window.request_redraw();
