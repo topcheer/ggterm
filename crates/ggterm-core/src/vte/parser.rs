@@ -1,6 +1,6 @@
 //! VTE parser based on the Paul Williams ANSI parser state machine.
 //!
-//! Reference: https://vt100.net/emu/dec_ansi_parser
+//! Reference: <https://vt100.net/emu/dec_ansi_parser>
 //!
 //! The parser is a byte-driven state machine. Each input byte causes a
 //! state transition and/or invokes a callback on the [`Perform`] trait.
