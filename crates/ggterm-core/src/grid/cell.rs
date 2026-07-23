@@ -207,3 +207,152 @@ pub fn str_width(s: &str) -> usize {
     use unicode_width::UnicodeWidthStr;
     s.width()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn t_blank_cell() {
+        let c = Cell::blank();
+        assert!(c.is_blank());
+        assert_eq!(c.ch, ' ');
+        assert_eq!(c.fg, Color::Default);
+        assert_eq!(c.bg, Color::Default);
+        assert!(c.flags.is_empty());
+        assert!(c.hyperlink.is_none());
+    }
+
+    #[test]
+    fn t_with_char() {
+        let c = Cell::with_char('X');
+        assert_eq!(c.ch, 'X');
+        assert!(!c.is_blank());
+    }
+
+    #[test]
+    fn t_clear_resets_everything() {
+        let mut c = Cell::with_char('A');
+        c.fg = Color::Indexed(1);
+        c.bg = Color::Rgb(10, 20, 30);
+        c.flags = CellFlags::BOLD | CellFlags::UNDERLINE;
+        c.hyperlink = Some("http://example.com".to_string());
+        c.combining.push('\u{0301}');
+        c.clear();
+        assert!(c.is_blank());
+        assert_eq!(c.fg, Color::Default);
+        assert_eq!(c.bg, Color::Default);
+        assert!(c.flags.is_empty());
+        assert!(c.hyperlink.is_none());
+        assert!(c.combining.is_empty());
+    }
+
+    #[test]
+    fn t_set_char_ascii() {
+        let mut c = Cell::blank();
+        let w = c.set_char('A');
+        assert_eq!(w, 1);
+        assert!(!c.is_wide());
+        assert!(!c.is_wide_spacer());
+    }
+
+    #[test]
+    fn t_set_char_wide_cjk() {
+        let mut c = Cell::blank();
+        let w = c.set_char('中');
+        assert_eq!(w, 2);
+        assert!(c.is_wide());
+    }
+
+    #[test]
+    fn t_set_char_emoji() {
+        let mut c = Cell::blank();
+        let w = c.set_char('🎉');
+        assert_eq!(w, 2);
+        assert!(c.is_wide());
+    }
+
+    #[test]
+    fn t_set_char_zero_width_combining() {
+        let mut c = Cell::blank();
+        let w = c.set_char('\u{0301}');
+        assert_eq!(w, 0);
+    }
+
+    #[test]
+    fn t_set_wide_spacer() {
+        let mut c = Cell::blank();
+        c.set_wide_spacer();
+        assert!(c.is_wide_spacer());
+        assert!(!c.is_wide());
+        assert_eq!(c.ch, ' ');
+    }
+
+    #[test]
+    fn t_set_char_removes_old_wide_flags() {
+        let mut c = Cell::blank();
+        c.set_char('中');
+        assert!(c.is_wide());
+        c.set_char('A');
+        assert!(!c.is_wide());
+        assert!(!c.is_wide_spacer());
+    }
+
+    #[test]
+    fn t_set_fg_bg() {
+        let mut c = Cell::blank();
+        c.set_fg(Color::Indexed(3));
+        c.set_bg(Color::Rgb(255, 128, 0));
+        assert_eq!(c.fg, Color::Indexed(3));
+        assert_eq!(c.bg, Color::Rgb(255, 128, 0));
+    }
+
+    #[test]
+    fn t_is_blank_false_with_flags() {
+        let mut c = Cell::blank();
+        c.flags = CellFlags::BOLD;
+        assert!(!c.is_blank());
+    }
+
+    #[test]
+    fn t_char_width_ascii() {
+        assert_eq!(char_width('A'), 1);
+        assert_eq!(char_width(' '), 1);
+    }
+
+    #[test]
+    fn t_char_width_cjk() {
+        assert_eq!(char_width('中'), 2);
+        assert_eq!(char_width('あ'), 2);
+    }
+
+    #[test]
+    fn t_char_width_combining() {
+        assert_eq!(char_width('\u{0301}'), 0);
+    }
+
+    #[test]
+    fn t_char_width_emoji() {
+        assert_eq!(char_width('🎉'), 2);
+    }
+
+    #[test]
+    fn t_str_width_mixed() {
+        assert_eq!(str_width("AB中🎉"), 6);
+    }
+
+    #[test]
+    fn t_default_palette_length() {
+        assert_eq!(Color::default_palette().len(), 16);
+    }
+
+    #[test]
+    fn t_color_from_sgr() {
+        assert_eq!(Color::from_sgr(0), Some(Color::Default));
+        assert_eq!(Color::from_sgr(30), Some(Color::Indexed(0)));
+        assert_eq!(Color::from_sgr(37), Some(Color::Indexed(7)));
+        assert_eq!(Color::from_sgr(90), Some(Color::Indexed(8)));
+        assert_eq!(Color::from_sgr(97), Some(Color::Indexed(15)));
+        assert_eq!(Color::from_sgr(50), None);
+    }
+}
