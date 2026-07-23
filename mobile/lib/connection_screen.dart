@@ -598,9 +598,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       _errorMessage = null;
     });
 
+    final rawPort = int.tryParse(_portController.text.trim());
+    final port = (rawPort == null || rawPort < 1 || rawPort > 65535)
+        ? 22
+        : rawPort;
+
     final params = ConnectionParams(
       host: _hostController.text.trim(),
-      port: int.tryParse(_portController.text.trim()) ?? 22,
+      port: port,
       username: _userController.text.trim(),
       password: _passController.text,
       keyFilePath: _useKeyFile && _keyController.text.isNotEmpty
