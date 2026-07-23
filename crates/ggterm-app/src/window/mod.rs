@@ -1226,9 +1226,54 @@ impl DesktopApp {
 // ══════════════════════════════════════════════════════════════════
 
 impl ApplicationHandler for DesktopApp {
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        // Drop GPU resources to release the GPU context. On macOS, this
+        // fires when the display goes to sleep or the app is minimized.
+        // The GPU context + renderer will be recreated in resumed().
+        if self.gpu.is_some() {
+            log::info!("Suspending — dropping GPU context");
+            self.gpu = None;
+            self.renderer = None;
+            // Keep self.surface — it will be recreated on resume.
+            self.surface = None;
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // If window exists but GPU was dropped (e.g. after suspended/wake),
+        // recreate the GPU context and renderer from the existing surface.
+        if self.window.is_some() && self.gpu.is_none() {
+            log::info!("Recreating GPU context after suspend/wake");
+            let Some(ref window) = self.window else {
+                return;
+            };
+            let phys_w = window.inner_size().width.max(1);
+            let phys_h = window.inner_size().height.max(1);
+            let (_instance, surface, adapter) = match init_wgpu(Arc::clone(window)) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("GPU reinit failed: {e}");
+                    return;
+                }
+            };
+            let gpu = match GpuContext::from_surface(&surface, &adapter, phys_w, phys_h) {
+                Ok(g) => g,
+                Err(e) => {
+                    log::error!("GPU context recreation failed: {e}");
+                    return;
+                }
+            };
+            let scale_factor = window.scale_factor();
+            let renderer = gpu.create_renderer(phys_w, phys_h, scale_factor);
+            self.surface = Some(surface);
+            self.gpu = Some(gpu);
+            self.renderer = Some(renderer);
+            window.request_redraw();
+            return;
+        }
+
         if self.window.is_some() {
-            return; // Already initialized.
+            return; // Already initialized with valid GPU.
         }
 
         log::info!("Initializing window + GPU");
