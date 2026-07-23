@@ -472,6 +472,11 @@ impl DesktopApp {
                     self.apply_scrollback_to_active(scrollback);
                     self.active = self.sessions.len() - 1;
                     self.selection.clear();
+                    let cwd_name = cwd
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| cwd.display().to_string());
+                    self.show_toast(format!("Reopened tab in {cwd_name}"));
                     log::info!("Reopened closed tab in {:?}", cwd);
                     if let Some(ref window) = self.window {
                         window.request_redraw();
