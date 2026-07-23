@@ -18,6 +18,8 @@ pub enum ContextMenuAction {
     SearchWeb,
     /// Open URL at cursor position in default browser.
     OpenUrl,
+    /// Copy the output of the last completed command to clipboard.
+    CopyOutput,
     /// Split current pane horizontally (left | right).
     SplitHorizontal,
     /// Split current pane vertically (top / bottom).
@@ -40,6 +42,7 @@ impl ContextMenuAction {
             Self::Search => "Search",
             Self::SearchWeb => "Search Web",
             Self::OpenUrl => "Open URL",
+            Self::CopyOutput => "Copy Output",
             Self::SplitHorizontal => "Split Horizontal",
             Self::SplitVertical => "Split Vertical",
             Self::Clear => "Clear",
@@ -57,6 +60,7 @@ impl ContextMenuAction {
             Self::Search,
             Self::SearchWeb,
             Self::OpenUrl,
+            Self::CopyOutput,
             Self::SplitHorizontal,
             Self::SplitVertical,
             Self::Clear,
@@ -242,8 +246,8 @@ mod tests {
     fn t_menu_height() {
         let m = ContextMenuState::default();
         let h = m.menu_height();
-        // 11 items * 32 + 2 * 10 padding = 352 + 20 = 372
-        assert_eq!(h, 372.0);
+        // 12 items * 32 + 2 * 10 padding = 384 + 20 = 404
+        assert_eq!(h, 404.0);
     }
 
     #[test]

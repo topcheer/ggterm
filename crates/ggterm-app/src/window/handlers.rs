@@ -3162,7 +3162,10 @@ impl DesktopApp {
                 || (!self.tab_bar.visible
                     && !self.tab_bar.tabs.is_empty()
                     && self.is_on_floating_toolbar(py))
+                || (self.tab_bar.visible && py < content_top)
             {
+                // Pointer over: clickable links, floating toolbar buttons,
+                // and the tab bar area (tabs, close buttons, +/gear buttons).
                 CursorIcon::Pointer
             } else if py > content_top || self.selection.dragging {
                 CursorIcon::Text
@@ -3522,6 +3525,9 @@ impl DesktopApp {
             }
             crate::context_menu::ContextMenuAction::OpenUrl => {
                 self.open_url_at_cursor();
+            }
+            crate::context_menu::ContextMenuAction::CopyOutput => {
+                self.copy_last_command_output();
             }
             crate::context_menu::ContextMenuAction::SplitHorizontal => {
                 self.split_pane_horizontal();

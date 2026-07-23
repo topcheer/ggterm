@@ -388,22 +388,29 @@ impl DesktopApp {
                 let title = tab.format();
                 // Reserve space for close button only when 2+ tabs AND not pinned.
                 let is_pinned = tab_idx < self.sessions.len() && self.sessions[tab_idx].is_pinned();
+                // Prepend a pin indicator for pinned tabs so users understand
+                // why the close button is absent.
+                let title_with_pin = if is_pinned {
+                    format!("\u{1F4CC} {title}") // 📌
+                } else {
+                    title
+                };
                 let reserved = if self.tab_bar.tabs.len() > 1 && !is_pinned {
                     24.0 // close "x" + margin
                 } else {
                     8.0 // just right padding
                 };
                 let max_chars = ((w - 16.0 - reserved) / cell_w).floor() as usize;
-                let display_title: String = if title.chars().count() > max_chars {
+                let display_title: String = if title_with_pin.chars().count() > max_chars {
                     format!(
                         "{}…",
-                        title
+                        title_with_pin
                             .chars()
                             .take(max_chars.saturating_sub(1))
                             .collect::<String>()
                     )
                 } else {
-                    title
+                    title_with_pin
                 };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: display_title,
