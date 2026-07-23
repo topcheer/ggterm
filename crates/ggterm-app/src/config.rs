@@ -447,12 +447,21 @@ impl Config {
             config.appearance.font_family = v;
         }
         if let Some(v) = raw.appearance.font_size {
+            if !(6..=32).contains(&v) {
+                log::warn!("font_size {v} out of range [6, 32], clamped");
+            }
             config.appearance.font_size = v.clamp(6, 32);
         }
         if let Some(v) = raw.appearance.cell_width {
+            if !(4..=32).contains(&v) {
+                log::warn!("cell_width {v} out of range [4, 32], clamped");
+            }
             config.appearance.cell_width = v.clamp(4, 32);
         }
         if let Some(v) = raw.appearance.cell_height {
+            if !(4..=32).contains(&v) {
+                log::warn!("cell_height {v} out of range [4, 32], clamped");
+            }
             config.appearance.cell_height = v.clamp(4, 32);
         }
         if let Some(v) = raw.appearance.cursor_style {
@@ -464,11 +473,16 @@ impl Config {
             }
         }
         if let Some(v) = raw.appearance.background_opacity {
-            // Clamp to valid range.
+            if !(0.0..=1.0).contains(&v) {
+                log::warn!("background_opacity {v} out of range [0.0, 1.0], clamped");
+            }
             config.appearance.background_opacity = v.clamp(0.0, 1.0);
         }
         if let Some(v) = raw.appearance.padding {
-            config.appearance.padding = v.min(100); // cap at 100px
+            if v > 100 {
+                log::warn!("padding {v} exceeds max 100, clamped");
+            }
+            config.appearance.padding = v.min(100);
         }
         if let Some(v) = raw.appearance.cursor_blink {
             config.appearance.cursor_blink = v;
