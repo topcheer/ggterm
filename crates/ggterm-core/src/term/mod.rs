@@ -9024,4 +9024,72 @@ mod tests {
         feed(&mut t, b"mX");
         assert!(t.grid().width() > 0);
     }
+
+    // ── Scroll region behavior tests ──────────────────────────────
+
+    #[test]
+    fn t_scroll_region_lf_scrolls_within_region() {
+        // Set scroll region rows 2-4 (0-indexed 1-3), fill with ABC,
+        // LF at bottom of region should scroll only within region.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // DECSTBM 2-4, cursor→home
+        feed(&mut t, b"\x1b[2;1HA"); // row 2 = A
+        feed(&mut t, b"\x1b[3;1HB"); // row 3 = B
+        feed(&mut t, b"\x1b[4;1HC"); // row 4 = C
+        feed(&mut t, b"\x1b[4;1H\n"); // LF at bottom → scroll up
+        // Row 2 should now show "B" (scrolled from row 3)
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'B');
+        // Row 5 (outside region) should be untouched
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_scroll_region_origin_mode() {
+        // DECOM (origin mode) → cursor (0,0) is at top of scroll region
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;8r");  // DECSTBM 3-8
+        feed(&mut t, b"\x1b[?6h");   // DECOM on
+        feed(&mut t, b"\x1b[1;1H");  // CUP to "1,1" → origin-relative
+        // In origin mode, row 0 = top of scroll region = row 3 (1-indexed) = row 2 (0-indexed)
+        assert_eq!(t.cursor().1, 2); // row 2 (0-indexed)
+    }
+
+    #[test]
+    fn t_scroll_region_clears_on_reset() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // set region 2-4 (1-indexed)
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 1); // 0-indexed top
+        assert_eq!(bottom, 4); // 1-indexed bottom (exclusive)
+        feed(&mut t, b"\x1b[r"); // clear region
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!(top2, 0);
+        assert_eq!(bottom2, 5); // full height
+    }
+
+    #[test]
+    fn t_scroll_region_ind_scrolls() {
+        // IND (index, ESC D) at bottom of scroll region should scroll.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 1-3
+        feed(&mut t, b"\x1b[2;1HX"); // X at row 2
+        feed(&mut t, b"\x1b[3;1H");  // move to row 3 (bottom of region)
+        feed(&mut t, b"\x1bD");      // IND → scroll up within region
+        // Row 2 should be blanked (X scrolled to row 3 then... actually X moves up)
+        // Actually: scroll up means content moves up, blank at bottom
+        // Row 1 stays, row 2 gets row 3 content (blank), row 3 gets blank
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "row 2 should be blank after scroll");
+    }
+
+    #[test]
+    fn t_scroll_region_ri_at_top_scrolls_down() {
+        // RI (reverse index, ESC M) at top of scroll region should scroll down.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 1-3
+        feed(&mut t, b"\x1b[2;1HX"); // X at row 2
+        feed(&mut t, b"\x1b[1;1H");  // move to top of region (row 1)
+        feed(&mut t, b"\x1bM");      // RI at top → scroll down within region
+        // X should have moved from row 2 to row 3
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'X', "X should move down to row 3");
+    }
 }
