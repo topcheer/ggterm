@@ -649,12 +649,15 @@ pub unsafe extern "C" fn ggterm_ssh_connect_key(
         }
     };
 
-    match ggterm_ssh::SshSession::connect_with_key(
-        &host_s,
-        port,
-        &user_s,
-        std::path::Path::new(&key_s),
-    ) {
+    // Validate key file exists before attempting SSH connection —
+    // provides a clearer error than the raw SSH library message.
+    let key_path = std::path::Path::new(&key_s);
+    if !key_path.exists() {
+        set_error(format!("SSH key file not found: {key_s}"));
+        return -1;
+    }
+
+    match ggterm_ssh::SshSession::connect_with_key(&host_s, port, &user_s, key_path) {
         Ok(session) => {
             let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
             if let Some(s) = map.get_mut(&id) {
