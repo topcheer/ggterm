@@ -541,6 +541,12 @@ impl CommandRegistry {
             category: "AI".into(),
             shortcut: Some("Ctrl+Shift+H".into()),
         });
+        r.register(Command {
+            id: "ai.nl2cmd".into(),
+            label: "AI: Natural Language to Command".into(),
+            category: "AI".into(),
+            shortcut: None,
+        });
         // SSH
         r.register(Command {
             id: "ssh.manager".into(),

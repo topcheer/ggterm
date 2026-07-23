@@ -3378,6 +3378,25 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            #[cfg(feature = "ai")]
+            "ai.explain" => {
+                self.trigger_ai_request(ggterm_ai::Action::Explain);
+            }
+            #[cfg(feature = "ai")]
+            "ai.suggest" => {
+                self.trigger_ai_request(ggterm_ai::Action::Suggest);
+            }
+            #[cfg(feature = "ai")]
+            "ai.help" => {
+                self.trigger_ai_request(ggterm_ai::Action::ErrorHelp);
+            }
+            #[cfg(feature = "ai")]
+            "ai.nl2cmd" => {
+                self.ai_overlay.start_nl2cmd_input();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
             _ => {
                 log::debug!("Unhandled command palette action: {}", id);
             }

@@ -1183,15 +1183,10 @@ impl DesktopApp {
             return;
         }
 
-        // Ctrl+Shift+Alt+L → toggle terminal input lock
-        if self.mods.ctrl
-            && self.mods.shift
-            && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyL) = &event.physical_key
-        {
-            self.toggle_lock();
-            return;
-        }
+        // Note: Ctrl+Shift+Alt+L → toggle lock was removed here — it is
+        // dead code because the earlier handler at line ~414 catches
+        // Ctrl+Shift+Alt+L for config reload first. Toggle lock is
+        // available via command palette ("Toggle Terminal Lock").
 
         // Ctrl+Shift+Alt+S → save scrollback to file
         if self.mods.ctrl
@@ -1848,12 +1843,10 @@ impl DesktopApp {
                     self.trigger_ai_request(ggterm_ai::Action::ErrorHelp);
                     return;
                 }
-                #[cfg(feature = "ai")]
-                KeyCode::KeyN => {
-                    // NL2Command: show input mode instead of immediately requesting.
-                    self.ai_overlay.start_nl2cmd_input();
-                    return;
-                }
+                // Note: NL2Command removed from Ctrl+Shift+N — that key
+                // is bound to "new window" (see line ~380). NL2Command is
+                // available via command palette ("AI: Natural Language to
+                // Command") instead.
                 _ => {}
             }
         }
