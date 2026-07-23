@@ -2344,10 +2344,26 @@ impl ApplicationHandler for DesktopApp {
             if std::env::var("GGTERM_HOLD").as_deref() == Ok("1") {
                 // Print a hold message to the terminal if not already done.
                 if !self.hold_message_shown {
-                    let exit_code = self.sessions[self.active].app().terminal().last_exit_code();
+                    let term = self.sessions[self.active].app().terminal();
+                    let exit_code = term.last_exit_code();
+                    // Format execution duration if available.
+                    let dur_str = term
+                        .last_command_duration()
+                        .or_else(|| term.running_command_elapsed())
+                        .map(|d| {
+                            let secs = d.as_secs();
+                            if secs >= 60 {
+                                format!(" ({}m{}s) ", secs / 60, secs % 60)
+                            } else if secs > 0 {
+                                format!(" ({}s) ", secs)
+                            } else {
+                                format!(" ({}ms) ", d.as_millis())
+                            }
+                        })
+                        .unwrap_or_default();
                     let exit_str = match exit_code {
-                        Some(0) => " (exit: 0) ".to_string(),
-                        Some(code) => format!(" \x1b[31m(exit: {})\x1b[0m ", code),
+                        Some(0) => format!("{}(exit: 0) ", dur_str),
+                        Some(code) => format!("{}\x1b[31m(exit: {})\x1b[0m ", dur_str, code),
                         None => "".to_string(),
                     };
                     let msg = format!(
