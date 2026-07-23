@@ -627,33 +627,41 @@ pub fn spawn_pty_reader(
     sender: EventSender,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        let mut buf = [0u8; 16384];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => {
-                    // EOF — child process exited
-                    let _ = sender.send(AppEvent::PtyExit);
-                    break;
-                }
-                Ok(n) => {
-                    let bytes = buf[..n].to_vec();
-                    if sender.send(AppEvent::PtyBytes(bytes)).is_err() {
-                        // Main loop dropped receiver — quit.
+        // Safety net: if the reader panics (e.g. PTY driver bug, OOM in
+        // Vec allocation), catch it and notify the main loop instead of
+        // silently dying and leaving the terminal frozen.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut buf = [0u8; 16384];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        // EOF — child process exited
+                        let _ = sender.send(AppEvent::PtyExit);
+                        break;
+                    }
+                    Ok(n) => {
+                        let bytes = buf[..n].to_vec();
+                        if sender.send(AppEvent::PtyBytes(bytes)).is_err() {
+                            // Main loop dropped receiver — quit.
+                            break;
+                        }
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                        // EINTR (signal interrupted the read) — retry the loop.
+                        continue;
+                    }
+                    Err(_e) => {
+                        // Genuine read error — treat as exit.
+                        let _ = sender.send(AppEvent::PtyExit);
                         break;
                     }
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
-                    // EINTR (signal interrupted the read) — retry the loop.
-                    // This happens when SIGCHLD arrives (child exited) or
-                    // other signals. Without retrying, we'd exit prematurely.
-                    continue;
-                }
-                Err(_e) => {
-                    // Genuine read error — treat as exit.
-                    let _ = sender.send(AppEvent::PtyExit);
-                    break;
-                }
             }
+        }));
+
+        if result.is_err() {
+            log::error!("PTY reader thread panicked — notifying main loop");
+            let _ = sender.send(AppEvent::PtyExit);
         }
     })
 }
