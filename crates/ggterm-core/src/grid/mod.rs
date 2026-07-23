@@ -156,7 +156,10 @@ impl Grid {
 
                 // If this row was NOT soft-wrapped, it's the end of a logical line.
                 if current.as_ref().is_some_and(|r| !r.wrap) {
-                    let line = current.take().unwrap();
+                    // unwrap is safe: is_some_and guaranteed Some.
+                    let line = current
+                        .take()
+                        .expect("checked Some above");
                     reflow_line(&mut reflown, line, width);
                 }
             }
