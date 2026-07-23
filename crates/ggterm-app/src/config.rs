@@ -774,6 +774,10 @@ impl Config {
             self.appearance.font_size
         ));
         s.push_str(&format!(
+            "cursor_style = \"{}\"  # block, underline, bar\n",
+            self.appearance.cursor_style
+        ));
+        s.push_str(&format!(
             "background_opacity = {:.1}  # 0.0 (transparent) to 1.0 (opaque)\n",
             self.appearance.background_opacity
         ));
@@ -813,8 +817,16 @@ impl Config {
             self.terminal.word_chars
         ));
         s.push_str(&format!(
-            "notify_on_complete = {}  # desktop notification when long commands finish\n\n",
+            "notify_on_complete = {}  # desktop notification when long commands finish\n",
             self.terminal.notify_on_complete
+        ));
+        s.push_str(&format!(
+            "restore_session = {}  # reopen tabs/panes from last session\n",
+            self.terminal.restore_session
+        ));
+        s.push_str(&format!(
+            "shell_integration = {}  # OSC 133 command blocks (command timing, copy output)\n\n",
+            self.terminal.shell_integration
         ));
 
         // Keybindings
