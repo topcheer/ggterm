@@ -2289,8 +2289,8 @@ impl ApplicationHandler for DesktopApp {
             for s in self.sessions.iter() {
                 self.render_tab_titles.push(s.title().to_string());
             }
-            let tab_refs: Vec<&str> = self.render_tab_titles.iter().map(|s| s.as_str()).collect();
-            self.tab_bar.update(&tab_refs, self.active);
+            self.tab_bar
+                .update_with_bells(&self.render_tab_titles, self.active, &[], &[]);
         } else {
             // Same count — just update titles and active index in-place.
             for (i, session) in self.sessions.iter().enumerate() {

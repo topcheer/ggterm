@@ -257,9 +257,8 @@ impl DesktopApp {
                 self.render_bell_flags.push(s.has_bell());
                 self.render_cmd_done_flags.push(s.command_completed());
             }
-            let title_refs: Vec<&str> = self.render_tab_titles.iter().map(|s| s.as_str()).collect();
             self.tab_bar.update_with_bells(
-                &title_refs,
+                &self.render_tab_titles,
                 self.active,
                 &self.render_bell_flags,
                 &self.render_cmd_done_flags,

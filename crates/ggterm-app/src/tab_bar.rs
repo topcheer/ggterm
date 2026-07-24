@@ -235,13 +235,14 @@ impl TabBarState {
     /// Rebuild the tab list from session titles and active index.
     /// `bell_flags` indicates which tabs have a pending bell indicator.
     pub fn update(&mut self, titles: &[&str], active: usize) {
-        self.update_with_bells(titles, active, &[], &[]);
+        let owned: Vec<String> = titles.iter().map(|s| s.to_string()).collect();
+        self.update_with_bells(&owned, active, &[], &[]);
     }
 
     /// Rebuild the tab list with bell indicators.
     pub fn update_with_bells(
         &mut self,
-        titles: &[&str],
+        titles: &[String],
         active: usize,
         bell_flags: &[bool],
         cmd_done_flags: &[bool],
@@ -251,7 +252,7 @@ impl TabBarState {
         let unchanged = self.tabs.len() == titles.len()
             && active == self.active_tab
             && self.tabs.iter().enumerate().all(|(i, t)| {
-                t.title == titles[i]
+                t.title == titles[i].as_str()
                     && t.bell == bell_flags.get(i).copied().unwrap_or(false)
                     && t.cmd_done == cmd_done_flags.get(i).copied().unwrap_or(false)
                     && t.active == (i == active)
@@ -267,7 +268,7 @@ impl TabBarState {
         self.tabs = titles
             .iter()
             .enumerate()
-            .map(|(i, &title)| TabInfo {
+            .map(|(i, title)| TabInfo {
                 title: title.to_string(),
                 index: i + 1,
                 active: i == active,
@@ -692,7 +693,12 @@ mod tests {
     #[test]
     fn t_update_with_bells() {
         let mut state = TabBarState::new();
-        state.update_with_bells(&["a", "b", "c"], 0, &[false, true, false], &[]);
+        state.update_with_bells(
+            &["a".to_string(), "b".into(), "c".into()],
+            0,
+            &[false, true, false],
+            &[],
+        );
         assert!(!state.tabs[0].bell);
         assert!(state.tabs[1].bell);
         assert!(!state.tabs[2].bell);
