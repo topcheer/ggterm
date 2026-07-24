@@ -3478,6 +3478,21 @@ impl DesktopApp {
                     window.request_redraw();
                 }
             }
+            "terminal.broadcast" => {
+                self.broadcast.cycle();
+            }
+            "terminal.command_history" => {
+                self.cmd_history.toggle();
+                if let Some(ref window) = self.window {
+                    window.request_redraw();
+                }
+            }
+            "view.cycle_theme" => {
+                self.cycle_theme();
+            }
+            "session.cycle_profile" => {
+                self.cycle_profile();
+            }
             #[cfg(feature = "ai")]
             "ai.explain" => {
                 self.trigger_ai_request(ggterm_ai::Action::Explain);

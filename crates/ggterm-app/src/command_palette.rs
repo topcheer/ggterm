@@ -653,6 +653,31 @@ impl CommandRegistry {
             category: "Search".into(),
             shortcut: Some("Ctrl+Shift+F".into()),
         });
+        // Keyboard-only actions surfaced for discoverability
+        r.register(Command {
+            id: "terminal.broadcast".into(),
+            label: "Cycle Broadcast Mode".into(),
+            category: "Terminal".into(),
+            shortcut: Some("Ctrl+Shift+Alt+M".into()),
+        });
+        r.register(Command {
+            id: "terminal.command_history".into(),
+            label: "Toggle Command History Sidebar".into(),
+            category: "Shell".into(),
+            shortcut: None,
+        });
+        r.register(Command {
+            id: "view.cycle_theme".into(),
+            label: "Cycle Color Theme".into(),
+            category: "View".into(),
+            shortcut: Some("Ctrl+Shift+Alt+T".into()),
+        });
+        r.register(Command {
+            id: "session.cycle_profile".into(),
+            label: "Cycle Config Profile".into(),
+            category: "Session".into(),
+            shortcut: Some("Ctrl+Shift+Alt+F".into()),
+        });
         r
     }
 }
