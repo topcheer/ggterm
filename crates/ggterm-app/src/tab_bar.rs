@@ -116,7 +116,7 @@ impl TabInfo {
     /// Estimated pixel width of the tab text content (index + title + close button).
     pub fn estimated_width(&self) -> f32 {
         let title = self.truncated_title(MAX_TAB_TITLE_CHARS);
-        let text_width = title.chars().count() as f32 * CHAR_WIDTH_ESTIMATE;
+        let text_width = ggterm_core::grid::str_width(&title) as f32 * CHAR_WIDTH_ESTIMATE;
         // +2 chars for tab number prefix (e.g. "1 ") when index <= 9.
         let num_width = if self.index <= 9 { 2.0 } else { 0.0 };
         text_width

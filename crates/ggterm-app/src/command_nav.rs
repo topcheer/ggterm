@@ -567,7 +567,7 @@ impl CommandNavOverlay {
         }
 
         let color = self.status_color(state, terminal);
-        let display_len = text.chars().count() + 2;
+        let display_len = ggterm_core::grid::str_width(&text) + 2;
         let padding = width.saturating_sub(display_len);
 
         format!("{} {}{}\x1b[0m", color, text, " ".repeat(padding))
