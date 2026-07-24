@@ -222,6 +222,8 @@ pub struct TabBarState {
     pub tabs: Vec<TabInfo>,
     /// Whether the tab bar is visible (more than 1 tab + setting enabled).
     pub visible: bool,
+    /// Cached active tab index for change detection (skip rebuild if unchanged).
+    active_tab: usize,
 }
 
 impl TabBarState {
@@ -244,6 +246,24 @@ impl TabBarState {
         bell_flags: &[bool],
         cmd_done_flags: &[bool],
     ) {
+        // Fast path: skip rebuild if nothing changed (common case — terminal
+        // output updates without title/bell changes).
+        let unchanged = self.tabs.len() == titles.len()
+            && active == self.active_tab
+            && self.tabs.iter().enumerate().all(|(i, t)| {
+                t.title == titles[i]
+                    && t.bell == bell_flags.get(i).copied().unwrap_or(false)
+                    && t.cmd_done == cmd_done_flags.get(i).copied().unwrap_or(false)
+                    && t.active == (i == active)
+            });
+        if unchanged {
+            // Still reset dirty flags (unread output indicator).
+            for t in &mut self.tabs {
+                t.dirty = false;
+            }
+            return;
+        }
+        self.active_tab = active;
         self.tabs = titles
             .iter()
             .enumerate()
