@@ -79,22 +79,28 @@ impl DesktopApp {
         let scrollback_len = grid.scrollback_len();
         let grid_height = grid.height();
         let display_offset = grid.display_offset();
-        let search_highlights: Vec<(usize, usize, usize)> = if self.search.visible {
+        let search_highlights: &[(usize, usize, usize)] = if self.search.visible {
+            self.render_search_highlights.clear();
             let matches = self.search.matches();
-            let mut highlights = Vec::with_capacity(matches.len());
+            self.render_search_highlights.reserve(matches.len());
             for m in matches {
-                // visible_row = abs_row - (scrollback_len - display_offset)
-                // This maps absolute row to the row index currently shown on screen.
                 let base = scrollback_len.saturating_sub(display_offset);
                 if let Some(visible_row) = m.abs_row.checked_sub(base)
                     && visible_row < grid_height
                 {
-                    highlights.push((visible_row, m.col, m.col + m.len.saturating_sub(1)));
+                    self.render_search_highlights.push((
+                        visible_row,
+                        m.col,
+                        m.col + m.len.saturating_sub(1),
+                    ));
                 }
             }
-            highlights
+            &self.render_search_highlights
         } else {
-            Vec::new()
+            // Need to return an empty slice; use the cached vec (already cleared above
+            // if search was visible last frame — but if invisible, just return empty).
+            self.render_search_highlights.clear();
+            &self.render_search_highlights
         };
 
         // Extract the current/active match for distinct highlighting.

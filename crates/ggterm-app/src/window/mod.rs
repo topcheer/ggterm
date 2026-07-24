@@ -486,6 +486,8 @@ pub struct DesktopApp {
     render_tab_titles: Vec<String>,
     render_bell_flags: Vec<bool>,
     render_cmd_done_flags: Vec<bool>,
+    /// Reused buffer for search highlights (avoids per-frame Vec allocation).
+    render_search_highlights: Vec<(usize, usize, usize)>,
     /// Reusable overlay/UI Vecs — cleared and refilled each render frame.
     /// Avoids 3 heap allocations per frame (overlay_texts, ui_rects, status_segments).
     render_overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec>,
@@ -869,6 +871,7 @@ impl DesktopApp {
             render_tab_titles: Vec::with_capacity(8),
             render_bell_flags: Vec::with_capacity(8),
             render_cmd_done_flags: Vec::with_capacity(8),
+            render_search_highlights: Vec::new(),
             render_overlay_texts: Vec::with_capacity(32),
             render_ui_rects: Vec::with_capacity(16),
             render_status_segs: Vec::with_capacity(24),

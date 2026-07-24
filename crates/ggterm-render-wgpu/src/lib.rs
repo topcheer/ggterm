@@ -450,14 +450,9 @@ impl GlyphonRenderer {
     ///
     /// Each tuple is `(row, col_start, col_end)` — all inclusive.
     /// Pass an empty vec to clear highlights.
-    pub fn set_highlights(&mut self, highlights: Vec<(usize, usize, usize)>) {
-        // Reuse allocation when possible: swap contents instead of replace.
-        if self.highlights.capacity() >= highlights.len() {
-            self.highlights.clear();
-            self.highlights.extend(highlights);
-        } else {
-            self.highlights = highlights;
-        }
+    pub fn set_highlights(&mut self, highlights: &[(usize, usize, usize)]) {
+        self.highlights.clear();
+        self.highlights.extend_from_slice(highlights);
     }
 
     /// Set the current/active search match for distinct highlighting.
