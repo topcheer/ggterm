@@ -2222,7 +2222,7 @@ impl DesktopApp {
             (self.config.cols as u32, self.config.rows as u32)
         };
 
-        let tab_bar_h = if !self.tab_bar.tabs.is_empty() {
+        let tab_bar_h = if self.tab_bar.visible {
             // Both single-tab and multi-tab modes use the same bar height.
             ((cell_h + 26.0).max(48.0) + 4.0) as u32
         } else {
