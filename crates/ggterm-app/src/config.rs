@@ -2896,8 +2896,8 @@ paste = "Ctrl+Shift+C"
 
         // Assert the three fields that were previously missing from export.
         assert_eq!(parsed.appearance.cursor_style, "underline");
-        assert_eq!(parsed.terminal.restore_session, true);
-        assert_eq!(parsed.terminal.notify_on_complete, true);
+        assert!(parsed.terminal.restore_session);
+        assert!(parsed.terminal.notify_on_complete);
 
         // Assert all other exported fields.
         assert_eq!(parsed.appearance.theme, "dracula");
@@ -2907,13 +2907,13 @@ paste = "Ctrl+Shift+C"
         assert_eq!(parsed.appearance.cell_height, 18);
         assert_eq!(parsed.appearance.background_opacity, 0.85);
         assert_eq!(parsed.appearance.padding, 4);
-        assert_eq!(parsed.appearance.cursor_blink, false);
+        assert!(!parsed.appearance.cursor_blink);
         assert_eq!(parsed.terminal.scrollback_lines, 5000);
         assert_eq!(parsed.terminal.shell, "/bin/dash");
         assert_eq!(parsed.terminal.bell_mode, "visual");
-        assert_eq!(parsed.terminal.copy_on_select, true);
+        assert!(parsed.terminal.copy_on_select);
         assert_eq!(parsed.terminal.word_chars, "-_");
-        assert_eq!(parsed.terminal.shell_integration, false);
+        assert!(!parsed.terminal.shell_integration);
         assert_eq!(
             parsed.terminal.search_engine,
             "https://duckduckgo.com/?q=%s"
