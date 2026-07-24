@@ -2426,7 +2426,24 @@ impl DesktopApp {
                     .tab_bar
                     .compute_layout(self.tab_layout_width(), self.tab_font_size());
                 if let Some(tab_idx) = self.tab_bar.tab_at_x(&layout, px) {
-                    self.tab_context_menu.open(tab_idx, px, py);
+                    // Clamp menu position to window bounds.
+                    let menu_w = crate::tab_bar::TabContextMenuState::ITEM_WIDTH;
+                    let menu_h = self.tab_context_menu.menu_height();
+                    let (sw, sh) = if let Some(ref renderer) = self.renderer {
+                        (
+                            renderer.resolution_width() as f32,
+                            renderer.resolution_height() as f32,
+                        )
+                    } else {
+                        (800.0, 600.0)
+                    };
+                    let clamped_x = px.min(sw - menu_w - 4.0).max(4.0);
+                    let clamped_y = if py + menu_h > sh {
+                        (py - menu_h).max(4.0)
+                    } else {
+                        py
+                    };
+                    self.tab_context_menu.open(tab_idx, clamped_x, clamped_y);
                     if let Some(ref window) = self.window {
                         window.request_redraw();
                     }
