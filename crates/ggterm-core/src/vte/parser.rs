@@ -331,6 +331,14 @@ impl Parser {
                 // malformed/malicious sequences without a terminator.
                 self.string_buffer.push(byte);
             }
+            c if c >= 0x20 => {
+                // Buffer full — discard the OSC and return to Ground so
+                // subsequent terminal output is processed normally.
+                // Without this, the parser stays stuck in OscString
+                // forever, swallowing all following bytes.
+                log::warn!("OSC string exceeded 64KB cap — discarding and returning to Ground");
+                self.state = State::Ground;
+            }
             _ => {}
         }
     }

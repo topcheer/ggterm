@@ -338,3 +338,35 @@ fn test_utf8_4_byte_emoji() {
     assert_eq!(p.events.len(), 4);
     assert!(p.events.iter().all(|e| matches!(e, Event::Print(_))));
 }
+
+#[test]
+fn test_osc_overflow_recovers() {
+    // When an OSC string exceeds the 64KB cap, the parser should
+    // return to Ground state so subsequent bytes are processed normally.
+    let mut parser = Parser::new();
+    let mut p = MockPerform::new();
+
+    // Start OSC sequence, fill buffer to cap, then try to push more.
+    let mut data = vec![0x1b, b']']; // ESC ]
+    data.extend(std::iter::repeat(b'A').take(65540)); // Exceed 64KB cap
+    data.extend(b"hello"); // Normal text after the aborted OSC
+
+    parser.feed(&data, &mut p);
+
+    // After the cap is hit (at byte 65537), the parser returns to Ground.
+    // The few overflow bytes that triggered the recovery are consumed as
+    // the transition, then "hello" is printed normally.
+    // The key assertion: parser recovered and printed "hello".
+    let prints: String = p
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Print(b) => Some(*b as char),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        prints.ends_with("hello"),
+        "parser should recover after OSC overflow and print 'hello', got: {prints}"
+    );
+}
