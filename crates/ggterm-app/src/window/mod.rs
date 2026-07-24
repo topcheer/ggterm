@@ -1830,8 +1830,7 @@ impl ApplicationHandler for DesktopApp {
                 }
                 // Progress from OSC 9;4
                 self.status_bar.progress = self.active_session().app().terminal().progress();
-                self.status_bar.last_exit_code =
-                    self.active_session().app().terminal().last_exit_code();
+                // last_exit_code is already set above (line ~1678) from the same source.
                 #[cfg(feature = "p2p")]
                 {
                     self.status_bar.p2p_active = self.p2p_share.visible;
