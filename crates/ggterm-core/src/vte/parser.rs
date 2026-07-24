@@ -456,6 +456,11 @@ impl Parser {
                 // Cap DCS string at 1MB — Sixel images can be large.
                 self.string_buffer.push(byte);
             }
+            c if c >= 0x20 => {
+                // Buffer full — discard and return to Ground.
+                log::warn!("DCS string exceeded 1MB cap — discarding and returning to Ground");
+                self.state = State::Ground;
+            }
             _ => {}
         }
     }
