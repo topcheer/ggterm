@@ -4766,6 +4766,41 @@ mod tests {
     }
 
     #[test]
+    fn t_sgr_overflow_param_no_panic() {
+        // Huge SGR param should saturate, not overflow/panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[999999999m");
+        // Should not panic. Foreground should be default (unknown code ignored).
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_cup_zero_zero_normalizes() {
+        // CSI 0;0H should normalize to row 1 col 1 (xterm spec: 0 → 1).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5;5HABC"); // Move to row 5 col 5
+        feed(&mut t, b"\x1b[0;0H"); // Should go to 1;1
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_alt_screen_repeated_toggle_no_leak() {
+        // Repeatedly entering/exiting alt screen should not accumulate grids.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"PRIMARY");
+        for _ in 0..10 {
+            feed(&mut t, b"\x1b[?1049h"); // Enter alt
+            feed(&mut t, b"ALT");
+            feed(&mut t, b"\x1b[?1049l"); // Exit alt
+        }
+        // Primary content should be restored.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P');
+        // No saved grid should remain (alt_saved_grid is None after exit).
+        assert!(t.alt_saved_grid.is_none());
+    }
+
+    #[test]
     fn t_focus_event_disabled_by_default() {
         let t = Terminal::new(80, 24);
         assert!(!t.focus_event_enabled());
