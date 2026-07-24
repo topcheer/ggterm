@@ -5258,6 +5258,53 @@ mod tests {
     }
 
     #[test]
+    fn t_resize_shrink_cursor_beyond_new_width() {
+        // Cursor at col 50, shrink to width 10 — cursor must clamp to 9.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[1;50H"); // CUP to col 50
+        assert_eq!(t.cursor().0, 49);
+        t.resize(10, 24);
+        assert_eq!(
+            t.cursor().0,
+            9,
+            "cursor must clamp to last column after shrink"
+        );
+    }
+
+    #[test]
+    fn t_resize_to_1_column() {
+        // Resizing to 1 column should not panic. Wide chars can't fit.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello World");
+        t.resize(1, 24);
+        // Cursor should be at col 0.
+        assert_eq!(t.cursor().0, 0);
+        // Content should still be accessible in scrollback.
+        let exported = t.grid().export_text();
+        assert!(
+            exported.contains('H'),
+            "content should survive 1-col resize: {exported:?}"
+        );
+    }
+
+    #[test]
+    fn t_resize_shrink_with_wide_char_at_boundary() {
+        // A wide char at cols 8-9 in a 10-wide terminal.
+        // Shrink to 9 — the wide lead at col 8 should be cleared (no spacer).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "AAAAAAAA中".as_bytes()); // 8 'A's + CJK wide char
+        assert!(t.grid().cell(8, 0).unwrap().is_wide());
+        assert!(t.grid().cell(9, 0).unwrap().is_wide_spacer());
+        t.resize(9, 3);
+        // Col 8 should no longer be a wide char (spacer truncated).
+        let cell = t.grid().cell(8, 0).unwrap();
+        assert!(
+            !cell.is_wide(),
+            "dangling wide lead should be cleared after shrink"
+        );
+    }
+
+    #[test]
     fn t_utf8_truncated_then_new_sequence() {
         // Truncated E4 BD (incomplete '你') then valid E5 A5 BD = '好'
         // The new leading byte E5 should flush the old incomplete sequence
