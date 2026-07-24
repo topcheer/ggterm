@@ -17,10 +17,14 @@ pub fn format_duration(d: std::time::Duration) -> String {
         format!("{:.0}ms", d.as_millis())
     } else if secs < 60.0 {
         format!("{:.1}s", secs)
-    } else {
+    } else if secs < 3600.0 {
         let m = d.as_secs() / 60;
         let s = d.as_secs() % 60;
         format!("{}m{}s", m, s)
+    } else {
+        let h = d.as_secs() / 3600;
+        let m = (d.as_secs() % 3600) / 60;
+        format!("{}h{}m", h, m)
     }
 }
 
@@ -682,6 +686,12 @@ mod tests {
     fn t_format_duration_minutes() {
         let d = std::time::Duration::from_secs(125);
         assert_eq!(format_duration(d), "2m5s");
+    }
+
+    #[test]
+    fn t_format_duration_hours() {
+        let d = std::time::Duration::from_secs(3725);
+        assert_eq!(format_duration(d), "1h2m");
     }
 
     #[test]
