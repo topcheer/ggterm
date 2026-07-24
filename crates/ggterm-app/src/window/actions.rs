@@ -2049,10 +2049,20 @@ impl DesktopApp {
                 };
 
                 let body = if let Some(ref cmd) = cmd_text {
-                    // Truncate long commands (char-safe to avoid UTF-8 panic).
-                    let short = if cmd.chars().count() > 60 {
-                        let truncated: String = cmd.chars().take(57).collect();
-                        format!("{truncated}…")
+                    // Truncate long commands (display-width-aware for CJK).
+                    let max_w = 60;
+                    let short = if ggterm_core::grid::str_width(cmd) > max_w {
+                        let mut result = String::new();
+                        let mut width = 0;
+                        for ch in cmd.chars() {
+                            let cw = ggterm_core::grid::char_width(ch);
+                            if width + cw > max_w.saturating_sub(1) {
+                                break;
+                            }
+                            result.push(ch);
+                            width += cw;
+                        }
+                        format!("{result}…")
                     } else {
                         cmd.clone()
                     };
@@ -3774,15 +3784,26 @@ impl DesktopApp {
     }
 }
 
-/// Truncate a string for toast display (max 40 chars).
+/// Truncate a string for toast display (max 40 display columns).
+/// Uses display width so CJK/emoji chars (width 2) are counted correctly.
 fn truncate_for_toast(s: &str) -> String {
     const MAX: usize = 40;
-    if s.chars().count() > MAX {
-        let truncated: String = s.chars().take(MAX - 3).collect();
-        format!("{truncated}...")
-    } else {
-        s.to_string()
+    let total_w = ggterm_core::grid::str_width(s);
+    if total_w <= MAX {
+        return s.to_string();
     }
+    let mut result = String::new();
+    let mut width = 0;
+    for ch in s.chars() {
+        let cw = ggterm_core::grid::char_width(ch);
+        if width + cw > MAX.saturating_sub(3) {
+            break;
+        }
+        result.push(ch);
+        width += cw;
+    }
+    result.push_str("...");
+    result
 }
 
 /// URL-encode a string for query parameters (spaces become +).

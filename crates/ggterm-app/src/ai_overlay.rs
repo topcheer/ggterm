@@ -208,8 +208,19 @@ impl AIOverlayState {
         match &self.content {
             Some(text) => {
                 // Truncate to a reasonable width for a status bar.
-                let truncated = if text.chars().count() > 200 {
-                    format!("{}...", text.chars().take(197).collect::<String>())
+                let max_w = 200;
+                let truncated = if ggterm_core::grid::str_width(text) > max_w {
+                    let mut result = String::new();
+                    let mut width = 0;
+                    for ch in text.chars() {
+                        let cw = ggterm_core::grid::char_width(ch);
+                        if width + cw > max_w.saturating_sub(3) {
+                            break;
+                        }
+                        result.push(ch);
+                        width += cw;
+                    }
+                    format!("{result}...")
                 } else {
                     text.clone()
                 };
@@ -234,8 +245,19 @@ impl AIOverlayState {
 
         match &self.content {
             Some(text) => {
-                let truncated = if text.chars().count() > 200 {
-                    format!("{}...", text.chars().take(197).collect::<String>())
+                let max_w = 200;
+                let truncated = if ggterm_core::grid::str_width(text) > max_w {
+                    let mut result = String::new();
+                    let mut width = 0;
+                    for ch in text.chars() {
+                        let cw = ggterm_core::grid::char_width(ch);
+                        if width + cw > max_w.saturating_sub(3) {
+                            break;
+                        }
+                        result.push(ch);
+                        width += cw;
+                    }
+                    format!("{result}...")
                 } else {
                     text.clone()
                 };

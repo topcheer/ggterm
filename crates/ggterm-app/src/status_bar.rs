@@ -338,9 +338,19 @@ impl StatusBar {
         }
         // Hovered URL preview.
         if let Some(ref link) = self.hovered_link {
-            let display = if link.chars().count() > 50 {
-                let truncated: String = link.chars().take(47).collect();
-                format!("{truncated}...")
+            let max_w = 50;
+            let display = if ggterm_core::grid::str_width(link) > max_w {
+                let mut result = String::new();
+                let mut width = 0;
+                for ch in link.chars() {
+                    let cw = ggterm_core::grid::char_width(ch);
+                    if width + cw > max_w.saturating_sub(3) {
+                        break;
+                    }
+                    result.push(ch);
+                    width += cw;
+                }
+                format!("{result}...")
             } else {
                 link.clone()
             };

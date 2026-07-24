@@ -3877,15 +3877,25 @@ fn extract_ai_command(text: &str) -> String {
     String::new()
 }
 
-/// Truncate a string to `max` chars, appending "..." if truncated.
+/// Truncate a string to `max` display columns, appending "..." if truncated.
 #[cfg(feature = "ai")]
 fn truncate_str(s: &str, max: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max {
+    let total_w = ggterm_core::grid::str_width(s);
+    if total_w <= max {
         s.to_string()
     } else {
-        let truncated: String = s.chars().take(max).collect();
-        format!("{truncated}...")
+        let mut result = String::new();
+        let mut width = 0;
+        for ch in s.chars() {
+            let cw = ggterm_core::grid::char_width(ch);
+            if width + cw > max.saturating_sub(3) {
+                break;
+            }
+            result.push(ch);
+            width += cw;
+        }
+        result.push_str("...");
+        result
     }
 }
 
@@ -3970,7 +3980,9 @@ mod tests {
     #[test]
     fn test_truncate_str_long() {
         let result = truncate_str("abcdefghij", 5);
-        assert_eq!(result, "abcde...");
+        // max=5 display columns: 2 content + 3 for "..."
+        assert_eq!(result, "ab...");
+        assert_eq!(ggterm_core::grid::str_width(&result), 5);
     }
 
     #[cfg(feature = "ai")]

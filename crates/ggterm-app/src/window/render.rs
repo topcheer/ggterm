@@ -3366,8 +3366,24 @@ impl DesktopApp {
         // ── Tab close confirmation dialog ─────────────────────────
         if self.pending_close_tab.is_some() {
             let msg = if let Some(ref cmd) = close_cmd_hint {
-                let display: String = cmd.chars().take(40).collect();
-                let suffix = if cmd.chars().count() > 40 { "…" } else { "" };
+                let max_w = 40;
+                let total_w = ggterm_core::grid::str_width(cmd);
+                let (display, has_suffix) = if total_w > max_w {
+                    let mut result = String::new();
+                    let mut width = 0;
+                    for ch in cmd.chars() {
+                        let cw = ggterm_core::grid::char_width(ch);
+                        if width + cw > max_w {
+                            break;
+                        }
+                        result.push(ch);
+                        width += cw;
+                    }
+                    (result, true)
+                } else {
+                    (cmd.clone(), false)
+                };
+                let suffix = if has_suffix { "…" } else { "" };
                 format!("Process running: {display}{suffix} — close again to confirm")
             } else {
                 "Process still running. Close tab again to confirm.".to_string()
