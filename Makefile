@@ -19,7 +19,7 @@ release:
 
 # Run tests
 test:
-	CARGO_BUILD_JOBS=2 cargo test --features "$(TAGS)" --workspace -- -j 2
+	CARGO_BUILD_JOBS=2 cargo test --features "$(TAGS)" --workspace -- --test-threads=2
 
 # Run FFI tests (with SSH feature for mobile)
 test-ffi:
