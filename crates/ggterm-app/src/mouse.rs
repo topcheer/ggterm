@@ -312,10 +312,11 @@ pub fn pixel_to_cell(px: f64, py: f64, cell_width: f64, cell_height: f64) -> (u1
 /// Detects `http://`, `https://`, `ftp://`, and `www.` prefixed URLs.
 pub fn detect_url_at_position(line: &str, col: usize) -> Option<(usize, usize, String)> {
     for (start, url) in find_urls(line) {
-        // URL occupies columns [start, start + url.chars().count())
-        let end = start + url.chars().count();
-        if col >= start && col < end {
-            return Some((start, end, url));
+        // URL occupies display columns [start, start + display_width).
+        // Use str_width for CJK correctness (wide chars span 2 columns).
+        let url_w = ggterm_core::grid::str_width(&url);
+        if col >= start && col < start + url_w {
+            return Some((start, start + url_w, url));
         }
     }
     None
@@ -323,12 +324,20 @@ pub fn detect_url_at_position(line: &str, col: usize) -> Option<(usize, usize, S
 
 /// Find all URLs in a line of text.
 ///
-/// Returns a list of `(char_column_start, url_string)` pairs.
+/// Returns a list of `(display_column_start, url_string)` pairs.
 /// Uses a simple state-machine parser rather than regex to avoid
 /// adding a regex dependency.
 pub fn find_urls(line: &str) -> Vec<(usize, String)> {
     let mut results = Vec::new();
     let chars: Vec<char> = line.chars().collect();
+    // Pre-compute display width for each position to avoid per-URL
+    // str_width calls that would re-scan the string.
+    let mut display_widths: Vec<usize> = Vec::with_capacity(chars.len() + 1);
+    display_widths.push(0);
+    for &ch in &chars {
+        let last = *display_widths.last().unwrap();
+        display_widths.push(last + ggterm_core::grid::char_width(ch));
+    }
     // All scheme strings are ASCII lowercase; we compare case-insensitively
     // via prefix_matches to avoid per-position String allocation.
     let schemes = ["https://", "http://", "ftp://", "git://", "ssh://", "www."];
@@ -370,7 +379,7 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
 
             if j > url_start + scheme_len {
                 let url: String = chars[url_start..j].iter().collect();
-                results.push((url_start, url));
+                results.push((display_widths[url_start], url));
             }
             i = j;
         } else {
@@ -415,7 +424,7 @@ pub fn find_urls(line: &str) -> Vec<(usize, String)> {
                     // Require path/port after hostname (avoid linking bare "example.com")
                     if j > host_end && (chars[host_end] == '/' || chars[host_end] == ':') {
                         let url: String = chars[i..j].iter().collect();
-                        results.push((i, url));
+                        results.push((display_widths[i], url));
                         i = j;
                         continue;
                     }
