@@ -34,7 +34,8 @@ class CellFlags {
   static const int reverse = 0x20;
   static const int hidden = 0x40;
   static const int strikethrough = 0x80;
-  static const int wide = 0x200;
+  static const int wideChar = 0x100;
+  static const int wideSpacer = 0x200;
   static const int protected = 0x400;
   static const int underlineDouble = 0x800;
   static const int underlineCurly = 0x1000;

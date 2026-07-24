@@ -99,7 +99,8 @@ class GGTermCellData {
   bool get underlineDotted => (flags & CellFlags.underlineDotted) != 0;
   bool get underlineDashed => (flags & CellFlags.underlineDashed) != 0;
   bool get overline => (flags & CellFlags.overline) != 0;
-  bool get wide => (flags & CellFlags.wide) != 0;
+  bool get wideChar => (flags & CellFlags.wideChar) != 0;
+  bool get wideSpacer => (flags & CellFlags.wideSpacer) != 0;
 
   /// Resolved foreground RGB (0xRRGGBB).
   int get fgRgb => AnsiPalette.resolve(fg, isBackground: false);

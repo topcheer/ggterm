@@ -2478,7 +2478,7 @@ class _TerminalPainter extends CustomPainter {
                 : TextDecorationStyle.solid;
             // Wide chars (CJK, emoji) are 2 cells wide — flush immediately
             // so subsequent text starts at the correct column.
-            if (cell.wide) {
+            if (cell.wideChar) {
               _paintRun(canvas, runText.toString(), runStart, y,
                   runFg, runBold, runItalic, runUnderline,
                   runStrikethrough, runDim, runDecoStyle, runOverline, cellWidth, cellHeight, fontSize);
@@ -2495,7 +2495,7 @@ class _TerminalPainter extends CustomPainter {
             runText.write(cell.charWithCombining);
             // Wide chars (CJK, emoji) take 2 cells. Flush immediately
             // so subsequent text starts at the correct column.
-            if (cell.wide) {
+            if (cell.wideChar) {
               _paintRun(canvas, runText.toString(), runStart, y,
                   runFg, runBold, runItalic, runUnderline,
                   runStrikethrough, runDim, runDecoStyle, runOverline, cellWidth, cellHeight, fontSize);
@@ -2543,7 +2543,7 @@ class _TerminalPainter extends CustomPainter {
         // Check if cursor is on a wide char (CJK/emoji) — draw 2 cells wide.
         final cursorIdx = cy * cols + cx;
         var cursorW = cellWidth;
-        if (cursorIdx < screen.cells.length && screen.cells[cursorIdx].wide) {
+        if (cursorIdx < screen.cells.length && screen.cells[cursorIdx].wideChar) {
           cursorW = cellWidth * 2;
         }
         // Determine cursor shape from DECSCUSR style.
