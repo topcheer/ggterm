@@ -225,39 +225,45 @@ impl SearchState {
 
         let scrollback_len = grid.scrollback_len();
 
-        // Search scrollback rows.
+        // Search scrollback rows (skip blank rows for performance).
         for i in 0..scrollback_len {
-            if let Some(text) = grid.scrollback_row_text(i) {
-                for m in re.find_iter(&text) {
-                    // Convert byte offsets to display columns for CJK correctness.
-                    let display_col = ggterm_core::grid::str_width(&text[..m.0.min(text.len())]);
-                    let display_len = ggterm_core::grid::str_width(
-                        &text[m.0.min(text.len())..(m.0 + m.1).min(text.len())],
-                    );
-                    self.matches.push(SearchMatch {
-                        abs_row: i,
-                        col: display_col,
-                        len: display_len,
-                    });
+            if let Some(row) = grid.scrollback_row(i) {
+                let text = row.text();
+                if !text.is_empty() {
+                    for m in re.find_iter(&text) {
+                        let display_col =
+                            ggterm_core::grid::str_width(&text[..m.0.min(text.len())]);
+                        let display_len = ggterm_core::grid::str_width(
+                            &text[m.0.min(text.len())..(m.0 + m.1).min(text.len())],
+                        );
+                        self.matches.push(SearchMatch {
+                            abs_row: i,
+                            col: display_col,
+                            len: display_len,
+                        });
+                    }
                 }
             }
         }
 
-        // Search visible rows.
+        // Search visible rows (skip blank rows).
         for row in 0..grid.height() {
-            if let Some(row_text) = grid.row_text(row) {
-                let abs_row = scrollback_len + row;
-                for m in re.find_iter(&row_text) {
-                    let display_col =
-                        ggterm_core::grid::str_width(&row_text[..m.0.min(row_text.len())]);
-                    let display_len = ggterm_core::grid::str_width(
-                        &row_text[m.0.min(row_text.len())..(m.0 + m.1).min(row_text.len())],
-                    );
-                    self.matches.push(SearchMatch {
-                        abs_row,
-                        col: display_col,
-                        len: display_len,
-                    });
+            if let Some(r) = grid.row(row) {
+                let row_text = r.text();
+                if !row_text.is_empty() {
+                    let abs_row = scrollback_len + row;
+                    for m in re.find_iter(&row_text) {
+                        let display_col =
+                            ggterm_core::grid::str_width(&row_text[..m.0.min(row_text.len())]);
+                        let display_len = ggterm_core::grid::str_width(
+                            &row_text[m.0.min(row_text.len())..(m.0 + m.1).min(row_text.len())],
+                        );
+                        self.matches.push(SearchMatch {
+                            abs_row,
+                            col: display_col,
+                            len: display_len,
+                        });
+                    }
                 }
             }
         }
