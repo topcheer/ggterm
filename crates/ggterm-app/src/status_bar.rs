@@ -212,7 +212,7 @@ impl StatusBar {
     /// The renderer can use this to draw each segment at the correct position
     /// with appropriate coloring (e.g. red for errors, green for exit 0).
     pub fn format_segments(&self) -> Vec<(String, (u8, u8, u8))> {
-        let mut segs = Vec::with_capacity(24);
+        let mut segs = Vec::with_capacity(16);
         self.format_segments_into(&mut segs);
         segs
     }
