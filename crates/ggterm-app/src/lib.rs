@@ -32,6 +32,7 @@ pub mod animations;
 pub mod color_picker;
 pub mod command_history;
 pub mod file_preview;
+pub mod fs_util;
 pub mod perf_monitor;
 pub mod shell_switcher;
 pub mod shortcut_help;

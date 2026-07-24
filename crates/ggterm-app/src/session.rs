@@ -169,16 +169,8 @@ pub fn save_session(data: &SessionData) -> Result<(), SessionError> {
 
 /// Save session data to a specific path (used by tests).
 pub fn save_to_path(data: &SessionData, path: &Path) -> Result<(), SessionError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let json = serde_json::to_string_pretty(data)?;
-    // Atomic write: write to temp file, then rename.
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, json + "\n")?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })?;
+    crate::fs_util::write_atomic(path, &(json + "\n"))?;
     log::info!("Session saved to {}", path.display());
     Ok(())
 }
