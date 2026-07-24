@@ -173,7 +173,12 @@ pub fn save_to_path(data: &SessionData, path: &Path) -> Result<(), SessionError>
         std::fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(data)?;
-    std::fs::write(path, json + "\n")?;
+    // Atomic write: write to temp file, then rename.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json + "\n")?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
     log::info!("Session saved to {}", path.display());
     Ok(())
 }
