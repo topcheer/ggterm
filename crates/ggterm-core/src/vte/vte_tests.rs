@@ -348,7 +348,7 @@ fn test_osc_overflow_recovers() {
 
     // Start OSC sequence, fill buffer to cap, then try to push more.
     let mut data = vec![0x1b, b']']; // ESC ]
-    data.extend(std::iter::repeat(b'A').take(65540)); // Exceed 64KB cap
+    data.extend(vec![b'A'; 65540]); // Exceed 64KB cap
     data.extend(b"hello"); // Normal text after the aborted OSC
 
     parser.feed(&data, &mut p);
