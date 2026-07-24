@@ -1671,8 +1671,8 @@ impl ApplicationHandler for DesktopApp {
                 #[cfg(not(feature = "ai"))]
                 self.status_bar.set_ai(false);
                 // P17-E: Update exit code from terminal's last command.
-                self.status_bar
-                    .set_exit_code(self.active_session().app().terminal().last_exit_code());
+                self.status_bar.last_exit_code =
+                    self.active_session().app().terminal().last_exit_code();
                 // Running command indicator.
                 let was_running = self.status_bar.command_running;
                 self.status_bar.command_running =
@@ -1681,7 +1681,7 @@ impl ApplicationHandler for DesktopApp {
                 // from the previous command so the status bar doesn't show
                 // misleading "exit:0" / "5.7s" while the new command runs.
                 if self.status_bar.command_running && !was_running {
-                    self.status_bar.set_exit_code(None);
+                    self.status_bar.last_exit_code = None;
                     self.last_cmd_tenths = 0;
                 }
                 if self.status_bar.command_running {

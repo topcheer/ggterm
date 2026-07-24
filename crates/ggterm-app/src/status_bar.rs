@@ -39,8 +39,8 @@ pub struct StatusBar {
     pub search_active: bool,
     /// Whether the AI overlay is visible.
     pub ai_active: bool,
-    /// Last command exit code (None = no command completed yet).
-    pub exit_code: Option<i32>,
+    // (exit_code field removed — consolidated into last_exit_code to fix
+    // stale exit code display during command execution.)
     /// Configuration validation error message (P21-G).
     ///
     /// When set, a `!ERROR!` indicator is prepended to the status bar format.
@@ -107,7 +107,6 @@ impl StatusBar {
             bell_active: false,
             search_active: false,
             ai_active: false,
-            exit_code: None,
             config_error: None,
             profile_name: String::new(),
             broadcast_mode: String::new(),
@@ -150,11 +149,6 @@ impl StatusBar {
     /// Set the AI overlay indicator.
     pub fn set_ai(&mut self, active: bool) {
         self.ai_active = active;
-    }
-
-    /// Set the last command exit code (P17-E).
-    pub fn set_exit_code(&mut self, code: Option<i32>) {
-        self.exit_code = code;
     }
 
     /// Set a configuration validation error message (P21-G).
@@ -317,9 +311,8 @@ impl StatusBar {
             seg!("SCROLL".to_string(), accent_color);
         }
 
-        // Exit code — only show on failure (check both fields).
-        let exit_code = self.last_exit_code.or(self.exit_code);
-        if let Some(code) = exit_code
+        // Exit code — only show on failure.
+        if let Some(code) = self.last_exit_code
             && code != 0
         {
             seg!(format!("exit:{}", code), err_color);
@@ -484,7 +477,7 @@ mod tests {
     #[test]
     fn t_exit_code_zero_shows_ok() {
         let mut sb = StatusBar::new();
-        sb.set_exit_code(Some(0));
+        sb.last_exit_code = Some(0);
         // Exit 0 is hidden in simplified format.
         assert_eq!(sb.format(), "1:1");
     }
@@ -492,14 +485,14 @@ mod tests {
     #[test]
     fn t_exit_code_nonzero_shows_code() {
         let mut sb = StatusBar::new();
-        sb.set_exit_code(Some(127));
+        sb.last_exit_code = Some(127);
         assert_eq!(sb.format(), "1:1 | exit:127");
     }
 
     #[test]
     fn t_exit_code_none_not_shown() {
         let mut sb = StatusBar::new();
-        sb.set_exit_code(None);
+        sb.last_exit_code = None;
         assert_eq!(sb.format(), "1:1");
     }
 
@@ -600,13 +593,13 @@ mod tests {
     fn t_segments_exit_code_colors() {
         let mut sb = StatusBar::new();
         // Exit 0 is now hidden (simplified — only errors shown).
-        sb.set_exit_code(Some(0));
+        sb.last_exit_code = Some(0);
         let segs = sb.format_segments();
         let exit_seg = segs.iter().find(|(t, _)| t.starts_with("exit:"));
         assert!(exit_seg.is_none());
 
         // Exit 1 should be red-ish (high red channel).
-        sb.set_exit_code(Some(1));
+        sb.last_exit_code = Some(1);
         let segs = sb.format_segments();
         let exit_seg = segs.iter().find(|(t, _)| t.starts_with("exit:"));
         assert!(exit_seg.is_some());
@@ -680,7 +673,7 @@ mod tests {
     #[test]
     fn t_status_bar_command_duration_empty_omitted() {
         let mut sb = StatusBar::new();
-        sb.exit_code = Some(0);
+        sb.last_exit_code = Some(0);
         let formatted = sb.format();
         assert!(
             !formatted.contains("⏱"),
@@ -787,7 +780,7 @@ mod tests {
     #[test]
     fn t_status_bar_exit_code_failure() {
         let mut sb = StatusBar::new();
-        sb.exit_code = Some(127);
+        sb.last_exit_code = Some(127);
         let formatted = sb.format();
         assert!(
             formatted.contains("exit:127"),
