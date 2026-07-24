@@ -361,18 +361,21 @@ impl StatusBar {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default();
             let secs = now.as_secs() % 86400; // seconds since midnight UTC
-            let h = (secs / 3600 + local_offset_hours()) % 24;
-            let m = (secs / 60) % 60;
+            let offset_mins = local_offset_minutes() as u64;
+            let total_mins = ((secs / 60) + offset_mins + 1440) % 1440;
+            let h = total_mins / 60;
+            let m = total_mins % 60;
             seg!(format!("{:02}:{:02}", h, m), dim_color);
         }
     }
 }
 
-/// Estimate local timezone offset in hours (heuristic — not exact but
-/// close enough for a status bar clock). Uses `date +%z` on Unix.
-fn local_offset_hours() -> u64 {
+/// Estimate local timezone offset in minutes.
+/// Uses `date +%z` on Unix (e.g. "+0800" → 480, "+0530" → 330).
+/// Returns 0 on failure or non-Unix platforms.
+fn local_offset_minutes() -> i64 {
     use std::sync::OnceLock;
-    static CACHED_OFFSET: OnceLock<u64> = OnceLock::new();
+    static CACHED_OFFSET: OnceLock<i64> = OnceLock::new();
 
     *CACHED_OFFSET.get_or_init(|| {
         #[cfg(unix)]
@@ -381,11 +384,12 @@ fn local_offset_hours() -> u64 {
                 && out.status.success()
             {
                 let s = String::from_utf8_lossy(&out.stdout);
+                // Format: +HHMM or -HHMM (5+ chars)
                 if s.len() >= 5 {
-                    let sign = if s.starts_with('-') { -1i64 } else { 1i64 };
-                    if let Ok(h) = s[1..3].parse::<i64>() {
-                        return ((sign * h) as u64 + 24) % 24;
-                    }
+                    let sign: i64 = if s.starts_with('-') { -1 } else { 1 };
+                    let h = s[1..3].parse::<i64>().unwrap_or(0);
+                    let m = s[3..5].parse::<i64>().unwrap_or(0);
+                    return sign * (h * 60 + m);
                 }
             }
             0
