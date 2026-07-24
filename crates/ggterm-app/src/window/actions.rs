@@ -1526,12 +1526,24 @@ impl DesktopApp {
         // to prevent accidentally pasting huge content that can freeze
         // the PTY (e.g. pasting a binary file or log dump).
         const LARGE_PASTE_THRESHOLD: usize = 5_000;
-        if text.len() > LARGE_PASTE_THRESHOLD && self.pending_large_paste.is_none() {
+        // Multi-line paste protection: when bracketed paste is NOT active
+        // (shell doesn't support it), warn before pasting content with many
+        // newlines — this prevents accidental command execution.
+        // Matches Alacritty/iTerm2 behavior.
+        const MULTI_LINE_THRESHOLD: usize = 5;
+        let bracketed = self.active_session().app().terminal().bracketed_paste();
+        let line_count = text.lines().count();
+        let needs_confirm = text.len() > LARGE_PASTE_THRESHOLD
+            || (!bracketed && line_count >= MULTI_LINE_THRESHOLD);
+        if needs_confirm && self.pending_large_paste.is_none() {
             let kb = text.len() / 1024;
+            let msg = if text.len() > LARGE_PASTE_THRESHOLD {
+                format!("Paste {kb}KB? Enter=confirm  Esc=cancel")
+            } else {
+                format!("Paste {} lines? Enter=confirm  Esc=cancel", line_count)
+            };
             self.pending_large_paste = Some(text);
-            self.show_toast(format!(
-                "Paste {kb}KB? Press Enter to confirm, Esc to cancel."
-            ));
+            self.show_toast(msg);
             return;
         }
 
@@ -1549,8 +1561,6 @@ impl DesktopApp {
             let kb = text.len() / 1024;
             self.show_toast(format!("Pasting {kb}KB (large paste may be slow)"));
         }
-
-        let bracketed = self.active_session().app().terminal().bracketed_paste();
 
         // Normalize CRLF → LF: some clipboard sources (Windows apps, web
         // pages) embed \r\n which causes stray \r bytes in the PTY stream.
