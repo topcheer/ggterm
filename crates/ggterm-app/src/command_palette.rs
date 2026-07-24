@@ -693,8 +693,13 @@ fn fuzzy_score(query: &str, text: &str) -> i32 {
 
     // Exact substring match gets highest score.
     if t.contains(&q) {
-        // Earlier match = higher score.
-        return 100 - t.find(&q).unwrap_or(0) as i32;
+        // Earlier match = higher score. Use char position (not byte offset)
+        // for CJK correctness — t.find() returns byte offset.
+        let char_pos = t
+            .find(&q)
+            .map(|byte_pos| t[..byte_pos].chars().count())
+            .unwrap_or(0);
+        return 100 - char_pos as i32;
     }
 
     // Subsequence match.
