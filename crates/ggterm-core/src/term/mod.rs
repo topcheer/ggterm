@@ -3218,7 +3218,18 @@ impl Perform for Terminal {
                     } else {
                         uri
                     };
-                    self.current_hyperlink = Some(uri.to_string());
+                    // Sanitize: strip control characters from URI to prevent
+                    // injection of escape sequences or BEL bytes that could
+                    // trigger unintended terminal behavior.
+                    let sanitized: String = uri
+                        .chars()
+                        .filter(|c| !c.is_control() || *c == ' ')
+                        .collect();
+                    self.current_hyperlink = if sanitized.is_empty() {
+                        None
+                    } else {
+                        Some(sanitized)
+                    };
                 }
             }
             Some(52) => {
@@ -4691,6 +4702,28 @@ mod tests {
         feed(&mut t, b"\x1b]8;;\x07");
         feed(&mut t, b"X"); // at position 5
         assert_eq!(t.grid().cell(5, 0).unwrap().hyperlink, None);
+    }
+
+    #[test]
+    fn t_osc_8_strips_control_chars() {
+        // A malicious URI with embedded BEL and ESC should have control
+        // characters stripped to prevent injection attacks.
+        let mut t = Terminal::new(80, 24);
+        // OSC 8 ; ; https://evil.com\x07\x1b[2J\x1b\\
+        // The \x07 and \x1b should be stripped from the URI.
+        feed(&mut t, b"\x1b]8;;https://evil.com\x07INJECTED\x1b\\");
+        // URI should NOT contain the BEL or ESC characters.
+        let hl = t.current_hyperlink.as_deref().unwrap_or("");
+        assert!(
+            !hl.contains('\x07'),
+            "BEL should be stripped from hyperlink URI: {hl:?}"
+        );
+        assert!(
+            !hl.contains('\x1b'),
+            "ESC should be stripped from hyperlink URI: {hl:?}"
+        );
+        // The cleaned URL should still be usable.
+        assert!(hl.starts_with("https://evil.com"));
     }
 
     #[test]
