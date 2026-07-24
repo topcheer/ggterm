@@ -1914,8 +1914,14 @@ impl DesktopApp {
                     self.show_toast(format!("Failed: {e}"));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // Thread still running — put it back, refresh toast.
-                    self.show_toast(format!("Running '{}'...", result.command));
+                    // Thread still running — put it back.
+                    // Only update toast if it's not already showing this message
+                    // (avoids per-frame String allocation).
+                    let msg = format!("Running '{}'...", result.command);
+                    let need_update = self.toast.as_ref().is_none_or(|(t, _)| t != &msg);
+                    if need_update {
+                        self.show_toast(msg);
+                    }
                     self.pending_pipe_result = Some(result);
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
