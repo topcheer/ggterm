@@ -1247,7 +1247,18 @@ impl Terminal {
             }
             if cx == 0 && cy > 0 {
                 let prev_w = self.grid.width();
-                if let Some(c) = self.grid.cell_mut(prev_w.saturating_sub(1), cy - 1)
+                let target_col = if prev_w > 0
+                    && self
+                        .grid
+                        .cell(prev_w.saturating_sub(1), cy - 1)
+                        .is_some_and(|c| c.is_wide_spacer())
+                {
+                    // Previous row ends with a wide spacer — target the lead cell.
+                    prev_w.saturating_sub(2)
+                } else {
+                    prev_w.saturating_sub(1)
+                };
+                if let Some(c) = self.grid.cell_mut(target_col, cy - 1)
                     && !c.flags.contains(CellFlags::WIDE_SPACER)
                     && !c.is_blank()
                 {
@@ -5221,6 +5232,29 @@ mod tests {
         assert_eq!(t.grid().cell(2, 0).unwrap().ch, '好');
         assert_eq!(t.grid().cell(4, 0).unwrap().ch, '世');
         assert_eq!(t.cursor().0, 6); // 3 * 2 = 6
+    }
+
+    #[test]
+    fn t_combining_char_after_wide_wrap_at_col0() {
+        // When a wide char fills the last columns of a row and the cursor
+        // wraps to the next line, a combining char arriving at col 0 should
+        // attach to the wide char's lead cell (at width-2), not be dropped
+        // because width-1 is the wide spacer.
+        let mut t = Terminal::new(4, 3);
+        // Fill cols 0-1 with 'A' (wide), cols 2-3 with 'B' (wide).
+        // Both are CJK width-2 chars on a 4-wide terminal.
+        feed(&mut t, "你好".as_bytes());
+        // Cursor should be at col 0 of row 1 (pending wrap consumed).
+        // Now send a combining char (U+0301 = combining acute accent).
+        feed(&mut t, "\u{0301}".as_bytes());
+        // The combining char should have attached to the '好' at col 2 of row 0
+        // (the last wide char lead cell), NOT been dropped.
+        let cell = t.grid().cell(2, 0).unwrap();
+        assert!(
+            !cell.combining.is_empty(),
+            "combining char should attach to wide char lead cell after wrap"
+        );
+        assert_eq!(cell.combining[0], '\u{0301}');
     }
 
     #[test]
