@@ -607,7 +607,17 @@ impl DesktopApp {
         }
         let session = self.sessions.remove(from);
         self.sessions.insert(to, session);
-        self.active = to;
+        // Adjust active index: the dragged tab moved from→to, so any tab
+        // whose position was between from and to shifts by one.
+        // The active tab should follow the dragged tab only if it IS the
+        // dragged tab; otherwise, adjust for the index shift.
+        if self.active == from {
+            self.active = to;
+        } else if from < self.active && to >= self.active {
+            self.active -= 1;
+        } else if from > self.active && to <= self.active {
+            self.active += 1;
+        }
         log::info!("P23-E: moved tab {} → {}", from + 1, to + 1);
     }
 
