@@ -1416,7 +1416,7 @@ impl DesktopApp {
             // Right boundary: stop rendering segments that would overflow.
             let max_x = screen_w - pad_x - 8.0;
             for (text, color) in &status_segments {
-                let text_w = text.chars().count() as f32 * cell_w;
+                let text_w = ggterm_core::grid::str_width(text) as f32 * cell_w;
                 if x + text_w > max_x {
                     break;
                 }
@@ -1564,7 +1564,7 @@ impl DesktopApp {
 
                 // Right-aligned shortcut hint (dimmed, smaller spacing).
                 if let Some(sc) = action.shortcut() {
-                    let sc_w = sc.chars().count() as f32 * cell_w * 0.85;
+                    let sc_w = ggterm_core::grid::str_width(sc) as f32 * cell_w * 0.85;
                     overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                         text: sc.to_string(),
                         left: mx + menu_w - sc_w - 12.0,
@@ -2021,7 +2021,7 @@ impl DesktopApp {
         if let Some(ref hovered) = self.color_picker.hovered {
             let (cx, cy) = self.cursor_pos;
             let swatch_size = 24.0_f32;
-            let hex_text_w = hovered.text.chars().count() as f32 * cell_w + 6.0;
+            let hex_text_w = ggterm_core::grid::str_width(&hovered.text) as f32 * cell_w + 6.0;
             let total_w = swatch_size + hex_text_w;
             // Flip horizontally if near right edge.
             let swatch_x = if cx as f32 + 16.0 + total_w > screen_w {
@@ -2804,7 +2804,7 @@ impl DesktopApp {
                 } else {
                     (200u8, 100, 100)
                 };
-                let count_w = count_text.chars().count() as f32 * cell_w;
+                let count_w = ggterm_core::grid::str_width(&count_text) as f32 * cell_w;
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: count_text,
                     left: bar_x + bar_w - count_w - 14.0,
@@ -3040,7 +3040,7 @@ impl DesktopApp {
             });
 
             // Tooltip showing the full URL.
-            let tooltip_w = (url.chars().count() as f32 * cell_w + 24.0).min(400.0);
+            let tooltip_w = (ggterm_core::grid::str_width(url) as f32 * cell_w + 24.0).min(400.0);
             let tooltip_h = 24.0;
             let px = self.cursor_pos.0 as f32 + 14.0;
             let py = self.cursor_pos.1 as f32 + 14.0;
@@ -3055,8 +3055,18 @@ impl DesktopApp {
                 radius: 6.0,
                 stroke_width: 0.0,
             });
-            let display_url = if url.chars().count() > 55 {
-                format!("{}...", url.chars().take(52).collect::<String>())
+            let display_url = if ggterm_core::grid::str_width(url) > 55 {
+                let mut result = String::new();
+                let mut width = 0;
+                for ch in url.chars() {
+                    let cw = ggterm_core::grid::char_width(ch);
+                    if width + cw > 52 {
+                        break;
+                    }
+                    result.push(ch);
+                    width += cw;
+                }
+                format!("{result}...")
             } else {
                 url.clone()
             };
@@ -3329,7 +3339,7 @@ impl DesktopApp {
 
             // Centered dialog panel.
             let char_w = renderer.cell_width() as f32;
-            let panel_w = msg.chars().count() as f32 * char_w + 48.0;
+            let panel_w = ggterm_core::grid::str_width(&msg) as f32 * char_w + 48.0;
             let panel_h = cell_h + 32.0;
             let panel_x = (screen_w - panel_w) / 2.0;
             let panel_y = (screen_h - panel_h) / 2.0;
@@ -3399,7 +3409,7 @@ impl DesktopApp {
                 radius: 0.0,
                 stroke_width: 0.0,
             });
-            let panel_w = msg.chars().count() as f32 * char_w + 48.0;
+            let panel_w = ggterm_core::grid::str_width(&msg) as f32 * char_w + 48.0;
             let panel_h = cell_h + 32.0;
             let panel_x = (screen_w - panel_w) / 2.0;
             let panel_y = (screen_h - panel_h) / 2.0;
