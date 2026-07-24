@@ -3261,6 +3261,18 @@ impl DesktopApp {
             });
         }
 
+        // IME preedit text: add to overlay_texts (not replace) so that
+        // toast/status bar/search bar remain visible during CJK composition.
+        if let Some((ref preedit, ime_ccol, ime_crow, ref ime_bounds)) = ime_data {
+            overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
+                text: preedit.clone(),
+                left: ime_bounds.x as f32 + ime_ccol as f32 * cell_w,
+                top: ime_bounds.y as f32 + ime_crow as f32 * cell_h,
+                color: (255, 255, 255),
+                ..Default::default()
+            });
+        }
+
         renderer.set_ui_rects(ui_rects);
         renderer.set_overlay_text(overlay_texts);
 
@@ -3385,13 +3397,7 @@ impl DesktopApp {
                 })
                 .collect();
             renderer.set_overlay_rects(ime_rects);
-            renderer.set_overlay_text(vec![ggterm_render_wgpu::OverlayTextSpec {
-                text: preedit,
-                left: ime_bounds.x as f32 + ime_ccol as f32 * cell_w,
-                top: ime_bounds.y as f32 + ime_crow as f32 * cell_h,
-                color: (255, 255, 255),
-                ..Default::default()
-            }]);
+            // Preedit text is already in overlay_texts (added before set_overlay_text).
         } else {
             // Clear IME overlay rects when preedit is not active,
             // preventing stale underline bars from persisting on screen.
