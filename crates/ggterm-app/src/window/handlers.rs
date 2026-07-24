@@ -1223,22 +1223,23 @@ impl DesktopApp {
             return;
         }
 
-        // Ctrl+Shift+Alt+H → export terminal as HTML (moved from KeyE which
-        // conflicts with export_config).
+        // Ctrl+Shift+Alt+E → export terminal as HTML (full screen capture).
+        // Previously Ctrl+Shift+Alt+H which conflicted with "Copy as HTML".
         if self.mods.ctrl
             && self.mods.shift
             && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyH) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::KeyE) = &event.physical_key
         {
             self.export_html();
             return;
         }
 
-        // Ctrl+Shift+Alt+H → import SSH hosts from ~/.ssh/config
+        // Ctrl+Shift+Alt+S → import SSH hosts from ~/.ssh/config.
+        // Previously Ctrl+Shift+Alt+H which was unreachable (shadowed).
         if self.mods.ctrl
             && self.mods.shift
             && self.mods.alt
-            && let PhysicalKey::Code(KeyCode::KeyH) = &event.physical_key
+            && let PhysicalKey::Code(KeyCode::KeyS) = &event.physical_key
         {
             self.import_ssh_hosts();
             return;
