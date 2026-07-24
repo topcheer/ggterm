@@ -86,7 +86,7 @@ pub fn save(state: &WindowState) {
     }
     match toml::to_string_pretty(state) {
         Ok(text) => {
-            if let Err(e) = std::fs::write(&path, text) {
+            if let Err(e) = crate::fs_util::write_atomic(&path, &text) {
                 log::warn!("Failed to save window state: {e}");
             }
         }
