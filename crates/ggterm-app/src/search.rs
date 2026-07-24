@@ -193,18 +193,24 @@ impl SearchState {
         };
 
         // Search scrollback rows (oldest to newest).
+        // Skip blank rows to avoid unnecessary String allocation + find_in_row scan.
         for i in 0..scrollback_len {
-            let row_text = grid.scrollback_row_text(i);
-            if let Some(text) = row_text {
-                self.find_in_row(&text, i, &query_lower);
+            if let Some(row) = grid.scrollback_row(i) {
+                let text = row.text();
+                if !text.is_empty() {
+                    self.find_in_row(&text, i, &query_lower);
+                }
             }
         }
 
         // Search visible rows.
         for row in 0..grid.height() {
-            if let Some(row_text) = grid.row_text(row) {
-                let abs_row = scrollback_len + row;
-                self.find_in_row(&row_text, abs_row, &query_lower);
+            if let Some(r) = grid.row(row) {
+                let row_text = r.text();
+                if !row_text.is_empty() {
+                    let abs_row = scrollback_len + row;
+                    self.find_in_row(&row_text, abs_row, &query_lower);
+                }
             }
         }
     }
