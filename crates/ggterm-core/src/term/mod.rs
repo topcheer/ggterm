@@ -3277,7 +3277,15 @@ impl Perform for Terminal {
                 let payload = parts.next().unwrap_or("");
                 let mut sub_parts = payload.splitn(2, ';');
                 let mark_char = sub_parts.next().unwrap_or("");
-                let exit_code = sub_parts.next().and_then(|code| code.parse::<i32>().ok());
+                let exit_code = sub_parts.next().and_then(|code| {
+                    // Some shells send "D;exit_code;" (trailing semicolon) or
+                    // "D;exit_code;extra" (additional fields). Parse only the
+                    // leading integer portion to handle these variants.
+                    let trimmed = code.trim_end_matches(|c: char| !c.is_ascii_digit() && c != '-');
+                    // Handle "0;extra" by taking only the part before any ';'
+                    let core = trimmed.split(';').next().unwrap_or(trimmed);
+                    core.parse::<i32>().ok()
+                });
                 let (kind, has_exit) = match mark_char.chars().next() {
                     Some('A') => (CommandMarkKind::PromptStart, false),
                     Some('B') => (CommandMarkKind::CommandStart, false),
@@ -5492,6 +5500,34 @@ mod tests {
         assert_eq!(marks.len(), 1);
         assert_eq!(marks[0].kind, CommandMarkKind::CommandEnd);
         assert_eq!(marks[0].exit_code, Some(0));
+    }
+
+    #[test]
+    fn t_osc133_command_end_trailing_semicolon() {
+        // Some zsh integrations send "D;exit_code;" (trailing semicolon).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;0;\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(
+            marks[0].exit_code,
+            Some(0),
+            "trailing semicolon should still parse exit code"
+        );
+    }
+
+    #[test]
+    fn t_osc133_command_end_with_extra_fields() {
+        // Some integrations send "D;exit_code;extra;fields".
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]133;D;127;timestamp\x07");
+        let marks = t.command_marks();
+        assert_eq!(marks.len(), 1);
+        assert_eq!(
+            marks[0].exit_code,
+            Some(127),
+            "extra fields after exit code should not break parsing"
+        );
     }
 
     #[test]
