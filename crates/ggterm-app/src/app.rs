@@ -398,8 +398,19 @@ impl App {
     }
 
     /// Put data back into the pty_tee buffer (used when P2P is waiting).
+    /// Capped at 16MB to prevent unbounded growth if client never connects.
     pub fn restore_pty_tee(&mut self, data: Vec<u8>) {
-        self.pty_tee = data;
+        const MAX_TEE: usize = 16 * 1024 * 1024; // 16MB
+        if data.len() > MAX_TEE {
+            // Keep only the most recent data (drop oldest).
+            self.pty_tee = data[data.len() - MAX_TEE..].to_vec();
+            log::warn!(
+                "P2P tee buffer capped at 16MB, dropped {} old bytes",
+                data.len() - MAX_TEE
+            );
+        } else {
+            self.pty_tee = data;
+        }
     }
 
     pub fn pump(&mut self) -> bool {
