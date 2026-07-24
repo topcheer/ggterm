@@ -383,7 +383,10 @@ class _TerminalScreenState extends State<TerminalScreen>
     // or OSC 7 working directory changes, even if cell content is identical.
     h = (h * 31 + snap.title.hashCode) & 0x7FFFFFFF;
     h = (h * 31 + snap.cwd.hashCode) & 0x7FFFFFFF;
-    for (var i = 0; i < snap.cells.length; i++) {
+    // For large terminals, sample every Nth cell to reduce per-frame hash cost.
+    // N=3 means ~3x fewer iterations with negligible collision risk.
+    final step = snap.cells.length > 2000 ? 3 : 1;
+    for (var i = 0; i < snap.cells.length; i += step) {
       final c = snap.cells[i];
       h = (h * 31 + c.charCode ^ (c.combiningChar << 24) ^ (c.flags << 8) ^ c.fg ^ (c.bg << 16)) & 0x7FFFFFFF;
     }
