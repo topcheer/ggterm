@@ -62,6 +62,11 @@ impl DesktopApp {
             );
             self.show_toast("Pane closed — shell exited");
             self.sessions[self.active].remove_active_pane();
+            // Reset zoom: if we were zoomed into the pane that exited,
+            // or if only one pane remains, zoom is meaningless.
+            if self.pane_zoomed {
+                self.pane_zoomed = false;
+            }
 
             // Immediately persist the updated layout so it survives crashes.
             self.save_session_on_exit();

@@ -572,6 +572,18 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+X".into(),
+            description: "Export terminal as HTML (full screen)".into(),
+            category: ShortcutCategory::Terminal,
+            configurable: false,
+        },
+        ShortcutEntry {
+            keys: "Ctrl+Shift+Alt+J".into(),
+            description: "Import SSH hosts from ~/.ssh/config".into(),
+            category: ShortcutCategory::Terminal,
+            configurable: false,
+        },
+        ShortcutEntry {
             keys: "Ctrl+Alt+R".into(),
             description: "Re-run last command".into(),
             category: ShortcutCategory::Terminal,

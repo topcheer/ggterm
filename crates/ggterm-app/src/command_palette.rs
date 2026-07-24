@@ -297,7 +297,7 @@ impl CommandRegistry {
             id: "terminal.import_ssh".into(),
             label: "Import SSH Hosts from ~/.ssh/config".into(),
             category: "Terminal".into(),
-            shortcut: Some("Ctrl+Shift+Alt+H".into()),
+            shortcut: Some("Ctrl+Shift+Alt+J".into()),
         });
         r.register(Command {
             id: "terminal.copy_visible".into(),
