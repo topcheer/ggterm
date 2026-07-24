@@ -1178,7 +1178,9 @@ impl Terminal {
         let old_width = self.tab_stops.len();
         if width > old_width {
             self.tab_stops.resize(width, false);
-            let mut col = (old_width / 8 + 1) * 8;
+            // Set default tab stops (every 8 columns) in the newly added range.
+            // Start from the first multiple of 8 >= old_width.
+            let mut col = old_width.next_multiple_of(8);
             while col < width {
                 self.tab_stops[col] = true;
                 col += 8;
@@ -5462,6 +5464,34 @@ mod tests {
         feed(&mut t, b"\t");
         // With no tab stops, tab should move to end of line
         assert!(t.cursor().0 <= 40);
+    }
+
+    #[test]
+    fn t_resize_preserves_tab_stops_at_boundary() {
+        // Resize from 80→100 should set tab stop at col 80 (a multiple of 8).
+        // The old formula (old_width/8+1)*8 skipped it, starting at 88 instead.
+        let mut t = Terminal::new(80, 24);
+        t.resize(100, 24);
+        // Col 80 is a default tab stop position (80 % 8 == 0).
+        assert!(
+            t.tab_stops.get(80).copied().unwrap_or(false),
+            "col 80 should have a default tab stop after resize 80→100"
+        );
+    }
+
+    #[test]
+    fn t_resize_shrink_grow_preserves_content() {
+        // Feed text, resize smaller, then back — content should survive.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello World");
+        t.resize(10, 3); // Shrink drastically
+        t.resize(80, 24); // Grow back
+        // "Hello World" should still be in scrollback (reflow pushed excess rows up).
+        let exported = t.grid().export_text();
+        assert!(
+            exported.contains("Hello"),
+            "content should survive resize shrink+grow: {exported:?}"
+        );
     }
 
     #[test]
