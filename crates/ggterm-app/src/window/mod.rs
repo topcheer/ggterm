@@ -489,6 +489,9 @@ pub struct DesktopApp {
     render_overlay_texts: Vec<ggterm_render_wgpu::OverlayTextSpec>,
     render_ui_rects: Vec<ggterm_render_wgpu::UiRect>,
     render_status_segs: Vec<(String, (u8, u8, u8))>,
+    /// Reusable buffer for background tab completion notifications.
+    /// Avoids per-frame Vec allocation in about_to_wait().
+    render_notify_tabs: Vec<usize>,
     /// Scrollback browse mode: when active, keys navigate scrollback
     /// instead of being sent to the PTY (vim-style j/k/G/g/q).
     scroll_mode: bool,
@@ -866,6 +869,7 @@ impl DesktopApp {
             render_overlay_texts: Vec::with_capacity(32),
             render_ui_rects: Vec::with_capacity(16),
             render_status_segs: Vec::with_capacity(24),
+            render_notify_tabs: Vec::with_capacity(4),
             scroll_mode: false,
             settings_window: None,
             pending_open_settings: false,
@@ -2183,7 +2187,8 @@ impl ApplicationHandler for DesktopApp {
         // starve the active tab or the event loop.
         let active = self.active;
         let mut bg_bell = false;
-        let mut notify_tabs: Vec<usize> = Vec::new();
+        let mut notify_tabs = std::mem::take(&mut self.render_notify_tabs);
+        notify_tabs.clear();
         for (i, session) in self.sessions.iter_mut().enumerate() {
             if i != active {
                 // Track command running state before pump to detect completion.
@@ -2204,9 +2209,11 @@ impl ApplicationHandler for DesktopApp {
         }
 
         // Fire desktop notifications for completed background commands.
-        for idx in notify_tabs {
+        for &idx in &notify_tabs {
             self.maybe_notify_command_complete(idx);
         }
+        // Restore the buffer for next frame.
+        self.render_notify_tabs = notify_tabs;
 
         // Flush terminal protocol responses (DA1, DA2, DSR, DECRQM,
         // XTVERSION, OSC 4 color queries, etc.) back to the PTY.

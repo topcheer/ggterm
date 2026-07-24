@@ -434,16 +434,24 @@ impl DesktopApp {
                     8.0 // just right padding
                 };
                 let max_chars = ((w - 16.0 - reserved) / cell_w).floor() as usize;
-                let display_title: String = if title_with_pin.chars().count() > max_chars {
-                    format!(
-                        "{}…",
+                let display_title: String = {
+                    let total_w = ggterm_core::grid::str_width(&title_with_pin);
+                    if total_w > max_chars {
+                        let mut result = String::new();
+                        let mut width = 0;
+                        for ch in title_with_pin.chars() {
+                            let cw = ggterm_core::grid::char_width(ch);
+                            if width + cw > max_chars.saturating_sub(1) {
+                                break;
+                            }
+                            result.push(ch);
+                            width += cw;
+                        }
+                        result.push('\u{2026}');
+                        result
+                    } else {
                         title_with_pin
-                            .chars()
-                            .take(max_chars.saturating_sub(1))
-                            .collect::<String>()
-                    )
-                } else {
-                    title_with_pin
+                    }
                 };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: display_title,

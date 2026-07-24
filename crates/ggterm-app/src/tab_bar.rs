@@ -66,20 +66,27 @@ impl TabInfo {
         }
     }
 
-    /// Truncate title to `max_chars` characters, appending an ellipsis.
-    pub fn truncated_title(&self, max_chars: usize) -> String {
-        let count = self.title.chars().count();
-        if count > max_chars {
-            format!(
-                "{}\u{2026}",
-                self.title
-                    .chars()
-                    .take(max_chars.saturating_sub(1))
-                    .collect::<String>()
-            )
-        } else {
-            self.title.clone()
+    /// Truncate title to fit `max_width` display columns, appending an ellipsis.
+    /// Uses display width (CJK/emoji = 2 columns) rather than char count so
+    /// that 14 columns of CJK text is truncated at ~7 characters, not 14.
+    pub fn truncated_title(&self, max_width: usize) -> String {
+        let total_width = ggterm_core::grid::str_width(&self.title);
+        if total_width <= max_width {
+            return self.title.clone();
         }
+        // Collect chars until we've filled max_width - 1 (reserving 1 for ellipsis).
+        let mut result = String::new();
+        let mut width = 0;
+        for ch in self.title.chars() {
+            let w = ggterm_core::grid::char_width(ch);
+            if width + w > max_width.saturating_sub(1) {
+                break;
+            }
+            result.push(ch);
+            width += w;
+        }
+        result.push('\u{2026}');
+        result
     }
 
     /// Format as a display string for the tab pill.
@@ -679,6 +686,31 @@ mod tests {
         // 13 chars should be truncated.
         let tab2 = TabInfo::new("thirteenchars", 1, false);
         assert!(tab2.truncated_title(12).contains('\u{2026}'));
+    }
+
+    #[test]
+    fn t_truncated_title_cjk_double_width() {
+        // CJK chars are display width 2 each.
+        // 10 CJK chars = 20 display columns → should be truncated at width 14.
+        let tab = TabInfo::new("中文标题测试用例一二三四", 1, false);
+        let truncated = tab.truncated_title(14);
+        assert!(
+            truncated.contains('\u{2026}'),
+            "CJK title should be truncated: {truncated}"
+        );
+        // The truncated result should fit within 14 display columns (13 + ellipsis).
+        let w = ggterm_core::grid::str_width(&truncated);
+        assert!(w <= 14, "truncated title width {w} should be <= 14");
+    }
+
+    #[test]
+    fn t_truncated_title_mixed_ascii_cjk() {
+        // 5 ASCII + 5 CJK = 5 + 10 = 15 display columns → truncate at 14.
+        let tab = TabInfo::new("abcde中文测试用例", 1, false);
+        let truncated = tab.truncated_title(14);
+        assert!(truncated.contains('\u{2026}'));
+        let w = ggterm_core::grid::str_width(&truncated);
+        assert!(w <= 14, "truncated width {w} should be <= 14");
     }
 
     #[test]
