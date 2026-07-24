@@ -279,6 +279,8 @@ pub struct DesktopApp {
     /// IME preedit string (in-progress text from input method).
     /// When non-empty, the IME composition is active.
     ime_preedit: Option<String>,
+    /// IME preedit cursor position (byte offsets within preedit string).
+    ime_preedit_cursor: Option<(usize, usize)>,
 
     // ── Resize debouncing (P9-H) ──
     /// Pending resize dimensions (stored during drag, applied after debounce).
@@ -780,6 +782,7 @@ impl DesktopApp {
             window_occluded: false,
             scale_factor: 1.0,
             ime_preedit: None,
+            ime_preedit_cursor: None,
             pending_resize: None,
             force_config_reload: false,
             last_resize_time: None,
@@ -2068,12 +2071,22 @@ impl ApplicationHandler for DesktopApp {
                         // cursor_blink.reset() is called inside write_to_pty().
                         self.write_to_pty(text.as_bytes());
                         self.ime_preedit = None;
+                        self.ime_preedit_cursor = None;
                     }
-                    Ime::Preedit(text, _) => {
-                        self.ime_preedit = if text.is_empty() { None } else { Some(text) };
+                    Ime::Preedit(text, cursor_pos) => {
+                        if text.is_empty() {
+                            self.ime_preedit = None;
+                            self.ime_preedit_cursor = None;
+                        } else {
+                            self.ime_preedit = Some(text);
+                            // Store cursor position within preedit for rendering.
+                            // Format: (start_byte, end_byte) — for simple IME, both are equal.
+                            self.ime_preedit_cursor = cursor_pos;
+                        }
                     }
                     Ime::Disabled | Ime::Enabled => {
                         self.ime_preedit = None;
+                        self.ime_preedit_cursor = None;
                     }
                 }
             }

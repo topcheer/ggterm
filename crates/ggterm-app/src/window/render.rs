@@ -139,7 +139,7 @@ impl DesktopApp {
         let ime_data = if let Some(ref preedit) = self.ime_preedit {
             let (ccol, crow) = self.sessions[self.active].app().terminal().cursor();
             let bounds = self.content_area_bounds();
-            Some((preedit.clone(), ccol, crow, bounds))
+            Some((preedit.clone(), ccol, crow, bounds, self.ime_preedit_cursor))
         } else {
             None
         };
@@ -3310,7 +3310,7 @@ impl DesktopApp {
 
         // IME preedit text: add to overlay_texts (not replace) so that
         // toast/status bar/search bar remain visible during CJK composition.
-        if let Some((ref preedit, ime_ccol, ime_crow, ref ime_bounds)) = ime_data {
+        if let Some((ref preedit, ime_ccol, ime_crow, ref ime_bounds, _)) = ime_data {
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: preedit.clone(),
                 left: ime_bounds.x as f32 + ime_ccol as f32 * cell_w,
@@ -3446,19 +3446,34 @@ impl DesktopApp {
 
         // IME preedit text overlay — show in-progress CJK composition text
         // as an underline-styled overlay at the cursor position.
-        if let Some((preedit, ime_ccol, ime_crow, ime_bounds)) = ime_data {
+        if let Some((preedit, ime_ccol, ime_crow, ime_bounds, preedit_cursor)) = ime_data {
             let char_count = preedit.chars().count();
             // Use content area x/y offset so preedit aligns with the actual
             // cursor position. bounds.y already includes tab bar height.
-            let ime_rects: Vec<ggterm_render_wgpu::OverlayRect> = (0..char_count)
-                .map(|i| ggterm_render_wgpu::OverlayRect {
+            let mut ime_rects: Vec<ggterm_render_wgpu::OverlayRect> =
+                Vec::with_capacity(char_count);
+            for i in 0..char_count {
+                // Check if this cell is at the preedit cursor position.
+                // preedit_cursor is Option<(start_byte, end_byte)>. Convert to char index.
+                let at_cursor = preedit_cursor
+                    .map(|(start, end)| {
+                        let start_ch = preedit[..start.min(preedit.len())].chars().count();
+                        let end_ch = preedit[..end.min(preedit.len())].chars().count();
+                        (start_ch..=end_ch).contains(&i)
+                    })
+                    .unwrap_or(false);
+                ime_rects.push(ggterm_render_wgpu::OverlayRect {
                     x: ime_bounds.x as f32 + (ime_ccol + i) as f32 * cell_w,
                     y: ime_bounds.y as f32 + (ime_crow + 1) as f32 * cell_h - 2.0,
                     w: cell_w,
-                    h: 2.0,
-                    color: (1.0, 1.0, 1.0),
-                })
-                .collect();
+                    h: if at_cursor { 3.0 } else { 2.0 },
+                    color: if at_cursor {
+                        (1.0, 0.8, 0.2) // amber for cursor position
+                    } else {
+                        (1.0, 1.0, 1.0) // white for non-cursor
+                    },
+                });
+            }
             renderer.set_overlay_rects(ime_rects);
             // Preedit text is already in overlay_texts (added before set_overlay_text).
         } else {

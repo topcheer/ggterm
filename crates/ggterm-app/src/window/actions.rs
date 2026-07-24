@@ -525,6 +525,7 @@ impl DesktopApp {
             self.selection_auto_scroll = 0;
             self.hovered_link = None;
             self.ime_preedit = None;
+            self.ime_preedit_cursor = None;
             self.color_picker.clear();
             self.sessions[self.active].clear_unread();
         }
@@ -584,6 +585,7 @@ impl DesktopApp {
         self.selection.clear();
         self.selection_auto_scroll = 0;
         self.ime_preedit = None;
+        self.ime_preedit_cursor = None;
         self.last_active_tab = Some(self.active);
         self.active = (self.active + 1) % self.sessions.len();
         self.sessions[self.active].clear_unread();
@@ -594,6 +596,7 @@ impl DesktopApp {
         self.selection.clear();
         self.selection_auto_scroll = 0;
         self.ime_preedit = None;
+        self.ime_preedit_cursor = None;
         self.last_active_tab = Some(self.active);
         self.active = if self.active == 0 {
             self.sessions.len() - 1
