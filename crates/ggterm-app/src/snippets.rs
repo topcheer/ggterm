@@ -171,7 +171,15 @@ impl SnippetStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, content).map_err(|e| e.to_string())?;
+        // Atomic write: write to temp file, then rename.
+        // Prevents file corruption if the process is killed mid-write.
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, &content).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, path).map_err(|e| {
+            // Clean up temp file on rename failure.
+            let _ = std::fs::remove_file(&tmp);
+            e.to_string()
+        })?;
         Ok(())
     }
 
