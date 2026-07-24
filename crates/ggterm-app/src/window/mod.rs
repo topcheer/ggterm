@@ -1670,6 +1670,12 @@ impl ApplicationHandler for DesktopApp {
 
                 self.render_frame();
 
+                // Show "Session restored" toast on first frame after restore.
+                if self.restored_session {
+                    self.show_toast("Session restored");
+                    self.restored_session = false;
+                }
+
                 // Update status bar from active session state.
                 let (row, col) = self.active_session().app().cursor();
                 self.status_bar.update_cursor(row, col);
