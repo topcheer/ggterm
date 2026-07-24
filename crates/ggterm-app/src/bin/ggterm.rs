@@ -294,8 +294,3 @@ fn main() -> ExitCode {
         }
     }
 }
-
-/// Auto-start P2P share (used by --p2p-share flag).
-pub fn should_auto_share() -> bool {
-    std::env::args().any(|a| a == "--p2p-share")
-}
