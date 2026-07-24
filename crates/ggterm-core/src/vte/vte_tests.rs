@@ -370,3 +370,32 @@ fn test_osc_overflow_recovers() {
         "parser should recover after OSC overflow and print 'hello', got: {prints}"
     );
 }
+
+#[test]
+fn test_dcs_overflow_recovers() {
+    // When a DCS string exceeds the 1MB cap, the parser should
+    // return to Ground state so subsequent bytes are processed normally.
+    let mut parser = Parser::new();
+    let mut p = MockPerform::new();
+
+    // Start DCS sequence (ESC P), fill buffer past 1MB cap, then send normal text.
+    let mut data = vec![0x1b, b'P']; // ESC P
+    data.extend(vec![b'X'; 1048580]); // Exceed 1MB cap
+    data.extend(b"world"); // Normal text after the aborted DCS
+
+    parser.feed(&data, &mut p);
+
+    // Parser should recover and print "world".
+    let prints: String = p
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Print(b) => Some(*b as char),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        prints.ends_with("world"),
+        "parser should recover after DCS overflow and print 'world', got: {prints}"
+    );
+}
