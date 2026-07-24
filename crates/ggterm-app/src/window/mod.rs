@@ -1864,7 +1864,25 @@ impl ApplicationHandler for DesktopApp {
                                     t.to_string()
                                 }
                             };
-                            let truncated: String = active_title.chars().take(30).collect();
+                            let truncated: String = {
+                                let max_w = 30;
+                                let total_w = ggterm_core::grid::str_width(&active_title);
+                                if total_w <= max_w {
+                                    active_title.clone()
+                                } else {
+                                    let mut result = String::new();
+                                    let mut width = 0;
+                                    for ch in active_title.chars() {
+                                        let cw = ggterm_core::grid::char_width(ch);
+                                        if width + cw > max_w {
+                                            break;
+                                        }
+                                        result.push(ch);
+                                        width += cw;
+                                    }
+                                    result
+                                }
+                            };
                             let bell = if self.visual_bell_frames > 0 {
                                 " \u{1F514}"
                             } else {
