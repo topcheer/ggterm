@@ -258,13 +258,16 @@ impl SearchState {
 
         let mut start = 0;
         while let Some(pos) = search_text[start..].find(query_lower) {
-            let col = start + pos;
+            let byte_col = start + pos;
+            // Convert byte offset to display column (handles CJK wide chars).
+            let display_col = ggterm_core::grid::str_width(&search_text[..byte_col]);
+            let display_len = ggterm_core::grid::str_width(query_lower);
             self.matches.push(SearchMatch {
                 abs_row,
-                col,
-                len: query_lower.len(),
+                col: display_col,
+                len: display_len,
             });
-            start = col + query_lower.len();
+            start = byte_col + query_lower.len();
             if start >= search_text.len() {
                 break;
             }
@@ -1033,6 +1036,30 @@ mod tests {
         let mut s = SearchState::new();
         s.set_query("", &g);
         assert_eq!(s.match_count(), 0);
+    }
+
+    #[test]
+    fn t_search_cjk_display_column() {
+        // CJK text: "你好world" — 你=2 cols, 好=2 cols, then "world"
+        // Searching "world" should find it at display column 4 (not byte offset 6).
+        let mut g = Grid::with_scrollback(20, 3, 100);
+        let chars: Vec<Cell> = "你好world".chars().map(Cell::with_char).collect();
+        for (col, cell) in chars.into_iter().enumerate() {
+            if col < 20 {
+                g[(col, 0)] = cell;
+            }
+        }
+        let mut s = SearchState::new();
+        s.set_query("world", &g);
+        assert_eq!(s.match_count(), 1);
+        let m = s.current().unwrap();
+        // Display column should be 4 (2 CJK chars × 2 cols each),
+        // NOT 6 (the byte offset).
+        assert_eq!(
+            m.col, 4,
+            "CJK search col should be display column, not byte offset"
+        );
+        assert_eq!(m.len, 5); // "world" = 5 display columns
     }
 
     #[test]
