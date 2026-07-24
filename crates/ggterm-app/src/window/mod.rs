@@ -2062,11 +2062,20 @@ impl ApplicationHandler for DesktopApp {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Auto-start P2P share (triggered by --p2p-share CLI flag).
+        // The trigger file is created by CLI parsing before the event loop
+        // starts, so we only need to check once — not every frame.
         #[cfg(feature = "p2p")]
-        if std::path::Path::new("/tmp/ggterm_auto_share").exists() && !self.p2p_share.is_active() {
-            let _ = std::fs::remove_file("/tmp/ggterm_auto_share");
-            self.toggle_p2p_share();
-            log::debug!("auto-share triggered");
+        {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static AUTO_SHARE_CHECKED: AtomicBool = AtomicBool::new(false);
+            if !AUTO_SHARE_CHECKED.swap(true, Ordering::Relaxed)
+                && std::path::Path::new("/tmp/ggterm_auto_share").exists()
+                && !self.p2p_share.is_active()
+            {
+                let _ = std::fs::remove_file("/tmp/ggterm_auto_share");
+                self.toggle_p2p_share();
+                log::debug!("auto-share triggered");
+            }
         }
 
         // P29-C: Check if we should quit after confirmation.
