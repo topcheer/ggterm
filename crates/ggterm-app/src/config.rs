@@ -1281,7 +1281,13 @@ impl ConfigManager {
             std::fs::create_dir_all(parent)
                 .map_err(|e| ConfigError::Io(parent.display().to_string(), e))?;
         }
-        std::fs::write(&path, &toml).map_err(|e| ConfigError::Io(path.display().to_string(), e))?;
+        // Atomic write: write to temp file, then rename.
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, &toml).map_err(|e| ConfigError::Io(tmp.display().to_string(), e))?;
+        std::fs::rename(&tmp, &path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            ConfigError::Io(path.display().to_string(), e)
+        })?;
         self.config_path = Some(path);
         log::info!("Config saved");
         Ok(())
