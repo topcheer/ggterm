@@ -335,7 +335,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+Alt+O".into(),
+            keys: "Command Palette".into(),
             description: "Copy last command output".into(),
             category: ShortcutCategory::Edit,
             configurable: false,
@@ -347,7 +347,7 @@ fn all_shortcuts() -> Vec<ShortcutEntry> {
             configurable: false,
         },
         ShortcutEntry {
-            keys: "Ctrl+Shift+Alt+M".into(),
+            keys: "Command Palette".into(),
             description: "Copy selection as Markdown".into(),
             category: ShortcutCategory::Edit,
             configurable: false,
