@@ -5495,6 +5495,33 @@ mod tests {
     }
 
     #[test]
+    fn t_autowrap_off_overwrites_at_margin() {
+        // With DECAWM off (CSI ?7l), text at the right margin overwrites
+        // instead of wrapping. Cursor stays at last column.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b[?7l"); // Disable auto-wrap
+        feed(&mut t, b"ABCDE"); // 5 chars on a 4-wide terminal
+        // Without wrap, the 5th char 'E' overwrites 'D' at col 3.
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E');
+        assert_eq!(t.cursor().0, 3); // cursor at last column
+    }
+
+    #[test]
+    fn t_deferred_wrap_pending_state() {
+        // When the cursor is at the last column and a char is printed,
+        // xterm uses deferred wrap: cursor stays at last column with
+        // pending_wrap=true. The actual line feed happens on the NEXT char.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD"); // Fill the line exactly
+        // Cursor should be at col 3 with pending_wrap.
+        assert_eq!(t.cursor().0, 3);
+        // Now print one more — should wrap to next line.
+        feed(&mut t, b"E");
+        assert_eq!(t.cursor().1, 1); // row 1
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E');
+    }
+
+    #[test]
     fn t_decstbm_moves_cursor_home() {
         // After DECSTBM, cursor should move to (0,0) of the screen
         // (or origin of scroll region if origin mode is on).
