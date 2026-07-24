@@ -68,7 +68,10 @@ impl DesktopApp {
             is_blink_style && session.app().terminal().cursor_blink_enabled() && config_blink;
         self.cursor_blink.set_enabled(is_blink);
         let blink_alpha = self.cursor_blink.alpha_focused(self.window_focused);
-        let blink_visible = self.cursor_blink.is_visible();
+        // When unfocused, keep cursor always visible (dim underline) instead of
+        // disappearing during the blink-off phase. alpha_focused returns 0.5
+        // for unfocused, so the cursor renders as a dim steady indicator.
+        let blink_visible = self.cursor_blink.is_visible() || !self.window_focused;
 
         // P16-A: Wire search match highlights to renderer.
         // Convert SearchMatch(abs_row, col, len) → (visible_row, col_start, col_end).
