@@ -615,6 +615,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
     try {
       await widget.onConnect(params);
+      // Clear password from memory immediately after use.
+      _passController.clear();
       // Save connection details for next launch (password excluded).
       await _saveConnection();
       await _addToHistory();
