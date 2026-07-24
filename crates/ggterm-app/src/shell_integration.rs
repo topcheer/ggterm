@@ -255,7 +255,7 @@ pub fn install_scripts_manually() -> std::io::Result<Vec<ManualInstallResult>> {
     ] {
         let fname = script_filename(kind);
         let path = dir.join(fname);
-        fs::write(&path, script)?;
+        crate::fs_util::write_atomic(&path, script)?;
 
         let path_str = path.to_string_lossy().into_owned();
         let (rc, source) = match kind {
