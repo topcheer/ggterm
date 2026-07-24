@@ -4487,6 +4487,47 @@ mod tests {
     }
 
     #[test]
+    fn t_decsc_saves_sgr_and_charset() {
+        // DECSC should save SGR attributes AND character set designation.
+        let mut t = Terminal::new(80, 24);
+        // Set red foreground
+        feed(&mut t, b"\x1b[31m");
+        // Designate G0 as special graphics (ESC ( 0)
+        feed(&mut t, b"\x1b(0");
+        // Move to row 5
+        feed(&mut t, b"\x1b[5;1H");
+        // Save state
+        feed(&mut t, b"\x1b7");
+        // Change everything
+        feed(&mut t, b"\x1b[32m"); // green fg
+        feed(&mut t, b"\x1b(B"); // G0 = ASCII
+        feed(&mut t, b"\x1b[10;1H"); // move to row 10
+        // Restore
+        feed(&mut t, b"\x1b8");
+        // Cursor should be back at row 5
+        assert_eq!(t.cursor().1, 4); // 0-based row 4 = 1-based row 5
+        // FG should be red again
+        assert_eq!(t.fg, Color::Indexed(1));
+        // G0 should be special graphics again
+        assert_eq!(t.g0_charset, Charset::DecSpecial);
+    }
+
+    #[test]
+    fn t_decsc_saves_autowrap_mode() {
+        // DECSC should save/restore auto-wrap mode.
+        let mut t = Terminal::new(80, 24);
+        // Disable auto-wrap
+        feed(&mut t, b"\x1b[?7l");
+        // Save
+        feed(&mut t, b"\x1b7");
+        // Re-enable auto-wrap
+        feed(&mut t, b"\x1b[?7h");
+        // Restore — auto-wrap should be OFF again
+        feed(&mut t, b"\x1b8");
+        assert!(!t.modes.auto_wrap, "auto-wrap should be restored to off");
+    }
+
+    #[test]
     fn t_esc_ris_reset() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[31mHello\x1bc");
