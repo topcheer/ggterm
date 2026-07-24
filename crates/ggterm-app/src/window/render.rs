@@ -614,11 +614,25 @@ impl DesktopApp {
                 .first()
                 .map(|t| t.title.as_str())
                 .unwrap_or("ggterm");
-            let display_title = if title.chars().count() > 50 {
-                let truncated: String = title.chars().take(49).collect();
-                format!("{truncated}…")
-            } else {
-                title.to_string()
+            let display_title = {
+                let max_w = 50;
+                let total_w = ggterm_core::grid::str_width(title);
+                if total_w <= max_w {
+                    title.to_string()
+                } else {
+                    let mut result = String::new();
+                    let mut width = 0;
+                    for ch in title.chars() {
+                        let cw = ggterm_core::grid::char_width(ch);
+                        if width + cw > max_w.saturating_sub(1) {
+                            break;
+                        }
+                        result.push(ch);
+                        width += cw;
+                    }
+                    result.push('\u{2026}');
+                    result
+                }
             };
             overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                 text: display_title,
@@ -1870,13 +1884,25 @@ impl DesktopApp {
                     ..Default::default()
                 });
 
-                // Command text (truncated).
+                // Command text (truncated by display width).
                 let max_cmd_chars = ((sb_w - 70.0) / (renderer.cell_width() as f32)) as usize;
-                let cmd_display = if entry.command.chars().count() > max_cmd_chars {
-                    let truncated: String = entry.command.chars().take(max_cmd_chars).collect();
-                    format!("{truncated}...")
-                } else {
-                    entry.command.clone()
+                let cmd_display = {
+                    let total_w = ggterm_core::grid::str_width(&entry.command);
+                    if total_w > max_cmd_chars {
+                        let mut result = String::new();
+                        let mut width = 0;
+                        for ch in entry.command.chars() {
+                            let cw = ggterm_core::grid::char_width(ch);
+                            if width + cw > max_cmd_chars.saturating_sub(1) {
+                                break;
+                            }
+                            result.push(ch);
+                            width += cw;
+                        }
+                        format!("{result}...")
+                    } else {
+                        entry.command.clone()
+                    }
                 };
                 overlay_texts.push(ggterm_render_wgpu::OverlayTextSpec {
                     text: cmd_display,

@@ -618,10 +618,25 @@ pub fn format_tab_bar(titles: &[String], active: usize, dirty: &[bool]) -> Strin
         .iter()
         .enumerate()
         .map(|(i, title)| {
-            let truncated = if title.chars().count() > 10 {
-                format!("{}…", title.chars().take(9).collect::<String>())
-            } else {
-                title.clone()
+            let truncated = {
+                let max_w = 10;
+                let total_w = ggterm_core::grid::str_width(title);
+                if total_w <= max_w {
+                    title.clone()
+                } else {
+                    let mut result = String::new();
+                    let mut width = 0;
+                    for ch in title.chars() {
+                        let cw = ggterm_core::grid::char_width(ch);
+                        if width + cw > max_w.saturating_sub(1) {
+                            break;
+                        }
+                        result.push(ch);
+                        width += cw;
+                    }
+                    result.push('\u{2026}');
+                    result
+                }
             };
             let marker = if i == active {
                 "*"

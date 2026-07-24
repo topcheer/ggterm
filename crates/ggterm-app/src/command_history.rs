@@ -253,12 +253,25 @@ pub fn format_entry_short(entry: &CommandHistoryEntry, max_width: usize) -> Stri
         (false, None) => "??".to_string(),
     };
 
-    let cmd = if entry.command.chars().count() > max_width.saturating_sub(status.len() + 3) {
-        let trim = max_width.saturating_sub(status.len() + 6);
-        let trimmed: String = entry.command.chars().take(trim).collect();
-        format!("{trimmed}...")
-    } else {
-        entry.command.clone()
+    let cmd = {
+        let max_cmd_w = max_width.saturating_sub(status.len() + 3);
+        let total_w = ggterm_core::grid::str_width(&entry.command);
+        if total_w > max_cmd_w {
+            let trim_w = max_width.saturating_sub(status.len() + 6);
+            let mut result = String::new();
+            let mut width = 0;
+            for ch in entry.command.chars() {
+                let cw = ggterm_core::grid::char_width(ch);
+                if width + cw > trim_w {
+                    break;
+                }
+                result.push(ch);
+                width += cw;
+            }
+            format!("{result}...")
+        } else {
+            entry.command.clone()
+        }
     };
 
     format!("[{}] {}", status, cmd)
