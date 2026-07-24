@@ -223,10 +223,15 @@ impl SearchState {
         for i in 0..scrollback_len {
             if let Some(text) = grid.scrollback_row_text(i) {
                 for m in re.find_iter(&text) {
+                    // Convert byte offsets to display columns for CJK correctness.
+                    let display_col = ggterm_core::grid::str_width(&text[..m.0.min(text.len())]);
+                    let display_len = ggterm_core::grid::str_width(
+                        &text[m.0.min(text.len())..(m.0 + m.1).min(text.len())],
+                    );
                     self.matches.push(SearchMatch {
                         abs_row: i,
-                        col: m.0,
-                        len: m.1,
+                        col: display_col,
+                        len: display_len,
                     });
                 }
             }
@@ -237,10 +242,15 @@ impl SearchState {
             if let Some(row_text) = grid.row_text(row) {
                 let abs_row = scrollback_len + row;
                 for m in re.find_iter(&row_text) {
+                    let display_col =
+                        ggterm_core::grid::str_width(&row_text[..m.0.min(row_text.len())]);
+                    let display_len = ggterm_core::grid::str_width(
+                        &row_text[m.0.min(row_text.len())..(m.0 + m.1).min(row_text.len())],
+                    );
                     self.matches.push(SearchMatch {
                         abs_row,
-                        col: m.0,
-                        len: m.1,
+                        col: display_col,
+                        len: display_len,
                     });
                 }
             }
