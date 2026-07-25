@@ -37,10 +37,13 @@ static LAST_ERROR: OnceLock<Mutex<String>> = OnceLock::new();
 pub(crate) fn create_session(cols: usize, rows: usize) -> u32 {
     let id = next_id();
     let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
+    // Clamp to sane maximums (consistent with ggterm_new/ggterm_resize).
+    let cols = cols.clamp(1, 1000);
+    let rows = rows.clamp(1, 500);
     map.insert(
         id,
         MobileSession {
-            handle: TerminalHandle::new(cols.max(1), rows.max(1)),
+            handle: TerminalHandle::new(cols, rows),
             transport: None,
         },
     );
@@ -249,8 +252,8 @@ pub unsafe extern "C" fn ggterm_session_cursor(id: u32, col: *mut usize, row: *m
 /// Resize the terminal grid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize) {
-    let cols = cols.clamp(1, 500);
-    let rows = rows.clamp(1, 200);
+    let cols = cols.clamp(1, 1000);
+    let rows = rows.clamp(1, 500);
     let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
         s.handle
