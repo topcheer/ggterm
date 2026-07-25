@@ -2244,7 +2244,8 @@ impl Perform for Terminal {
             // REP — repeat preceding printable character N times
             b'b' => {
                 self.cursor.pending_wrap = false;
-                let n = Self::param(params, 0, 1) as usize;
+                // Cap at terminal width to prevent CPU DoS from large REP counts.
+                let n = (Self::param(params, 0, 1) as usize).min(self.grid.width() * 2);
                 if let Some(ch) = self.last_printed_char {
                     for _ in 0..n {
                         self.put_printable_char(ch);
