@@ -126,6 +126,10 @@ pub fn grid_to_ffi(grid: &Grid) -> Vec<GGTermCell> {
 /// Create a new terminal session. Returns an opaque handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn ggterm_new(cols: usize, rows: usize) -> *mut TerminalHandle {
+    // Clamp to sane maximums to prevent integer overflow in Vec allocations.
+    // Real terminals never exceed 1000 cols or 500 rows.
+    let cols = cols.clamp(1, 1000);
+    let rows = rows.clamp(1, 500);
     Box::into_raw(Box::new(TerminalHandle::new(cols, rows)))
 }
 
@@ -302,6 +306,8 @@ pub unsafe extern "C" fn ggterm_resize(handle: *mut TerminalHandle, cols: usize,
     if handle.is_null() {
         return;
     }
+    let cols = cols.clamp(1, 1000);
+    let rows = rows.clamp(1, 500);
     unsafe {
         let h = &mut *handle;
         h.terminal.grid_mut().resize(cols, rows);
