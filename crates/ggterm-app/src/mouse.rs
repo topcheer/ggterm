@@ -306,8 +306,8 @@ pub fn pixel_to_cell(px: f64, py: f64, cell_width: f64, cell_height: f64) -> (u1
 
 /// Find a URL in a line of text that overlaps the given column position.
 ///
-/// Returns `(byte_start, byte_end, url)` if a URL is found covering `col`,
-/// or `None` if no URL overlaps the position.
+/// Returns `(display_col_start, display_col_end, url)` if a URL is found
+/// covering `col`, or `None` if no URL overlaps the position.
 ///
 /// Detects `http://`, `https://`, `ftp://`, and `www.` prefixed URLs.
 pub fn detect_url_at_position(line: &str, col: usize) -> Option<(usize, usize, String)> {
