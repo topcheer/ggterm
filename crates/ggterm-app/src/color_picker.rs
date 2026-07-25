@@ -146,6 +146,16 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
     let mut results = Vec::new();
     let bytes = text.as_bytes();
 
+    // Pre-compute display width at each byte position for CJK correctness.
+    // Color codes (#RRGGBB, rgb()) are ASCII, so their display width == byte len,
+    // but the prefix text may contain CJK chars where byte offset ≠ display column.
+    let mut display_widths: Vec<usize> = Vec::with_capacity(bytes.len() + 1);
+    display_widths.push(0);
+    for ch in text.chars() {
+        let last = *display_widths.last().unwrap();
+        display_widths.push(last + ggterm_core::grid::char_width(ch));
+    }
+
     let mut i = 0;
     while i < bytes.len() {
         // Try hex color (#RRGGBB)
@@ -165,8 +175,8 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
                 if let Some(rgb) = parse_hex_color(hex_str) {
                     results.push(ColorMatch {
                         row: 0, // Set by caller
-                        col_start: i,
-                        col_end: i + hex_len + 1,
+                        col_start: display_widths[i],
+                        col_end: display_widths[i + hex_len + 1],
                         rgb,
                         text: hex_str.to_string(),
                     });
@@ -187,8 +197,8 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
             if let Some(rgb) = parse_rgb_color(candidate) {
                 results.push(ColorMatch {
                     row: 0,
-                    col_start: i,
-                    col_end: i + end + 1,
+                    col_start: display_widths[i],
+                    col_end: display_widths[i + end + 1],
                     rgb,
                     text: candidate.to_string(),
                 });
