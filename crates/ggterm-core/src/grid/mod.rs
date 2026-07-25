@@ -133,6 +133,44 @@ impl Grid {
             return;
         }
 
+        // Fast path: only height changed, no need to re-wrap lines.
+        // Just move rows between scrollback and visible area.
+        if width == self.width {
+            if height > self.height {
+                // Growing: pull rows from scrollback into visible area.
+                let extra = height - self.height;
+                let take = extra.min(self.scrollback.len());
+                let mut pulled = Vec::with_capacity(extra);
+                for _ in 0..take {
+                    if let Some(row) = self.scrollback.pop_back() {
+                        pulled.insert(0, row);
+                    }
+                }
+                pulled.append(&mut self.rows);
+                self.rows = pulled;
+                self.scrollback.shrink_to_fit();
+                self.rows.resize_with(height, || Row::new(width));
+            } else {
+                // Shrinking: push excess visible rows to scrollback.
+                let excess = self.height.saturating_sub(height);
+                if excess > 0 && self.rows.len() > height {
+                    // Keep first `height` rows, push the rest to scrollback.
+                    let overflow: Vec<Row> = self.rows.split_off(height);
+                    for row in overflow {
+                        self.scrollback.push_back(row);
+                    }
+                    let max_sb = self.max_scrollback;
+                    while self.scrollback.len() > max_sb {
+                        self.scrollback.pop_front();
+                    }
+                }
+            }
+            self.height = height;
+            self.damage.mark_all(height);
+            self.content_dirty = true;
+            return;
+        }
+
         // Collect ALL rows (scrollback + visible) into a single flat list.
         // We'll re-wrap the entire history, then redistribute into
         // scrollback and visible rows.
