@@ -89,9 +89,14 @@ impl P2pHost {
             incoming.await.map_err(|e| P2pError::Connect(e.to_string()))
         })?;
 
-        // Accept a bidirectional stream from the client.
+        // Accept a bidirectional stream from the client (with timeout).
         let (send, recv) = runtime
-            .block_on(conn.accept_bi())
+            .block_on(async {
+                tokio::time::timeout(std::time::Duration::from_secs(30), conn.accept_bi())
+                    .await
+                    .map_err(|_| P2pError::Stream("accept_bi timed out after 30s".to_string()))?
+                    .map_err(|e| P2pError::Stream(e.to_string()))
+            })
             .map_err(|e| P2pError::Stream(e.to_string()))?;
 
         // Take ownership of runtime and endpoint so they live as long as the transport.
