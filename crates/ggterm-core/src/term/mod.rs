@@ -2174,14 +2174,16 @@ impl Perform for Terminal {
                 );
             }
             b'I' => {
-                let n = Self::param(params, 0, 1);
+                // CHT — Cursor Horizontal Tab forward N times.
+                let n = (Self::param(params, 0, 1) as usize).min(self.grid.width());
                 for _ in 0..n {
                     self.execute(0x09);
                 }
             }
             b'Z' => {
+                // CBT — Cursor Backward Tab N times.
                 self.cursor.pending_wrap = false;
-                let n = Self::param(params, 0, 1);
+                let n = (Self::param(params, 0, 1) as usize).min(self.grid.width());
                 for _ in 0..n {
                     if self.cursor.x > 0 {
                         let mut p = self.cursor.x - 1;
@@ -2402,7 +2404,7 @@ impl Perform for Terminal {
             // Kitty keyboard protocol: pop flags (CSI < Ps u)
             // Restores the previous flags from the stack (N times).
             b'u' if intermediates.contains(&b'<') => {
-                let count = params.first().copied().unwrap_or(1) as usize;
+                let count = (params.first().copied().unwrap_or(1) as usize).min(32);
                 for _ in 0..count {
                     if let Some(prev) = self.kitty_kb_stack.pop() {
                         self.modes.kitty_keyboard = prev;
