@@ -146,15 +146,27 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
     let mut results = Vec::new();
     let bytes = text.as_bytes();
 
-    // Pre-compute display width at each byte position for CJK correctness.
-    // Color codes (#RRGGBB, rgb()) are ASCII, so their display width == byte len,
-    // but the prefix text may contain CJK chars where byte offset ≠ display column.
-    let mut display_widths: Vec<usize> = Vec::with_capacity(bytes.len() + 1);
-    display_widths.push(0);
-    for ch in text.chars() {
-        let last = *display_widths.last().unwrap();
-        display_widths.push(last + ggterm_core::grid::char_width(ch));
-    }
+    // Fast path: for ASCII-only lines, byte offset == display column.
+    // Skip the display_widths Vec allocation entirely.
+    let ascii = text.is_ascii();
+    let display_widths: Vec<usize> = if ascii {
+        Vec::new() // Won't be used — col_start/col_end use byte offset directly.
+    } else {
+        let mut dw = Vec::with_capacity(bytes.len() + 1);
+        dw.push(0);
+        for ch in text.chars() {
+            let last = *dw.last().unwrap();
+            dw.push(last + ggterm_core::grid::char_width(ch));
+        }
+        dw
+    };
+    let col_at = |byte_idx: usize| -> usize {
+        if ascii {
+            byte_idx
+        } else {
+            display_widths[byte_idx]
+        }
+    };
 
     let mut i = 0;
     while i < bytes.len() {
@@ -175,8 +187,8 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
                 if let Some(rgb) = parse_hex_color(hex_str) {
                     results.push(ColorMatch {
                         row: 0, // Set by caller
-                        col_start: display_widths[i],
-                        col_end: display_widths[i + hex_len + 1],
+                        col_start: col_at(i),
+                        col_end: col_at(i + hex_len + 1),
                         rgb,
                         text: hex_str.to_string(),
                     });
@@ -197,8 +209,8 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
             if let Some(rgb) = parse_rgb_color(candidate) {
                 results.push(ColorMatch {
                     row: 0,
-                    col_start: display_widths[i],
-                    col_end: display_widths[i + end + 1],
+                    col_start: col_at(i),
+                    col_end: col_at(i + end + 1),
                     rgb,
                     text: candidate.to_string(),
                 });
