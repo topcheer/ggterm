@@ -3452,11 +3452,20 @@ impl DesktopApp {
         // IME preedit text overlay — show in-progress CJK composition text
         // as an underline-styled overlay at the cursor position.
         if let Some((preedit, ime_ccol, ime_crow, ime_bounds, preedit_cursor)) = ime_data {
-            let char_count = preedit.chars().count();
+            let chars: Vec<char> = preedit.chars().collect();
+            let char_count = chars.len();
             // Use content area x/y offset so preedit aligns with the actual
             // cursor position. bounds.y already includes tab bar height.
             let mut ime_rects: Vec<ggterm_render_wgpu::OverlayRect> =
                 Vec::with_capacity(char_count);
+            // Pre-compute display width for each char position for CJK correctness.
+            // Wide chars (CJK, emoji) take 2 cells; ASCII/narrow take 1.
+            let mut char_cols: Vec<usize> = Vec::with_capacity(char_count + 1);
+            char_cols.push(0);
+            for ch in &chars {
+                let last = *char_cols.last().unwrap();
+                char_cols.push(last + ggterm_core::grid::char_width(*ch));
+            }
             for i in 0..char_count {
                 // Check if this cell is at the preedit cursor position.
                 // preedit_cursor is Option<(start_byte, end_byte)>. Convert to char index.
@@ -3467,10 +3476,11 @@ impl DesktopApp {
                         (start_ch..=end_ch).contains(&i)
                     })
                     .unwrap_or(false);
+                let char_w = (char_cols[i + 1] - char_cols[i]) as f32 * cell_w;
                 ime_rects.push(ggterm_render_wgpu::OverlayRect {
-                    x: ime_bounds.x as f32 + (ime_ccol + i) as f32 * cell_w,
+                    x: ime_bounds.x as f32 + (ime_ccol + char_cols[i]) as f32 * cell_w,
                     y: ime_bounds.y as f32 + (ime_crow + 1) as f32 * cell_h - 2.0,
-                    w: cell_w,
+                    w: char_w,
                     h: if at_cursor { 3.0 } else { 2.0 },
                     color: if at_cursor {
                         (1.0, 0.8, 0.2) // amber for cursor position
