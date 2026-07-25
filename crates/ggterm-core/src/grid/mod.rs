@@ -468,6 +468,7 @@ impl Grid {
     /// Clear all scrollback history (ED mode 3 / OSC 1337 ClearScrollback).
     pub fn clear_scrollback(&mut self) {
         self.scrollback.clear();
+        self.scrollback.shrink_to_fit();
         self.display_offset = 0;
         self.damage.mark_all(self.height);
         self.content_dirty = true;
