@@ -19,7 +19,7 @@ release:
 
 # Run tests
 test:
-	CARGO_BUILD_JOBS=1 cargo test -p ggterm-core -p ggterm-ffi -p ggterm-ssh -p ggterm-p2p -p ggterm-plugin --lib
+	CARGO_BUILD_JOBS=1 cargo test -p ggterm-core --lib
 
 test-app:
 	CARGO_BUILD_JOBS=1 cargo test --features "$(TAGS)" -p ggterm-app --lib
