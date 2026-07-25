@@ -2397,8 +2397,10 @@ impl ApplicationHandler for DesktopApp {
         // P28-C: Sync command history sidebar from OSC 133 marks.
         self.poll_command_history();
 
-        // P28-F: Tick cursor particle system.
-        self.cursor_particles.tick();
+        // P28-F: Tick cursor particle system (skip when no particles).
+        if self.cursor_particles.needs_render() {
+            self.cursor_particles.tick();
+        }
 
         // P30-C: Tick toast notification timer.
         if let Some((_, frames)) = &mut self.toast {
