@@ -2901,9 +2901,8 @@ impl DesktopApp {
                                 continue;
                             }
                             line_text.push(c.ch);
-                            for &mc in &c.combining {
-                                line_text.push(mc);
-                            }
+                            // Skip combining chars — they would offset the char index
+                            // and cause find_file_path to look at the wrong position.
                         }
                         if let Some(path) = crate::mouse::find_file_path(&line_text, col as usize) {
                             crate::mouse::open_file_path(&path);
