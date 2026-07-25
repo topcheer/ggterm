@@ -62,6 +62,8 @@ impl SessionManager {
     pub fn create_session(&mut self, cols: usize, rows: usize) -> u32 {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
+        let cols = cols.clamp(1, 1000);
+        let rows = rows.clamp(1, 500);
         self.sessions.insert(
             id,
             TerminalSession {
@@ -123,6 +125,8 @@ impl SessionManager {
     }
 
     pub fn resize(&mut self, id: u32, cols: usize, rows: usize) {
+        let cols = cols.clamp(1, 1000);
+        let rows = rows.clamp(1, 500);
         if let Some(s) = self.sessions.get_mut(&id) {
             s.handle.terminal.grid_mut().resize(cols, rows);
         }
