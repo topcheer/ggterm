@@ -1353,8 +1353,10 @@ impl DesktopApp {
         while lines.last().is_some_and(|l| l.is_empty()) {
             lines.pop();
         }
-        while lines.first().is_some_and(|l| l.is_empty()) {
-            lines.remove(0);
+        // Use drain to remove leading empty lines (O(k) instead of O(n) with remove(0)).
+        let leading_empty = lines.iter().take_while(|l| l.is_empty()).count();
+        if leading_empty > 0 {
+            lines.drain(0..leading_empty);
         }
         lines.join("\n")
     }
