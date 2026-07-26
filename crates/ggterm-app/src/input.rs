@@ -188,10 +188,10 @@ impl InputEncoder {
             SpecialKey::Left => self.cursor_key('D', mods),
             SpecialKey::Home => self.cursor_key('H', mods),
             SpecialKey::End => self.cursor_key('F', mods),
-            SpecialKey::PageUp => csi_tilde("5", mods),
-            SpecialKey::PageDown => csi_tilde("6", mods),
-            SpecialKey::Insert => csi_tilde("2", mods),
-            SpecialKey::Delete => csi_tilde("3", mods),
+            SpecialKey::PageUp => self.csi_tilde("5", mods),
+            SpecialKey::PageDown => self.csi_tilde("6", mods),
+            SpecialKey::Insert => self.csi_tilde("2", mods),
+            SpecialKey::Delete => self.csi_tilde("3", mods),
             SpecialKey::F1 => {
                 if has_mod(mods) {
                     csi_modified("1", 'P', mods)
@@ -220,14 +220,14 @@ impl InputEncoder {
                     b"\x1bOS".to_vec()
                 }
             }
-            SpecialKey::F5 => csi_tilde("15", mods),
-            SpecialKey::F6 => csi_tilde("17", mods),
-            SpecialKey::F7 => csi_tilde("18", mods),
-            SpecialKey::F8 => csi_tilde("19", mods),
-            SpecialKey::F9 => csi_tilde("20", mods),
-            SpecialKey::F10 => csi_tilde("21", mods),
-            SpecialKey::F11 => csi_tilde("23", mods),
-            SpecialKey::F12 => csi_tilde("24", mods),
+            SpecialKey::F5 => self.csi_tilde("15", mods),
+            SpecialKey::F6 => self.csi_tilde("17", mods),
+            SpecialKey::F7 => self.csi_tilde("18", mods),
+            SpecialKey::F8 => self.csi_tilde("19", mods),
+            SpecialKey::F9 => self.csi_tilde("20", mods),
+            SpecialKey::F10 => self.csi_tilde("21", mods),
+            SpecialKey::F11 => self.csi_tilde("23", mods),
+            SpecialKey::F12 => self.csi_tilde("24", mods),
         }
     }
 
@@ -244,6 +244,23 @@ impl InputEncoder {
             return format!("\x1bO{}", suffix).into_bytes();
         }
         format!("\x1b[{}", suffix).into_bytes()
+    }
+
+    /// Encode a tilde-key (PageUp/PageDown/Insert/Delete/F5-F12) with
+    /// modifyOtherKeys mode awareness.
+    ///
+    /// - mode 0/1: standard `CSI {num};{mod}~` (only when modifiers present)
+    /// - mode 2: `CSI {num};{mod};1~` with trailing `;1` per xterm spec
+    fn csi_tilde(&self, num: &str, mods: &KeyModifiers) -> Vec<u8> {
+        if !has_mod(mods) {
+            return format!("\x1b[{num}~").into_bytes();
+        }
+        let m = mod_code(mods);
+        if self.modify_other_keys >= 2 {
+            format!("\x1b[{num};{m};1~").into_bytes()
+        } else {
+            format!("\x1b[{num};{m}~").into_bytes()
+        }
     }
 }
 
@@ -308,13 +325,6 @@ fn csi_modified_with_mode(param: &str, suffix: char, mods: &KeyModifiers, mode: 
     } else {
         format!("\x1b[{param};{m}{suffix}").into_bytes()
     }
-}
-
-fn csi_tilde(num: &str, mods: &KeyModifiers) -> Vec<u8> {
-    if has_mod(mods) {
-        return format!("\x1b[{};{}~", num, mod_code(mods)).into_bytes();
-    }
-    format!("\x1b[{}~", num).into_bytes()
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1435,5 +1445,44 @@ mod tests {
         };
         let key = InputKey::Char('x', mods);
         assert_eq!(enc.encode(&key), b"\x18");
+    }
+
+    #[test]
+    fn test_modify_other_keys_2_tilde_pageup() {
+        // modifyOtherKeys mode 2: Shift+PageUp should append ;1.
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(2);
+        let mods = KeyModifiers {
+            shift: true,
+            ..Default::default()
+        };
+        // Mode 2: CSI 5;2;1~ (param 5, mod 2, trailing 1)
+        let key = InputKey::Special(SpecialKey::PageUp, mods);
+        assert_eq!(enc.encode(&key), b"\x1b[5;2;1~");
+    }
+
+    #[test]
+    fn test_modify_other_keys_2_tilde_delete() {
+        // modifyOtherKeys mode 2: Ctrl+Delete should append ;1.
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(2);
+        let mods = KeyModifiers {
+            ctrl: true,
+            ..Default::default()
+        };
+        let key = InputKey::Special(SpecialKey::Delete, mods);
+        assert_eq!(enc.encode(&key), b"\x1b[3;5;1~");
+    }
+
+    #[test]
+    fn test_modify_other_keys_0_tilde_with_mod() {
+        // modifyOtherKeys mode 0/1: Shift+F5 should NOT append ;1.
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: true,
+            ..Default::default()
+        };
+        let key = InputKey::Special(SpecialKey::F5, mods);
+        assert_eq!(enc.encode(&key), b"\x1b[15;2~");
     }
 }
