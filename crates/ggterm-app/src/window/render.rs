@@ -3766,13 +3766,21 @@ fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     }
     let mut lines = Vec::new();
     for line in text.lines() {
-        let chars: Vec<char> = line.chars().collect();
-        let mut start = 0;
-        while start < chars.len() {
-            let end = (start + max_chars).min(chars.len());
-            lines.push(chars[start..end].iter().collect());
-            start = end;
+        // Use display width (not char count) for CJK correctness.
+        // Wide chars (中文, emoji) take 2 columns; this prevents text
+        // from overflowing panel boundaries.
+        let mut current = String::new();
+        let mut current_w = 0usize;
+        for ch in line.chars() {
+            let w = ggterm_core::grid::char_width(ch);
+            if current_w + w > max_chars && !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+                current_w = 0;
+            }
+            current.push(ch);
+            current_w += w;
         }
+        lines.push(current);
     }
     if lines.is_empty() {
         lines.push(String::new());
