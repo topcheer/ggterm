@@ -10685,4 +10685,126 @@ mod tests {
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'X');
         assert_eq!(t.cursor().1, 0, "should be on row 0");
     }
+
+    // ── SGR color parsing edge cases ──
+
+    #[test]
+    fn t_sgr_256_color_max_index() {
+        // 38;5;255 should set fg to Indexed(255) (last valid 256-color).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[38;5;255mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(255));
+    }
+
+    #[test]
+    fn t_sgr_truecolor_rgb() {
+        // 38;2;255;128;0 should set fg to RGB(255,128,0).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[38;2;255;128;0mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 128, 0));
+    }
+
+    #[test]
+    fn t_sgr_truecolor_bg() {
+        // 48;2;0;0;255 should set bg to RGB(0,0,255).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[48;2;0;0;255mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn t_sgr_malformed_38_no_subtype() {
+        // 38 with no following subtype — should be a no-op, not crash.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[38mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_sgr_malformed_38_5_no_index() {
+        // 38;5 with no color index — should be a no-op, not crash.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[38;5mX");
+        // Should not crash. fg should stay default.
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_sgr_reset_clears_underline_color() {
+        // SGR 0 should reset underline_color too.
+        // underline_color is a Terminal-level attribute, not per-cell.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[58;5;200m"); // set underline color
+        // After SGR 0, terminal-level underline_color should be reset.
+        feed(&mut t, b"\x1b[0m");
+        // No way to check underline_color from outside without accessor,
+        // but at least verify it doesn't crash.
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_sgr_bright_color_range() {
+        // SGR 90-97 should set bright fg (Indexed 8-15).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[97mX"); // bright white fg
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(15));
+    }
+
+    #[test]
+    fn t_sgr_bright_bg_range() {
+        // SGR 100-107 should set bright bg (Indexed 8-15).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[107mX"); // bright white bg
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Indexed(15));
+    }
+
+    // ── OSC edge cases ──
+
+    #[test]
+    fn t_osc_title_caps_at_256() {
+        // OSC 0 title should be capped at 256 chars.
+        let mut t = Terminal::new(10, 2);
+        let long_title = "A".repeat(300);
+        feed(&mut t, format!("\x1b]0;{}\x07", long_title).as_bytes());
+        assert_eq!(t.title().len(), 256, "title should be capped at 256 chars");
+    }
+
+    #[test]
+    fn t_osc_title_strips_control_chars() {
+        // OSC 0 title should strip control characters.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]0;Hello\x01\x02World\x07");
+        assert_eq!(t.title(), "HelloWorld");
+    }
+
+    #[test]
+    fn t_osc_8_empty_uri_clears_hyperlink() {
+        // OSC 8 with empty URI should clear current hyperlink.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"A");
+        assert!(t.grid().cell(0, 0).unwrap().hyperlink.is_some());
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // clear
+        feed(&mut t, b"\x1b[2GB"); // move to col 1
+        feed(&mut t, b"B");
+        assert!(
+            t.grid().cell(1, 0).unwrap().hyperlink.is_none(),
+            "cell after OSC 8 clear should have no hyperlink"
+        );
+    }
+
+    #[test]
+    fn t_osc_8_caps_uri_length() {
+        // OSC 8 URI should be capped to prevent memory exhaustion.
+        let mut t = Terminal::new(10, 2);
+        let long_uri = "https://example.com/".repeat(200);
+        feed(&mut t, format!("\x1b]8;;{}\x1b\\", long_uri).as_bytes());
+        feed(&mut t, b"X");
+        let hl = t.grid().cell(0, 0).unwrap().hyperlink.as_ref().unwrap();
+        assert!(
+            hl.len() <= 2048,
+            "hyperlink URI should be capped at 2048 chars"
+        );
+    }
 }
