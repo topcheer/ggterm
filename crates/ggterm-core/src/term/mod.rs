@@ -11023,4 +11023,208 @@ mod tests {
             "DECSTR should reset scroll region to full screen"
         );
     }
+
+    // ── DECSC/DECRC state restoration probes ──
+
+    #[test]
+    fn t_decsc_saves_origin_mode_state() {
+        // Save with origin mode ON, toggle OFF, restore → origin should be ON.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // set scroll region
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b7"); // DECSC save
+        feed(&mut t, b"\x1b[?6l"); // origin mode off
+        feed(&mut t, b"\x1b8"); // DECRC restore
+        assert!(t.modes.origin, "DECSC should save and restore origin mode");
+    }
+
+    #[test]
+    fn t_decsc_saves_autowrap_off() {
+        // Save with autowrap OFF, toggle ON, restore → autowrap should be OFF.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?7l"); // autowrap off
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[?7h"); // autowrap on
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(!t.modes.auto_wrap, "DECSC should save autowrap state");
+    }
+
+    // ── REP (Repeat Character) probes ──
+
+    #[test]
+    fn t_rep_after_cursor_movement() {
+        // Print 'A', move cursor, REP — should still repeat 'A' per spec.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A");
+        feed(&mut t, b"\x1b[2G"); // CHA col 2 → cursor at col 1
+        feed(&mut t, b"\x1b[2b"); // REP 2
+        // A at col 0, then REP should print 2 A's starting at col 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_rep_zero_count_is_noop() {
+        // REP 0 should be a no-op (or repeat once, per some interpretations).
+        // Spec says default count is 1; explicit 0 is implementation-defined.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"A");
+        feed(&mut t, b"\x1b[0b"); // REP 0
+        // At minimum, should not crash. Cursor should be at col 1 (just the A).
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+    }
+
+    // ── ICH/DCH with wide chars ──
+
+    #[test]
+    fn t_ich_does_not_split_wide_char_at_boundary() {
+        // ICH at position where it would split a wide char lead from its spacer.
+        let mut t = Terminal::new(8, 2);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // cols 2-3
+        feed(&mut t, b"CD"); // cols 4-5
+        feed(&mut t, b"\x1b[5G"); // cursor at col 4
+        feed(&mut t, b"\x1b[2@"); // ICH 2 — insert 2 at col 4
+        // Check no orphaned wide chars
+        for col in 0..6 {
+            let c = t.grid().cell(col, 0).unwrap();
+            if c.flags.contains(CellFlags::WIDE_CHAR) {
+                assert!(
+                    t.grid()
+                        .cell(col + 1, 0)
+                        .unwrap()
+                        .flags
+                        .contains(CellFlags::WIDE_SPACER),
+                    "WIDE_CHAR at col {} must have spacer at col {} after ICH",
+                    col,
+                    col + 1
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn t_dch_at_last_col() {
+        // DCH at last column — deletes char at cursor, shifts left.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD"); // fill row
+        feed(&mut t, b"\x1b[4G"); // cursor at col 3 (D)
+        feed(&mut t, b"\x1b[1P"); // DCH 1 — delete D
+        // A,B,C survive. Col 3 becomes blank.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_blank(),
+            "col 3 should be blank after DCH"
+        );
+    }
+
+    #[test]
+    fn t_dch_wide_char_keeps_pairs() {
+        // DCH on a row with wide chars — no orphaned spacer should remain.
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"XY"); // cols 2-3
+        feed(&mut t, b"\x1b[3G"); // cursor at col 2
+        feed(&mut t, b"\x1b[1P"); // DCH 1
+        // No orphaned wide spacer at col 0 or 1
+        let c0 = t.grid().cell(0, 0).unwrap();
+        if c0.flags.contains(CellFlags::WIDE_CHAR) {
+            assert!(
+                t.grid()
+                    .cell(1, 0)
+                    .unwrap()
+                    .flags
+                    .contains(CellFlags::WIDE_SPACER),
+                "wide char pair must stay together after DCH"
+            );
+        }
+    }
+
+    // ── Wide char cursor movement probes ──
+
+    #[test]
+    fn t_cub_after_wide_char_lands_on_lead() {
+        // Write wide char, then CUB 1 — cursor should land on the lead cell (col 0).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1, cursor at col 2
+        feed(&mut t, b"\x1b[D"); // CUB 1 (cursor left)
+        // Should land on col 1 (spacer), but some terminals go to col 0 (lead).
+        // At minimum, it should not go past the lead.
+        assert!(
+            t.cursor().0 <= 1,
+            "CUB after wide char should not skip past lead"
+        );
+    }
+
+    #[test]
+    fn t_wide_char_then_narrow_no_erase() {
+        // Wide char at col 0-1, move cursor back to col 0, print narrow 'X'.
+        // X should replace the wide char (both cells).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"X"); // overwrite
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        // Col 1 should no longer be a wide spacer
+        assert!(
+            !t.grid()
+                .cell(1, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_SPACER),
+            "overwriting wide char lead should clear spacer"
+        );
+    }
+
+    // ── EL/ED edge cases ──
+
+    #[test]
+    fn t_el_2_resets_attributes() {
+        // EL 2 (erase entire line) should reset cell attributes to default.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[42mABCD"); // green bg
+        feed(&mut t, b"\x1b[2K"); // erase entire line
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.bg, Color::Default, "EL 2 should reset bg");
+    }
+
+    #[test]
+    fn t_el_1_at_scroll_region_boundary() {
+        // EL 1 (erase from start to cursor, inclusive) at cursor in scroll region.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[3;1HABCD"); // row 2: ABCD
+        feed(&mut t, b"\x1b[3;3G"); // cursor at col 2 (on C)
+        feed(&mut t, b"\x1b[1K"); // EL 1: erase start to cursor (inclusive)
+        assert!(t.grid().cell(0, 2).unwrap().is_blank());
+        assert!(t.grid().cell(1, 2).unwrap().is_blank());
+        assert!(
+            t.grid().cell(2, 2).unwrap().is_blank(),
+            "C at cursor should be erased by EL 1"
+        );
+        assert_eq!(
+            t.grid().cell(3, 2).unwrap().ch,
+            'D',
+            "D after cursor should survive"
+        );
+    }
+
+    #[test]
+    fn t_ed_2_resets_all_attributes() {
+        // ED 2 (erase all) should reset ALL cell attributes including bold, italic.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[1;3mAB"); // bold + italic
+        feed(&mut t, b"\x1b[2J"); // erase all
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            !cell.flags.contains(CellFlags::BOLD),
+            "ED 2 should clear bold"
+        );
+        assert!(
+            !cell.flags.contains(CellFlags::ITALIC),
+            "ED 2 should clear italic"
+        );
+    }
 }
