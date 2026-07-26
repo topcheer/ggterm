@@ -16652,4 +16652,143 @@ mod tests {
         feed(&mut t, b"\t"); // tab → should skip col 5 now
         assert_eq!(t.cursor().0, 8, "tab skips cleared col 5 → col 8");
     }
+
+    // ── Round 10-3: Erase Functions edge case audits ───────────────────
+
+    #[test]
+    fn t_r10_ed_preserves_cursor() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"ABCDEF\r\nGHIJKL");
+        feed(&mut t, b"\x1b[2;4H"); // cursor at (3, 1)
+        let (cx, cy) = t.cursor();
+        feed(&mut t, b"\x1b[2J"); // ED 2
+        assert_eq!(t.cursor(), (cx, cy), "ED 2 does not move cursor");
+    }
+
+    #[test]
+    fn t_r10_el_preserves_cursor() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;5H"); // cursor at col 4
+        let (cx, cy) = t.cursor();
+        feed(&mut t, b"\x1b[2K"); // EL 2
+        assert_eq!(t.cursor(), (cx, cy), "EL 2 does not move cursor");
+    }
+
+    #[test]
+    fn t_r10_ech_preserves_cursor() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;4H"); // cursor at col 3
+        feed(&mut t, b"\x1b[3X"); // ECH 3
+        assert_eq!(t.cursor(), (3, 0), "ECH does not move cursor");
+    }
+
+    #[test]
+    fn t_r10_ed_preserves_pending_wrap() {
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        assert!(t.cursor.pending_wrap);
+        feed(&mut t, b"\x1b[0J"); // ED 0
+        assert!(t.cursor.pending_wrap, "ED does not clear pending_wrap");
+    }
+
+    #[test]
+    fn t_r10_el_preserves_pending_wrap() {
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE");
+        assert!(t.cursor.pending_wrap);
+        feed(&mut t, b"\x1b[0K"); // EL 0
+        assert!(t.cursor.pending_wrap, "EL does not clear pending_wrap");
+    }
+
+    #[test]
+    fn t_r10_ech_on_wide_lead_clears_spacer() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"\x1b[1G"); // col 0
+        feed(&mut t, b"\x1b[1X"); // ECH 1 at wide lead
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "lead erased");
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "spacer cleared"
+        );
+    }
+
+    #[test]
+    fn t_r10_ech_on_wide_spacer_includes_lead() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"ABCDEF");
+        feed(&mut t, b"\x1b[2G"); // cursor at col 1 (spacer)
+        feed(&mut t, b"\x1b[2X"); // ECH 2 from spacer
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "lead cleared");
+        assert!(!t.grid().cell(0, 0).unwrap().is_wide(), "no wide flag");
+    }
+
+    #[test]
+    fn t_r10_el_0_on_wide_spacer() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // wide at cols 2-3
+        feed(&mut t, b"CDEF");
+        feed(&mut t, b"\x1b[1;4H"); // cursor at col 3 (spacer)
+        feed(&mut t, b"\x1b[0K"); // EL 0
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "wide lead cleared");
+        assert!(!t.grid().cell(2, 0).unwrap().is_wide(), "no orphan lead");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "col 0 preserved");
+    }
+
+    #[test]
+    fn t_r10_el_1_on_wide_lead_includes_spacer() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // wide at cols 2-3
+        feed(&mut t, b"CDEF");
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 2 (wide lead)
+        feed(&mut t, b"\x1b[1K"); // EL 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "col 0 erased");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "lead erased");
+        assert!(
+            !t.grid().cell(3, 0).unwrap().is_wide_spacer(),
+            "spacer cleared"
+        );
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'C', "col 4 preserved");
+    }
+
+    #[test]
+    fn t_r10_ech_exceeds_line_end() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;8H"); // cursor at col 7
+        feed(&mut t, b"\x1b[99X"); // ECH 99 — clamps to 3 remaining
+        assert_eq!(t.grid().cell(7, 0).unwrap().ch, ' ', "col 7 erased");
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, ' ', "col 9 erased");
+    }
+
+    #[test]
+    fn t_r10_ed_2_clears_wrap_flags() {
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"F"); // wraps, sets row 0 wrap flag
+        assert!(t.grid().row(0).unwrap().wrap, "row 0 has wrap flag");
+        feed(&mut t, b"\x1b[2J"); // ED 2
+        assert!(!t.grid().row(0).unwrap().wrap, "ED 2 clears wrap flag");
+    }
+
+    #[test]
+    fn t_r10_ed_0_clears_wrap_flags_below_cursor() {
+        // ED 0 should clear wrap flags on rows below cursor row.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"FGHIJ");
+        // Move to row 0, ED 0 clears from there to end
+        feed(&mut t, b"\x1b[2;1H"); // row 2 (0-based: 1)
+        feed(&mut t, b"\x1b[0J");
+        // Rows below cursor (1-3) should have wrap cleared
+        for r in 1..4 {
+            assert!(!t.grid().row(r).unwrap().wrap, "row {r} wrap cleared");
+        }
+    }
 }
