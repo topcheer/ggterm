@@ -16536,4 +16536,120 @@ mod tests {
             "DECALN resets scroll region to full screen"
         );
     }
+
+    // ── Round 10-2: Tab Stops (HTS/TBC/CHT/CBT) edge case audits ───────
+
+    #[test]
+    fn t_r10_hts_sets_stop_at_cursor_col() {
+        // HTS (ESC H) should set tab stop at cursor column.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[4G"); // col 4 (0-based: 3)
+        feed(&mut t, b"\x1bH"); // HTS at col 3
+        assert!(t.tab_stops[3], "HTS set stop at col 3");
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\t"); // tab should stop at col 3
+        assert_eq!(t.cursor().0, 3, "tab stops at col 3 (custom)");
+    }
+
+    #[test]
+    fn t_r10_tbc_0_clears_current_stop() {
+        // TBC param 0 (CSI g or CSI 0g) clears stop at current column.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[9G"); // col 9 (0-based: 8 = default stop)
+        feed(&mut t, b"\x1b[0g"); // TBC 0: clear col 8
+        assert!(!t.tab_stops[8], "TBC 0 cleared stop at col 8");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\t"); // should skip past col 8 to col 16
+        assert_eq!(t.cursor().0, 16, "tab skips cleared col 8");
+    }
+
+    #[test]
+    fn t_r10_tbc_3_clears_all_stops() {
+        // TBC param 3 (CSI 3g) clears ALL tab stops.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // TBC 3: clear all
+        for i in 0..20 {
+            assert!(!t.tab_stops[i], "all stops cleared at col {i}");
+        }
+        // Tab with no stops should go to last column
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 19, "tab with no stops goes to last col");
+    }
+
+    #[test]
+    fn t_r10_cht_default_is_1() {
+        // CHT with no param defaults to 1.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[I"); // CHT default 1
+        assert_eq!(t.cursor().0, 8, "CHT default = 1 → col 8");
+    }
+
+    #[test]
+    fn t_r10_cbt_default_is_1() {
+        // CBT with no param defaults to 1.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[17G"); // col 17 (0-based: 16)
+        feed(&mut t, b"\x1b[Z"); // CBT default 1
+        assert_eq!(t.cursor().0, 8, "CBT default = 1 → col 8");
+    }
+
+    #[test]
+    fn t_r10_cbt_falls_to_col0_if_no_stop() {
+        // CBT with no tab stops should land at col 0.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"\x1b[10G"); // col 10 (0-based: 9)
+        feed(&mut t, b"\x1b[Z"); // CBT 1 — no stops, should go to col 0
+        assert_eq!(t.cursor().0, 0, "CBT with no stops lands at col 0");
+    }
+
+    #[test]
+    fn t_r10_tab_after_tbc3_goes_to_last_col() {
+        // After clearing all stops, tab goes to last column.
+        let mut t = Terminal::new(15, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 14, "tab with no stops → last col");
+    }
+
+    #[test]
+    fn t_r10_cht_multiple_tabs() {
+        // CHT 3 should advance 3 tab stops.
+        let mut t = Terminal::new(80, 3);
+        feed(&mut t, b"\x1b[3I"); // CHT 3: 0 → 8 → 16 → 24
+        assert_eq!(t.cursor().0, 24, "CHT 3 from col 0 → col 24");
+    }
+
+    #[test]
+    fn t_r10_cbt_multiple_tabs() {
+        // CBT 3 should go back 3 tab stops.
+        let mut t = Terminal::new(80, 3);
+        feed(&mut t, b"\x1b[33G"); // col 33 (0-based: 32)
+        feed(&mut t, b"\x1b[3Z"); // CBT 3: 32 → 24 → 16 → 8
+        assert_eq!(t.cursor().0, 8, "CBT 3 from col 32 → col 8");
+    }
+
+    #[test]
+    fn t_r10_cht_at_last_col_stays() {
+        // CHT at last column should not exceed last col.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[10G"); // col 10 (0-based: 9 = last)
+        feed(&mut t, b"\x1b[I"); // CHT 1
+        assert_eq!(t.cursor().0, 9, "CHT at last col stays");
+    }
+
+    #[test]
+    fn t_r10_hts_then_tab_then_tbc_cycle() {
+        // Full HTS → Tab → TBC cycle.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[6G"); // col 6 (0-based: 5)
+        feed(&mut t, b"\x1bH"); // HTS at col 5
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\t"); // tab → col 5
+        assert_eq!(t.cursor().0, 5, "tab to custom col 5");
+        feed(&mut t, b"\x1b[0g"); // TBC at current col 5
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\t"); // tab → should skip col 5 now
+        assert_eq!(t.cursor().0, 8, "tab skips cleared col 5 → col 8");
+    }
 }
