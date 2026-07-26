@@ -14732,4 +14732,196 @@ mod tests {
         );
         assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "primary is blank");
     }
+
+    // ── Round 6-1: Wide character and Unicode edge cases ──────────────
+
+    #[test]
+    fn t_r6_cjk_occupies_two_columns() {
+        // Chinese character '你' (U+4F60) should occupy 2 columns.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "你".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_CHAR)
+        );
+        assert!(
+            t.grid()
+                .cell(1, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_SPACER)
+        );
+        // Cursor should be at col 2 (advanced by 2)
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_r6_cjk_five_chars_fill_10_cols() {
+        // 5 CJK chars in a 10-col terminal should exactly fill the row.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你好世界啊".as_bytes());
+        // All 10 columns consumed, cursor at last col with pending_wrap
+        assert_eq!(t.cursor().0, 9, "cursor at last col");
+        assert!(t.cursor.pending_wrap, "should be pending wrap");
+    }
+
+    #[test]
+    fn t_r6_cjk_sixth_char_wraps() {
+        // 6th CJK char should wrap to next line.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你好世界啊".as_bytes()); // fills row 0
+        feed(&mut t, "好".as_bytes()); // should wrap to row 1
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '好', "6th char on row 1");
+    }
+
+    #[test]
+    fn t_r6_cjk_at_penultimate_col_no_split() {
+        // CJK char at col 8 in 10-col terminal: fits at cols 8-9.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[9G"); // go to col 9 (0-based: 8)
+        feed(&mut t, "你".as_bytes());
+        assert_eq!(t.grid().cell(8, 0).unwrap().ch, '你');
+        assert!(
+            t.grid()
+                .cell(8, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_CHAR)
+        );
+        assert!(
+            t.grid()
+                .cell(9, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_SPACER)
+        );
+    }
+
+    #[test]
+    fn t_r6_cjk_at_last_col_wraps() {
+        // CJK char at last col (col 9 in 10-col) should wrap, not split.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[10G"); // go to col 10 (0-based: 9)
+        feed(&mut t, "你".as_bytes());
+        // Should wrap to next line
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            '你',
+            "wide char wraps from last col"
+        );
+        // Col 9 on row 0 should be blank (not half of wide char)
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, ' ', "no split at boundary");
+    }
+
+    #[test]
+    fn t_r6_cjk_then_ascii_width_transition() {
+        // CJK char followed by ASCII: cursor and widths should be correct.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "你A".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+        assert_eq!(t.cursor().0, 3, "cursor after 你A = col 3");
+    }
+
+    #[test]
+    fn t_r6_backspace_after_cjk_moves_two() {
+        // Backspace after a CJK char should move cursor back 1 col,
+        // but the preceding cell is a WIDE_SPACER.
+        // Real backspace in terminals: BS moves cursor by 1.
+        // The CJK char's lead is at col N, spacer at col N+1.
+        // After printing CJK at col 0, cursor is at col 2.
+        // BS → col 1 (the spacer).
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "你".as_bytes());
+        assert_eq!(t.cursor().0, 2);
+        feed(&mut t, b"\x08"); // BS
+        assert_eq!(t.cursor().0, 1, "BS after CJK moves to col 1 (spacer)");
+        feed(&mut t, b"\x08"); // BS again
+        assert_eq!(t.cursor().0, 0, "BS again moves to col 0 (lead)");
+    }
+
+    #[test]
+    fn t_r6_combining_char_e_acute() {
+        // é = e + U+0301 (combining acute accent)
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "e\u{0301}".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'e');
+        assert_eq!(cell.combining.len(), 1, "combining char attached");
+        assert_eq!(cell.combining[0], '\u{0301}');
+        // Cursor should have advanced by 1 (width of 'e', not 0 for combining)
+        assert_eq!(t.cursor().0, 1);
+    }
+
+    #[test]
+    fn t_r6_zero_width_space_invisible() {
+        // U+200B (zero-width space) should not advance cursor.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"AB");
+        feed(&mut t, "\u{200B}".as_bytes());
+        feed(&mut t, b"C");
+        // ZWS is zero-width, should attach to B or be dropped.
+        // Either way, C should be at col 2.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_r6_emoji_4byte_width() {
+        // Most emoji are 2 columns wide.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "😀".as_bytes()); // U+1F600
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '😀');
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_CHAR)
+        );
+        assert_eq!(t.cursor().0, 2, "emoji takes 2 columns");
+    }
+
+    #[test]
+    fn t_r6_multiple_cjk_then_backspace_delete() {
+        // Write 3 CJK chars, then BS back to the middle one, overwrite with ASCII.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "你好吗".as_bytes()); // cols 0-5, cursor at 6
+        feed(&mut t, b"\x08\x08\x08"); // BS x3: 6→5→4→3 (col 3 = spacer of 吗)
+        feed(&mut t, b"\x08"); // BS: 3→2 (col 2 = lead of 吗)
+        feed(&mut t, b"X"); // overwrite at col 2
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X');
+        // Cols 0-1 should still be 好
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+    }
+
+    #[test]
+    fn t_r6_mixed_cjk_ascii_cjk() {
+        // 你A好B — widths: 2+1+2+1 = 6 columns
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "你A好B".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'B');
+        assert_eq!(t.cursor().0, 6);
+    }
+
+    #[test]
+    fn t_r6_cjk_styled_with_color() {
+        // CJK char with color attributes — both lead and spacer should get fg/bg.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[31;42m"); // red on green
+        feed(&mut t, "你".as_bytes());
+        let lead = t.grid().cell(0, 0).unwrap();
+        let spacer = t.grid().cell(1, 0).unwrap();
+        assert_eq!(lead.fg, Color::Indexed(1), "lead fg = red");
+        assert_eq!(lead.bg, Color::Indexed(2), "lead bg = green");
+        assert_eq!(spacer.bg, Color::Indexed(2), "spacer bg = green");
+    }
 }
