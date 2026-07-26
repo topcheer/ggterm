@@ -981,16 +981,27 @@ fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
     while start < total {
         let mut end = (start + width).min(total);
         // If the last cell in this chunk is a wide char lead (not a spacer),
-        // the spacer would be orphaned at the next line start — include it
-        // by extending end by 1 if possible.
-        if end < total && end > start && cells[end - 1].flags.contains(CellFlags::WIDE_CHAR) {
-            // The spacer is at `end`. Include it in this row.
+        // the spacer would be orphaned at the next line start.
+        // Only include the spacer if the chunk won't exceed width.
+        // If including it would overflow, push the wide char to the next row
+        // by padding the current row with a blank at the end.
+        if end < total
+            && end > start
+            && cells[end - 1].flags.contains(CellFlags::WIDE_CHAR)
+            && end == start + width
+        {
+            // Wide char at exact boundary — can't fit spacer. Push wide char
+            // to next line by decrementing end (leave a blank at the end).
+            end -= 1;
+        } else if end < total && end > start && cells[end - 1].flags.contains(CellFlags::WIDE_CHAR)
+        {
+            // There's room (end < start + width) — include the spacer.
             end += 1;
         }
         // If the first cell of the next chunk is a wide spacer (orphaned),
-        // skip it — it was part of the current row's wide char.
+        // consume it here — it was part of the current row's wide char.
         if end < total && cells[end].flags.contains(CellFlags::WIDE_SPACER) {
-            end += 1; // consume the spacer here
+            end += 1;
         }
 
         let mut chunk: Vec<Cell> = cells[start..end].to_vec();
@@ -1001,8 +1012,12 @@ fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
         if chunk.len() < width {
             chunk.resize(width, Cell::blank());
         }
-        // Truncate if over (shouldn't normally happen, but safety).
+        // Truncate if over. A wide lead at the truncation boundary gets
+        // replaced with a blank so it's not split from its spacer.
         if chunk.len() > width {
+            if chunk[width - 1].flags.contains(CellFlags::WIDE_CHAR) {
+                chunk[width - 1] = Cell::blank();
+            }
             chunk.truncate(width);
         }
 
