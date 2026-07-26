@@ -15134,4 +15134,186 @@ mod tests {
         feed(&mut t, b"\t"); // should skip col 4, go to col 8
         assert_eq!(t.cursor().0, 8, "after TBC, tab skips cleared stop");
     }
+
+    // ── Round 6-4: Insert/delete operations edge cases ─────────────────
+
+    #[test]
+    fn t_r6_ich_insert_blank_shifts_right() {
+        // ICH (CSI @): insert N blanks at cursor, shift right, drop overflow.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEF");
+        feed(&mut t, b"\x1b[1G"); // col 1 (0-based: 0)
+        feed(&mut t, b"\x1b[2@"); // insert 2 blanks at col 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "col 0 = blank");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 = blank");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A', "A shifted to col 2");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B', "B shifted to col 3");
+    }
+
+    #[test]
+    fn t_r6_ich_default_param_one() {
+        // CSI @ with no param inserts 1 blank.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB");
+        feed(&mut t, b"\x1b[1G");
+        feed(&mut t, b"\x1b[@"); // insert 1 blank
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_r6_dch_delete_shifts_left() {
+        // DCH (CSI P): delete N chars at cursor, shift left, fill blank at end.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEF");
+        feed(&mut t, b"\x1b[1G"); // col 0
+        feed(&mut t, b"\x1b[2P"); // delete 2 chars
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'C', "C shifted to col 0");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'D', "D shifted to col 1");
+        assert_eq!(
+            t.grid().cell(4, 0).unwrap().ch,
+            ' ',
+            "col 4 = blank (filled)"
+        );
+    }
+
+    #[test]
+    fn t_r6_dch_default_param_one() {
+        // CSI P with no param deletes 1 char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC");
+        feed(&mut t, b"\x1b[1G");
+        feed(&mut t, b"\x1b[P"); // delete 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_r6_dch_more_than_content() {
+        // DCH deleting more than available content.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB");
+        feed(&mut t, b"\x1b[1G");
+        feed(&mut t, b"\x1b[5P"); // delete 5 (only 2 exist)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "all cleared");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_r6_ech_erase_n_chars() {
+        // ECH (CSI X): erase N chars from cursor (no shift).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEF");
+        feed(&mut t, b"\x1b[2G"); // col 2 (0-based: 1)
+        feed(&mut t, b"\x1b[3X"); // erase 3 chars
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "col 0 preserved");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 erased");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "col 3 erased");
+        assert_eq!(
+            t.grid().cell(4, 0).unwrap().ch,
+            'E',
+            "col 4 preserved (no shift)"
+        );
+    }
+
+    #[test]
+    fn t_r6_ech_default_param_one() {
+        // CSI X with no param erases 1 char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC");
+        feed(&mut t, b"\x1b[2G");
+        feed(&mut t, b"\x1b[X"); // erase 1
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C', "col 2 preserved");
+    }
+
+    #[test]
+    fn t_r6_ech_more_than_remaining() {
+        // ECH erasing past line end.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC");
+        feed(&mut t, b"\x1b[2G"); // col 1 (0-based)
+        feed(&mut t, b"\x1b[20X"); // erase 20 (only 9 remain)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "col 0 preserved");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 erased");
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, ' ', "last col erased");
+    }
+
+    #[test]
+    fn t_r6_il_insert_lines_pushes_down() {
+        // IL (CSI L): insert N blank lines at cursor, push down.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+        feed(&mut t, b"\x1b[2;1H"); // row 2 (0-based: 1)
+        feed(&mut t, b"\x1b[2L"); // insert 2 lines
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'L', "row 0 preserved");
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            ' ',
+            "row 1 = blank (inserted)"
+        );
+        assert_eq!(
+            t.grid().cell(0, 2).unwrap().ch,
+            ' ',
+            "row 2 = blank (inserted)"
+        );
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            'L',
+            "old row 1 pushed to row 3"
+        );
+    }
+
+    #[test]
+    fn t_r6_dl_delete_lines_shifts_up() {
+        // DL (CSI M): delete N lines at cursor, shift up.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+        feed(&mut t, b"\x1b[2;1H"); // row 2 (0-based: 1)
+        feed(&mut t, b"\x1b[2M"); // delete 2 lines
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'L', "row 0 preserved");
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'L',
+            "old row 3 shifted to row 1"
+        );
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, ' ', "last row = blank");
+    }
+
+    #[test]
+    fn t_r6_il_default_param_one() {
+        // CSI L with no param inserts 1 line.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A\r\nB\r\nC");
+        feed(&mut t, b"\x1b[2;1H"); // row 2 (0-based: 1)
+        feed(&mut t, b"\x1b[L"); // insert 1 line
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "row 1 blank");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'B', "B pushed to row 2");
+    }
+
+    #[test]
+    fn t_r6_dl_default_param_one() {
+        // CSI M with no param deletes 1 line.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A\r\nB\r\nC");
+        feed(&mut t, b"\x1b[2;1H"); // row 2 (0-based: 1)
+        feed(&mut t, b"\x1b[M"); // delete 1 line
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C', "C shifted up");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ', "row 2 blank");
+    }
+
+    #[test]
+    fn t_r6_il_within_scroll_region() {
+        // IL inside scroll region should only affect rows within region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"R0\r\nR1\r\nR2\r\nR3\r\nR4\r\nR5");
+        feed(&mut t, b"\x1b[2;5r"); // scroll region rows 2-5
+        feed(&mut t, b"\x1b[3;1H"); // row 3 (0-based: 2, inside region)
+        feed(&mut t, b"\x1b[1L"); // insert 1 line
+        // Row 0 and 1 should be preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'R', "row 1 preserved");
+        // Row 2 should be blank (inserted)
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ', "row 2 = blank");
+    }
 }
