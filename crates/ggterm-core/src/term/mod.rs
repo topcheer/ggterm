@@ -9955,4 +9955,89 @@ mod tests {
         feed(&mut t, b"\x08");   // BS → col 0
         assert_eq!(t.cursor().0, 0);
     }
+
+    #[test]
+    fn t_el_0_clears_wide_lead_when_cursor_on_spacer() {
+        // Wide char at cols 0-1. Cursor on spacer (col 1). EL 0 (clear to end).
+        // Should clear both the spacer AND the lead (no orphaned WIDE_CHAR).
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"XY");           // cols 2-3
+        feed(&mut t, b"\x1b[2G");     // cursor to col 1 (spacer)
+        feed(&mut t, b"\x1b[K");      // EL 0: clear from cursor to end
+        let lead = t.grid().cell(0, 0).unwrap();
+        assert!(!lead.flags.contains(CellFlags::WIDE_CHAR),
+            "no orphaned WIDE_CHAR after EL 0 on spacer");
+        assert!(lead.is_blank(), "lead cell should be cleared");
+    }
+
+    #[test]
+    fn t_ed_1_clears_wide_spacer_when_cursor_on_lead() {
+        // Wide char at cols 0-1. ED 1 (clear from start to cursor).
+        // Cursor on lead (col 0). Should clear both lead and spacer.
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"\x1b[1G");     // cursor to col 0 (lead)
+        feed(&mut t, b"\x1b[1J");     // ED 1: clear from start to cursor
+        let spacer = t.grid().cell(1, 0).unwrap();
+        assert!(!spacer.flags.contains(CellFlags::WIDE_SPACER),
+            "no orphaned WIDE_SPACER after ED 1 on lead");
+    }
+
+    #[test]
+    fn t_ich_pushes_out_wide_char() {
+        // Width=6, write "AB你CD" (你 at cols 2-3).
+        // ICH 2 at col 2 should push 你+CD right, inserting 2 blanks.
+        // No wide char should be split.
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // cols 2-3
+        feed(&mut t, b"CD");           // cols 4-5
+        feed(&mut t, b"\x1b[3G");     // cursor to col 2
+        feed(&mut t, b"\x1b[2@");     // ICH 2
+        // Cols 2-3 should be blank (inserted). 你 should have shifted right.
+        // Check no orphaned wide chars anywhere
+        for col in 0..6 {
+            let c = t.grid().cell(col, 0).unwrap();
+            if c.flags.contains(CellFlags::WIDE_CHAR) {
+                let next = t.grid().cell(col + 1, 0).unwrap();
+                assert!(next.flags.contains(CellFlags::WIDE_SPACER),
+                    "WIDE_CHAR at col {} has no spacer at col {}", col, col + 1);
+            }
+        }
+    }
+
+    #[test]
+    fn t_decsc_restores_pending_wrap() {
+        // Fill line to set pending_wrap, save, move cursor, restore.
+        // After restore, pending_wrap should be set.
+        // Write one more char — it should wrap to next line.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD");     // fills row 0, pending_wrap=true
+        feed(&mut t, b"\x1b7");     // DECSC save (with pending_wrap)
+        feed(&mut t, b"\x1b[3;3H"); // move cursor away
+        feed(&mut t, b"\x1b8");     // DECRC restore
+        // Now pending_wrap should be restored. Writing 'E' should wrap.
+        feed(&mut t, b"E");
+        // E should be on row 1 (wrapped from row 0)
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('E'),
+            "E should wrap to row 1 after DECSC restored pending_wrap");
+    }
+
+    #[test]
+    fn t_rep_with_wide_char() {
+        // Write a wide char, then REP 3 → total 4 wide chars.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, "你".as_bytes()); // 1 wide char (cols 0-1)
+        feed(&mut t, b"\x1b[3b");      // REP 3
+        // 4 wide chars = 8 cols. Check all are present.
+        for i in 0..4 {
+            let lead_col = i * 2;
+            let lead = t.grid().cell(lead_col, 0).unwrap();
+            assert_eq!(lead.ch, '你', "wide char {} should be at col {}", i, lead_col);
+            assert!(lead.flags.contains(CellFlags::WIDE_CHAR));
+            let spacer = t.grid().cell(lead_col + 1, 0).unwrap();
+            assert!(spacer.flags.contains(CellFlags::WIDE_SPACER));
+        }
+    }
 }
