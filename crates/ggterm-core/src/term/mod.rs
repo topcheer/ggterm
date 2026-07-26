@@ -14924,4 +14924,93 @@ mod tests {
         assert_eq!(lead.bg, Color::Indexed(2), "lead bg = green");
         assert_eq!(spacer.bg, Color::Indexed(2), "spacer bg = green");
     }
+
+    // ── Round 6-2: OSC title termination and edge cases ───────────────
+
+    #[test]
+    fn t_r6_osc_0_and_2_both_set_title() {
+        // OSC 0 and OSC 2 should both set the same title field.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;Title0\x07");
+        assert_eq!(t.title(), "Title0");
+        feed(&mut t, b"\x1b]2;Title2\x07");
+        assert_eq!(t.title(), "Title2");
+    }
+
+    #[test]
+    fn t_r6_osc_title_bel_vs_st_equivalent() {
+        // BEL (0x07) and ST (ESC \) termination should be equivalent.
+        let mut t1 = Terminal::new(20, 3);
+        feed(&mut t1, b"\x1b]0;Test\x07"); // BEL terminated
+
+        let mut t2 = Terminal::new(20, 3);
+        feed(&mut t2, b"\x1b]0;Test\x1b\\"); // ST terminated
+
+        assert_eq!(
+            t1.title(),
+            t2.title(),
+            "BEL and ST termination should be equivalent"
+        );
+        assert_eq!(t1.title(), "Test");
+    }
+
+    #[test]
+    fn t_r6_osc_title_empty_bel() {
+        // Empty title with BEL termination.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;\x07");
+        assert_eq!(t.title(), "", "empty title should be stored");
+    }
+
+    #[test]
+    fn t_r6_osc_title_empty_st() {
+        // Empty title with ST termination.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;\x1b\\");
+        assert_eq!(t.title(), "", "empty title with ST should be stored");
+    }
+
+    #[test]
+    fn t_r6_osc_title_with_semicolons() {
+        // Title containing semicolons (first semicolon is delimiter, rest are content).
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;a; b; c\x07");
+        // Only the first ; is the delimiter, rest is title content
+        assert_eq!(t.title(), "a; b; c");
+    }
+
+    #[test]
+    fn t_r6_osc_title_strips_control_chars() {
+        // Control characters in title should be stripped.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;A\x01B\x02C\x07");
+        assert_eq!(t.title(), "ABC", "control chars stripped from title");
+    }
+
+    #[test]
+    fn t_r6_osc_title_caps_at_256() {
+        // Titles longer than 256 chars should be truncated.
+        let mut t = Terminal::new(20, 3);
+        let long_title = "X".repeat(300);
+        let seq = format!("\x1b]0;{}\x07", long_title);
+        feed(&mut t, seq.as_bytes());
+        assert_eq!(t.title().len(), 256, "title should be capped at 256 chars");
+    }
+
+    #[test]
+    fn t_r6_osc_title_unicode() {
+        // Unicode title should be preserved.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;\xe4\xbd\xa0\xe5\xa5\xbd\x07"); // 你好 in UTF-8
+        assert_eq!(t.title(), "你好");
+    }
+
+    #[test]
+    fn t_r6_osc_title_overwrite() {
+        // Setting a new title should replace the old one.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;First\x07");
+        feed(&mut t, b"\x1b]0;Second\x07");
+        assert_eq!(t.title(), "Second");
+    }
 }
