@@ -10252,4 +10252,75 @@ mod tests {
                 "col {} should be blank after DCH 4", col);
         }
     }
+
+    #[test]
+    fn t_el_clears_cell_attributes() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[42m");
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"\x1b[2G");
+        feed(&mut t, b"\x1b[K");
+        let cell = t.grid().cell(2, 0).unwrap();
+        assert_eq!(cell.bg, Color::Default, "erased cell should have default bg");
+    }
+
+    #[test]
+    fn t_ed_clears_cell_attributes() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[44m");
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"\x1b[2J");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.bg, Color::Default, "ED 2 should reset bg");
+    }
+
+    #[test]
+    fn t_ind_at_scroll_region_bottom_scrolls() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r");
+        feed(&mut t, b"\x1b[1;1HA");
+        feed(&mut t, b"\x1b[2;1HB");
+        feed(&mut t, b"\x1b[3;1HC");
+        feed(&mut t, b"\x1b[4;1HOUT");
+        feed(&mut t, b"\x1b[3;1H");
+        feed(&mut t, b"\x1bD");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O');
+    }
+
+    #[test]
+    fn t_rep_no_prior_char_is_noop() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[5b");
+        assert_eq!(t.cursor().0, 0);
+        assert!(t.grid().cell(0, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_rep_caps_at_width_times_2() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A");
+        feed(&mut t, b"\x1b[99999b");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_scroll_region_wrap_stays_in_region() {
+        let mut t = Terminal::new(4, 5);
+        feed(&mut t, b"\x1b[1;3r");
+        feed(&mut t, b"\x1b[4;1HOUT");
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"AAAAAAAAAAAA");
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O',
+            "OUT below scroll region should survive autowrap scroll");
+    }
+
+    #[test]
+    fn t_ed_0_at_last_col_no_panic() {
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[4;10H");
+        feed(&mut t, b"\x1b[0J");
+        assert_eq!(t.cursor().0, 9);
+    }
 }
