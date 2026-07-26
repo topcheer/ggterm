@@ -17573,4 +17573,197 @@ mod tests {
         feed(&mut t, b"\x1bc"); // RIS
         assert!(!t.focus_event_enabled(), "RIS resets focus events");
     }
+
+    // ── Round 12-3: SGR color edge cases ───────────────────────────────
+
+    #[test]
+    fn t_r12_sgr_256_color_fg() {
+        // SGR 38;5;N for all 256 color indices.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[38;5;0m");
+        assert_eq!(t.fg, Color::Indexed(0), "fg = indexed 0");
+        feed(&mut t, b"\x1b[38;5;15m");
+        assert_eq!(t.fg, Color::Indexed(15), "fg = indexed 15");
+        feed(&mut t, b"\x1b[38;5;255m");
+        assert_eq!(t.fg, Color::Indexed(255), "fg = indexed 255");
+        feed(&mut t, b"\x1b[38;5;128m");
+        assert_eq!(t.fg, Color::Indexed(128), "fg = indexed 128");
+    }
+
+    #[test]
+    fn t_r12_sgr_256_color_bg() {
+        // SGR 48;5;N for background.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[48;5;42m");
+        assert_eq!(t.bg, Color::Indexed(42), "bg = indexed 42");
+        feed(&mut t, b"\x1b[48;5;200m");
+        assert_eq!(t.bg, Color::Indexed(200), "bg = indexed 200");
+    }
+
+    #[test]
+    fn t_r12_sgr_true_color_fg() {
+        // SGR 38;2;R;G;B for true color foreground.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[38;2;255;0;0m");
+        assert_eq!(t.fg, Color::Rgb(255, 0, 0), "fg = RGB red");
+        feed(&mut t, b"\x1b[38;2;0;255;0m");
+        assert_eq!(t.fg, Color::Rgb(0, 255, 0), "fg = RGB green");
+        feed(&mut t, b"\x1b[38;2;1;2;3m");
+        assert_eq!(t.fg, Color::Rgb(1, 2, 3), "fg = RGB low values");
+    }
+
+    #[test]
+    fn t_r12_sgr_true_color_bg() {
+        // SGR 48;2;R;G;B for true color background.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[48;2;100;150;200m");
+        assert_eq!(t.bg, Color::Rgb(100, 150, 200), "bg = RGB");
+    }
+
+    #[test]
+    fn t_r12_sgr_38_5_0_not_reset() {
+        // \x1b[38;5;0m should set fg to indexed 0, NOT reset to default.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[38;5;0m");
+        assert_eq!(
+            t.fg,
+            Color::Indexed(0),
+            "38;5;0 sets indexed 0, not Default"
+        );
+        assert_ne!(t.fg, Color::Default, "38;5;0 != Default");
+    }
+
+    #[test]
+    fn t_r12_sgr_empty_param_is_reset() {
+        // CSI m (empty) should reset all attributes.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;3;4;31m");
+        feed(&mut t, b"\x1b[m");
+        assert!(!t.flags.contains(CellFlags::BOLD), "bold cleared");
+        assert_eq!(t.fg, Color::Default, "fg default");
+        assert_eq!(t.bg, Color::Default, "bg default");
+    }
+
+    #[test]
+    fn t_r12_sgr_0_reset() {
+        // CSI 0m should reset all attributes.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;31m\x1b[0m");
+        assert!(!t.flags.contains(CellFlags::BOLD));
+        assert_eq!(t.fg, Color::Default);
+    }
+
+    #[test]
+    fn t_r12_sgr_39_default_fg() {
+        // SGR 39 resets fg to default (but keeps other attrs).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red
+        feed(&mut t, b"\x1b[39m"); // default fg
+        assert_eq!(t.fg, Color::Default, "fg reset to default");
+        assert!(t.flags.contains(CellFlags::BOLD), "bold preserved");
+    }
+
+    #[test]
+    fn t_r12_sgr_49_default_bg() {
+        // SGR 49 resets bg to default.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[42m"); // green bg
+        feed(&mut t, b"\x1b[49m");
+        assert_eq!(t.bg, Color::Default, "bg reset to default");
+    }
+
+    #[test]
+    fn t_r12_sgr_combined_attrs() {
+        // Bold + italic + underline + fg + bg all independent.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;3;4;5;7;9;31;42m");
+        assert!(t.flags.contains(CellFlags::BOLD));
+        assert!(t.flags.contains(CellFlags::ITALIC));
+        assert!(t.flags.contains(CellFlags::UNDERLINE));
+        assert!(t.flags.contains(CellFlags::BLINK));
+        assert!(t.flags.contains(CellFlags::REVERSE));
+        assert!(t.flags.contains(CellFlags::STRIKETHROUGH));
+        assert_eq!(t.fg, Color::Indexed(1));
+        assert_eq!(t.bg, Color::Indexed(2));
+    }
+
+    #[test]
+    fn t_r12_sgr_bright_colors() {
+        // SGR 90-97 for bright fg, 100-107 for bright bg.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[90m");
+        assert_eq!(t.fg, Color::Indexed(8), "90 = bright black (8)");
+        feed(&mut t, b"\x1b[97m");
+        assert_eq!(t.fg, Color::Indexed(15), "97 = bright white (15)");
+        feed(&mut t, b"\x1b[101m");
+        assert_eq!(t.bg, Color::Indexed(9), "101 = bright red (9)");
+    }
+
+    #[test]
+    fn t_r12_sgr_attr_off_codes() {
+        // Individual attribute off codes (22, 23, 24, 25, 27, 28, 29).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;2;3;4;5;7;8;9m");
+        feed(&mut t, b"\x1b[22;23;24;25;27;28;29m");
+        assert!(!t.flags.contains(CellFlags::BOLD | CellFlags::DIM));
+        assert!(!t.flags.contains(CellFlags::ITALIC));
+        assert!(!t.flags.contains(CellFlags::UNDERLINE));
+        assert!(!t.flags.contains(CellFlags::BLINK));
+        assert!(!t.flags.contains(CellFlags::REVERSE));
+        assert!(!t.flags.contains(CellFlags::HIDDEN));
+        assert!(!t.flags.contains(CellFlags::STRIKETHROUGH));
+    }
+
+    #[test]
+    fn t_r12_sgr_multi_param_sequence() {
+        // Multiple SGR params in one sequence.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[38;2;10;20;30;48;5;99;1m");
+        assert_eq!(t.fg, Color::Rgb(10, 20, 30), "fg = RGB");
+        assert_eq!(t.bg, Color::Indexed(99), "bg = indexed");
+        assert!(t.flags.contains(CellFlags::BOLD), "bold set");
+    }
+
+    #[test]
+    fn t_r12_sgr_underline_color() {
+        // SGR 58 for underline color.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[58;2;50;60;70m");
+        assert_eq!(t.underline_color, Color::Rgb(50, 60, 70), "underline RGB");
+        feed(&mut t, b"\x1b[58;5;7m");
+        assert_eq!(t.underline_color, Color::Indexed(7), "underline indexed");
+    }
+
+    #[test]
+    fn t_r12_sgr_59_reset_underline_color() {
+        // SGR 59 resets underline color to default.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[58;5;42m");
+        feed(&mut t, b"\x1b[59m");
+        assert_eq!(t.underline_color, Color::Default, "underline color reset");
+    }
+
+    #[test]
+    fn t_r12_sgr_propagates_to_cell() {
+        // SGR attrs should propagate to written cells.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;38;5;196m"); // bold + bright red
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD), "cell has bold");
+        assert_eq!(cell.fg, Color::Indexed(196), "cell has fg");
+    }
+
+    #[test]
+    fn t_r12_sgr_0_resets_underline_color() {
+        // SGR 0 should reset underline_color too.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[58;5;42m");
+        feed(&mut t, b"\x1b[0m");
+        assert_eq!(
+            t.underline_color,
+            Color::Default,
+            "SGR 0 resets underline_color"
+        );
+    }
 }
