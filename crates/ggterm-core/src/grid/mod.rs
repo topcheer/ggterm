@@ -998,6 +998,13 @@ fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
             // There's room (end < start + width) — include the spacer.
             end += 1;
         }
+        // Ensure we always make progress: if the above adjustments pushed
+        // end back to start (e.g. width=1 with a wide char), force advance
+        // by at least one cell. The wide char lead will be blanked by the
+        // truncate logic below since it can't fit in 1 column.
+        if end <= start {
+            end = start + 1;
+        }
         // If the first cell of the next chunk is a wide spacer (orphaned),
         // consume it here — it was part of the current row's wide char.
         if end < total && cells[end].flags.contains(CellFlags::WIDE_SPACER) {
@@ -2453,5 +2460,17 @@ mod tests {
         assert_eq!(g.cell(2, 0).unwrap().ch, '\u{597D}');
         assert!(g.cell(1, 0).unwrap().is_wide_spacer());
         assert!(g.cell(3, 0).unwrap().is_wide_spacer());
+    }
+
+    #[test]
+    fn reflow_width_one_with_wide_char() {
+        // Width=1 with a wide char that needs 2 columns.
+        // The wide char can't fit in width=1, so the row should not loop.
+        // Previously this caused an infinite loop (end decremented to start).
+        let mut g = Grid::new(4, 4);
+        assert_eq!(g.put_char(0, 0, '\u{4E00}'), 2); // wide char
+        g.reflow_resize(1, 4);
+        // Just reaching here means the bug is fixed.
+        assert_eq!(g.width(), 1);
     }
 }
