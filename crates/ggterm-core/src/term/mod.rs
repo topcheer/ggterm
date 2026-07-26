@@ -16973,4 +16973,160 @@ mod tests {
         feed(&mut t, b"\x1bE"); // NEL
         assert!(!t.cursor.pending_wrap, "NEL clears pending_wrap");
     }
+
+    // ── Round 11-2: Alternate Screen Buffer audits ─────────────────────
+
+    #[test]
+    fn t_r11_1049_saves_restores_cursor() {
+        // DECSET 1049 saves cursor, DECSET 1049 exit restores.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor (4, 2)
+        feed(&mut t, b"X"); // write X at (5,2)
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert_eq!(t.cursor(), (0, 0), "alt screen homes cursor");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(t.cursor(), (5, 2), "cursor restored to original");
+    }
+
+    #[test]
+    fn t_r11_1049_saves_restores_content() {
+        // Content written to primary screen is restored after alt exit.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ALTSCREEN");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "alt content visible");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'P',
+            "primary content restored"
+        );
+    }
+
+    #[test]
+    fn t_r11_1049_alt_has_no_scrollback() {
+        // Alt screen should not accumulate scrollback.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        for _ in 0..10 {
+            feed(&mut t, b"LINE\n");
+        }
+        assert_eq!(t.grid().scrollback_len(), 0, "alt screen has no scrollback");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+    }
+
+    #[test]
+    fn t_r11_1049_saves_restores_sgr() {
+        // DECSET 1049 saves/restores SGR attributes.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;31m"); // bold red
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[0m"); // reset attrs in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.flags.contains(CellFlags::BOLD), "bold restored");
+        assert_eq!(t.fg, Color::Indexed(1), "red fg restored");
+    }
+
+    #[test]
+    fn t_r11_1049_clears_alt_on_entry() {
+        // Entering alt screen should give a clean blank screen.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"VISIBLE");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        for c in 0..7 {
+            assert_eq!(
+                t.grid().cell(c, 0).unwrap().ch,
+                ' ',
+                "alt screen blank at col {c}"
+            );
+        }
+    }
+
+    #[test]
+    fn t_r11_47_saves_restores_content() {
+        // Mode 47 also switches screens but does NOT save/restore cursor or home.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?47h"); // enter alt (mode 47) — cursor stays at col 7
+        feed(&mut t, b"\r"); // CR to col 0 (mode 47 doesn't home)
+        feed(&mut t, b"ALT");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "alt content");
+        feed(&mut t, b"\x1b[?47l"); // exit alt
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P', "primary restored");
+    }
+
+    #[test]
+    fn t_r11_47_does_not_home_cursor() {
+        // Mode 47 does NOT home cursor (unlike 1049).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor (4, 2)
+        feed(&mut t, b"\x1b[?47h"); // enter alt
+        // Mode 47 does not move cursor (xterm behavior)
+        // Cursor stays where it was
+        assert_eq!(t.cursor(), (4, 2), "mode 47 keeps cursor");
+    }
+
+    #[test]
+    fn t_r11_1047_clears_alt_on_entry() {
+        // Mode 1047: like 47 but clears the alt screen on exit.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?1047h"); // enter alt
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1047l"); // exit alt — should clear alt
+        // Primary should be restored
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P', "primary restored");
+    }
+
+    #[test]
+    fn t_r11_1049_nested_enter_is_noop() {
+        // Entering alt when already in alt is a no-op.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ALT1");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt again — no-op
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "alt1 content preserved"
+        );
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P', "primary restored");
+    }
+
+    #[test]
+    fn t_r11_1049_exit_without_enter_is_noop() {
+        // Exiting alt without entering should be a no-op.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?1049l"); // exit without enter — no-op
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P', "content preserved");
+    }
+
+    #[test]
+    fn t_r11_1049_saves_restores_origin_mode() {
+        // 1049 saves origin mode state. It does NOT reset it (that's DECSC's job).
+        // After exit, the original origin mode should be restored.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — saves origin=true
+        // Origin mode is saved but not changed in alt screen
+        feed(&mut t, b"\x1b[?6l"); // turn off origin in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — restores origin=true
+        assert!(t.modes.origin, "origin mode restored to true");
+    }
+
+    #[test]
+    fn t_r11_1049_alt_screen_restores_tab_stops() {
+        // Custom tab stops on primary should be restored after alt exit.
+        let mut t = Terminal::new(40, 5);
+        feed(&mut t, b"\x1b[6G\x1bH"); // custom stop at col 5
+        assert!(t.tab_stops[5], "custom stop set");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — resets tab stops
+        assert!(!t.tab_stops[5], "custom stop cleared in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.tab_stops[5], "custom stop restored after alt exit");
+    }
 }
