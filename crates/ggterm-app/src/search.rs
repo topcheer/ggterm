@@ -52,6 +52,92 @@ pub struct SearchMatch {
     pub len: usize,
 }
 
+// ── Soft-wrap-aware text extraction helpers ──────────────────────────
+
+/// Entry tracking where each byte range starts in the merged text.
+/// `byte_start` is the byte offset in the merged string where this row
+/// begins. `col_start` is the display column (0-indexed) of the first
+/// character in this row.
+struct RowMapEntry {
+    byte_start: usize,
+    abs_row: usize,
+    row_text: String,
+}
+
+/// Build a single merged string from all grid rows (scrollback + visible),
+/// joining soft-wrapped rows without separator and inserting `\n` at
+/// hard-newline boundaries. Returns the merged text and a row map for
+/// mapping byte offsets back to (abs_row, display_col).
+fn build_merged_text(grid: &Grid) -> (String, Vec<RowMapEntry>) {
+    let scrollback_len = grid.scrollback_len();
+    let total_rows = scrollback_len + grid.height();
+
+    // Collect row texts and wrap flags.
+    let mut rows: Vec<(String, bool, usize)> = Vec::with_capacity(total_rows); // (text, wrap, abs_row)
+    for i in 0..scrollback_len {
+        if let Some(row) = grid.scrollback_row(i) {
+            rows.push((row.text(), row.wrap, i));
+        }
+    }
+    for r in 0..grid.height() {
+        if let Some(row) = grid.row(r) {
+            let abs_row = scrollback_len + r;
+            rows.push((row.text(), row.wrap, abs_row));
+        }
+    }
+
+    let mut merged = String::new();
+    let mut row_map: Vec<RowMapEntry> = Vec::new();
+
+    for (text, wrap, abs_row) in &rows {
+        if text.is_empty() && !*wrap {
+            continue; // Skip blank non-wrapped rows.
+        }
+        let byte_start = merged.len();
+        row_map.push(RowMapEntry {
+            byte_start,
+            abs_row: *abs_row,
+            row_text: text.clone(),
+        });
+        merged.push_str(text);
+        if !*wrap {
+            merged.push('\n'); // Hard newline boundary.
+        }
+    }
+
+    (merged, row_map)
+}
+
+/// Map a byte offset in the merged text back to (abs_row, display_col).
+/// Uses binary search on row_map to find the containing row, then
+/// converts the intra-row byte offset to a display column.
+fn map_byte_offset(row_map: &[RowMapEntry], byte_offset: usize) -> Option<(usize, usize)> {
+    if row_map.is_empty() {
+        return None;
+    }
+
+    // Binary search: find the last entry whose byte_start <= byte_offset.
+    let mut lo = 0;
+    let mut hi = row_map.len();
+    while lo + 1 < hi {
+        let mid = (lo + hi) / 2;
+        if row_map[mid].byte_start <= byte_offset {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let entry = &row_map[lo];
+    let intra_byte = byte_offset - entry.byte_start;
+
+    // Clamp to row text length (handles matches extending past row end).
+    let intra_byte = intra_byte.min(entry.row_text.len());
+
+    // Convert byte offset within row to display column.
+    let col = ggterm_core::grid::str_width(&entry.row_text[..intra_byte]);
+    Some((entry.abs_row, col))
+}
+
 impl SearchState {
     /// Create a new search state (hidden by default).
     pub fn new() -> Self {
@@ -185,33 +271,35 @@ impl SearchState {
 
     /// Literal substring search.
     fn execute_literal_search(&mut self, grid: &Grid) {
-        let scrollback_len = grid.scrollback_len();
         let query_lower = if self.case_insensitive {
             self.query.to_lowercase()
         } else {
             self.query.clone()
         };
 
-        // Search scrollback rows (oldest to newest).
-        // Skip blank rows to avoid unnecessary String allocation + find_in_row scan.
-        for i in 0..scrollback_len {
-            if let Some(row) = grid.scrollback_row(i) {
-                let text = row.text();
-                if !text.is_empty() {
-                    self.find_in_row(&text, i, &query_lower);
-                }
-            }
-        }
+        // Build merged text that joins soft-wrapped rows, so search
+        // can find text spanning wrap boundaries (e.g. long commands).
+        let (merged, row_map) = build_merged_text(grid);
 
-        // Search visible rows.
-        for row in 0..grid.height() {
-            if let Some(r) = grid.row(row) {
-                let row_text = r.text();
-                if !row_text.is_empty() {
-                    let abs_row = scrollback_len + row;
-                    self.find_in_row(&row_text, abs_row, &query_lower);
-                }
+        let search_text = if self.case_insensitive {
+            std::borrow::Cow::Owned(merged.to_lowercase())
+        } else {
+            std::borrow::Cow::Borrowed(&merged)
+        };
+
+        let mut start = 0;
+        while let Some(pos) = search_text[start..].find(&query_lower) {
+            let byte_col = start + pos;
+            // Map byte offset back to (abs_row, col) using row_map.
+            if let Some((abs_row, col)) = map_byte_offset(&row_map, byte_col) {
+                let display_len = ggterm_core::grid::str_width(&query_lower);
+                self.matches.push(SearchMatch {
+                    abs_row,
+                    col,
+                    len: display_len,
+                });
             }
+            start = byte_col + query_lower.len().max(1);
         }
     }
 
@@ -223,75 +311,25 @@ impl SearchState {
             None => return, // Invalid regex — no matches.
         };
 
-        let scrollback_len = grid.scrollback_len();
-
-        // Search scrollback rows (skip blank rows for performance).
-        for i in 0..scrollback_len {
-            if let Some(row) = grid.scrollback_row(i) {
-                let text = row.text();
-                if !text.is_empty() {
-                    for m in re.find_iter(&text) {
-                        let display_col =
-                            ggterm_core::grid::str_width(&text[..m.0.min(text.len())]);
-                        let display_len = ggterm_core::grid::str_width(
-                            &text[m.0.min(text.len())..(m.0 + m.1).min(text.len())],
-                        );
-                        self.matches.push(SearchMatch {
-                            abs_row: i,
-                            col: display_col,
-                            len: display_len,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Search visible rows (skip blank rows).
-        for row in 0..grid.height() {
-            if let Some(r) = grid.row(row) {
-                let row_text = r.text();
-                if !row_text.is_empty() {
-                    let abs_row = scrollback_len + row;
-                    for m in re.find_iter(&row_text) {
-                        let display_col =
-                            ggterm_core::grid::str_width(&row_text[..m.0.min(row_text.len())]);
-                        let display_len = ggterm_core::grid::str_width(
-                            &row_text[m.0.min(row_text.len())..(m.0 + m.1).min(row_text.len())],
-                        );
-                        self.matches.push(SearchMatch {
-                            abs_row,
-                            col: display_col,
-                            len: display_len,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    /// Find all occurrences of the query in a single row's text.
-    fn find_in_row(&mut self, text: &str, abs_row: usize, query_lower: &str) {
-        // Use Cow to avoid allocation in the case-sensitive path.
+        // Build merged text so regex can match across wrap boundaries.
+        let (merged, row_map) = build_merged_text(grid);
         let search_text = if self.case_insensitive {
-            std::borrow::Cow::Owned(text.to_lowercase())
+            std::borrow::Cow::Owned(merged.to_lowercase())
         } else {
-            std::borrow::Cow::Borrowed(text)
+            std::borrow::Cow::Borrowed(&merged)
         };
 
-        let mut start = 0;
-        while let Some(pos) = search_text[start..].find(query_lower) {
-            let byte_col = start + pos;
-            // Convert byte offset to display column (handles CJK wide chars).
-            let display_col = ggterm_core::grid::str_width(&search_text[..byte_col]);
-            let display_len = ggterm_core::grid::str_width(query_lower);
-            self.matches.push(SearchMatch {
-                abs_row,
-                col: display_col,
-                len: display_len,
-            });
-            start = byte_col + query_lower.len();
-            if start >= search_text.len() {
-                break;
+        for m in re.find_iter(&search_text) {
+            let match_start = m.0;
+            if let Some((abs_row, col)) = map_byte_offset(&row_map, match_start) {
+                let match_end = (m.0 + m.1).min(search_text.len());
+                let match_text = &search_text[m.0.min(search_text.len())..match_end];
+                let display_len = ggterm_core::grid::str_width(match_text);
+                self.matches.push(SearchMatch {
+                    abs_row,
+                    col,
+                    len: display_len,
+                });
             }
         }
     }
@@ -1442,5 +1480,74 @@ mod tests {
         // Search for any word with regex \w+
         s.set_query(r"\w+", &g);
         assert!(s.match_count() >= 1);
+    }
+
+    #[test]
+    fn t_search_across_soft_wrap_boundary() {
+        // Two visible rows that are soft-wrapped (wrap=true on row 0):
+        // Row 0: "hello wo"  (wrap=true, soft-wrapped)
+        // Row 1: "rld test"
+        // Searching for "world" should find it spanning the wrap boundary.
+        let mut g = Grid::with_scrollback(20, 3, 100);
+        // Row 0: "hello wo" + soft-wrap
+        for (i, c) in "hello wo".chars().enumerate() {
+            g[(i, 0)] = Cell::with_char(c);
+        }
+        g.set_row_wrap(0, true);
+        // Row 1: "rld test"
+        for (i, c) in "rld test".chars().enumerate() {
+            g[(i, 1)] = Cell::with_char(c);
+        }
+        // Search for "world" — spans the wrap boundary
+        let mut s = SearchState::new();
+        s.set_query("world", &g);
+        assert_eq!(
+            s.match_count(),
+            1,
+            "search should find 'world' across soft-wrap boundary"
+        );
+    }
+
+    #[test]
+    fn t_search_across_soft_wrap_regex() {
+        // Regex search should also find matches spanning wrap boundaries.
+        let mut g = Grid::with_scrollback(20, 3, 100);
+        for (i, c) in "foo barx".chars().enumerate() {
+            g[(i, 0)] = Cell::with_char(c);
+        }
+        g.set_row_wrap(0, true);
+        for (i, c) in "baz qux".chars().enumerate() {
+            g[(i, 1)] = Cell::with_char(c);
+        }
+        let mut s = SearchState::new();
+        s.regex_mode = true;
+        // Merged text: "foo barxbaz qux" — "barxbaz" has 'x' between bar and baz
+        s.set_query("bar.baz", &g);
+        assert_eq!(
+            s.match_count(),
+            1,
+            "regex should match across soft-wrap boundary"
+        );
+    }
+
+    #[test]
+    fn t_search_not_across_hard_newline() {
+        // Two rows with hard newline (wrap=false on row 0).
+        // Searching for text spanning the boundary should NOT match.
+        let mut g = Grid::with_scrollback(20, 3, 100);
+        for (i, c) in "hello wo".chars().enumerate() {
+            g[(i, 0)] = Cell::with_char(c);
+        }
+        // row 0 wrap stays false (hard newline)
+        for (i, c) in "rld test".chars().enumerate() {
+            g[(i, 1)] = Cell::with_char(c);
+        }
+        let mut s = SearchState::new();
+        s.set_query("world", &g);
+        assert_eq!(
+            s.match_count(),
+            0,
+            "search should NOT find 'world' across hard newline"
+        );
     }
 }
