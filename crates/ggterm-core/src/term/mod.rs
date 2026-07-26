@@ -11848,4 +11848,205 @@ mod tests {
         feed(&mut t, b"X");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
     }
+
+    // ── CSI param default value probes ──
+
+    #[test]
+    fn t_csi_cup_empty_params_default_to_1() {
+        // CSI H with no params should home cursor (1;1).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5HX");
+        feed(&mut t, b"\x1b[H"); // CUP with no params
+        assert_eq!(t.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn t_csi_cup_explicit_zero_treated_as_one() {
+        // CSI 0;0H should be treated as CSI 1;1H.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5HX");
+        feed(&mut t, b"\x1b[0;0H");
+        assert_eq!(t.cursor(), (0, 0), "0;0 should be treated as 1;1");
+    }
+
+    #[test]
+    fn t_csi_cuf_empty_param_default_1() {
+        // CSI CUF (forward tab) with no param should move 1.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[3C"); // CUF 3 → col 3
+        feed(&mut t, b"\x1b[C"); // CUF (default 1) → col 4
+        assert_eq!(t.cursor().0, 4);
+    }
+
+    #[test]
+    fn t_csi_cub_empty_param_default_1() {
+        // CSI CUB (back) with no param should move 1.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[5G"); // col 4
+        feed(&mut t, b"\x1b[D"); // CUB default 1 → col 3
+        assert_eq!(t.cursor().0, 3);
+    }
+
+    #[test]
+    fn t_csi_su_default_1() {
+        // CSI S with no param should scroll 1 line.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;1HAB");
+        feed(&mut t, b"\x1b[2;1HCD");
+        feed(&mut t, b"\x1b[3;1HEF");
+        feed(&mut t, b"\x1b[S"); // SU default 1
+        // Row 0 (AB) should scroll off, row 1 (CD) moves to row 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'D');
+    }
+
+    // ── Alt screen preserves scroll region through grid clone ──
+
+    #[test]
+    fn t_alt_screen_1049_preserves_scroll_region() {
+        // Set scroll region, enter alt, do stuff, exit — scroll region restored.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[1;1r"); // reset region in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // After exit, scroll region should be restored (was 2;4r = rows 1-3)
+        // Test: cursor at row 3 (region bottom), LF should scroll within region
+        feed(&mut t, b"\x1b[3;1HTEST"); // row 2 in restored region
+        feed(&mut t, b"\x1b[4;1H"); // row 3 (region bottom)
+        feed(&mut t, b"\n"); // LF → scroll
+        // Row 0 should still be blank (not scrolled)
+        assert!(
+            t.grid().cell(0, 0).unwrap().is_blank(),
+            "row 0 outside restored region should not scroll"
+        );
+    }
+
+    // ── 1047 vs 1049 cursor behavior ──
+
+    #[test]
+    fn t_alt_screen_1047_does_not_save_cursor() {
+        // 1047 should NOT save/restore cursor (unlike 1049).
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at (4,2)
+        feed(&mut t, b"\x1b[?1047h"); // enter alt via 1047
+        // Cursor should stay where it was (1047 doesn't save/restore cursor)
+        assert_eq!(t.cursor(), (4, 2), "1047 should not move cursor");
+    }
+
+    #[test]
+    fn t_alt_screen_1049_cursor_save_restore_via_1049() {
+        // 1049 SHOULD save/restore cursor position.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at (4,2)
+        feed(&mut t, b"\x1b[?1049h"); // enter alt via 1049
+        // Cursor should be reset to home in alt
+        assert_eq!(t.cursor(), (0, 0), "1049 should reset cursor in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Cursor should be restored to (4,2)
+        assert_eq!(t.cursor(), (4, 2), "1049 should restore cursor after exit");
+    }
+
+    // ── DECSC saves scroll region info? ──
+
+    #[test]
+    fn t_decsc_decrc_full_state_roundtrip() {
+        // Complete DECSC/DECRC roundtrip: position + SGR + charset.
+        let mut t = Terminal::new(20, 4);
+        feed(&mut t, b"\x1b[2;5H"); // cursor at (4,1)
+        feed(&mut t, b"\x1b[1;31;4m"); // bold red underline
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[4;1H"); // move away
+        feed(&mut t, b"\x1b[0;32m"); // reset, green
+        feed(&mut t, b"\x1b8"); // restore
+        // Verify cursor restored
+        assert_eq!(t.cursor(), (4, 1));
+        // Verify SGR restored
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(4, 1).unwrap();
+        assert_eq!(cell.fg, Color::Indexed(1), "fg should be red (saved)");
+        assert!(cell.flags.contains(CellFlags::BOLD), "bold should be saved");
+        assert!(
+            cell.flags.contains(CellFlags::UNDERLINE),
+            "underline should be saved"
+        );
+    }
+
+    #[test]
+    fn t_decsc_then_alt_screen_preserves_saved_state() {
+        // DECSC before entering alt, exit alt, DECRC — saved state should survive.
+        let mut t = Terminal::new(20, 4);
+        feed(&mut t, b"\x1b[2;5H"); // cursor at (4,1)
+        feed(&mut t, b"\x1b[1;33m"); // bold yellow
+        feed(&mut t, b"\x1b7"); // DECSC save
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[3;3H"); // move around in alt
+        feed(&mut t, b"\x1b[0m"); // reset SGR in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        feed(&mut t, b"\x1b8"); // DECRC restore
+        // DECSC saved state should be independent of alt screen
+        assert_eq!(
+            t.cursor(),
+            (4, 1),
+            "DECSC position should survive alt roundtrip"
+        );
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(4, 1).unwrap();
+        assert_eq!(
+            cell.fg,
+            Color::Indexed(3),
+            "yellow fg should survive alt roundtrip"
+        );
+        assert!(
+            cell.flags.contains(CellFlags::BOLD),
+            "bold should survive alt roundtrip"
+        );
+    }
+
+    // ── EL/ED param 0 default behavior ──
+
+    #[test]
+    fn t_el_no_param_defaults_to_0() {
+        // CSI K with no param = EL 0 = erase cursor to end of line.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"\x1b[3G"); // cursor at col 2 (on C)
+        feed(&mut t, b"\x1b[K"); // EL (default 0)
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            'B',
+            "B before cursor survives"
+        );
+        assert!(
+            t.grid().cell(2, 0).unwrap().is_blank(),
+            "C at cursor erased"
+        );
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_blank(),
+            "D after cursor erased"
+        );
+    }
+
+    #[test]
+    fn t_ed_no_param_defaults_to_0() {
+        // CSI J with no param = ED 0 = erase cursor to end of display.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;1HABCDE\r\nFGHIJ\r\nKLMNO");
+        feed(&mut t, b"\x1b[2;3H"); // cursor at (2,1) on H
+        feed(&mut t, b"\x1b[J"); // ED default 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 should survive");
+        assert_eq!(
+            t.grid().cell(1, 1).unwrap().ch,
+            'G',
+            "G before cursor survives"
+        );
+        assert!(
+            t.grid().cell(2, 1).unwrap().is_blank(),
+            "H at cursor erased"
+        );
+        assert!(
+            t.grid().cell(0, 2).unwrap().is_blank(),
+            "row 2 should be erased"
+        );
+    }
 }
