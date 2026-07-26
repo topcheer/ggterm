@@ -17766,4 +17766,217 @@ mod tests {
             "SGR 0 resets underline_color"
         );
     }
+
+    // ── Round 13-1: DECSTBM supplementary edge cases ───────────────────
+
+    #[test]
+    fn t_r13_decstbm_default_params_full_screen() {
+        // CSI r with no params = reset to full screen.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (1, 4));
+        feed(&mut t, b"\x1b[r"); // default — reset to full
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!((top2, bottom2), (0, 6), "CSI r resets to full screen");
+    }
+
+    #[test]
+    fn t_r13_decstbm_bottom_zero_defaults_height() {
+        // CSI Ps;0r — bottom=0 defaults to height.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;0r"); // top=2, bottom=0 → full to height
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 1, "top=1 (0-based)");
+        assert_eq!(bottom, 6, "bottom defaults to height");
+    }
+
+    #[test]
+    fn t_r13_decstbm_su_only_within_region() {
+        // SU (CSI Ps S) scrolls up only within the scroll region.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[1;1H"); // cursor to top
+        feed(&mut t, b"\x1b[1S"); // SU 1
+        // Only row 1-3 should be affected
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'E', "row 4 preserved");
+    }
+
+    #[test]
+    fn t_r13_decstbm_sd_only_within_region() {
+        // SD (CSI Ps T) scrolls down only within the scroll region.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[1T"); // SD 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'E', "row 4 preserved");
+    }
+
+    #[test]
+    fn t_r13_decstbm_top_equals_bottom_ignored() {
+        // top == bottom should be ignored (degenerate region).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;3r"); // top=3, bottom=3 → invalid
+        let (top, bottom) = t.grid().scroll_region();
+        // Should still be full screen
+        assert_eq!((top, bottom), (0, 5), "degenerate region ignored");
+    }
+
+    #[test]
+    fn t_r13_decstbm_top_greater_than_bottom_ignored() {
+        // top > bottom should be ignored.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[4;2r"); // top=4 > bottom=2 → invalid
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (0, 5), "invalid region ignored");
+    }
+
+    // ── Round 13-2: ICH/DCH with scroll region interaction ─────────────
+
+    #[test]
+    fn t_r13_dch_default_param_is_1() {
+        // DCH with no param defaults to 1.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 3
+        feed(&mut t, b"\x1b[P"); // DCH default 1
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'D', "D shifted left");
+    }
+
+    #[test]
+    fn t_r13_ich_default_param_is_1() {
+        // ICH with no param defaults to 1.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 3
+        feed(&mut t, b"\x1b[@"); // ICH default 1
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "blank inserted");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'C', "C shifted right");
+    }
+
+    #[test]
+    fn t_r13_dch_preserves_cursor() {
+        // DCH should not move cursor.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;5H"); // cursor at col 5
+        feed(&mut t, b"\x1b[3P"); // DCH 3
+        assert_eq!(t.cursor().0, 4, "cursor stays at col 5");
+    }
+
+    #[test]
+    fn t_r13_ich_preserves_cursor() {
+        // ICH should not move cursor.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;5H"); // cursor at col 5
+        feed(&mut t, b"\x1b[3@"); // ICH 3
+        assert_eq!(t.cursor().0, 4, "cursor stays at col 5");
+    }
+
+    #[test]
+    fn t_r13_ich_at_col0() {
+        // ICH at column 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[2@"); // ICH 2 at col 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "blank at col 0");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A', "A at col 2");
+    }
+
+    #[test]
+    fn t_r13_dch_clears_all_after() {
+        // DCH with count > remaining chars.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDE     "); // ABCDE + 5 blanks
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[10P"); // DCH 10 — clear entire row
+        for c in 0..5 {
+            assert_eq!(t.grid().cell(c, 0).unwrap().ch, ' ', "col {c} blank");
+        }
+    }
+
+    // ── Round 13-3: SCOSC/SCORC (CSI s/u) cursor save/restore ──────────
+
+    #[test]
+    fn t_r13_scosc_saves_cursor_position() {
+        // CSI s saves cursor position only (not SGR like DECSC).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor (4, 2)
+        feed(&mut t, b"\x1b[s"); // SCOSC save
+        feed(&mut t, b"\x1b[1;1H"); // move away
+        feed(&mut t, b"\x1b[u"); // SCORC restore
+        assert_eq!(t.cursor(), (4, 2), "position restored by SCORC");
+    }
+
+    #[test]
+    fn t_r13_scosc_does_not_save_sgr() {
+        // SCOSC saves only position, NOT SGR (unlike DECSC).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;31m"); // bold red
+        feed(&mut t, b"\x1b[s"); // SCOSC save
+        feed(&mut t, b"\x1b[0m"); // reset
+        feed(&mut t, b"\x1b[u"); // SCORC restore
+        // SGR should NOT be restored by SCORC
+        assert!(
+            !t.flags.contains(CellFlags::BOLD),
+            "bold NOT restored by SCORC"
+        );
+        assert_eq!(t.fg, Color::Default, "fg NOT restored by SCORC");
+    }
+
+    #[test]
+    fn t_r13_scorc_without_scosc_restores_default() {
+        // SCORC without prior SCOSC restores to (0,0).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[5;5H"); // cursor at (4, 4)
+        feed(&mut t, b"\x1b[u"); // SCORC without save
+        assert_eq!(t.cursor(), (0, 0), "default position restored");
+    }
+
+    #[test]
+    fn t_r13_scosc_scorc_independent_from_decsc_decrc() {
+        // SCOSC and DECSC use different save slots.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;2H"); // pos1 (1, 1)
+        feed(&mut t, b"\x1b7"); // DECSC save
+        feed(&mut t, b"\x1b[5;5H"); // pos2 (4, 4)
+        feed(&mut t, b"\x1b[s"); // SCOSC save
+        feed(&mut t, b"\x1b[1;1H"); // move away
+        feed(&mut t, b"\x1b8"); // DECRC restore → (1, 1)
+        assert_eq!(t.cursor(), (1, 1), "DECRC restores DECSC position");
+        feed(&mut t, b"\x1b[1;1H"); // move away
+        feed(&mut t, b"\x1b[u"); // SCORC restore → (4, 4)
+        assert_eq!(t.cursor(), (4, 4), "SCORC restores SCOSC position");
+    }
+
+    #[test]
+    fn t_r13_scosc_multiple_saves_overwrite() {
+        // Multiple SCOSC saves overwrite (single slot).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;3H"); // (2, 1)
+        feed(&mut t, b"\x1b[s"); // save 1
+        feed(&mut t, b"\x1b[5;8H"); // (7, 4)
+        feed(&mut t, b"\x1b[s"); // save 2 (overwrites)
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[u"); // restore → save 2
+        assert_eq!(t.cursor(), (7, 4), "second save wins");
+    }
+
+    #[test]
+    fn t_r13_scosc_does_not_save_pending_wrap() {
+        // SCOSC saves cursor struct which includes pending_wrap.
+        // But SCORC explicitly clears pending_wrap (line 2608).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        feed(&mut t, b"\x1b[s"); // save
+        feed(&mut t, b"\x1b[1;1H"); // move — clears pending_wrap
+        feed(&mut t, b"\x1b[u"); // restore
+        assert!(!t.cursor.pending_wrap, "SCORC clears pending_wrap");
+    }
 }
