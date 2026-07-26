@@ -12931,4 +12931,123 @@ mod tests {
         // but let's verify the current behavior and document it.
         // (If this test passes, the lead was copied as-is which may be OK.)
     }
+
+    // ── Extreme resize behavior ────────────────────────────────────────
+
+    #[test]
+    fn t_resize_to_1x1_no_panic() {
+        // Resize from normal to 1x1 — must not panic.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello World");
+        t.resize(1, 1);
+        assert_eq!(t.grid().width(), 1);
+        assert_eq!(t.grid().height(), 1);
+        // Cursor should be clamped to 0,0
+        assert_eq!(t.cursor().0, 0);
+        assert_eq!(t.cursor().1, 0);
+    }
+
+    #[test]
+    fn t_resize_to_1x1_then_grow() {
+        // Shrink to 1x1, then grow back — terminal should still work.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"ABCDEFGHIJ"); // fill row 0
+        t.resize(1, 1);
+        t.resize(80, 24);
+        // Should be able to write new content
+        feed(&mut t, b"\x1b[H"); // cursor home
+        feed(&mut t, b"OK");
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_resize_single_row_width_varies() {
+        // Height=1 terminal, vary the width.
+        let mut t = Terminal::new(10, 1);
+        feed(&mut t, b"0123456789");
+        // Shrink width
+        t.resize(3, 1);
+        assert_eq!(t.grid().width(), 3);
+        // Grow width
+        t.resize(20, 1);
+        assert_eq!(t.grid().width(), 20);
+        // Should still work
+        feed(&mut t, b"\x1b[H");
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_resize_shrink_grow_roundtrip_preserves_text() {
+        // Write content, shrink drastically, grow back — verify content
+        // survives in scrollback (reflow mode).
+        let mut t = Terminal::with_scrollback(20, 5, 1000);
+        // Fill multiple rows
+        for i in 0..5 {
+            feed(&mut t, format!("ROW_{}\n", i).as_bytes());
+        }
+        // Shrink to 5x2
+        t.resize(5, 2);
+        // Grow back to 20x5
+        t.resize(20, 5);
+        // Scrollback should have some content (the reflowed history)
+        // The exact content depends on reflow, but scrollback should not be empty
+        assert!(
+            t.grid().scrollback_len() > 0,
+            "scrollback should preserve content through shrink/grow cycle"
+        );
+    }
+
+    #[test]
+    fn t_resize_to_zero_clamped_to_1x1() {
+        // Passing 0 for width/height should be clamped to 1, not panic.
+        let mut t = Terminal::new(10, 5);
+        t.resize(0, 0);
+        assert_eq!(t.grid().width(), 1);
+        assert_eq!(t.grid().height(), 1);
+    }
+
+    #[test]
+    fn t_resize_width_1_with_multibyte_no_corrupt() {
+        // Width=1 with CJK text — the wide char can't fit in 1 col.
+        // Verify no panic and terminal remains functional.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你好世界".as_bytes()); // 4 CJK chars, each width=2
+        t.resize(1, 3);
+        // Should not panic. Terminal should still accept input.
+        feed(&mut t, b"\x1b[H");
+        feed(&mut t, b"A");
+        assert_eq!(t.cursor().0, 0); // col 0 is last col when width=1
+    }
+
+    #[test]
+    fn t_resize_rapid_cycles_no_panic() {
+        // Rapidly resize through many sizes — stress test.
+        let mut t = Terminal::with_scrollback(40, 10, 500);
+        // Fill with varied content
+        for i in 0..10 {
+            feed(&mut t, format!("Line {:02} ABCDEF\n", i).as_bytes());
+        }
+        // Rapid resize cycles
+        let sizes = [
+            (1, 1),
+            (80, 24),
+            (2, 2),
+            (120, 40),
+            (1, 20),
+            (20, 1),
+            (60, 15),
+            (3, 3),
+        ];
+        for &(w, h) in &sizes {
+            t.resize(w, h);
+            assert_eq!(t.grid().width(), w.max(1));
+            assert_eq!(t.grid().height(), h.max(1));
+        }
+        // Final check: terminal still functional
+        t.resize(80, 24);
+        feed(&mut t, b"\x1b[H");
+        feed(&mut t, b"Z");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'Z');
+    }
 }
