@@ -130,6 +130,12 @@ impl Row {
             self.cells[col - 1].clear();
             self.cells[col].clear();
         }
+        // If inserting on a wide char lead, also clear its spacer so the
+        // pair isn't split by the insertion (lead shifts but spacer stays).
+        if self.cells[col].is_wide() && col + 1 < len && self.cells[col + 1].is_wide_spacer() {
+            self.cells[col].clear();
+            self.cells[col + 1].clear();
+        }
         // Shift right (Cell is Clone, not Copy, so use clone)
         let src_end = len - count;
         for i in (col..src_end).rev() {
@@ -159,7 +165,18 @@ impl Row {
         } else {
             col
         };
-        let actual_count = count.min(len - actual_col);
+        // If starting on a wide char lead and the deletion count doesn't
+        // already cover the spacer, extend by 1 to avoid orphaning the spacer.
+        let extra = if self.cells[actual_col].is_wide()
+            && actual_col + 1 < len
+            && self.cells[actual_col + 1].is_wide_spacer()
+            && actual_col + count <= actual_col + 1
+        {
+            1
+        } else {
+            0
+        };
+        let actual_count = (count + extra).min(len - actual_col);
         // Shift left
         for i in actual_col + actual_count..len {
             self.cells[i - actual_count] = self.cells[i].clone();

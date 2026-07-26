@@ -12162,4 +12162,130 @@ mod tests {
             "DECRC should restore pre-alt SGR (yellow)"
         );
     }
+
+    // ── Insert mode (IRM) on wide char boundary ──
+
+    #[test]
+    fn t_insert_mode_on_wide_char_lead() {
+        // Insert mode on: writing a narrow char at a wide char lead position.
+        // The wide char pair should be shifted right as a unit.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
+        feed(&mut t, b"X"); // narrow at col 2
+        // Now: 你(0-1) X(2)
+        // Enable insert mode, go to col 0, write narrow char
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"Y"); // insert Y at col 0
+        // After insert: Y(0) 你(1-2) X(3)?
+        // OR potentially buggy: Y(0) 你_lead(1) blank(2) X(3) — spacer lost
+        // Verify no orphaned wide char lead (without spacer)
+        let cell0 = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell0.ch, 'Y');
+        // Check if wide char pair is intact
+        let cell1 = t.grid().cell(1, 0).unwrap();
+        if cell1.is_wide() {
+            // Wide char lead at col 1, spacer must be at col 2
+            let cell2 = t.grid().cell(2, 0).unwrap();
+            assert!(
+                cell2.is_wide_spacer(),
+                "wide char spacer must follow lead after insert — got ch={} flags={:?}",
+                cell2.ch,
+                cell2.flags
+            );
+        }
+    }
+
+    #[test]
+    fn t_dch_across_wide_char_boundary() {
+        // DCH (Delete Character) deleting through a wide char pair.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // wide at cols 2-3
+        feed(&mut t, b"CD"); // cols 4-5
+        // A(0) B(1) 你(2-3) C(4) D(5)
+        feed(&mut t, b"\x1b[3G"); // cursor at col 2 (wide lead)
+        feed(&mut t, b"\x1b[1P"); // DCH 1 — delete 1 char from col 2
+        // Should delete the wide char (2 cells), shift left
+        // Result: A(0) B(1) C(2) D(3) blank...
+        assert_eq!(
+            t.grid().cell(2, 0).unwrap().ch,
+            'C',
+            "DCH on wide char should shift C into col 2"
+        );
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_ech_across_wide_char_boundary() {
+        // ECH (Erase Character) erasing 1 cell starting on wide char lead.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // wide at cols 2-3
+        feed(&mut t, b"CD"); // cols 4-5
+        // A(0) B(1) 你(2-3) C(4) D(5)
+        feed(&mut t, b"\x1b[3G"); // cursor at col 2 (wide lead)
+        feed(&mut t, b"\x1b[1X"); // ECH 1 — erase 1 char
+        // Should erase both wide char cells (lead + spacer)
+        assert!(
+            t.grid().cell(2, 0).unwrap().is_blank(),
+            "ECH on wide char lead should erase both cells"
+        );
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_blank(),
+            "wide char spacer should also be erased"
+        );
+        // C should still be at col 4 (ECH doesn't shift)
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_su_sd_with_custom_scroll_region() {
+        // SU/SD should only scroll within the custom scroll region.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[1;1HROW0"); // row 0 (outside region)
+        feed(&mut t, b"\x1b[2;1HROW1"); // row 1 (in region)
+        feed(&mut t, b"\x1b[3;1HROW2"); // row 2 (in region)
+        feed(&mut t, b"\x1b[4;1HROW3"); // row 3 (in region)
+        feed(&mut t, b"\x1b[5;1HROW4"); // row 4 (outside region)
+        // SU 1 — scroll region up by 1
+        feed(&mut t, b"\x1b[S");
+        // Row 0 and 4 should be untouched
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'R',
+            "row 0 outside region untouched"
+        );
+        assert_eq!(
+            t.grid().cell(0, 4).unwrap().ch,
+            'R',
+            "row 4 outside region untouched"
+        );
+        // Row 1 should now contain what was in row 2 (ROW2)
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'R',
+            "row 1 should have ROW2 content"
+        );
+    }
+
+    #[test]
+    fn t_sd_with_custom_scroll_region() {
+        // SD (scroll down) should only scroll within custom region.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[2;1HROW1");
+        feed(&mut t, b"\x1b[3;1HROW2");
+        feed(&mut t, b"\x1b[4;1HROW3");
+        // SD 1
+        feed(&mut t, b"\x1b[T");
+        // Row 1 should be blanked (scrolled down from top of region)
+        assert!(
+            t.grid().cell(0, 1).unwrap().is_blank(),
+            "row 1 should be blank after SD in region"
+        );
+        // Row 2 should have ROW1 content
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'R');
+    }
 }

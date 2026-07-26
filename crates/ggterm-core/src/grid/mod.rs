@@ -1204,12 +1204,18 @@ mod tests {
         assert!(r[2].is_wide_spacer(), "col 2 should be spacer");
         // Delete 1 cell starting at col 2 (spacer).
         // Wide spacer detection adjusts start to col 1 (lead).
-        // After delete of 1 cell from col 1: spacer shifts to col 1, X to col 2
+        // Since col 1 is a wide lead with spacer at col 2, and count=1
+        // doesn't cover the spacer, deletion extends to include both cells.
+        // After delete: A(0) X(1) blank(2)...
         r.delete_char(2, 1);
-        // The lead char at col 1 is gone; spacer content moved.
         assert_eq!(r[0].ch, 'A');
-        // Col 1 now has the old spacer content (shifted left by 1)
-        assert!(r[1].is_wide_spacer(), "spacer should have shifted to col 1");
+        // Col 1 now has X (shifted left after full wide char deletion)
+        assert_eq!(
+            r[1].ch, 'X',
+            "X should shift to col 1 after wide pair deleted"
+        );
+        // No orphaned wide spacer
+        assert!(!r[1].is_wide_spacer(), "no orphaned spacer at col 1");
     }
 
     #[test]
