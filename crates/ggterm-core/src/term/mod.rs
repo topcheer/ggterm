@@ -17434,4 +17434,143 @@ mod tests {
         assert_eq!(t.grid().cell(4, 0).unwrap().ch, '好');
         assert_eq!(t.grid().cell(6, 0).unwrap().ch, 'C');
     }
+
+    // ── Round 12-2: Bracketed Paste + Focus Reporting audits ───────────
+
+    #[test]
+    fn t_r12_focus_disabled_by_default() {
+        let t = Terminal::new(10, 5);
+        assert!(!t.focus_event_enabled(), "focus reporting default off");
+    }
+
+    #[test]
+    fn t_r12_bracketed_paste_disabled_by_default() {
+        let t = Terminal::new(10, 5);
+        assert!(!t.bracketed_paste(), "bracketed paste default off");
+    }
+
+    #[test]
+    fn t_r12_focus_toggle() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        assert!(t.focus_event_enabled());
+        feed(&mut t, b"\x1b[?1004l");
+        assert!(!t.focus_event_enabled());
+    }
+
+    #[test]
+    fn t_r12_focus_in_out_report_format() {
+        // Exact byte sequences for focus reports.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        assert_eq!(t.focus_in_report(), b"\x1b[I".to_vec(), "focus in = ESC[I");
+        assert_eq!(
+            t.focus_out_report(),
+            b"\x1b[O".to_vec(),
+            "focus out = ESC[O"
+        );
+    }
+
+    #[test]
+    fn t_r12_focus_report_after_disable() {
+        // After disabling focus events, reports should be empty.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        feed(&mut t, b"\x1b[?1004l");
+        assert!(t.focus_in_report().is_empty());
+        assert!(t.focus_out_report().is_empty());
+    }
+
+    #[test]
+    fn t_r12_focus_report_after_decstr() {
+        // DECSTR should reset focus events to off.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        assert!(t.focus_event_enabled());
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.focus_event_enabled(), "DECSTR resets focus events");
+    }
+
+    #[test]
+    fn t_r12_focus_persists_through_alt_screen() {
+        // Focus reporting should persist through alt screen switch.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert!(t.focus_event_enabled(), "focus persists in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.focus_event_enabled(), "focus persists after alt");
+    }
+
+    #[test]
+    fn t_r12_bracketed_paste_after_decstr() {
+        // DECSTR should reset bracketed paste.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2004h");
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.bracketed_paste(), "DECSTR resets bracketed paste");
+    }
+
+    #[test]
+    fn t_r12_decrqm_bracketed_paste_off() {
+        // DECRQM should report bracketed paste as off (0) when disabled.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2004$p"); // query mode
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(
+            s.contains("2004;2$y"),
+            "mode 2004 = permanently reset (2): {s}"
+        );
+    }
+
+    #[test]
+    fn t_r12_decrqm_bracketed_paste_on() {
+        // DECRQM should report bracketed paste as on (1) when enabled.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2004h");
+        feed(&mut t, b"\x1b[?2004$p");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("2004;1$y"), "mode 2004 = set (1): {s}");
+    }
+
+    #[test]
+    fn t_r12_decrqm_focus_event_on() {
+        // DECRQM for focus events.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        feed(&mut t, b"\x1b[?1004$p");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("1004;1$y"), "mode 1004 = set (1): {s}");
+    }
+
+    #[test]
+    fn t_r12_decrqm_focus_event_off() {
+        // DECRQM for focus events when off.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004$p");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("1004;2$y"), "mode 1004 = reset (2): {s}");
+    }
+
+    #[test]
+    fn t_r12_bracketed_paste_persists_through_ris() {
+        // RIS (full reset) should reset bracketed paste.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2004h");
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.bracketed_paste(), "RIS resets bracketed paste");
+    }
+
+    #[test]
+    fn t_r12_focus_event_persists_through_ris() {
+        // RIS should reset focus events.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h");
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.focus_event_enabled(), "RIS resets focus events");
+    }
 }
