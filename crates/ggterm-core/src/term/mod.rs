@@ -1520,8 +1520,13 @@ impl Terminal {
             12 => self.modes.cursor_blink = enable,
             25 => self.modes.cursor_visible = enable,
             6 => {
+                // DECOM (origin mode) — per VT220 spec, enabling/disabling
+                // also homes the cursor. When origin mode is enabled, the
+                // home position is the top of the scroll region. When
+                // disabled, the home position is absolute (0, 0).
                 self.modes.origin = enable;
-                self.set_cursor(0, 0);
+                let (top, _) = self.grid.scroll_region();
+                self.set_cursor(0, if enable { top } else { 0 });
             }
             1 => self.modes.cursor_keys_app = enable,
             2004 => self.modes.bracketed_paste = enable,
@@ -5165,7 +5170,8 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[5;20r\x1b[?6h");
         assert!(t.modes.origin);
-        assert_eq!(t.cursor(), (0, 0));
+        // DECOM enable homes cursor to scroll region top (row 5 → 0-based: 4)
+        assert_eq!(t.cursor(), (0, 4));
     }
 
     #[test]
@@ -16069,5 +16075,128 @@ mod tests {
         feed(&mut t, b"\x1b[3r"); // top=3, bottom omitted (0 → height)
         let (top, bottom) = t.grid().scroll_region();
         assert_eq!((top, bottom), (2, 5), "bottom defaults to height");
+    }
+
+    // ── Round 9-2: Origin mode (DECOM) audits ──────────────────────────
+
+    #[test]
+    fn t_r9_decom_enable_homes_to_scroll_region_top() {
+        // DECOM enable with a scroll region should home cursor to region top.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[?6h"); // enable origin mode
+        assert_eq!(
+            t.cursor(),
+            (0, 2),
+            "DECOM enable should home to scroll region top"
+        );
+    }
+
+    #[test]
+    fn t_r9_decom_disable_homes_to_absolute() {
+        // DECOM disable should home to absolute (0, 0).
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region
+        feed(&mut t, b"\x1b[?6h"); // enable origin
+        feed(&mut t, b"\x1b[3;3H"); // move within region
+        feed(&mut t, b"\x1b[?6l"); // disable origin
+        assert_eq!(t.cursor(), (0, 0), "DECOM disable homes to absolute (0,0)");
+    }
+
+    #[test]
+    fn t_r9_cup_origin_relative() {
+        // CUP (1,1) in origin mode should go to scroll region top-left.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5
+        feed(&mut t, b"\x1b[?6h"); // origin mode
+        feed(&mut t, b"\x1b[1;1H"); // CUP to (1,1)
+        assert_eq!(t.cursor(), (0, 2), "CUP (1,1) = region top");
+    }
+
+    #[test]
+    fn t_r9_cup_origin_clamps_to_region() {
+        // CUP beyond scroll region in origin mode should clamp.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[?6h"); // origin mode
+        feed(&mut t, b"\x1b[99;1H"); // CUP way beyond region
+        // Should clamp to region bottom (row 3, 0-based)
+        assert_eq!(t.cursor().1, 3, "CUP clamps to region bottom");
+    }
+
+    #[test]
+    fn t_r9_vpa_origin_relative() {
+        // VPA (CSI d) in origin mode should be relative to scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5
+        feed(&mut t, b"\x1b[?6h"); // origin mode
+        feed(&mut t, b"\x1b[2d"); // VPA row 2 (1-indexed)
+        // Should be at region_top + (2-1) = 2 + 1 = 3
+        assert_eq!(t.cursor().1, 3, "VPA origin-relative");
+    }
+
+    #[test]
+    fn t_r9_cpr_origin_mode_relative() {
+        // CPR (CSI 6n) should report cursor position relative to scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[?6h"); // origin mode (cursor → region top)
+        // After DECOM enable, cursor at (0, 2). CPR should report (1, 1)
+        // relative to scroll region: row = (2+1) - (2+1) = 0 → max(1) = 1
+        feed(&mut t, b"\x1b[6n"); // CPR
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("1;1R"), "CPR at region origin: got {s}");
+    }
+
+    #[test]
+    fn t_r9_cuu_stops_at_region_top() {
+        // CUU from within scroll region stops at region top.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 4 (0-based: 3)
+        feed(&mut t, b"\x1b[10A"); // CUU 10 (way past top)
+        assert_eq!(
+            t.cursor().1,
+            2,
+            "CUU stops at region top (row 3, 0-based: 2)"
+        );
+    }
+
+    #[test]
+    fn t_r9_cud_stops_at_region_bottom() {
+        // CUD from within scroll region stops at region bottom.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 3 (0-based: 2)
+        feed(&mut t, b"\x1b[10B"); // CUD 10 (way past bottom)
+        assert_eq!(
+            t.cursor().1,
+            4,
+            "CUD stops at region bottom (row 5, 0-based: 4)"
+        );
+    }
+
+    #[test]
+    fn t_r9_decstbm_with_origin_homes_to_region() {
+        // DECSTBM in origin mode should home cursor to region top.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[?6h"); // origin mode
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5
+        // Cursor should be at region top (row 2, 0-based)
+        assert_eq!(
+            t.cursor().1,
+            2,
+            "DECSTBM in origin mode homes to region top"
+        );
+    }
+
+    #[test]
+    fn t_r9_decstr_resets_origin_mode() {
+        // DECSTR (CSI ! p) should reset origin mode to off.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.modes.origin, "DECSTR resets origin mode");
     }
 }
