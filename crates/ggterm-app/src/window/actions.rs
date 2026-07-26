@@ -1444,13 +1444,20 @@ impl DesktopApp {
             for x in sx..width as u16 {
                 push_cell!(x, sy, &mut text);
             }
-            text.push('\n');
+            // Only insert newline if row is NOT soft-wrapped.
+            let first_soft_wrapped = grid.display_row(sy as usize).is_some_and(|r| r.wrap);
+            if !first_soft_wrapped {
+                text.push('\n');
+            }
             // Middle lines: full rows.
             for y in (sy + 1)..ey {
                 for x in 0..width as u16 {
                     push_cell!(x, y, &mut text);
                 }
-                text.push('\n');
+                let soft_wrapped = grid.display_row(y as usize).is_some_and(|r| r.wrap);
+                if !soft_wrapped {
+                    text.push('\n');
+                }
             }
             // Last line: from start of row to ex.
             for x in 0..=ex {
