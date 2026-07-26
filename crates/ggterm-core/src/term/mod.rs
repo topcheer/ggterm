@@ -10425,4 +10425,131 @@ mod tests {
         // go to col 0 (the lead). Behavior may vary — test what we have.
         assert!(t.cursor().0 <= 1, "BS after wide char should go to col 0 or 1");
     }
+
+    // ── Scroll region edge cases ──
+
+    #[test]
+    fn t_scroll_region_cursor_outside_lf_no_scroll() {
+        // Cursor outside region (above). LF should NOT scroll the region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[4;6r");    // region rows 3-5
+        feed(&mut t, b"\x1b[1;1HA");   // row 0
+        feed(&mut t, b"\x1b[2;1HB");   // row 1
+        feed(&mut t, b"\x1b[1;1H");    // cursor at row 0 (above region)
+        feed(&mut t, b"\n");           // LF at row 0 → moves to row 1
+        // A and B should NOT have moved (no scroll outside region)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_il_outside_region_upper_is_noop() {
+        // IL with cursor above scroll region should be a no-op.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[4;6r");    // region rows 3-5
+        feed(&mut t, b"\x1b[1;1HTOP"); // row 0
+        feed(&mut t, b"\x1b[1;1H");    // cursor at row 0 (above region)
+        feed(&mut t, b"\x1b[L");        // IL — no-op
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'T');
+    }
+
+    #[test]
+    fn t_dl_outside_region_lower_is_noop() {
+        // DL with cursor below scroll region should be a no-op.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r");    // region rows 0-3
+        feed(&mut t, b"\x1b[5;1HBOT"); // row 4 (below region)
+        feed(&mut t, b"\x1b[5;1H");    // cursor at row 4 (below region)
+        feed(&mut t, b"\x1b[M");        // DL — no-op
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_ich_works_outside_scroll_region() {
+        // ICH/DCH operate on the current line regardless of scroll region.
+        let mut t = Terminal::new(6, 6);
+        feed(&mut t, b"\x1b[2;4r");    // region rows 1-3
+        feed(&mut t, b"\x1b[1;1HABC"); // row 0 (outside region), 3 chars
+        feed(&mut t, b"\x1b[2G");       // CHA col 2 → cursor at col 1
+        feed(&mut t, b"\x1b[2@");       // ICH 2 — insert 2 blanks at col 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert!(t.grid().cell(1, 0).unwrap().is_blank(), "col 1 should be blank");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B', "B should shift to col 3");
+    }
+
+    #[test]
+    fn t_decstbm_origin_mode_cup_relative() {
+        // Origin mode + DECSTBM: CUP uses region-relative coordinates.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[3;6r");     // region rows 2-5
+        feed(&mut t, b"\x1b[?6h");       // origin mode on
+        feed(&mut t, b"\x1b[2;3H");      // CUP row 2, col 3
+        // Row 2 relative to region top (row 2) = absolute row 3
+        assert_eq!(t.cursor().1, 3, "origin: CUP row 2 → absolute row 3");
+        assert_eq!(t.cursor().0, 2, "col 3 → col 2");
+    }
+
+    // ── Pending wrap edge cases ──
+
+    #[test]
+    fn t_pending_wrap_cleared_by_cup() {
+        // Fill to last col (pending_wrap set), CUP should clear it.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD");          // pending_wrap = true
+        feed(&mut t, b"\x1b[1;1H");     // CUP — should clear pending_wrap
+        feed(&mut t, b"X");              // should overwrite col 0, not wrap
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        assert_eq!(t.cursor().1, 0, "should stay on row 0 after CUP cleared pending_wrap");
+    }
+
+    #[test]
+    fn t_pending_wrap_then_lf_advances_one_row() {
+        // Fill to last col (pending_wrap), then LF.
+        // LF should clear pending_wrap and move down ONE row only.
+        // LNM off: LF keeps column. So cursor stays at col 3, row 1.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD");          // pending_wrap = true
+        feed(&mut t, b"\n");            // LF — clear pending_wrap, move to row 1
+        assert_eq!(t.cursor().1, 1, "LF should move to row 1");
+        feed(&mut t, b"X");              // X at col 3 row 1
+        assert_eq!(t.grid().cell(3, 1).unwrap().ch, 'X');
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some(' '),
+            "X should not be at col 0 — LF without LNM keeps column");
+    }
+
+    #[test]
+    fn t_pending_wrap_overwrite_vs_wrap() {
+        // Fill to last col (pending_wrap set), then print another char.
+        // Should WRAP to next line (not overwrite the char at last col).
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD");          // pending_wrap = true, D at col 3
+        feed(&mut t, b"E");              // should wrap
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D', "D should remain at col 3");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E', "E should wrap to row 1");
+    }
+
+    #[test]
+    fn t_decbawm_off_char_at_last_col_overwrites() {
+        // With autowrap off, printing at the last column overwrites in place.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b[?7l");      // autowrap off
+        feed(&mut t, b"ABCDE");          // 5 chars on 4-wide terminal
+        // E should overwrite D at col 3
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E');
+        assert_eq!(t.cursor().0, 3, "cursor stays at last col");
+        assert_eq!(t.cursor().1, 0, "no line wrap");
+    }
+
+    #[test]
+    fn t_pending_wrap_cleared_by_cuq() {
+        // Fill to last col (pending_wrap), then CUU (cursor up).
+        // CUU should clear pending_wrap. Column stays, row decreases.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, b"\x1b[2;1H");     // row 1
+        feed(&mut t, b"ABCD");           // fill row 1, pending_wrap = true
+        feed(&mut t, b"\x1b[A");         // CUU — cursor up to row 0, col stays at 3
+        feed(&mut t, b"X");              // print at (3,0)
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'X');
+        assert_eq!(t.cursor().1, 0, "should be on row 0");
+    }
 }
