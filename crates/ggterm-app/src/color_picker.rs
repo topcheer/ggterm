@@ -152,19 +152,26 @@ pub fn scan_line_for_colors(text: &str) -> Vec<ColorMatch> {
     let display_widths: Vec<usize> = if ascii {
         Vec::new() // Won't be used — col_start/col_end use byte offset directly.
     } else {
-        let mut dw = Vec::with_capacity(bytes.len() + 1);
-        dw.push(0);
+        // Index by byte position so col_at(byte_idx) is always valid.
+        let mut dw = vec![0usize; bytes.len() + 1];
+        let mut byte_pos = 0;
+        let mut col = 0;
         for ch in text.chars() {
-            let last = *dw.last().unwrap();
-            dw.push(last + ggterm_core::grid::char_width(ch));
+            let ch_len = ch.len_utf8();
+            for _ in 0..ch_len {
+                dw[byte_pos] = col;
+                byte_pos += 1;
+            }
+            col += ggterm_core::grid::char_width(ch);
         }
+        dw[byte_pos] = col; // Final position (should be == bytes.len())
         dw
     };
     let col_at = |byte_idx: usize| -> usize {
         if ascii {
             byte_idx
         } else {
-            display_widths[byte_idx]
+            display_widths[byte_idx.min(display_widths.len() - 1)]
         }
     };
 

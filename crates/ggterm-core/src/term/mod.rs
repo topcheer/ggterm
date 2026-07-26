@@ -1479,6 +1479,7 @@ impl Terminal {
                     self.grid = Grid::new(self.width(), self.height());
                     self.reset_tab_stops();
                     self.cursor = Cursor::default();
+                    self.current_hyperlink = None; // Clear hyperlink state on alt screen enter
                     self.modes.alt_screen = true;
                 } else if !enable && self.modes.alt_screen {
                     // Exit alt-screen: restore grid, cursor, tab stops
