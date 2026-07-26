@@ -16199,4 +16199,147 @@ mod tests {
         feed(&mut t, b"\x1b[!p"); // DECSTR
         assert!(!t.modes.origin, "DECSTR resets origin mode");
     }
+
+    // ── Round 9-3: Auto-wrap (DECAWM) + Insert Mode (IRM) audits ───────
+
+    #[test]
+    fn t_r9_decawm_off_overwrites_last_col() {
+        // DECAWM off: writing at last column overwrites, no wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // DECAWM off
+        feed(&mut t, b"ABCDE"); // fills cols 0-4
+        feed(&mut t, b"FGH"); // should overwrite cols 4, 4, 4
+        // Col 4 should be 'H' (last overwrite wins)
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'H', "last col overwritten");
+        // Cursor should still be on row 0
+        assert_eq!(t.cursor().1, 0, "no wrap to row 1");
+    }
+
+    #[test]
+    fn t_r9_decawm_on_deferred_wrap() {
+        // DECAWM on: writing at last column sets pending_wrap,
+        // next char wraps to new line.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills cols 0-4, pending_wrap set
+        // At this point cursor is at (4, 0) with pending_wrap
+        assert!(t.cursor.pending_wrap, "pending_wrap set after last col");
+        feed(&mut t, b"F"); // should trigger wrap + write F at (0, 1)
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'F', "F wrapped to row 1");
+        assert_eq!(t.cursor(), (1, 1), "cursor at (1, 1)");
+    }
+
+    #[test]
+    fn t_r9_decawm_pending_wrap_cleared_by_cuu() {
+        // CUU should clear pending_wrap (per xterm spec).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        feed(&mut t, b"\x1b[A"); // CUU — should clear pending_wrap
+        assert!(!t.cursor.pending_wrap, "CUU clears pending_wrap");
+        // Next char should overwrite current position, not wrap
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'X', "overwrite at cursor");
+    }
+
+    #[test]
+    fn t_r9_decawm_pending_wrap_cleared_by_bs() {
+        // BS should clear pending_wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // pending_wrap set
+        feed(&mut t, b"\x08"); // BS
+        assert!(!t.cursor.pending_wrap, "BS clears pending_wrap");
+        // Cursor moved back to col 3
+        assert_eq!(t.cursor().0, 3, "BS moved cursor to col 3");
+    }
+
+    #[test]
+    fn t_r9_decawm_pending_wrap_cleared_by_cr() {
+        // CR should clear pending_wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // pending_wrap set
+        feed(&mut t, b"\r"); // CR
+        assert!(!t.cursor.pending_wrap, "CR clears pending_wrap");
+    }
+
+    #[test]
+    fn t_r9_decawm_pending_wrap_survives_el() {
+        // EL (erase line) should NOT clear pending_wrap per xterm.
+        // The next printable char after EL should still trigger wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // pending_wrap set
+        feed(&mut t, b"\x1b[K"); // EL — erase to end of line
+        // pending_wrap should still be set (xterm doesn't clear it on EL)
+        assert!(t.cursor.pending_wrap, "EL preserves pending_wrap");
+    }
+
+    #[test]
+    fn t_r9_irm_insert_shifts_right() {
+        // IRM: writing a char shifts existing content right.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"ABCD"); // row 0: ABCD
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 3 (0-based: 2)
+        feed(&mut t, b"X"); // insert X at col 2, shifts C,D right
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "B preserved");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X', "X inserted");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'C', "C shifted right");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'D', "D shifted right");
+    }
+
+    #[test]
+    fn t_r9_irm_drops_at_eol() {
+        // IRM: inserting at the end drops the last cell.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"ABCDE"); // fills row
+        // pending_wrap is set; but IRM still on
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 3 (0-based: 2)
+        feed(&mut t, b"X"); // insert X, shifts right, E drops
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X', "X inserted");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'C', "C shifted");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'D', "D shifted, E dropped");
+    }
+
+    #[test]
+    fn t_r9_irm_reset_by_sgr_reset() {
+        // IRM should NOT be reset by SGR (CSI 0m).
+        // SGR only resets visual attributes, not modes.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"\x1b[0m"); // SGR reset
+        assert!(t.modes.insert, "SGR reset does NOT clear IRM");
+    }
+
+    #[test]
+    fn t_r9_irm_reset_by_rm4() {
+        // RM 4 (CSI 4l) should turn off IRM.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"\x1b[4l"); // IRM off
+        assert!(!t.modes.insert, "RM 4 turns off IRM");
+    }
+
+    #[test]
+    fn t_r9_irm_plus_decawm_wrap() {
+        // IRM + DECAWM: when auto-wrap triggers, the new char is inserted
+        // at the start of the new line.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"\r\n"); // row 1
+        feed(&mut t, b"VWXYZ"); // fills row 1
+        // pending_wrap set; next char wraps to row 2 and is INSERTED
+        feed(&mut t, b"P");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'P', "P at row 2 col 0");
+    }
+
+    #[test]
+    fn t_r9_decawm_wide_char_at_penultimate() {
+        // Wide char at penultimate column should wrap (not split).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCD"); // cols 0-3, cursor at col 4
+        feed(&mut t, "你".as_bytes()); // wide char needs 2 cols, only 1 left
+        // Should wrap to next line
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你', "wide char wrapped");
+        assert!(t.grid().cell(0, 1).unwrap().is_wide(), "wide flag set");
+    }
 }
