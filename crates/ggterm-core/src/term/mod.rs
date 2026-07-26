@@ -15736,4 +15736,157 @@ mod tests {
         feed(&mut t, b"\t"); // should go to default col 8, not custom col 5
         assert_eq!(t.cursor().0, 8, "tab stops reset to defaults after DECSTR");
     }
+
+    // ── Round 8-3: Erase operations audit ──────────────────────────────
+
+    #[test]
+    fn t_r8_ed_0_from_cursor_to_end() {
+        // ED 0: erase from cursor to end of display.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH\r\nIJKLMNOP\r\nQRSTUVWX");
+        feed(&mut t, b"\x1b[2;4H"); // row 2, col 4 (0-based: 1, 3)
+        feed(&mut t, b"\x1b[0J");
+        // Row 1 cols 0-2 preserved, col 3+ erased
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'I', "col 0 preserved");
+        assert_eq!(t.grid().cell(2, 1).unwrap().ch, 'K', "col 2 preserved");
+        assert_eq!(t.grid().cell(3, 1).unwrap().ch, ' ', "col 3 erased");
+        // Row 2 entirely erased
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ', "row 2 erased");
+    }
+
+    #[test]
+    fn t_r8_ed_1_from_start_to_cursor() {
+        // ED 1: erase from start of display to cursor.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH\r\nIJKLMNOP\r\nQRSTUVWX");
+        feed(&mut t, b"\x1b[2;4H"); // row 2, col 4 (0-based: 1, 3)
+        feed(&mut t, b"\x1b[1J");
+        // Row 0 entirely erased
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "row 0 erased");
+        // Row 1 cols 0-3 erased, col 4+ preserved
+        assert_eq!(t.grid().cell(3, 1).unwrap().ch, ' ', "col 3 erased");
+        assert_eq!(t.grid().cell(4, 1).unwrap().ch, 'M', "col 4 preserved");
+        // Row 2 preserved
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'Q', "row 2 preserved");
+    }
+
+    #[test]
+    fn t_r8_ed_2_clears_all() {
+        // ED 2: erase entire display.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH\r\nIJKLMNOP\r\nQRSTUVWX");
+        feed(&mut t, b"\x1b[2J");
+        for r in 0..3 {
+            for c in 0..8 {
+                assert_eq!(
+                    t.grid().cell(c, r).unwrap().ch,
+                    ' ',
+                    "cell ({},{}) should be cleared",
+                    c,
+                    r
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn t_r8_ed_3_clears_scrollback_only() {
+        // ED 3: clear scrollback but NOT visible screen.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        for i in 0..10 {
+            feed(&mut t, format!("Row{}\n", i).as_bytes());
+        }
+        assert!(t.grid().scrollback_len() > 0, "has scrollback");
+        feed(&mut t, b"\x1b[3J");
+        assert_eq!(t.grid().scrollback_len(), 0, "scrollback cleared");
+        // Visible content should NOT be cleared — at least one cell should
+        // have a non-space character.
+        let has_content =
+            (0..3).any(|r| (0..10).any(|c| t.grid().cell(c, r).is_some_and(|cell| cell.ch != ' ')));
+        assert!(has_content, "visible screen should not be cleared by ED 3");
+    }
+
+    #[test]
+    fn t_r8_el_0_from_cursor_to_eol() {
+        // EL 0: erase from cursor to end of line.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\x1b[1;4H"); // col 4 (0-based: 3)
+        feed(&mut t, b"\x1b[0K");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C', "col 2 preserved");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "col 3 erased");
+        assert_eq!(t.grid().cell(7, 0).unwrap().ch, ' ', "col 7 erased");
+    }
+
+    #[test]
+    fn t_r8_el_1_from_start_to_cursor() {
+        // EL 1: erase from start of line to cursor.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\x1b[1;4H"); // col 4 (0-based: 3)
+        feed(&mut t, b"\x1b[1K");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "col 0 erased");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "col 3 erased");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'E', "col 4 preserved");
+    }
+
+    #[test]
+    fn t_r8_el_2_entire_line() {
+        // EL 2: erase entire line.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\x1b[2K");
+        for c in 0..8 {
+            assert_eq!(t.grid().cell(c, 0).unwrap().ch, ' ', "col {} erased", c);
+        }
+    }
+
+    #[test]
+    fn t_r8_decsca_protected_survives_decsed_0() {
+        // DECSCA protected cells should survive DECSED (selective erase).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1\"q"); // DECSCA = protected
+        feed(&mut t, b"AB");
+        feed(&mut t, b"\x1b[2\"q"); // DECSCA = unprotected
+        feed(&mut t, b"CD");
+        feed(&mut t, b"\x1b[1;1H"); // back to start
+        feed(&mut t, b"\x1b[?0J"); // DECSED 0: selective erase to end
+        // Protected cells A, B should survive
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "protected A survives");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "protected B survives");
+        // Unprotected cells C, D should be erased
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "unprotected C erased");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "unprotected D erased");
+    }
+
+    #[test]
+    fn t_r8_decsca_protected_survives_decsel_2() {
+        // DECSEL 2 (?2K): selective erase entire line, protected survive.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1\"q"); // protected
+        feed(&mut t, b"AB");
+        feed(&mut t, b"\x1b[2\"q"); // unprotected
+        feed(&mut t, b"CD");
+        feed(&mut t, b"\x1b[?2K"); // selective erase entire line
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "protected survives");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "protected survives");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "unprotected erased");
+    }
+
+    #[test]
+    fn t_r8_ech_clears_n_cells_no_shift() {
+        // ECH erases N cells without shifting.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\x1b[1;3H"); // col 3 (0-based: 2)
+        feed(&mut t, b"\x1b[3X"); // erase 3 chars
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "before preserved");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "col 2 erased");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "col 4 erased");
+        assert_eq!(
+            t.grid().cell(5, 0).unwrap().ch,
+            'F',
+            "col 5 preserved (no shift)"
+        );
+    }
 }
