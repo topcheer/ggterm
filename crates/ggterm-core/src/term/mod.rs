@@ -12288,4 +12288,127 @@ mod tests {
         // Row 2 should have ROW1 content
         assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'R');
     }
+
+    // ── Fuzz: random escape sequences must not panic ───────────────────
+    #[test]
+    fn fuzz_random_sequences_no_panic() {
+        // Deterministic LCG random (no external dependency).
+        let mut state: u32 = 12345;
+        let mut rng = || {
+            state = state.wrapping_mul(1103515245).wrapping_add(12345);
+            state
+        };
+
+        let width = 80;
+        let height = 24;
+        let mut t = Terminal::new(width, height);
+
+        // Generate 10,000 random byte sequences and feed them.
+        // Mix CSI, OSC, ESC, DCS, and plain text.
+        let mut buf = Vec::with_capacity(8192);
+        for _ in 0..10_000 {
+            let kind = rng() % 100;
+            match kind {
+                0..=30 => {
+                    // CSI with random params
+                    buf.push(0x1b);
+                    buf.push(b'[');
+                    for _ in 0..(rng() % 5) as usize {
+                        buf.push(b'0' + (rng() % 10) as u8);
+                        if rng() % 3 == 0 {
+                            buf.push(b';');
+                        }
+                    }
+                    // Random final byte
+                    buf.push(b'@' + (rng() % 60) as u8);
+                }
+                31..=40 => {
+                    // OSC with random payload
+                    buf.push(0x1b);
+                    buf.push(b']');
+                    for _ in 0..(rng() % 10) as usize {
+                        buf.push(b'0' + (rng() % 10) as u8);
+                    }
+                    buf.push(b'\x1b');
+                    buf.push(b'\\');
+                }
+                41..=50 => {
+                    // ESC + random final byte
+                    buf.push(0x1b);
+                    buf.push(b' ' + (rng() % 80) as u8);
+                }
+                51..=55 => {
+                    // DCS sequence
+                    buf.push(0x1b);
+                    buf.push(b'P');
+                    for _ in 0..(rng() % 8) as usize {
+                        buf.push(b'A' + (rng() % 26) as u8);
+                    }
+                    buf.push(b'\x1b');
+                    buf.push(b'\\');
+                }
+                56..=60 => {
+                    // Random UTF-8 multibyte (CJK range)
+                    let cp = 0x4E00 + (rng() % 200);
+                    if let Some(c) = char::from_u32(cp) {
+                        let mut tmp = [0u8; 4];
+                        buf.extend_from_slice(c.encode_utf8(&mut tmp).as_bytes());
+                    }
+                }
+                _ => {
+                    // Plain ASCII
+                    buf.push(b' ' + (rng() % 95) as u8);
+                }
+            }
+        }
+
+        // Feed all bytes at once — must not panic.
+        feed(&mut t, &buf);
+
+        // Verify terminal is still functional after fuzz.
+        // Reset cursor to home position first (random sequences may have
+        // moved it or set modes like origin/auto_wrap).
+        feed(&mut t, b"\x1b[H\x1b[2J"); // cursor home + clear screen
+        feed(&mut t, b"Hello");
+        let (x, _y) = t.cursor();
+        assert_eq!(x, 5, "cursor should advance by 5 after writing 'Hello'");
+    }
+
+    #[test]
+    fn fuzz_resize_with_wide_chars_no_panic() {
+        let mut state: u32 = 999;
+        let mut rng = || {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            state
+        };
+
+        // Start with a small terminal and fill with wide chars + regular text.
+        let mut t = Terminal::new(20, 5);
+
+        // Fill with alternating wide chars and ASCII
+        for _ in 0..3 {
+            for i in 0..10 {
+                let cp = 0x4E00 + i * 0x100;
+                if let Some(c) = char::from_u32(cp) {
+                    let mut tmp = [0u8; 4];
+                    feed(&mut t, c.encode_utf8(&mut tmp).as_bytes());
+                }
+                feed(&mut t, b"AB");
+            }
+            feed(&mut t, b"\n");
+        }
+
+        // Rapidly resize through various sizes — must not panic or hang.
+        for _ in 0..20 {
+            let new_w = 1 + (rng() % 40) as usize;
+            let new_h = 1 + (rng() % 20) as usize;
+            t.resize(new_w, new_h);
+        }
+
+        // Verify terminal still works
+        t.resize(80, 24);
+        feed(&mut t, b"\x1b[H"); // cursor home
+        feed(&mut t, b"OK");
+        assert_eq!(t.cursor().0, 2, "cursor should advance by 2 after 'OK'");
+    }
 }
