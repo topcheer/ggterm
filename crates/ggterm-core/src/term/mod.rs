@@ -9722,7 +9722,6 @@ mod tests {
 
     #[test]
     fn t_tbc_clears_current_stop() {
-        // Set a tab stop at col 4, then clear it with TBC (CSI 0g).
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"\x1b[3g"); // clear all
         feed(&mut t, b"\x1b[4C"); // move to col 4
@@ -9731,5 +9730,125 @@ mod tests {
         feed(&mut t, b"\r");      // back to col 0
         feed(&mut t, b"\t");      // tab — should go to last col (no stop at 4)
         assert_eq!(t.cursor().0, 9, "tab should skip col 4 (cleared by TBC)");
+    }
+
+    #[test]
+    fn t_il_within_scroll_region_preserves_outside() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;1HTOP");
+        feed(&mut t, b"\x1b[2;1HMID");
+        feed(&mut t, b"\x1b[3;1HBOT");
+        feed(&mut t, b"\x1b[2;4r");
+        feed(&mut t, b"\x1b[2;1H");
+        feed(&mut t, b"\x1b[L");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'T');
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'M');
+    }
+
+    #[test]
+    fn t_il_outside_scroll_region_is_noop() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r");
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"AAA");
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[L");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_dl_within_scroll_region() {
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[1;1HA");
+        feed(&mut t, b"\x1b[2;1HB");
+        feed(&mut t, b"\x1b[3;1HC");
+        feed(&mut t, b"\x1b[4;1HD");
+        feed(&mut t, b"\x1b[1;4r");
+        feed(&mut t, b"\x1b[2;1H");
+        feed(&mut t, b"\x1b[M");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'D');
+        assert!(t.grid().cell(0, 3).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_ich_shifts_right_drops_at_edge() {
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, b"ABCDEF");
+        feed(&mut t, b"\x1b[3G");
+        feed(&mut t, b"\x1b[2@");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert!(t.grid().cell(2, 0).unwrap().is_blank());
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_dch_shifts_left_fills_blank() {
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, b"ABCDEF");
+        feed(&mut t, b"\x1b[2G");
+        feed(&mut t, b"\x1b[2P");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'D');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'E');
+        assert!(t.grid().cell(4, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_decsc_decrc_restores_sgr() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;31m");
+        feed(&mut t, b"\x1b7");
+        feed(&mut t, b"\x1b[0m");
+        feed(&mut t, b"\x1b[3;33m");
+        feed(&mut t, b"\x1b8");
+        assert!(t.flags.contains(CellFlags::BOLD));
+        assert_eq!(t.fg, Color::Indexed(1));
+        assert!(!t.flags.contains(CellFlags::ITALIC));
+    }
+
+    #[test]
+    fn t_decsc_shared_between_primary_and_alt() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;32m");
+        feed(&mut t, b"\x1b7");
+        feed(&mut t, b"\x1b[?1049h");
+        feed(&mut t, b"\x1b[0;33m");
+        feed(&mut t, b"\x1b7");
+        feed(&mut t, b"\x1b[?1049l");
+        feed(&mut t, b"\x1b8");
+        assert_eq!(t.fg, Color::Indexed(3));
+    }
+
+    #[test]
+    fn t_lf_at_scroll_region_bottom_scrolls() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r");     // region rows 0-2
+        feed(&mut t, b"\x1b[4;1HOUT");  // row 3 (outside region)
+        // OUT should be at row 3
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O', "OUT should be at row 3");
+        feed(&mut t, b"\x1b[1;1HA");    // row 0
+        feed(&mut t, b"\x1b[2;1HB");    // row 1
+        feed(&mut t, b"\x1b[3;1HC");    // row 2
+        feed(&mut t, b"\x1b[3;1H");     // cursor at row 2 (bottom of region)
+        feed(&mut t, b"\n");             // LF at bottom → scroll up
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O', "OUT at row 3 should survive scroll");
+    }
+
+    #[test]
+    fn t_nel_respects_scroll_region() {
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[1;3r");
+        feed(&mut t, b"\x1b[1;1HA");
+        feed(&mut t, b"\x1b[2;1HB");
+        feed(&mut t, b"\x1b[3;1HC");
+        feed(&mut t, b"\x1b[3;5H");
+        feed(&mut t, b"\x1bE");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
     }
 }

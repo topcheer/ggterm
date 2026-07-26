@@ -326,7 +326,7 @@ impl Grid {
         // the user is already viewing the latest output (offset == 0).
         let was_scrolled = self.display_offset > 0;
 
-        if self.scroll_top == 0 {
+        if self.scroll_top == 0 && self.scroll_bottom == self.height {
             // Full-screen scroll (most common case):
             // Drain first n rows → push to scrollback, then append n blanks.
             // This is O(n) instead of O(rows × n) with per-line remove(0).
