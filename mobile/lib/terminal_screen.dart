@@ -205,6 +205,9 @@ class _TerminalScreenState extends State<TerminalScreen>
       _renderTimer?.cancel();
       _blinkTimer?.cancel();
       _durationTimer?.cancel();
+      // Disable wakelock in background — no point keeping screen awake
+      // when the app isn't visible.
+      WakelockPlus.disable();
     } else if (state == AppLifecycleState.resumed) {
       // App came back to foreground — resume rendering.
       if (_isPaused) {
@@ -212,6 +215,8 @@ class _TerminalScreenState extends State<TerminalScreen>
         _startRenderLoop();
         _startCursorBlink();
         _lastFrameHash = 0; // Force full refresh on resume
+        // Re-enable wakelock now that the terminal is visible again.
+        WakelockPlus.enable();
       }
     }
   }
