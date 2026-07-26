@@ -15536,4 +15536,118 @@ mod tests {
             "scrollback should shrink when growing height"
         );
     }
+
+    // ── Round 8-1: Wide char overwrite edge cases ──────────────────────
+
+    #[test]
+    fn t_r8_narrow_overwrite_on_wide_lead() {
+        // Write wide char at col 0, then overwrite with narrow at col 0.
+        // The spacer at col 1 must be cleared.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"\x1b[1G"); // back to col 0
+        feed(&mut t, b"X"); // narrow overwrite at col 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "col 0 = X");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 spacer cleared");
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "no spacer flag"
+        );
+    }
+
+    #[test]
+    fn t_r8_narrow_on_wide_spacer_clears_lead() {
+        // Cursor lands on the spacer cell (col 1) of a wide char.
+        // Writing a narrow char there: the wide lead at col 0 should be cleared.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1, cursor now at col 2
+        feed(&mut t, b"\x1b[2G"); // go to col 2 (0-based: 1 = spacer)
+        feed(&mut t, b"X"); // write narrow on spacer
+        // The spacer position gets X, and the lead at col 0 is cleared.
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X', "col 1 = X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "col 0 lead cleared");
+        assert!(
+            !t.grid().cell(0, 0).unwrap().is_wide(),
+            "no wide flag on col 0"
+        );
+    }
+
+    #[test]
+    fn t_r8_wide_overwrite_wide() {
+        // Write a wide char over another wide char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"\x1b[1G"); // back to col 0
+        feed(&mut t, "好".as_bytes()); // overwrite with another wide char
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '好', "col 0 = 好");
+        assert!(t.grid().cell(0, 0).unwrap().is_wide(), "col 0 is wide");
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "col 1 is spacer"
+        );
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide(),
+            "col 1 is NOT a lead"
+        );
+    }
+
+    #[test]
+    fn t_r8_wide_at_penultimate_with_next_char() {
+        // Wide char at cols 8-9 in a 10-col terminal, followed by a char.
+        // The next char should wrap to line 2.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[9G"); // go to col 9 (0-based: 8)
+        feed(&mut t, "你".as_bytes()); // wide at cols 8-9
+        feed(&mut t, b"A"); // should wrap
+        assert_eq!(t.grid().cell(8, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A', "A wrapped to row 1");
+    }
+
+    #[test]
+    fn t_r8_wide_char_then_bs_then_narrow() {
+        // Write wide char, backspace to spacer, backspace to lead,
+        // then write a narrow char. Should not leave orphan spacer.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1, cursor at 2
+        feed(&mut t, b"\x08\x08"); // BS x2: 2→1→0
+        feed(&mut t, b"X"); // write narrow at col 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            ' ',
+            "col 1 cleared (no orphan spacer)"
+        );
+        assert!(!t.grid().cell(1, 0).unwrap().is_wide_spacer());
+    }
+
+    #[test]
+    fn t_r8_wide_char_scroll_preserves_integrity() {
+        // Fill lines to trigger scroll, verify wide chars aren't corrupted.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你好".as_bytes()); // row 0: cols 0-3
+        feed(&mut t, b"\r\n");
+        feed(&mut t, "世界".as_bytes()); // row 1: cols 0-3
+        feed(&mut t, b"\r\n");
+        feed(&mut t, "测试".as_bytes()); // row 2: cols 0-3
+        feed(&mut t, b"\r\n");
+        feed(&mut t, "再来".as_bytes()); // triggers scroll
+        // After scroll, row 0 should have 世界
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '世', "row 0 after scroll");
+        assert!(t.grid().cell(0, 0).unwrap().is_wide());
+        assert!(t.grid().cell(1, 0).unwrap().is_wide_spacer());
+    }
+
+    #[test]
+    fn t_r8_wide_char_at_col0_after_scroll() {
+        // Verify wide char integrity after scroll — spacer should follow lead.
+        let mut t = Terminal::new(6, 2);
+        feed(&mut t, "你好\r\n".as_bytes()); // row 0
+        feed(&mut t, "世好\r\n".as_bytes()); // triggers scroll, "世好" moves to row 0
+        feed(&mut t, b"X"); // row 1 (bottom)
+        // Row 0 should have intact wide chars
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '世');
+        assert!(t.grid().cell(1, 0).unwrap().is_wide_spacer());
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '好');
+        assert!(t.grid().cell(3, 0).unwrap().is_wide_spacer());
+    }
 }
