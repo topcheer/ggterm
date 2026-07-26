@@ -1646,6 +1646,42 @@ impl Terminal {
                     self.modes.alt_screen = false;
                 }
             }
+            // DECSET 1048 — Save cursor as in DECSC.
+            // DECRST 1048 — Restore cursor as in DECRC.
+            // This is used by programs that need to save/restore cursor
+            // independently of screen buffer switching (e.g., older
+            // programs that use 1048h + 47h + 47l + 1048l instead of 1049).
+            1048 => {
+                if enable {
+                    self.decsc_state = Some(DecscState {
+                        cursor: self.cursor,
+                        fg: self.fg,
+                        bg: self.bg,
+                        underline_color: self.underline_color,
+                        flags: self.flags,
+                        g0_charset: self.g0_charset,
+                        g1_charset: self.g1_charset,
+                        active_g1: self.active_g1,
+                        auto_wrap: self.modes.auto_wrap,
+                        origin: self.modes.origin,
+                        protected_attr: self.protected_attr,
+                        cursor_style: self.cursor_style,
+                    });
+                } else if let Some(state) = &self.decsc_state {
+                    self.cursor = state.cursor;
+                    self.fg = state.fg;
+                    self.bg = state.bg;
+                    self.underline_color = state.underline_color;
+                    self.flags = state.flags;
+                    self.g0_charset = state.g0_charset;
+                    self.g1_charset = state.g1_charset;
+                    self.active_g1 = state.active_g1;
+                    self.modes.auto_wrap = state.auto_wrap;
+                    self.modes.origin = state.origin;
+                    self.protected_attr = state.protected_attr;
+                    self.cursor_style = state.cursor_style;
+                }
+            }
             // Mouse tracking modes
             9 => self.modes.mouse_tracking = enable, // X10
             1000 => self.modes.mouse_tracking = enable, // Normal
@@ -2679,6 +2715,7 @@ impl Perform for Terminal {
                     1015 => self.modes.mouse_urxvt, // URXVT mouse
                     1016 => self.modes.mouse_sgr_pixel, // SGR-pixel mouse
                     1047 => self.modes.alt_screen, // Alt screen (1047)
+                    1048 => self.decsc_state.is_some(), // Cursor save (1048)
                     1049 => self.modes.alt_screen, // Alt screen + cursor save (1049)
                     2004 => self.modes.bracketed_paste, // Bracketed paste
                     2026 => self.modes.synchronized_output, // Synchronized output
@@ -15315,5 +15352,68 @@ mod tests {
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'R', "row 1 preserved");
         // Row 2 should be blank (inserted)
         assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ', "row 2 = blank");
+    }
+
+    // ── Round 7-1: Alt screen bug fixes ────────────────────────────────
+
+    #[test]
+    fn t_r7_mode_1048_saves_cursor() {
+        // DECSET 1048 = save cursor (equivalent to DECSC / ESC 7).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3;5H"); // row 3, col 5
+        feed(&mut t, b"\x1b[1;31m"); // bold red
+        feed(&mut t, b"\x1b[?1048h"); // save cursor
+        feed(&mut t, b"\x1b[5;1H"); // move away
+        feed(&mut t, b"\x1b[0m"); // reset attrs
+        feed(&mut t, b"\x1b[?1048l"); // restore cursor
+        // Should restore position and attributes
+        assert_eq!(t.cursor(), (4, 2), "1048 should restore cursor position");
+        assert!(
+            t.flags.contains(CellFlags::BOLD),
+            "1048 should restore bold"
+        );
+        assert_eq!(t.fg, Color::Indexed(1), "1048 should restore red fg");
+    }
+
+    #[test]
+    fn t_r7_mode_1048_plus_47_equals_1049() {
+        // 1048h + 47h should be equivalent to 1049h for cursor preservation.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3;5H\x1b[1;31m"); // position + attrs
+        feed(&mut t, b"\x1b[?1048h"); // save cursor
+        feed(&mut t, b"\x1b[?47h"); // switch to alt screen
+        feed(&mut t, b"AltData");
+        feed(&mut t, b"\x1b[?47l"); // switch back
+        feed(&mut t, b"\x1b[?1048l"); // restore cursor
+        // Cursor and attrs should be restored to pre-save state
+        assert_eq!(t.cursor(), (4, 2), "cursor restored via 1048+47");
+        assert!(
+            t.flags.contains(CellFlags::BOLD),
+            "bold restored via 1048+47"
+        );
+    }
+
+    #[test]
+    fn t_r7_mode_1048_restore_without_save() {
+        // 1048l (restore) without prior 1048h (save) should not crash.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[?1048l"); // restore without save — no crash
+        // Just verify it doesn't panic; behavior is implementation-defined.
+        assert_eq!(t.cursor(), (0, 0), "no crash on restore without save");
+    }
+
+    #[test]
+    fn t_r7_mode_1048_saves_charset() {
+        // 1048 should save/restore charset designation (like DECSC).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special Graphics
+        feed(&mut t, b"\x1b[?1048h"); // save
+        feed(&mut t, b"\x1b(B"); // G0 = ASCII
+        feed(&mut t, b"\x1b[?1048l"); // restore
+        assert_eq!(
+            t.g0_charset(),
+            Charset::DecSpecial,
+            "1048 should restore charset"
+        );
     }
 }
