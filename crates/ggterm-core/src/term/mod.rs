@@ -17242,4 +17242,196 @@ mod tests {
         let resp2 = t.take_response();
         assert!(resp2.is_empty(), "response buffer drained");
     }
+
+    // ── Round 12-1: Unicode / wide character audits ────────────────────
+
+    #[test]
+    fn t_r12_wide_char_basic_placement() {
+        // CJK wide char occupies 2 cells: lead + spacer.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '中');
+        assert!(t.grid().cell(0, 0).unwrap().is_wide(), "lead is wide");
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "col 1 is spacer"
+        );
+        assert_eq!(t.cursor().0, 2, "cursor advanced by 2");
+    }
+
+    #[test]
+    fn t_r12_wide_char_at_last_col_wraps() {
+        // Wide char at penultimate column with 1 col left → wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCD"); // cols 0-3, cursor at col 4
+        feed(&mut t, "你".as_bytes()); // needs 2 cols, only 1 left
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你', "wrapped to row 1");
+        assert!(
+            t.grid().cell(1, 1).unwrap().is_wide_spacer(),
+            "spacer at row 1 col 1"
+        );
+    }
+
+    #[test]
+    fn t_r12_wide_char_overwrite_clears_old_spacer() {
+        // Overwriting a wide char's lead clears the old spacer.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // lead col 0, spacer col 1
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"X"); // overwrite with narrow char
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0");
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "old spacer cleared"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            ' ',
+            "spacer content cleared"
+        );
+    }
+
+    #[test]
+    fn t_r12_wide_char_overwrite_with_wide() {
+        // Overwriting a wide char's lead with another wide char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"\r");
+        feed(&mut t, "好".as_bytes()); // overwrite with new wide
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '好');
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "new spacer at col 1"
+        );
+    }
+
+    #[test]
+    fn t_r12_wide_char_overwrite_on_spacer_clears_lead() {
+        // Writing on the spacer cell should clear the lead.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // lead col 0, spacer col 1
+        feed(&mut t, b"\x1b[1;2H"); // cursor at col 1 (spacer)
+        feed(&mut t, b"X"); // overwrite spacer
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X', "X at col 1");
+        assert!(!t.grid().cell(0, 0).unwrap().is_wide(), "old lead cleared");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "lead content cleared");
+    }
+
+    #[test]
+    fn t_r12_combining_attaches_to_wide_lead() {
+        // Combining char after wide char should attach to lead cell.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1, cursor at col 2
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute
+        // Should attach to the wide char lead at col 0
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            cell.combining.contains(&'\u{0301}'),
+            "combining on wide lead"
+        );
+        assert_eq!(t.cursor().0, 2, "cursor not advanced by combining");
+    }
+
+    #[test]
+    fn t_r12_emoji_width_2() {
+        // Emoji should have width 2.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "🎉".as_bytes());
+        assert!(t.grid().cell(0, 0).unwrap().is_wide(), "emoji is wide");
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "emoji spacer"
+        );
+    }
+
+    #[test]
+    fn t_r12_zero_width_dropped_at_col0() {
+        // Zero-width char at col 0 with no preceding char should be dropped.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute at (0,0)
+        // Should be dropped (no preceding char), cursor stays at (0,0)
+        assert_eq!(t.cursor(), (0, 0), "cursor unchanged");
+        assert!(
+            t.grid().cell(0, 0).unwrap().combining.is_empty(),
+            "no combining attached"
+        );
+    }
+
+    #[test]
+    fn t_r12_wide_char_cursor_advance() {
+        // After writing wide char, cursor should be at col+2.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A");
+        feed(&mut t, "你".as_bytes()); // at col 1, advances to col 3
+        feed(&mut t, b"B");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B', "B at col 3");
+        assert_eq!(t.cursor().0, 4, "cursor at col 4");
+    }
+
+    #[test]
+    fn t_r12_wide_char_bg_on_spacer() {
+        // BG color should be set on spacer cell too (no visual gap).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[42m"); // green bg
+        feed(&mut t, "你".as_bytes());
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().bg,
+            Color::Indexed(2),
+            "spacer has bg"
+        );
+    }
+
+    #[test]
+    fn t_r12_wide_chars_fill_row() {
+        // Multiple wide chars should fill row correctly and wrap.
+        let mut t = Terminal::new(6, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, "好".as_bytes()); // cols 2-3
+        feed(&mut t, "世".as_bytes()); // cols 4-5
+        // Next wide char should wrap
+        feed(&mut t, "界".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '世');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '界', "wrapped to row 1");
+    }
+
+    #[test]
+    fn t_r12_wide_char_decawm_off() {
+        // With DECAWM off, wide char at penultimate col should be clipped.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // DECAWM off
+        feed(&mut t, b"ABCD"); // cols 0-3, cursor at 4
+        feed(&mut t, "你".as_bytes()); // only 1 col left, DECAWM off
+        // Should NOT wrap; char should be placed or clipped at col 4
+        // With width 2 and only 1 col, the char is placed at col 4
+        // (put_char will set wide flag but no spacer since col+1 >= len)
+        assert_eq!(t.cursor().1, 0, "no wrap to row 1");
+    }
+
+    #[test]
+    fn t_r12_thai_char_width() {
+        // Thai chars should mostly be width 1.
+        use crate::grid::char_width;
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "ก".as_bytes()); // Thai character KO KAI
+        assert_eq!(char_width('ก'), 1, "Thai is width 1");
+        assert!(!t.grid().cell(0, 0).unwrap().is_wide(), "no wide flag");
+    }
+
+    #[test]
+    fn t_r12_mixed_ascii_wide_sequence() {
+        // Interleaved ASCII and wide chars.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A");
+        feed(&mut t, "你".as_bytes());
+        feed(&mut t, b"B");
+        feed(&mut t, "好".as_bytes());
+        feed(&mut t, b"C");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '你');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '好');
+        assert_eq!(t.grid().cell(6, 0).unwrap().ch, 'C');
+    }
 }
