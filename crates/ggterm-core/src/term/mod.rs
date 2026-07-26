@@ -11227,4 +11227,204 @@ mod tests {
             "ED 2 should clear italic"
         );
     }
+
+    // ── OSC dynamic colors: reset via 110/111/112 ──
+
+    #[test]
+    fn t_osc_110_resets_dynamic_fg() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]10;#ff0000\x07"); // set dynamic fg to red
+        assert!(t.dynamic_fg().is_some());
+        feed(&mut t, b"\x1b]110\x07"); // reset dynamic fg
+        assert!(t.dynamic_fg().is_none(), "OSC 110 should reset dynamic fg");
+    }
+
+    #[test]
+    fn t_osc_111_resets_dynamic_bg() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]11;#00ff00\x07"); // set dynamic bg to green
+        assert!(t.dynamic_bg().is_some());
+        feed(&mut t, b"\x1b]111\x07"); // reset dynamic bg
+        assert!(t.dynamic_bg().is_none(), "OSC 111 should reset dynamic bg");
+    }
+
+    #[test]
+    fn t_osc_112_resets_dynamic_cursor_color() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]12;#0000ff\x07"); // set cursor color to blue
+        assert!(t.dynamic_cursor().is_some());
+        feed(&mut t, b"\x1b]112\x07"); // reset dynamic cursor color
+        assert!(
+            t.dynamic_cursor().is_none(),
+            "OSC 112 should reset dynamic cursor color"
+        );
+    }
+
+    #[test]
+    fn t_osc_color_with_rgb_format() {
+        // OSC 10 with rgb:R/G/B format (xterm spec).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]10;rgb:ff/00/ff\x07"); // magenta
+        assert!(t.dynamic_fg().is_some(), "rgb: format should be parsed");
+    }
+
+    // ── Focus event probes ──
+
+    #[test]
+    fn t_focus_in_report_format() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[?1004h"); // enable focus events
+        assert_eq!(t.focus_in_report(), b"\x1b[I".to_vec());
+    }
+
+    #[test]
+    fn t_focus_out_report_format() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[?1004h"); // enable focus events
+        assert_eq!(t.focus_out_report(), b"\x1b[O".to_vec());
+    }
+
+    #[test]
+    fn t_focus_report_disabled_when_off() {
+        let mut t = Terminal::new(10, 2);
+        // Focus events default off
+        assert!(t.focus_in_report().is_empty());
+        assert!(t.focus_out_report().is_empty());
+    }
+
+    // ── OSC 8 hyperlink range tracking ──
+
+    #[test]
+    fn t_osc8_hyperlink_persists_across_line_wrap() {
+        // Set hyperlink, print chars that wrap to next line — all should have link.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"ABCDEFGH"); // 8 chars, wraps after 4
+        // Check chars on both rows have hyperlink
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_some(),
+            "char on row 0 should have hyperlink"
+        );
+        assert!(
+            t.grid().cell(0, 1).unwrap().hyperlink.is_some(),
+            "char on row 1 should have hyperlink (after wrap)"
+        );
+    }
+
+    #[test]
+    fn t_osc8_clear_then_new_chars_have_no_link() {
+        // Set link, print, clear link, print more — only first chars should have link.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"AB"); // linked
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // clear
+        feed(&mut t, b"\x1b[3G"); // cursor to col 2
+        feed(&mut t, b"CD"); // not linked
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_some(),
+            "A should have link"
+        );
+        assert!(
+            t.grid().cell(2, 0).unwrap().hyperlink.is_none(),
+            "C should NOT have link"
+        );
+    }
+
+    #[test]
+    fn t_osc8_with_params_and_uri() {
+        // OSC 8 with params (id=123) and URI.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]8;id=123;https://example.com\x1b\\");
+        feed(&mut t, b"X");
+        let hl = t.grid().cell(0, 0).unwrap().hyperlink.as_ref().unwrap();
+        assert!(hl.contains("example.com"), "URI should be stored");
+    }
+
+    // ── Tab stop preservation across operations ──
+
+    #[test]
+    fn t_tab_stops_preserved_across_line_wrap() {
+        // Custom tab stop should survive line wrap.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[3G"); // cursor at col 2
+        feed(&mut t, b"\x1bH"); // HTS — set tab stop at col 2
+        feed(&mut t, b"\x1b[1;1H"); // home
+        feed(&mut t, b"\t"); // tab → should stop at col 2 (custom stop)
+        assert_eq!(t.cursor().0, 2, "custom tab stop at col 2 should work");
+    }
+
+    #[test]
+    fn t_hts_at_last_col() {
+        // HTS at last column should set stop there.
+        let mut t = Terminal::new(8, 2);
+        feed(&mut t, b"\x1b[8G"); // cursor at col 7 (last)
+        feed(&mut t, b"\x1bH"); // HTS — set stop at col 7
+        // Tab from col 0 should now stop at col 7
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\t");
+        assert_eq!(
+            t.cursor().0,
+            7,
+            "HTS at last col, tab from 0 should reach it"
+        );
+    }
+
+    // ── SGR attribute composition ──
+
+    #[test]
+    fn t_sgr_bold_plus_256color_plus_underline() {
+        // Bold + 256-color fg + underline should all compose on the same cell.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[1;4;38;5;200mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD), "bold should be set");
+        assert!(
+            cell.flags.contains(CellFlags::UNDERLINE),
+            "underline should be set"
+        );
+        assert_eq!(cell.fg, Color::Indexed(200), "fg should be Indexed(200)");
+    }
+
+    #[test]
+    fn t_sgr_truecolor_bg_plus_bold_plus_strikethrough() {
+        // Complex attribute composition with truecolor bg.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[1;9;48;2;100;200;50mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD));
+        assert!(cell.flags.contains(CellFlags::STRIKETHROUGH));
+        assert_eq!(cell.bg, Color::Rgb(100, 200, 50));
+    }
+
+    #[test]
+    fn t_sgr_0_resets_bold_underline_and_color() {
+        // SGR 0 should fully reset everything.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[1;4;38;5;200;48;2;1;2;3m"); // set lots of attrs
+        feed(&mut t, b"\x1b[0m"); // reset all
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(!cell.flags.contains(CellFlags::BOLD));
+        assert!(!cell.flags.contains(CellFlags::UNDERLINE));
+        assert_eq!(cell.fg, Color::Default);
+        assert_eq!(cell.bg, Color::Default);
+    }
+
+    // ── OSC title with both terminators ──
+
+    #[test]
+    fn t_osc_title_st_terminator() {
+        // OSC 0 with ST terminator (ESC \) instead of BEL.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]0;MyTitle\x1b\\");
+        assert_eq!(t.title(), "MyTitle");
+    }
+
+    #[test]
+    fn t_osc_title_empty_payload() {
+        // OSC 0 with empty title — should not crash.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b]0;\x07");
+        assert_eq!(t.title(), "");
+    }
 }
