@@ -2383,4 +2383,75 @@ mod tests {
         g.scroll_down_viewport(100);
         assert_eq!(g.display_offset, 0, "viewport should clamp at bottom");
     }
+
+    #[test]
+    fn reflow_shrink_wide_char_at_boundary() {
+        // Width=6: "AB你CD" — A(0) B(1) 你(2-3) C(4) D(5)
+        // Shrink to width=3: wide char straddles boundary, should push to next row.
+        // Verify no split wide char pairs after reflow.
+        let mut g = Grid::new(6, 4);
+        g.cell_mut(0, 0).unwrap().ch = 'A';
+        g.cell_mut(1, 0).unwrap().ch = 'B';
+        assert_eq!(g.put_char(2, 0, '\u{4E00}'), 2); // wide char 你
+        g.cell_mut(4, 0).unwrap().ch = 'C';
+        g.cell_mut(5, 0).unwrap().ch = 'D';
+
+        g.reflow_resize(3, 4);
+
+        // Check scrollback rows: wide char pair must be intact.
+        // Expected: row0="AB " row1="你~C" row2="D  " (~ = spacer)
+        let sb_text: Vec<String> = (0..g.scrollback_len())
+            .map(|i| {
+                g.scrollback_row(i)
+                    .map(|r| {
+                        r.cells
+                            .iter()
+                            .map(|c| if c.is_wide_spacer() { '~' } else { c.ch })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect();
+
+        // Find the row containing the wide char lead — its spacer must follow.
+        let mut wide_pair_intact = false;
+        for row_text in &sb_text {
+            // Wide lead should be followed by '~' (spacer).
+            for pair in row_text.as_bytes().windows(2) {
+                if pair[0] != b' ' && pair[0] != b'~' && pair[1] == b'~' {
+                    wide_pair_intact = true;
+                }
+            }
+        }
+        assert!(
+            wide_pair_intact,
+            "wide char pair must stay intact after reflow, scrollback: {:?}",
+            sb_text
+        );
+        // No orphaned spacer at start of any row
+        for row_text in &sb_text {
+            assert!(
+                !row_text.starts_with('~'),
+                "no orphaned wide spacer at row start: {:?}",
+                sb_text
+            );
+        }
+    }
+
+    #[test]
+    fn reflow_grow_merges_wide_chars() {
+        // Width=4: "你好" occupies 2 rows when width=4 (each wide = 2 cols).
+        // Row 0: 你(0-1) 好(2-3)
+        // Grow to width=8: should merge into one row.
+        let mut g = Grid::new(4, 2);
+        assert_eq!(g.put_char(0, 0, '\u{4F60}'), 2); // 你
+        assert_eq!(g.put_char(2, 0, '\u{597D}'), 2); // 好
+        g.set_row_wrap(0, true); // soft-wrapped
+        g.reflow_resize(8, 2);
+        // Both wide chars should be on row 0
+        assert_eq!(g.cell(0, 0).unwrap().ch, '\u{4F60}');
+        assert_eq!(g.cell(2, 0).unwrap().ch, '\u{597D}');
+        assert!(g.cell(1, 0).unwrap().is_wide_spacer());
+        assert!(g.cell(3, 0).unwrap().is_wide_spacer());
+    }
 }
