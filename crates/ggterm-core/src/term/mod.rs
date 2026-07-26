@@ -15013,4 +15013,125 @@ mod tests {
         feed(&mut t, b"\x1b]0;Second\x07");
         assert_eq!(t.title(), "Second");
     }
+
+    // ── Round 6-3: Tab stops edge cases ────────────────────────────────
+
+    #[test]
+    fn t_r6_tab_default_stops_every_8() {
+        // Default tab stops should be at cols 8, 16, 24, etc.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\t"); // from col 0 → col 8
+        assert_eq!(t.cursor().0, 8);
+        feed(&mut t, b"\t"); // col 8 → col 16
+        assert_eq!(t.cursor().0, 16);
+    }
+
+    #[test]
+    fn t_r6_tab_from_non_tab_position() {
+        // Tab from col 3 should go to col 8 (next default stop).
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"ABC"); // cursor at col 3
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 8, "tab from col 3 → col 8");
+    }
+
+    #[test]
+    fn t_r6_tab_at_last_col_stays() {
+        // Tab at or past the last tab stop should stay at last col.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[10G"); // go to col 10 (0-based: 9)
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 9, "tab at last col should clamp");
+    }
+
+    #[test]
+    fn t_r6_hts_sets_custom_stop() {
+        // HTS (ESC H) sets a tab stop at the current column.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"ABCDE"); // cursor at col 5
+        feed(&mut t, b"\x1bH"); // HTS — set tab stop at col 5
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\t"); // tab should go to col 5 (custom stop)
+        assert_eq!(t.cursor().0, 5, "tab should stop at custom HTS stop");
+    }
+
+    #[test]
+    fn t_r6_tbc_clears_current_stop() {
+        // TBC (CSI g or CSI 0g) clears tab stop at current column.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[9G"); // go to col 9 (0-based: 8)
+        feed(&mut t, b"\x1b[g"); // clear tab stop at current col (8)
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\t"); // tab should skip col 8, go to col 16
+        assert_eq!(t.cursor().0, 16, "cleared stop at 8 should skip to 16");
+    }
+
+    #[test]
+    fn t_r6_tbc_3_clears_all_stops() {
+        // CSI 3g clears all tab stops.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"\t"); // no stops → should go to last col
+        assert_eq!(t.cursor().0, 39, "no tab stops → tab goes to last col");
+    }
+
+    #[test]
+    fn t_r6_cht_multiple_tabs() {
+        // CHT (CSI Ps I) advances Ps tab stops.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[2I"); // advance 2 tab stops
+        assert_eq!(t.cursor().0, 16, "CHT 2 from col 0 → col 16");
+    }
+
+    #[test]
+    fn t_r6_cht_default_param_one() {
+        // CSI I with no param should advance 1 tab stop.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[I");
+        assert_eq!(t.cursor().0, 8, "CHT default = 1 stop → col 8");
+    }
+
+    #[test]
+    fn t_r6_cbt_backward_tab() {
+        // CBT (CSI Ps Z) moves backward Ps tab stops.
+        // Default stops at cols 8, 16, 24 (0-based).
+        // From col 17 (0-based: 16), CBT 1 should go to col 9 (0-based: 8).
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[17G"); // go to col 17 (0-based: 16)
+        feed(&mut t, b"\x1b[Z"); // backward 1 stop → col 8 (0-based)
+        assert_eq!(t.cursor().0, 8, "CBT 1 from col 16 → col 8");
+    }
+
+    #[test]
+    fn t_r6_cbt_multiple_backward() {
+        // From col 25 (0-based: 24), CBT 2 → 16 → 8.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[25G"); // col 25 (0-based: 24)
+        feed(&mut t, b"\x1b[2Z"); // backward 2 stops → 8
+        assert_eq!(t.cursor().0, 8, "CBT 2 from col 24 → col 8");
+    }
+
+    #[test]
+    fn t_r6_cbt_at_col0_stays() {
+        // CBT at col 0 should stay at col 0.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[3Z"); // try to go back 3 from col 0
+        assert_eq!(t.cursor().0, 0, "CBT at col 0 stays");
+    }
+
+    #[test]
+    fn t_r6_hts_then_tab_then_tbc_roundtrip() {
+        // HTS set → tab to it → TBC clear → tab skips.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[5G"); // col 5
+        feed(&mut t, b"\x1bH"); // set stop at col 4 (0-based)
+        feed(&mut t, b"\r"); // col 0
+        feed(&mut t, b"\t"); // should stop at col 4
+        assert_eq!(t.cursor().0, 4);
+        // Now clear stop at col 4
+        feed(&mut t, b"\x1b[g"); // TBC
+        feed(&mut t, b"\r"); // col 0
+        feed(&mut t, b"\t"); // should skip col 4, go to col 8
+        assert_eq!(t.cursor().0, 8, "after TBC, tab skips cleared stop");
+    }
 }
