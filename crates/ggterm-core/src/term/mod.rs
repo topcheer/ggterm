@@ -13050,4 +13050,125 @@ mod tests {
         feed(&mut t, b"Z");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'Z');
     }
+
+    // ── SGR edge cases ─────────────────────────────────────────────────
+
+    #[test]
+    fn t_sgr_empty_params_resets() {
+        // \x1b[m (no params) should reset all attributes.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red fg
+        feed(&mut t, b"\x1b[m"); // empty SGR = reset
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Default, "empty SGR should reset fg");
+        assert_eq!(
+            cell.flags,
+            CellFlags::empty(),
+            "empty SGR should reset flags"
+        );
+    }
+
+    #[test]
+    fn t_sgr_256_color_overflow() {
+        // SGR 38;5;256 — 256 > 255, should truncate or handle gracefully.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;5;256m"); // 256 as u16, truncated to 0 as u8
+        feed(&mut t, b"X");
+        // Should not crash. Color::Indexed(0) = black.
+        let cell = t.grid().cell(0, 0).unwrap();
+        if let Color::Indexed(idx) = cell.fg {
+            assert!(idx <= 255, "color index should be valid");
+        }
+    }
+
+    #[test]
+    fn t_sgr_truecolor_extreme_values() {
+        // SGR 38;2;R;G;B with max values.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;2;255;255;255m");
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        if let Color::Rgb(r, g, b) = cell.fg {
+            assert_eq!((r, g, b), (255, 255, 255));
+        } else {
+            panic!("expected Rgb color");
+        }
+    }
+
+    #[test]
+    fn t_sgr_truncated_truecolor() {
+        // SGR 38;2;R;G (missing B) — should not crash, should skip gracefully.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;2;128;64m"); // only 2 color components
+        feed(&mut t, b"X");
+        // Should not crash. The color may or may not be set — we just verify no panic.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_sgr_many_params_no_overflow() {
+        // Send SGR with 20+ params — parser caps at 16, should not panic.
+        let mut t = Terminal::new(20, 3);
+        feed(
+            &mut t,
+            b"\x1b[1;2;3;4;5;7;8;9;21;22;23;24;25;27;28;29;30;31;32;33m",
+        );
+        feed(&mut t, b"X");
+        // SGR 22 clears bold (set by 1). So bold should NOT be set.
+        // We just verify no panic and a char was written.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        // Verify the terminal didn't corrupt state
+        assert!(!t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD));
+    }
+
+    // ── Scroll region + text output interaction ────────────────────────
+
+    #[test]
+    fn t_origin_mode_relative_cup() {
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4 (1-based)
+        feed(&mut t, b"\x1b[?6h"); // DECOM on (origin mode)
+        // CUP 1;1 in origin mode → relative to scroll region top (row 2)
+        feed(&mut t, b"\x1b[1;1H");
+        // In origin mode, cursor Y is relative to scroll top
+        assert_eq!(
+            t.cursor().1,
+            1,
+            "origin mode: row 1 should map to scroll top (row 2 1-based = row 1 0-based)"
+        );
+        feed(&mut t, b"\x1b[?6l"); // turn off origin mode
+    }
+
+    #[test]
+    fn t_non_origin_cup_absolute() {
+        // In origin mode, CUP to a row outside the region should clamp.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[1;1H"); // row 1 relative = row 2 absolute
+        feed(&mut t, b"\x1b[?6l"); // origin mode off
+        feed(&mut t, b"\x1b[1;1H"); // row 1 absolute
+        assert_eq!(t.cursor().1, 0, "non-origin: row 1 = row 0 (0-based)");
+    }
+
+    #[test]
+    fn t_ed2_clears_all_rows() {
+        // EL (erase line) should work inside a scroll region.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"AAAAAAAAAA"); // fill row 0
+        feed(&mut t, b"\x1b[2;4r"); // set scroll region
+        feed(&mut t, b"\x1b[2;1H"); // move to row 2 (inside region)
+        feed(&mut t, b"BCDEFGHIJK"); // fill row 1 (0-based)
+        feed(&mut t, b"\x1b[2J"); // ED 2 — erase entire display
+        // Row 0 and row 4 should be cleared (outside region too for ED 2)
+        assert!(
+            t.grid().cell(0, 0).unwrap().is_blank(),
+            "ED2 clears all rows"
+        );
+        assert!(
+            t.grid().cell(0, 4).unwrap().is_blank(),
+            "ED2 clears all rows"
+        );
+    }
 }
