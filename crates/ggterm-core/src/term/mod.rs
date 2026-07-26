@@ -1233,8 +1233,20 @@ impl Terminal {
         if w == 0 {
             let cx = self.cursor.x;
             let cy = self.cursor.y;
+            // If cursor is right after a wide char, cx-1 is the spacer.
+            // Target the lead cell at cx-2 instead.
+            let target_col = if cx >= 2
+                && self
+                    .grid
+                    .cell(cx.saturating_sub(1), cy)
+                    .is_some_and(|c| c.is_wide_spacer())
+            {
+                cx.saturating_sub(2)
+            } else {
+                cx.saturating_sub(1)
+            };
             if cx > 0
-                && let Some(c) = self.grid.cell_mut(cx.saturating_sub(1), cy)
+                && let Some(c) = self.grid.cell_mut(target_col, cy)
                 && !c.flags.contains(CellFlags::WIDE_SPACER)
                 && !c.is_blank()
             {
@@ -10039,5 +10051,75 @@ mod tests {
             let spacer = t.grid().cell(lead_col + 1, 0).unwrap();
             assert!(spacer.flags.contains(CellFlags::WIDE_SPACER));
         }
+    }
+
+    #[test]
+    fn t_combining_char_cap_at_8() {
+        // Feed 10 combining marks — only 8 should be stored.
+        let mut t = Terminal::new(80, 1);
+        let mut s = String::from("e");
+        for _ in 0..10 {
+            s.push('\u{0301}'); // combining acute
+        }
+        feed(&mut t, s.as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.combining.len(), 8, "combining marks should be capped at 8");
+    }
+
+    #[test]
+    fn t_osc8_hyperlink_stored_on_cell() {
+        // OSC 8 sets hyperlink on cells written while active.
+        let mut t = Terminal::new(20, 2);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"link");
+        feed(&mut t, b"\x1b]8;;\x1b\\");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.hyperlink.as_deref(), Some("https://example.com"));
+        // After closing OSC 8, next char should NOT have hyperlink
+        feed(&mut t, b"\x1b[5G"); // cursor to col 4
+        feed(&mut t, b"Z");
+        let z = t.grid().cell(4, 0).unwrap();
+        assert!(z.hyperlink.is_none(), "cell after OSC 8 close should have no hyperlink");
+    }
+
+    #[test]
+    fn t_synchronized_output_toggle() {
+        let mut t = Terminal::new(10, 3);
+        assert!(!t.is_synchronized());
+        feed(&mut t, b"\x1b[?2026h");
+        assert!(t.is_synchronized(), "DECSET 2026 should enable sync mode");
+        feed(&mut t, b"\x1b[?2026l");
+        assert!(!t.is_synchronized(), "DECRST 2026 should disable sync mode");
+    }
+
+    #[test]
+    fn t_bracketed_paste_toggle() {
+        let mut t = Terminal::new(10, 3);
+        assert!(!t.bracketed_paste());
+        feed(&mut t, b"\x1b[?2004h");
+        assert!(t.bracketed_paste(), "DECSET 2004 should enable bracketed paste");
+        feed(&mut t, b"\x1b[?2004l");
+        assert!(!t.bracketed_paste(), "DECRST 2004 should disable bracketed paste");
+    }
+
+    #[test]
+    fn t_decstr_resets_bracketed_paste() {
+        // DECSTR (soft reset) should disable bracketed paste.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2004h");
+        assert!(t.bracketed_paste());
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.bracketed_paste(), "DECSTR should reset bracketed paste");
+    }
+
+    #[test]
+    fn t_combining_after_wide_char() {
+        // Combining mark after a wide char should attach to the wide char.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你\u{0301}".as_bytes()); // 你 + combining acute
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, '你');
+        assert_eq!(cell.combining, vec!['\u{0301}'], "combining should attach to wide char");
+        assert_eq!(t.cursor().0, 2, "cursor should be at col 2 (after wide char + spacer)");
     }
 }
