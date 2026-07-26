@@ -10122,4 +10122,134 @@ mod tests {
         assert_eq!(cell.combining, vec!['\u{0301}'], "combining should attach to wide char");
         assert_eq!(t.cursor().0, 2, "cursor should be at col 2 (after wide char + spacer)");
     }
+
+    #[test]
+    fn t_tab_from_col7_hits_col8() {
+        // Tab from col 7 should stop at col 8 (next stop), not skip to 16.
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[8G"); // cursor at col 7
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 8, "tab from col 7 should stop at col 8");
+    }
+
+    #[test]
+    fn t_tab_from_col8_hits_col16() {
+        // Tab from col 8 should stop at col 16.
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[9G"); // cursor at col 8
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 16, "tab from col 8 should stop at col 16");
+    }
+
+    #[test]
+    fn t_tab_at_last_col_clamps() {
+        // Tab at col 79 (last col of 80-wide terminal) should clamp, not panic.
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[80G"); // cursor at col 79
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 79, "tab at last col should clamp to 79");
+    }
+
+    #[test]
+    fn t_decsc_restores_reverse_video() {
+        // DECSC should save reverse video flag.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[7m");  // reverse video
+        feed(&mut t, b"\x1b7");     // save
+        feed(&mut t, b"\x1b[0m");   // reset
+        feed(&mut t, b"\x1b8");     // restore
+        assert!(t.flags.contains(CellFlags::REVERSE), "reverse video should be restored");
+    }
+
+    #[test]
+    fn t_decsc_restores_charset() {
+        // DECSC should save G0 charset designation.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b(0");   // DEC Special Graphics
+        feed(&mut t, b"\x1b7");     // save
+        feed(&mut t, b"\x1b(B");    // back to ASCII
+        feed(&mut t, b"\x1b8");     // restore
+        feed(&mut t, b"q");         // if DEC Special restored, q should be ─
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}',
+            "DECSC should restore charset — q should be ─");
+    }
+
+    #[test]
+    fn t_origin_mode_cup_relative() {
+        // Origin mode: CUP row 1 should be scroll region top, not absolute row 0.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;6r");   // region rows 2-5 (0-indexed)
+        feed(&mut t, b"\x1b[?6h");     // enable origin mode
+        feed(&mut t, b"\x1b[1;1H");    // CUP 1,1
+        assert_eq!(t.cursor().1, 2, "origin mode: row 1 → region top (row 2)");
+    }
+
+    #[test]
+    fn t_origin_mode_off_cup_absolute() {
+        // Without origin mode, CUP 1,1 goes to absolute row 0 even with scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;6r");   // region rows 2-5
+        feed(&mut t, b"\x1b[?6l");     // disable origin mode (explicit)
+        feed(&mut t, b"\x1b[1;1H");    // CUP 1,1
+        assert_eq!(t.cursor().1, 0, "non-origin mode: row 1 → absolute row 0");
+    }
+
+    #[test]
+    fn t_autowrap_off_overwrite_last_col() {
+        // With DECAWM off, writing past the last column overwrites it.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b[?7l"); // autowrap off
+        feed(&mut t, b"ABCDE");
+        // E should overwrite D at col 3
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E');
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some(' '),
+            "no wrap to next line with autowrap off");
+    }
+
+    #[test]
+    fn t_autowrap_on_wraps_correctly() {
+        // With DECAWM on (default), writing past last col wraps.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b[?7h"); // autowrap on (explicit)
+        feed(&mut t, b"ABCDE");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E');
+    }
+
+    #[test]
+    fn t_wrap_then_cr_returns_to_col0() {
+        // After autowrap, CR should return to col 0 of current row.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCDE"); // wraps: D at row 0 col 3, E at row 1 col 0
+        feed(&mut t, b"\r");     // CR
+        assert_eq!(t.cursor().0, 0, "CR after wrap should go to col 0");
+        assert_eq!(t.cursor().1, 1, "CR should stay on row 1");
+    }
+
+    #[test]
+    fn t_ich_at_last_col() {
+        // ICH at the last column — should insert blank, pushing content off.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD"); // fill row 0
+        feed(&mut t, b"\x1b[4G"); // cursor at col 3
+        feed(&mut t, b"\x1b[@"); // ICH 1
+        // A, B, C should survive. D pushed off, col 3 blank.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert!(t.grid().cell(3, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_dch_more_than_content() {
+        // DCH with count > remaining content fills with blanks.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"AB");   // cols 0-1, cols 2-3 blank
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\x1b[4P"); // DCH 4 — delete all 4
+        // All should be blank
+        for col in 0..4 {
+            assert!(t.grid().cell(col, 0).unwrap().is_blank(),
+                "col {} should be blank after DCH 4", col);
+        }
+    }
 }
