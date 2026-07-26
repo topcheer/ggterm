@@ -1425,6 +1425,85 @@ impl Terminal {
         self.cursor.pending_wrap = false;
     }
 
+    /// Clean up orphaned wide char pairs after a rectangle operation (DECERA,
+    /// DECSERA, DECFRA). When a rectangle partially overlaps a wide char pair,
+    /// the lead or spacer may be erased while the other survives, creating an
+    /// inconsistent state. This method checks the left and right boundaries
+    /// and clears any orphaned half of a wide char pair.
+    #[allow(clippy::collapsible_if)]
+    fn cleanup_wide_at_rect_boundary(&mut self, left: usize, right: usize, row: usize) {
+        let w = self.grid.width();
+        // Left boundary: if the cell just left of the rect is a WIDE_CHAR lead
+        // whose spacer (at left) was erased, clear the lead too.
+        if left > 0 {
+            if let Some(cell) = self.grid.cell(left - 1, row) {
+                if cell.flags.contains(CellFlags::WIDE_CHAR)
+                    && !cell.flags.contains(CellFlags::WIDE_SPACER)
+                {
+                    // Check if the spacer at `left` is no longer a spacer
+                    if self
+                        .grid
+                        .cell(left, row)
+                        .is_none_or(|c| !c.is_wide_spacer())
+                    {
+                        if let Some(c) = self.grid.cell_mut(left - 1, row) {
+                            *c = Cell::blank();
+                        }
+                    }
+                }
+            }
+        }
+        // Right boundary: if the cell at `right` was a wide lead whose spacer
+        // (at right+1) survived outside the rect, clear the spacer.
+        if let Some(cell) = self.grid.cell(right, row) {
+            if cell.flags.contains(CellFlags::WIDE_CHAR)
+                && !cell.flags.contains(CellFlags::WIDE_SPACER)
+                && right + 1 < w
+            {
+                if self
+                    .grid
+                    .cell(right + 1, row)
+                    .is_some_and(|c| c.is_wide_spacer())
+                {
+                    if let Some(c) = self.grid.cell_mut(right + 1, row) {
+                        *c = Cell::blank();
+                    }
+                }
+            }
+        }
+        // Also: if right+1 is a spacer whose lead at `right` was erased
+        if right + 1 < w {
+            if let Some(cell) = self.grid.cell(right + 1, row) {
+                if cell.is_wide_spacer()
+                    && self
+                        .grid
+                        .cell(right, row)
+                        .is_none_or(|c| !c.flags.contains(CellFlags::WIDE_CHAR))
+                {
+                    if let Some(c) = self.grid.cell_mut(right + 1, row) {
+                        *c = Cell::blank();
+                    }
+                }
+            }
+        }
+        // Left boundary: if `left` is a spacer whose lead at left-1 survived
+        if left > 0 && left < w {
+            if let Some(cell) = self.grid.cell(left, row) {
+                if cell.is_wide_spacer()
+                    && self
+                        .grid
+                        .cell(left - 1, row)
+                        .is_some_and(|c| c.flags.contains(CellFlags::WIDE_CHAR))
+                {
+                    // Lead survived but spacer was blanked — this is fine,
+                    // the lead is now inconsistent. Clear it.
+                    // Actually this shouldn't happen since we blank the spacer
+                    // in the loop. But check anyway.
+                }
+            }
+        }
+    }
+
     fn param(params: &[u16], idx: usize, default: u16) -> u16 {
         params.get(idx).copied().unwrap_or(default).max(1)
     }
@@ -2671,6 +2750,8 @@ impl Perform for Terminal {
                                 };
                             }
                         }
+                        // Clean up wide char pairs at the rectangle boundary
+                        self.cleanup_wide_at_rect_boundary(left, right, row);
                     }
                     self.grid_mut().mark_all_dirty();
                     self.cursor.pending_wrap = false;
@@ -2698,6 +2779,8 @@ impl Perform for Terminal {
                                 *cell = Cell::blank();
                             }
                         }
+                        // Clean up orphaned wide char pairs at boundary
+                        self.cleanup_wide_at_rect_boundary(left, right, row);
                     }
                     self.grid_mut().mark_all_dirty();
                     self.cursor.pending_wrap = false;
@@ -2726,6 +2809,8 @@ impl Perform for Terminal {
                                 *cell = Cell::blank();
                             }
                         }
+                        // Clean up orphaned wide char pairs at boundary
+                        self.cleanup_wide_at_rect_boundary(left, right, row);
                     }
                     self.grid_mut().mark_all_dirty();
                     self.cursor.pending_wrap = false;
@@ -12741,6 +12826,71 @@ mod tests {
             t.grid().cell(0, 4).unwrap().ch,
             'E',
             "row 4 outside region must survive"
+        );
+    }
+
+    // ── DECFRA/DECERA with wide char orphan ────────────────────────────
+
+    #[test]
+    fn t_decfra_wide_orphan_check() {
+        // DECFRA filling over a wide char lead should not leave an orphaned
+        // WIDE_SPACER cell behind.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{4E00}".as_bytes()); // wide char at cols 0-1
+        assert!(t.grid().cell(1, 0).unwrap().is_wide_spacer());
+
+        // DECFRA: fill row 1, cols 1-3 (1-based) = row 0, cols 0-2 (0-based)
+        // This covers the wide char lead at col 0 and spacer at col 1
+        feed(&mut t, b"\x1b[1;1;1;3$x");
+        // The spacer at col 1 should be cleared (not left orphaned)
+        let cell1 = t.grid().cell(1, 0).unwrap();
+        assert!(
+            !cell1.is_wide_spacer(),
+            "spacer should not be orphaned after DECFRA"
+        );
+    }
+
+    #[test]
+    fn t_decera_wide_orphan_check() {
+        // DECERA erasing over a wide char lead should not leave orphaned spacer.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "AB\u{4E00}CD".as_bytes()); // A=0 B=1 wide_lead=2 wide_spacer=3 C=4 D=5
+        // DECERA: top=0 left=1 bottom=0 right=2 (0-based) — erases B and wide lead
+        feed(&mut t, b"\x1b[1;2;1;3$z");
+        // The wide_spacer at col 3 should be cleared too (no orphan)
+        let cell3 = t.grid().cell(3, 0).unwrap();
+        assert!(
+            !cell3.is_wide_spacer(),
+            "wide spacer should be cleared, not orphaned after DECERA over lead"
+        );
+    }
+
+    // ── LF at scroll region edge ───────────────────────────────────────
+
+    #[test]
+    fn t_lf_at_region_bottom_scroll_v2() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r"); // scroll region rows 1-3 (1-based) = 0-2 (0-based)
+        feed(&mut t, b"\x1b[3;1H"); // move to row 3 (1-based) = row 2 (0-based) = bottom of region
+        feed(&mut t, b"\n"); // LF — should scroll, not move to row 3
+        assert_eq!(
+            t.cursor().1,
+            2,
+            "LF at region bottom should stay at bottom (scroll)"
+        );
+    }
+
+    #[test]
+    fn t_lf_below_region_advances_v2() {
+        // LF below the scroll region should just advance the cursor.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r"); // scroll region rows 1-3 (0-based 0-2)
+        feed(&mut t, b"\x1b[4;1H"); // move to row 4 (below region)
+        feed(&mut t, b"\n"); // LF — should advance to row 5 (0-based 4)
+        assert_eq!(
+            t.cursor().1,
+            4,
+            "LF below scroll region should advance cursor"
         );
     }
 }
