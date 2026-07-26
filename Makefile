@@ -152,9 +152,13 @@ loc:
 	@echo "=== Dart ===" && find mobile/lib -name "*.dart" | xargs wc -l 2>/dev/null | tail -1
 	@echo "=== Shell scripts ===" && find shell -name "*.sh" -o -name "*.zsh" -o -name "*.fish" | xargs wc -l 2>/dev/null | tail -1
 
-# Install git pre-push hook (CI-equivalent checks before push)
+# Install git hooks: pre-commit (fmt) + pre-push (CI-equivalent checks)
 install-hooks:
-	@echo "Installing pre-push hook..."
+	@echo "Installing pre-commit hook (cargo fmt)..."
+	@cp scripts/pre-commit.sh .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "✓ pre-commit hook installed (skip with: git commit --no-verify)"
+	@echo "Installing pre-push hook (CI checks)..."
 	@cp scripts/pre-push.sh .git/hooks/pre-push
 	@chmod +x .git/hooks/pre-push
 	@echo "✓ pre-push hook installed (skip with: git push --no-verify)"
