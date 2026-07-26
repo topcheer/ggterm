@@ -10807,4 +10807,220 @@ mod tests {
             "hyperlink URI should be capped at 2048 chars"
         );
     }
+
+    // ── DECSTBM + cursor interaction ──
+
+    #[test]
+    fn t_su_in_scroll_region() {
+        // SU (CSI S) should scroll within the scroll region only.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 1-4 (0-indexed)
+        feed(&mut t, b"\x1b[2;1HA"); // row 1
+        feed(&mut t, b"\x1b[3;1HB"); // row 2
+        feed(&mut t, b"\x1b[4;1HC"); // row 3
+        feed(&mut t, b"\x1b[6;1HOUT"); // row 5 (index 5, below region)
+        feed(&mut t, b"\x1b[1S"); // SU 1
+        // OUT at row 5 should survive (it's below the region)
+        assert_eq!(
+            t.grid().cell(0, 5).map(|c| c.ch),
+            Some('O'),
+            "SU should not affect rows below scroll region"
+        );
+    }
+
+    #[test]
+    fn t_sd_in_scroll_region() {
+        // SD (CSI T) should scroll within the scroll region only.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 1-4
+        feed(&mut t, b"\x1b[1;1HTOP"); // row 0 (above region)
+        feed(&mut t, b"\x1b[2;1HA");
+        feed(&mut t, b"\x1b[3;1HB");
+        feed(&mut t, b"\x1b[4;1HC");
+        feed(&mut t, b"\x1b[1T"); // SD 1
+        // TOP at row 0 should survive
+        assert_eq!(
+            t.grid().cell(0, 0).map(|c| c.ch),
+            Some('T'),
+            "SD should not affect rows above scroll region"
+        );
+    }
+
+    #[test]
+    fn t_decstbm_single_row_region_is_valid() {
+        // Region of 2 rows (top=1, bottom=2) — minimum valid region.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[2;3r"); // region rows 1-2
+        feed(&mut t, b"\x1b[2;1HA");
+        feed(&mut t, b"\x1b[3;1HB");
+        feed(&mut t, b"\x1b[3;1H");
+        feed(&mut t, b"\n"); // LF at region bottom → scroll
+        // A should scroll off, B should move up
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some('B'),
+            "B should move up after scroll in 2-row region"
+        );
+    }
+
+    #[test]
+    fn t_decstbm_top_equals_bottom_no_scroll() {
+        // CSI r with top == bottom → invalid, should not set region.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[2;2r"); // top == bottom → invalid
+        // Cursor should still home per spec
+        assert_eq!(t.cursor(), (0, 0));
+        // Region should still be full screen (LF should scroll normally)
+        feed(&mut t, b"\x1b[4;1HX"); // last row
+        feed(&mut t, b"\n"); // LF at bottom → scroll
+        assert_eq!(
+            t.cursor().1,
+            3,
+            "LF should scroll full screen when region invalid"
+        );
+    }
+
+    // ── Tab stop edge cases ──
+
+    #[test]
+    fn t_tab_from_col15_hits_col16() {
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[16G"); // cursor at col 15
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 16);
+    }
+
+    #[test]
+    fn t_tab_does_not_wrap_to_next_line() {
+        // Tab at last column should NOT wrap to next line.
+        let mut t = Terminal::new(8, 3);
+        feed(&mut t, b"\x1b[8G"); // cursor at col 7 (last)
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 7, "tab at last col should clamp");
+        assert_eq!(t.cursor().1, 0, "tab should not wrap to next line");
+    }
+
+    #[test]
+    fn t_tbc_clears_current_tab_stop() {
+        // TBC param 0 clears the current column's tab stop.
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[9G"); // cursor at col 8
+        feed(&mut t, b"\x1b[0g"); // TBC 0: clear stop at col 8
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\t"); // tab should skip col 8 and go to 16
+        assert_eq!(t.cursor().0, 16, "tab should skip cleared stop at col 8");
+    }
+
+    #[test]
+    fn t_tbc_3_clears_all_tab_stops() {
+        // TBC param 3 clears all tab stops.
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[3g"); // clear all tab stops
+        feed(&mut t, b"\t"); // tab with no stops → should clamp at last col
+        assert_eq!(
+            t.cursor().0,
+            79,
+            "tab with no stops should clamp to last col"
+        );
+    }
+
+    #[test]
+    fn t_decstr_resets_tab_stops() {
+        // DECSTR (soft reset) should restore default 8-wide tab stops.
+        let mut t = Terminal::new(80, 2);
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
+        feed(&mut t, b"\x1b[1G"); // col 0
+        feed(&mut t, b"\t"); // tab should go to col 8 (default restored)
+        assert_eq!(t.cursor().0, 8, "DECSTR should restore default tab stops");
+    }
+
+    // ── DEC mode toggles ──
+
+    #[test]
+    fn t_decset_25_cursor_visible_toggle() {
+        // DECSET 25 / DECRST 25 should toggle cursor visibility flag.
+        let mut t = Terminal::new(10, 2);
+        assert!(t.cursor_visible()); // default visible
+        feed(&mut t, b"\x1b[?25l"); // hide cursor
+        assert!(!t.cursor_visible(), "DECRST 25 should hide cursor");
+        feed(&mut t, b"\x1b[?25h"); // show cursor
+        assert!(t.cursor_visible(), "DECSET 25 should show cursor");
+    }
+
+    #[test]
+    fn t_decset_7_autowrap_default_on() {
+        // DECAWM should be on by default.
+        let mut t = Terminal::new(4, 2);
+        assert!(t.modes.auto_wrap, "autowrap should be on by default");
+    }
+
+    #[test]
+    fn t_decset_7_off_then_on() {
+        // Toggle autowrap off then on.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"\x1b[?7l"); // off
+        assert!(!t.modes.auto_wrap);
+        feed(&mut t, b"\x1b[?7h"); // on
+        assert!(t.modes.auto_wrap);
+    }
+
+    #[test]
+    fn t_decset_1049_clears_alt_on_enter() {
+        // 1049 should enter a clean alt screen.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"PRIMARY"); // write to primary
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        // Alt screen should be blank
+        assert!(
+            t.grid().cell(0, 0).unwrap().is_blank(),
+            "alt screen should be clean on enter"
+        );
+        feed(&mut t, b"ALT");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Primary should be restored
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'P',
+            "primary screen should be restored"
+        );
+    }
+
+    #[test]
+    fn t_decset_1047_clears_alt_on_exit() {
+        // 1047 should clear the alt screen on exit (vs 1049 which restores primary).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?1047h"); // enter alt
+        feed(&mut t, b"ALTDATA");
+        feed(&mut t, b"\x1b[?1047l"); // exit alt
+        // Primary should be restored
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P');
+    }
+
+    #[test]
+    fn t_decstr_resets_origin_mode() {
+        // DECSTR should reset origin mode to default (off).
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.modes.origin, "DECSTR should reset origin mode");
+    }
+
+    #[test]
+    fn t_decstr_resets_scroll_region() {
+        // DECSTR should reset scroll region to full screen.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // set region
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        // Now cursor at bottom of full screen should scroll
+        feed(&mut t, b"\x1b[6;1H"); // row 5 (last row)
+        feed(&mut t, b"\n");
+        assert_eq!(
+            t.cursor().1,
+            5,
+            "DECSTR should reset scroll region to full screen"
+        );
+    }
 }
