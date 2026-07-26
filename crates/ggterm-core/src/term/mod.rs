@@ -15650,4 +15650,90 @@ mod tests {
         assert_eq!(t.grid().cell(2, 0).unwrap().ch, '好');
         assert!(t.grid().cell(3, 0).unwrap().is_wide_spacer());
     }
+
+    // ── Round 8-2: Tab stop audit ──────────────────────────────────────
+
+    #[test]
+    fn t_r8_tab_from_col0_stops_at_col8() {
+        let mut t = Terminal::new(80, 3);
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 8);
+    }
+
+    #[test]
+    fn t_r8_tab_already_at_stop_advances() {
+        // If cursor is already AT a tab stop (col 8), tab should advance
+        // to the NEXT stop (col 16), not stay at col 8.
+        let mut t = Terminal::new(80, 3);
+        feed(&mut t, b"\x1b[9G"); // go to col 9 (0-based: 8)
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 16, "tab from col 8 advances to 16");
+    }
+
+    #[test]
+    fn t_r8_tab_from_last_col_clamps() {
+        // Tab from last column should stay at last column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[10G"); // col 10 (0-based: 9)
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 9, "tab at last col stays");
+    }
+
+    #[test]
+    fn t_r8_tab_stops_survive_width_grow() {
+        // Custom tab stops should survive when growing wider.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[6G"); // col 6 (0-based: 5)
+        feed(&mut t, b"\x1bH"); // set custom stop at col 5
+        t.resize(60, 3); // grow
+        feed(&mut t, b"\r"); // col 0
+        feed(&mut t, b"\t"); // should stop at col 5 (custom)
+        assert_eq!(t.cursor().0, 5, "custom tab stop preserved after grow");
+    }
+
+    #[test]
+    fn t_r8_tab_stops_survive_width_shrink() {
+        // Custom tab stops within the new width survive shrinking.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[6G"); // col 6 (0-based: 5)
+        feed(&mut t, b"\x1bH"); // set custom stop at col 5
+        t.resize(20, 3); // shrink
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 5, "custom tab stop preserved after shrink");
+    }
+
+    #[test]
+    fn t_r8_tab_stops_extended_on_grow() {
+        // Growing wider should add default stops at new 8-multiples.
+        let mut t = Terminal::new(16, 3);
+        t.resize(32, 3); // grow to 32
+        feed(&mut t, b"\x1b[17G"); // col 17 (0-based: 16)
+        feed(&mut t, b"\t"); // should stop at col 24 (0-based)
+        assert_eq!(t.cursor().0, 24, "new default stop at col 24 after grow");
+    }
+
+    #[test]
+    fn t_r8_hts_at_col0() {
+        // HTS at col 0 should set a stop at col 0.
+        // (Though col 0 is rarely useful as a stop.)
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1G"); // col 1 (0-based: 0)
+        feed(&mut t, b"\x1bH"); // HTS at col 0
+        // Tab from col 1 should skip to col 8 (col 0 is behind us)
+        feed(&mut t, b"\x1b[2G"); // col 2 (0-based: 1)
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 8, "tab from col 1 → col 8");
+    }
+
+    #[test]
+    fn t_r8_decset_resets_tab_stops() {
+        // DECSTR (CSI ! p) should reset tab stops to defaults.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[6G\x1bH"); // set custom stop at col 5
+        feed(&mut t, b"\x1b[!p"); // full reset
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\t"); // should go to default col 8, not custom col 5
+        assert_eq!(t.cursor().0, 8, "tab stops reset to defaults after DECSTR");
+    }
 }
