@@ -128,7 +128,7 @@ impl SessionManager {
         let cols = cols.clamp(1, 1000);
         let rows = rows.clamp(1, 500);
         if let Some(s) = self.sessions.get_mut(&id) {
-            s.handle.terminal.grid_mut().resize(cols, rows);
+            s.handle.terminal.resize(cols, rows);
         }
     }
 
@@ -213,6 +213,48 @@ mod tests {
         let data = mgr.get_screen_data(id);
         assert_eq!(data.cols, 120);
         assert_eq!(data.rows, 40);
+    }
+
+    #[test]
+    fn t_resize_clamps_cursor() {
+        // Bug: FFI resize called grid.resize() directly, bypassing
+        // Terminal::resize() which clamps cursor position.
+        let mut mgr = SessionManager::new();
+        let id = mgr.create_session(10, 5);
+        // Move cursor to last col/row
+        mgr.process_bytes(id, b"\x1b[5;10H");
+        let data = mgr.get_screen_data(id);
+        assert_eq!(data.cursor_col, 9);
+        assert_eq!(data.cursor_row, 4);
+        // Shrink — cursor must clamp
+        mgr.resize(id, 4, 2);
+        let data = mgr.get_screen_data(id);
+        assert!(
+            data.cursor_col <= 3,
+            "cursor_col {} should be clamped to 3",
+            data.cursor_col
+        );
+        assert!(
+            data.cursor_row <= 1,
+            "cursor_row {} should be clamped to 1",
+            data.cursor_row
+        );
+    }
+
+    #[test]
+    fn t_resize_extends_tab_stops() {
+        // Bug: FFI resize called grid.resize() directly, bypassing
+        // Terminal::resize() which extends tab stops when growing.
+        let mut mgr = SessionManager::new();
+        let id = mgr.create_session(8, 2);
+        mgr.resize(id, 20, 2);
+        // Tab from col 8 should hit col 16 (default stop in new area)
+        mgr.process_bytes(id, b"\x1b[9G\t");
+        let data = mgr.get_screen_data(id);
+        assert_eq!(
+            data.cursor_col, 16,
+            "tab stop should be extended after resize"
+        );
     }
 
     #[test]
