@@ -17129,4 +17129,117 @@ mod tests {
         feed(&mut t, b"\x1b[?1049l"); // exit alt
         assert!(t.tab_stops[5], "custom stop restored after alt exit");
     }
+
+    // ── Round 11-3: DSR / CPR / DECXCPR audits ─────────────────────────
+
+    #[test]
+    fn t_r11_dsr_5_reports_ok() {
+        // DSR 5 (CSI 5n) should respond CSI 0n (terminal OK).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[5n");
+        let resp = t.take_response();
+        assert_eq!(resp, b"\x1b[0n", "DSR 5 responds OK");
+    }
+
+    #[test]
+    fn t_r11_cpr_cursor_position() {
+        // DSR 6 (CSI 6n) should report cursor position (1-based).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // row 3, col 5 (0-based: 2, 4)
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert_eq!(s, "\x1b[3;5R", "CPR at (5,3) reports 3;5");
+    }
+
+    #[test]
+    fn t_r11_cpr_at_origin() {
+        // CPR at cursor (0,0) should report 1;1.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert_eq!(s, "\x1b[1;1R", "CPR at origin reports 1;1");
+    }
+
+    #[test]
+    fn t_r11_cpr_origin_mode_offset() {
+        // CPR in origin mode should be relative to scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5
+        feed(&mut t, b"\x1b[?6h"); // origin on — cursor → region top
+        // Cursor at (0, 2) → origin-relative row = 2+1 - (2+1) = 1
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert_eq!(s, "\x1b[1;1R", "CPR origin mode at region top = 1;1");
+    }
+
+    #[test]
+    fn t_r11_cpr_origin_mode_mid_region() {
+        // CPR in origin mode at mid-region row.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[2;3H"); // origin row 2, col 3 → abs y=3, x=2
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        // abs y=3 → cy=4 → origin row = 4 - (2+1) = 1; col = 3
+        assert_eq!(s, "\x1b[1;3R", "CPR origin mode mid-region = 1;3");
+    }
+
+    #[test]
+    fn t_r11_decxcpr_basic() {
+        // DECXCPR (CSI ? 6n) should report with '?' prefix.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4H"); // row 2, col 4
+        feed(&mut t, b"\x1b[?6n");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert_eq!(s, "\x1b[?2;4R", "DECXCPR reports ?2;4R");
+    }
+
+    #[test]
+    fn t_r11_decxcpr_origin_mode() {
+        // DECXCPR in origin mode should be relative.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r");
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[?6n");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert_eq!(s, "\x1b[?1;1R", "DECXCPR origin = ?1;1R");
+    }
+
+    #[test]
+    fn t_r11_cpr_format_exact() {
+        // Verify exact byte sequence format matches xterm.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[10;20H"); // row 10, col 20
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        // Must be CSI 1 0 ; 2 0 R (ESC [ 1 0 ; 2 0 R)
+        assert_eq!(resp, b"\x1b[10;20R", "exact CPR format");
+    }
+
+    #[test]
+    fn t_r11_dsr_6_default_param() {
+        // CSI n with no param should default to 0 (no response).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[n");
+        let resp = t.take_response();
+        assert!(resp.is_empty(), "DSR with no param = no response");
+    }
+
+    #[test]
+    fn t_r11_cpr_clears_response_buffer() {
+        // take_response should drain the buffer.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[6n");
+        let _ = t.take_response();
+        let resp2 = t.take_response();
+        assert!(resp2.is_empty(), "response buffer drained");
+    }
 }
