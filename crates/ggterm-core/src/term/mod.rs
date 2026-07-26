@@ -9448,4 +9448,131 @@ mod tests {
         assert_eq!(t.grid().cell(2, 0).map(|c| c.ch), Some('X'));
         assert_eq!(t.cursor().1, 0, "should still be on row 0");
     }
+
+    // ── Alt screen edge cases ──
+
+    #[test]
+    fn t_alt_screen_content_preserved_on_exit() {
+        // Write content to primary, enter alt screen, write, exit.
+        // Primary content should be unchanged.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"PRIMARY");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        feed(&mut t, b"\x1b[1;1HALT_CONTENT");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'R');
+        // ALT_CONTENT should NOT appear in primary screen
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some(' '));
+    }
+
+    #[test]
+    fn t_alt_screen_cursor_restored_on_exit() {
+        // Set cursor position, enter alt screen (which saves+resets cursor),
+        // move around, exit. Cursor should return to original position.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at col 4, row 2
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        feed(&mut t, b"\x1b[5;5H"); // move cursor in alt screen
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        assert_eq!(t.cursor(), (4, 2), "cursor should be restored to (4,2)");
+    }
+
+    #[test]
+    fn t_alt_screen_re_enter_is_clean() {
+        // Enter alt screen, write, exit, re-enter.
+        // Second entry should NOT show content from first alt session.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[1;1HZOMBIE"); // write in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit
+        feed(&mut t, b"\x1b[?1049h"); // re-enter alt
+        assert_eq!(
+            t.grid().cell(0, 0).map(|c| c.ch),
+            Some(' '),
+            "alt screen should be clean on re-entry"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_47_vs_1049_cursor() {
+        // Mode 47 does NOT save/restore cursor; mode 1049 does.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at (4,2)
+        feed(&mut t, b"\x1b[?47h"); // enter alt (no cursor save)
+        feed(&mut t, b"\x1b[1;1H"); // move cursor
+        feed(&mut t, b"\x1b[?47l"); // exit alt (no cursor restore)
+        // Mode 47 doesn't restore cursor — cursor stays where it was
+        assert_eq!(t.cursor(), (0, 0), "mode 47 does not restore cursor");
+    }
+
+    // ── SGR color edge cases ──
+
+    #[test]
+    fn t_sgr_256_color_boundaries() {
+        let mut t = Terminal::new(10, 3);
+        // Index 0 (black in xterm palette)
+        feed(&mut t, b"\x1b[38;5;0mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(0));
+        // Index 15 (bright white)
+        feed(&mut t, b"\x1b[38;5;15mY");
+        assert_eq!(t.grid().cell(1, 0).unwrap().fg, Color::Indexed(15));
+        // Index 16 (start of 6x6x6 color cube)
+        feed(&mut t, b"\x1b[38;5;16mZ");
+        assert_eq!(t.grid().cell(2, 0).unwrap().fg, Color::Indexed(16));
+        // Index 231 (end of 6x6x6 color cube)
+        feed(&mut t, b"\x1b[38;5;231mW");
+        assert_eq!(t.grid().cell(3, 0).unwrap().fg, Color::Indexed(231));
+        // Index 255 (last grayscale)
+        feed(&mut t, b"\x1b[38;5;255mV");
+        assert_eq!(t.grid().cell(4, 0).unwrap().fg, Color::Indexed(255));
+    }
+
+    #[test]
+    fn t_sgr_empty_resets_all() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red fg
+        feed(&mut t, b"\x1b[48;5;42m"); // 256-color bg
+        feed(&mut t, b"\x1b[4m"); // underline
+        feed(&mut t, b"\x1b[m"); // empty SGR = reset
+        assert_eq!(t.fg, Color::Default);
+        assert_eq!(t.bg, Color::Default);
+        assert!(t.flags.is_empty(), "flags should be cleared by empty SGR");
+    }
+
+    #[test]
+    fn t_sgr_true_color_values() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;255;0;0mA"); // pure red
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 0, 0));
+        feed(&mut t, b"\x1b[38;2;0;255;0mB"); // pure green
+        assert_eq!(t.grid().cell(1, 0).unwrap().fg, Color::Rgb(0, 255, 0));
+        feed(&mut t, b"\x1b[38;2;0;0;255mC"); // pure blue
+        assert_eq!(t.grid().cell(2, 0).unwrap().fg, Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn t_sgr_bold_does_not_brighten_indexed() {
+        // Many terminals brighten SGR 30-37 when bold is set.
+        // GGTerm stores bold as a flag, not changing the color index.
+        // This test documents the behavior — it's NOT a bug if bold
+        // doesn't brighten, as the renderer handles bold separately.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;31mX"); // bold + color 1 (red)
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Indexed(1)); // color unchanged
+        assert!(cell.flags.contains(CellFlags::BOLD));
+    }
+
+    #[test]
+    fn t_sgr_22_clears_bold_and_dim() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1m"); // bold
+        feed(&mut t, b"\x1b[2m"); // dim
+        assert!(t.flags.contains(CellFlags::BOLD));
+        assert!(t.flags.contains(CellFlags::DIM));
+        feed(&mut t, b"\x1b[22m"); // clear bold+dim
+        assert!(!t.flags.contains(CellFlags::BOLD));
+        assert!(!t.flags.contains(CellFlags::DIM));
+    }
 }
