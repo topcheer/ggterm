@@ -14130,4 +14130,358 @@ mod tests {
         feed(&mut t, b"\x1b[10`"); // HPA col 10
         assert_eq!(t.cursor().0, 9, "HPA should set col to Ps (0-based: Ps-1)");
     }
+
+    // ── Round 5-2: SGR text attributes and colors ─────────────────────
+
+    #[test]
+    fn t_sgr_bold_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1mX");
+        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD));
+    }
+
+    #[test]
+    fn t_sgr_dim_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[2mX");
+        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::DIM));
+    }
+
+    #[test]
+    fn t_sgr_italic_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3mX");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::ITALIC)
+        );
+    }
+
+    #[test]
+    fn t_sgr_underline_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[4mX");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::UNDERLINE)
+        );
+    }
+
+    #[test]
+    fn t_sgr_blink_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[5mX");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::BLINK)
+        );
+    }
+
+    #[test]
+    fn t_sgr_reverse_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[7mX");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::REVERSE)
+        );
+    }
+
+    #[test]
+    fn t_sgr_hidden_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[8mX");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::HIDDEN)
+        );
+    }
+
+    #[test]
+    fn t_sgr_strikethrough_sets_flag() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[9mX");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::STRIKETHROUGH)
+        );
+    }
+
+    #[test]
+    fn t_sgr_reset_clears_all() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;3;4;31mX\x1b[0mY");
+        let cell = t.grid().cell(1, 0).unwrap();
+        assert_eq!(
+            cell.flags,
+            CellFlags::empty(),
+            "SGR 0 should clear all flags"
+        );
+        assert_eq!(cell.fg, Color::Default, "SGR 0 should reset fg");
+    }
+
+    // ── Partial attribute cancellation (key test) ─────────────────
+
+    #[test]
+    fn t_sgr_cancel_italic_preserves_bold_underline() {
+        // Set bold+italic+underline, then cancel only italic (SGR 23).
+        // Bold and underline MUST survive.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;3;4m"); // bold + italic + underline
+        feed(&mut t, b"\x1b[23m"); // cancel italic
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::BOLD),
+            "bold should survive SGR 23"
+        );
+        assert!(
+            flags.contains(CellFlags::UNDERLINE),
+            "underline should survive SGR 23"
+        );
+        assert!(
+            !flags.contains(CellFlags::ITALIC),
+            "italic should be cleared"
+        );
+    }
+
+    #[test]
+    fn t_sgr_cancel_bold_preserves_others() {
+        // Set bold+dim+italic, cancel bold/dim (SGR 22), italic survives.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;2;3m");
+        feed(&mut t, b"\x1b[22m"); // cancel bold + dim
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            !flags.contains(CellFlags::BOLD),
+            "bold should be cleared by 22"
+        );
+        assert!(
+            !flags.contains(CellFlags::DIM),
+            "dim should be cleared by 22"
+        );
+        assert!(
+            flags.contains(CellFlags::ITALIC),
+            "italic should survive 22"
+        );
+    }
+
+    #[test]
+    fn t_sgr_cancel_underline_preserves_bold() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;4m");
+        feed(&mut t, b"\x1b[24m"); // cancel underline
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::BOLD),
+            "bold should survive SGR 24"
+        );
+        assert!(
+            !flags.contains(CellFlags::UNDERLINE),
+            "underline should be cleared"
+        );
+    }
+
+    #[test]
+    fn t_sgr_cancel_reverse_preserves_others() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;7m");
+        feed(&mut t, b"\x1b[27m"); // cancel reverse
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::BOLD), "bold should survive 27");
+        assert!(
+            !flags.contains(CellFlags::REVERSE),
+            "reverse should be cleared"
+        );
+    }
+
+    #[test]
+    fn t_sgr_cancel_blink_preserves_others() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[4;5m");
+        feed(&mut t, b"\x1b[25m"); // cancel blink
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::UNDERLINE),
+            "underline should survive 25"
+        );
+        assert!(!flags.contains(CellFlags::BLINK), "blink should be cleared");
+    }
+
+    #[test]
+    fn t_sgr_cancel_hidden_preserves_others() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;8m");
+        feed(&mut t, b"\x1b[28m"); // cancel hidden
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::BOLD), "bold should survive 28");
+        assert!(
+            !flags.contains(CellFlags::HIDDEN),
+            "hidden should be cleared"
+        );
+    }
+
+    #[test]
+    fn t_sgr_cancel_strikethrough_preserves_others() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[4;9m");
+        feed(&mut t, b"\x1b[29m"); // cancel strikethrough
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::UNDERLINE),
+            "underline should survive 29"
+        );
+        assert!(
+            !flags.contains(CellFlags::STRIKETHROUGH),
+            "strikethrough should be cleared"
+        );
+    }
+
+    // ── 256-color and TrueColor ───────────────────────────────────
+
+    #[test]
+    fn t_sgr_256_color_fg_low() {
+        // 38;5;0 = palette index 0 (black)
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;5;0mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(0));
+    }
+
+    #[test]
+    fn t_sgr_256_color_fg_high() {
+        // 38;5;255 = palette index 255
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;5;255mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(255));
+    }
+
+    #[test]
+    fn t_sgr_256_color_bg() {
+        // 48;5;16 = palette index 16
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[48;5;16mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Indexed(16));
+    }
+
+    #[test]
+    fn t_sgr_256_color_boundary_231() {
+        // 38;5;231 = last of the 6x6x6 color cube boundary
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;5;231mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(231));
+    }
+
+    #[test]
+    fn t_sgr_truecolor_fg() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;2;255;128;0mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 128, 0));
+    }
+
+    #[test]
+    fn t_sgr_truecolor_bg_blue() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[48;2;0;0;255mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn t_sgr_truecolor_zero_rgb() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;2;0;0;0mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(0, 0, 0));
+    }
+
+    // ── Default color reset ───────────────────────────────────────
+
+    #[test]
+    fn t_sgr_39_resets_fg() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[31m\x1b[39mX"); // set red, reset fg
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Default);
+    }
+
+    #[test]
+    fn t_sgr_49_resets_bg() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[44m\x1b[49mX"); // set blue bg, reset bg
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Default);
+    }
+
+    #[test]
+    fn t_sgr_39_preserves_bg() {
+        // SGR 39 should only reset fg, not bg.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[31;44m\x1b[39mX"); // red fg + blue bg, reset fg only
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Default, "fg should be reset");
+        assert_eq!(cell.bg, Color::Indexed(4), "bg should be preserved");
+    }
+
+    #[test]
+    fn t_sgr_49_preserves_fg() {
+        // SGR 49 should only reset bg, not fg.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[31;44m\x1b[49mX"); // red fg + blue bg, reset bg only
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Indexed(1), "fg should be preserved");
+        assert_eq!(cell.bg, Color::Default, "bg should be reset");
+    }
+
+    // ── Bright colors (90-97, 100-107) ────────────────────────────
+
+    #[test]
+    fn t_sgr_bright_fg_colors() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[90mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Indexed(8));
+        feed(&mut t, b"\x1b[97mY");
+        assert_eq!(t.grid().cell(1, 0).unwrap().fg, Color::Indexed(15));
+    }
+
+    #[test]
+    fn t_sgr_bright_bg_colors() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[100mX");
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Indexed(8));
+        feed(&mut t, b"\x1b[107mY");
+        assert_eq!(t.grid().cell(1, 0).unwrap().bg, Color::Indexed(15));
+    }
+
+    // ── Combined SGR in single sequence ───────────────────────────
+
+    #[test]
+    fn t_sgr_combined_in_single_escape() {
+        // CSI 1;38;5;196;48;5;21m → bold, fg=196, bg=21
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;38;5;196;48;5;21mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD));
+        assert_eq!(cell.fg, Color::Indexed(196));
+        assert_eq!(cell.bg, Color::Indexed(21));
+    }
 }
