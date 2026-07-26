@@ -12561,4 +12561,69 @@ mod tests {
             "combining chars should be capped at 8"
         );
     }
+
+    // ── Alternate screen buffer edge cases ─────────────────────────────
+
+    #[test]
+    fn t_alt_screen_resize_preserves_primary_content() {
+        // Enter alt screen, resize, exit alt screen — primary content should
+        // survive the resize cycle.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"PRIMARY_CONTENT"); // write to primary screen
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P');
+
+        // Enter alt screen
+        feed(&mut t, b"\x1b[?1049h");
+        feed(&mut t, b"ALT_CONTENT");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+
+        // Resize while in alt screen
+        t.resize(30, 10);
+
+        // Exit alt screen — should restore primary content
+        feed(&mut t, b"\x1b[?1049l");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'P',
+            "primary content should survive alt screen resize cycle"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_1049_restores_cursor_position() {
+        // DECSET 1049 saves/restores cursor position.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3;5H"); // move cursor to row 3, col 5 (1-based)
+
+        // Enter alt screen — cursor should be reset to home
+        feed(&mut t, b"\x1b[?1049h");
+        assert_eq!(t.cursor().0, 0, "cursor should be home in alt screen");
+        assert_eq!(t.cursor().1, 0, "cursor should be home in alt screen");
+
+        // Move around in alt screen
+        feed(&mut t, b"\x1b[2;2H");
+
+        // Exit alt screen — cursor should restore to row 3, col 5 (0-based: 2, 4)
+        feed(&mut t, b"\x1b[?1049l");
+        assert_eq!(t.cursor().0, 4, "cursor X should be restored");
+        assert_eq!(t.cursor().1, 2, "cursor Y should be restored");
+    }
+
+    #[test]
+    fn t_alt_screen_does_not_populate_scrollback() {
+        // Content written in alt screen should NOT go to scrollback on exit.
+        let mut t = Terminal::with_scrollback(20, 3, 100);
+        let sb_before = t.grid().scrollback_len();
+        feed(&mut t, b"\x1b[?1049h");
+        // Fill the alt screen and scroll
+        for _ in 0..10 {
+            feed(&mut t, b"LINE\n");
+        }
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        assert_eq!(
+            t.grid().scrollback_len(),
+            sb_before,
+            "alt screen activity should not populate primary scrollback"
+        );
+    }
 }
