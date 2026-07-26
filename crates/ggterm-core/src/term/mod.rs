@@ -16791,4 +16791,186 @@ mod tests {
             assert!(!t.grid().row(r).unwrap().wrap, "row {r} wrap cleared");
         }
     }
+
+    // ── Round 11-1: Scrolling & Line Operations audits ─────────────────
+
+    #[test]
+    fn t_r11_ind_at_region_bottom_scrolls() {
+        // IND (ESC D) at bottom of scroll region scrolls up.
+        let mut t = Terminal::new(5, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 4 (0-based: 3 = bottom-1)
+        feed(&mut t, b"\x1bD"); // IND
+        // Should scroll within region; row 3 blank
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            ' ',
+            "bottom of region blank"
+        );
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r11_ind_below_region_advances() {
+        // IND below scroll region just advances cursor.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4
+        feed(&mut t, b"\x1b[5;1H"); // cursor at row 5 (below region)
+        feed(&mut t, b"\x1bD"); // IND
+        assert_eq!(t.cursor().1, 5, "cursor stays at row 5 (last row)");
+    }
+
+    #[test]
+    fn t_r11_ri_at_region_top_scrolls_down() {
+        // RI (ESC M) at top of scroll region scrolls down.
+        let mut t = Terminal::new(5, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 2 (0-based: 1 = top)
+        feed(&mut t, b"\x1bM"); // RI
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "top of region blank");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r11_ri_above_region_moves_up() {
+        // RI above scroll region just moves cursor up.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[3;4r"); // region rows 3-4 (0-based: 2..4)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 2 (0-based: 1, above region)
+        feed(&mut t, b"\x1bM"); // RI
+        assert_eq!(t.cursor().1, 0, "cursor moved up to row 0");
+    }
+
+    #[test]
+    fn t_r11_nel_cr_lf_equivalent() {
+        // NEL (ESC E) = CR + LF (index).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"ABC"); // cursor at col 3
+        feed(&mut t, b"\x1bE"); // NEL
+        assert_eq!(t.cursor().0, 0, "NEL sets col 0 (CR part)");
+        assert_eq!(t.cursor().1, 1, "NEL advances to row 1 (LF part)");
+    }
+
+    #[test]
+    fn t_r11_nel_at_region_bottom_scrolls() {
+        // NEL at bottom of scroll region should scroll.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[5;3H"); // cursor at row 5, col 3 (0-based: 4, 2)
+        feed(&mut t, b"\x1bE"); // NEL at bottom of region
+        assert_eq!(t.cursor().0, 0, "col 0");
+        // Should have scrolled within region
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r11_il_inside_region_inserts() {
+        // IL inside scroll region inserts blank lines.
+        let mut t = Terminal::new(5, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 3 (0-based: 2)
+        feed(&mut t, b"\x1b[L"); // IL 1
+        assert_eq!(
+            t.grid().cell(0, 2).unwrap().ch,
+            ' ',
+            "row 2 blank (inserted)"
+        );
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'C', "C shifted down");
+    }
+
+    #[test]
+    fn t_r11_il_outside_region_noop() {
+        // IL outside scroll region is a no-op.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 1 (above region)
+        feed(&mut t, b"\x1b[L"); // IL — should be no-op
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "nothing changed");
+    }
+
+    #[test]
+    fn t_r11_dl_inside_region_deletes() {
+        // DL inside scroll region deletes lines (shifts up).
+        let mut t = Terminal::new(5, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 2 (0-based: 1)
+        feed(&mut t, b"\x1b[M"); // DL 1
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C', "C shifted up");
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, ' ', "bottom blank");
+    }
+
+    #[test]
+    fn t_r11_dl_outside_region_noop() {
+        // DL outside scroll region is a no-op.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5
+        feed(&mut t, b"\x1b[1;1H"); // cursor above region
+        feed(&mut t, b"\x1b[M"); // DL — no-op
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "nothing changed");
+    }
+
+    #[test]
+    fn t_r11_il_exceeds_region_clamps() {
+        // IL count exceeding region height should only affect within region.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at top of region
+        feed(&mut t, b"\x1b[99L"); // IL 99 — should only clear rows 1-3
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "row 1 blank");
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, ' ', "row 3 blank");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 5).unwrap().ch, 'F', "row 5 preserved");
+    }
+
+    #[test]
+    fn t_r11_dl_exceeds_region_clamps() {
+        // DL count exceeding region should only affect within region.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at top of region
+        feed(&mut t, b"\x1b[99M"); // DL 99 — should blank rows 1-3
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "row 1 blank");
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, ' ', "row 3 blank");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 5).unwrap().ch, 'F', "row 5 preserved");
+    }
+
+    #[test]
+    fn t_r11_il_default_param_is_1() {
+        // IL with no param defaults to 1.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"A\r\nB\r\nC");
+        feed(&mut t, b"\x1b[2;1H");
+        feed(&mut t, b"\x1b[L"); // IL default 1
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "1 line inserted");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'B', "B shifted");
+    }
+
+    #[test]
+    fn t_r11_dl_default_param_is_1() {
+        // DL with no param defaults to 1.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"A\r\nB\r\nC");
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[M"); // DL default 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B', "B shifted up");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ', "bottom blank");
+    }
+
+    #[test]
+    fn t_r11_nel_clears_pending_wrap() {
+        // NEL should clear pending_wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        assert!(t.cursor.pending_wrap);
+        feed(&mut t, b"\x1bE"); // NEL
+        assert!(!t.cursor.pending_wrap, "NEL clears pending_wrap");
+    }
 }
