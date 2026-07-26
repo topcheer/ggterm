@@ -256,10 +256,7 @@ pub unsafe extern "C" fn ggterm_session_resize(id: u32, cols: usize, rows: usize
     let rows = rows.clamp(1, 500);
     let mut map = sessions().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = map.get_mut(&id) {
-        s.handle
-            .terminal
-            .grid_mut()
-            .resize(cols.max(1), rows.max(1));
+        s.handle.terminal.resize(cols.max(1), rows.max(1));
         // Also resize transport if present (clamp to >= 1 for PTY safety).
         if let Some(t) = s.transport.as_mut() {
             t.resize(cols.max(1), rows.max(1));
