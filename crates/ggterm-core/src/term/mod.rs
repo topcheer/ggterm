@@ -13612,4 +13612,189 @@ mod tests {
         // Cursor should still be the same
         assert_eq!(t.cursor(), (cx_before, cy_before));
     }
+
+    // ── OSC color query / set tests ────────────────────────────────────
+
+    #[test]
+    fn t_osc_10_query_returns_fg_color() {
+        // OSC 10 ; ? → query foreground color
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1b]10;rgb:") && s.ends_with("\x1b\\"),
+            "OSC 10 query should respond with rgb color, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_11_query_returns_bg_color() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1b]11;rgb:"),
+            "OSC 11 query should respond with bg color, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_10_set_then_query() {
+        // Set fg to red, then query — should return the set color.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]10;rgb:ff/00/00\x1b\\");
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("rgb:ff/00/00") || s.contains("rgb:ff/0/0"),
+            "OSC 10 after set should return red, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_11_set_then_query() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]11;rgb:00/ff/00\x1b\\");
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("rgb:00/ff/00") || s.contains("rgb:0/ff/0"),
+            "OSC 11 after set should return green, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_12_query_cursor_color() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]12;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1b]12;rgb:"),
+            "OSC 12 query should respond with cursor color, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_4_query_palette_color() {
+        // OSC 4 ; 1 ; ? → query palette index 1 (red)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;1;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1b]4;1;rgb:"),
+            "OSC 4 query should respond with palette color, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_4_set_palette_color() {
+        // OSC 4 ; 0 ; rgb:ff/ff/00 → set palette[0] to yellow
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;0;rgb:ff/ff/00\x1b\\");
+        // Now query to verify
+        feed(&mut t, b"\x1b]4;0;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("rgb:ff/ff/00"),
+            "OSC 4 after set should return yellow, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_4_multiple_queries() {
+        // OSC 4 ; 0 ; ? ; 1 ; ? → query two palette entries
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]4;0;?;1;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Should contain both index 0 and index 1 responses
+        assert!(
+            s.contains("4;0;rgb:") && s.contains("4;1;rgb:"),
+            "OSC 4 multi-query should return both colors, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_7_cwd_parsed() {
+        // OSC 7 — current working directory
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]7;file://localhost/home/user\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/home/user")));
+    }
+
+    #[test]
+    fn t_osc_7_invalid_url_ignored() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]7;not-a-url\x1b\\");
+        assert_eq!(t.cwd(), None, "invalid OSC 7 payload should be ignored");
+    }
+
+    #[test]
+    fn t_osc_9_progress_report() {
+        // OSC 9 ; 4 ; 0 ; 50 → progress 50% (state 0 = update)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;4;0;50\x1b\\");
+        assert_eq!(t.progress(), Some(0.5));
+    }
+
+    #[test]
+    fn t_osc_9_progress_complete() {
+        // OSC 9 ; 4 ; 1 → completed (clear progress)
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;4;0;50\x1b\\"); // set to 50%
+        feed(&mut t, b"\x1b]9;4;1\x1b\\"); // state 1 = completed
+        assert_eq!(t.progress(), None, "state 1 should clear progress");
+    }
+
+    #[test]
+    fn t_osc_9_notification() {
+        // OSC 9 ; message → desktop notification
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]9;Build complete!\x1b\\");
+        let notif = t.take_pending_notification();
+        assert!(notif.is_some(), "should have pending notification");
+        let (title, body) = notif.unwrap();
+        assert_eq!(body, "Build complete!");
+    }
+
+    #[test]
+    fn t_osc_21_query_title() {
+        // OSC 21 → query title, responds with OSC l <title> ST
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]0;My Title\x07"); // set title
+        feed(&mut t, b"\x1b]21\x07"); // query
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("My Title"),
+            "OSC 21 query should return current title, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_osc_1337_current_dir() {
+        // OSC 1337 ; CurrentDir=/path
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]1337;CurrentDir=/tmp/test\x1b\\");
+        assert_eq!(t.cwd(), Some(std::path::Path::new("/tmp/test")));
+    }
+
+    #[test]
+    fn t_osc_1337_clear_scrollback() {
+        // OSC 1337 ; ClearScrollback
+        let mut t = Terminal::with_scrollback(20, 3, 1000);
+        for i in 0..10 {
+            feed(&mut t, format!("Line {}\n", i).as_bytes());
+        }
+        assert!(t.grid().scrollback_len() > 0);
+        feed(&mut t, b"\x1b]1337;ClearScrollback\x1b\\");
+        assert_eq!(t.grid().scrollback_len(), 0, "scrollback should be cleared");
+    }
 }
