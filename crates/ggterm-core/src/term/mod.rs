@@ -15889,4 +15889,185 @@ mod tests {
             "col 5 preserved (no shift)"
         );
     }
+
+    // ── Round 9-1: Scroll region (DECSTBM) + SU/SD audits ──────────────
+
+    #[test]
+    fn t_r9_decstbm_two_line_region_il() {
+        // A 2-line scroll region: IL should only affect region rows.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"AAAA\r\nBBBB\r\nCCCC\r\nDDDD\r\nEEEE");
+        feed(&mut t, b"\x1b[3;4r"); // scroll region = rows 3-4 (0-based: 2..4)
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 3 (0-based: 2)
+        feed(&mut t, b"\x1b[L"); // IL — insert 1 line
+        // Row 2 should be blank (inserted)
+        assert_eq!(
+            t.grid().cell(0, 2).unwrap().ch,
+            ' ',
+            "row 2 blank (inserted)"
+        );
+        // Row 3 should have old row 2 content (CCCC shifted down)
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'C', "row 3 has shifted C");
+        // Rows outside region preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'E', "row 4 preserved");
+    }
+
+    #[test]
+    fn t_r9_lf_inside_scroll_region_scrolls() {
+        // LF at bottom of scroll region should scroll, not advance past it.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"R0\r\nR1\r\nR2\r\nR3\r\nR4\r\nR5");
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 4 (0-based: 3, bottom of region)
+        feed(&mut t, b"\n"); // LF — should scroll region
+        // Content at rows 1-3 should shift up within region
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'R',
+            "row 1 has shifted content"
+        );
+        // Row 3 (bottom of region) should be blank (new line)
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            ' ',
+            "row 3 blank after scroll"
+        );
+        // Rows outside region: row 0 and 4-5 preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R', "row 0 preserved");
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'R', "row 4 preserved");
+    }
+
+    #[test]
+    fn t_r9_lf_outside_scroll_region_advances() {
+        // LF outside the scroll region should just advance cursor.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 1 (above region)
+        feed(&mut t, b"\n"); // LF — should advance to row 2 (no scroll)
+        assert_eq!(t.cursor().1, 1, "cursor advanced to row 2 (0-based: 1)");
+    }
+
+    #[test]
+    fn t_r9_su_scrolls_only_region() {
+        // SU (CSI S) should scroll only within the scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"R0\r\nR1\r\nR2\r\nR3\r\nR4\r\nR5");
+        feed(&mut t, b"\x1b[2;5r"); // scroll region rows 2-5 (0-based: 1..5)
+        feed(&mut t, b"\x1b[1S"); // SU 1
+        // Row 0 should be preserved (outside region)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R', "row 0 preserved");
+        // Row 1 should have shifted content (R2 moved up)
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'R',
+            "row 1 has shifted content"
+        );
+        // Bottom of region (row 4, 0-based) should be blank
+        assert_eq!(
+            t.grid().cell(0, 4).unwrap().ch,
+            ' ',
+            "bottom of region blank"
+        );
+    }
+
+    #[test]
+    fn t_r9_sd_scrolls_only_region() {
+        // SD (CSI T) should scroll down within scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"R0\r\nR1\r\nR2\r\nR3\r\nR4\r\nR5");
+        feed(&mut t, b"\x1b[2;5r"); // scroll region rows 2-5 (0-based: 1..5)
+        feed(&mut t, b"\x1b[1T"); // SD 1
+        // Row 0 preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R', "row 0 preserved");
+        // Top of region (row 1) should be blank
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "top of region blank");
+        // Content shifted down
+        assert_eq!(
+            t.grid().cell(0, 2).unwrap().ch,
+            'R',
+            "row 2 has shifted content"
+        );
+    }
+
+    #[test]
+    fn t_r9_decstbm_invalid_top_eq_bottom() {
+        // DECSTBM with top == bottom should be invalid (ignored).
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;3r"); // top == bottom = invalid
+        // Scroll region should remain full screen
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(
+            (top, bottom),
+            (0, 6),
+            "invalid DECSTBM resets to full screen"
+        );
+    }
+
+    #[test]
+    fn t_r9_decstbm_invalid_top_gt_bottom() {
+        // DECSTBM with top > bottom should be invalid.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[5;2r"); // top > bottom
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (0, 6), "top > bottom resets to full screen");
+    }
+
+    #[test]
+    fn t_r9_ind_at_region_bottom_wraps() {
+        // IND (ESC D) at bottom of scroll region should scroll up.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 4 (0-based: 3, bottom of region)
+        feed(&mut t, b"\x1bD"); // IND
+        // Should scroll within region
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            ' ',
+            "bottom of region blank after IND"
+        );
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r9_ri_at_region_top_scrolls_down() {
+        // RI (ESC M) at top of scroll region should scroll down.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"A\r\nB\r\nC\r\nD\r\nE");
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4 (0-based: 1..4)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 2 (0-based: 1, top of region)
+        feed(&mut t, b"\x1bM"); // RI (reverse index)
+        // Top of region should be blank, content shifted down
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            ' ',
+            "top of region blank after RI"
+        );
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r9_decstbm_bottom_exceeds_height() {
+        // DECSTBM with bottom > height should be handled gracefully.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;99r"); // bottom way beyond height
+        let (top, bottom) = t.grid().scroll_region();
+        // Should either clamp to height or reset to full screen.
+        // The CSI handler checks bottom <= height, so this is ignored.
+        assert_eq!(
+            (top, bottom),
+            (0, 5),
+            "bottom > height resets to full screen"
+        );
+    }
+
+    #[test]
+    fn t_r9_decstbm_default_bottom_is_height() {
+        // DECSTBM with bottom=0 means bottom = height.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3r"); // top=3, bottom omitted (0 → height)
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (2, 5), "bottom defaults to height");
+    }
 }
