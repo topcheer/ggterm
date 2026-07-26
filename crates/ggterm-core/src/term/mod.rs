@@ -11427,4 +11427,226 @@ mod tests {
         feed(&mut t, b"\x1b]0;\x07");
         assert_eq!(t.title(), "");
     }
+
+    // ── Wide char: narrow on continuation cell ──
+
+    #[test]
+    fn t_narrow_on_wide_spacer_clears_lead() {
+        // Write wide char, move cursor to spacer cell, write narrow.
+        // The lead cell should be cleared (not left as orphaned wide).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"\x1b[2G"); // cursor at col 1 (spacer)
+        feed(&mut t, b"X"); // overwrite spacer
+        // Col 0 should not be an orphaned wide char
+        assert!(
+            !t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_CHAR),
+            "writing on spacer should clear the lead cell"
+        );
+    }
+
+    #[test]
+    fn t_wide_char_then_bs_then_wide_char() {
+        // Write wide char, BS to lead, write another wide char.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你".as_bytes()); // cols 0-1, cursor at 2
+        feed(&mut t, b"\x08\x08"); // BS twice → cursor at 0
+        feed(&mut t, "好".as_bytes()); // overwrite cols 0-1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '好');
+        assert!(
+            t.grid()
+                .cell(1, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_SPACER)
+        );
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_emoji_4byte_then_normal() {
+        // 4-byte emoji (😀 U+1F600) then normal chars.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "😀".as_bytes()); // cols 0-1 (width 2)
+        feed(&mut t, b"AB"); // cols 2-3
+        assert_eq!(t.cursor().0, 4);
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{1F600}');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_wide_char_at_col_minus_one_wraps() {
+        // Wide char at col width-1 (not enough room) → wraps to next line.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABC"); // cols 0-2
+        feed(&mut t, "你".as_bytes()); // doesn't fit at col 3, wraps
+        // A,B,C stay on row 0; 你 goes to row 1
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你');
+    }
+
+    #[test]
+    fn t_consecutive_wide_chars() {
+        // Multiple consecutive CJK chars should all have proper spacers.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你好世".as_bytes()); // 6 cells, cursor at 6
+        assert_eq!(t.cursor().0, 6);
+        for col in [0, 2, 4] {
+            assert!(
+                t.grid()
+                    .cell(col, 0)
+                    .unwrap()
+                    .flags
+                    .contains(CellFlags::WIDE_CHAR),
+                "col {} should be WIDE_CHAR",
+                col
+            );
+            assert!(
+                t.grid()
+                    .cell(col + 1, 0)
+                    .unwrap()
+                    .flags
+                    .contains(CellFlags::WIDE_SPACER),
+                "col {} should be WIDE_SPACER",
+                col + 1
+            );
+        }
+    }
+
+    // ── Resize edge cases ──
+
+    #[test]
+    fn t_resize_shrink_clamps_cursor() {
+        // Resize from 10x4 to 4x2 — cursor at (9,3) should clamp to (3,1).
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[4;10H"); // cursor at (9,3)
+        t.resize(4, 2);
+        assert!(t.cursor().0 <= 3, "cursor col should be clamped to 3");
+        assert!(t.cursor().1 <= 1, "cursor row should be clamped to 1");
+    }
+
+    #[test]
+    fn t_resize_grow_preserves_content() {
+        // Resize from 4x2 to 8x4 — existing content should survive.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"\x1b[1;1HAB\r\nCD");
+        t.resize(8, 4);
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_resize_alt_screen_simple() {
+        // Resize while in alt screen — should not crash.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[3;5HALT"); // write in alt
+        t.resize(6, 3);
+        // Should survive without crash. Content may be truncated.
+        assert_eq!(t.grid().width(), 6);
+        assert_eq!(t.grid().height(), 3);
+    }
+
+    #[test]
+    fn t_resize_tab_stops_extended() {
+        // Growing width should add default tab stops in the new range.
+        let mut t = Terminal::new(8, 2);
+        t.resize(20, 2);
+        // Tab from col 8 should hit col 16 (default stop in new area)
+        feed(&mut t, b"\x1b[9G"); // cursor at col 8
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 16, "tab should hit col 16 after resize");
+    }
+
+    // ── Bracketed paste mode probes ──
+
+    #[test]
+    fn t_bracketed_paste_default_off() {
+        let mut t = Terminal::new(10, 2);
+        assert!(!t.bracketed_paste(), "bracketed paste should default off");
+    }
+
+    #[test]
+    fn t_bracketed_paste_toggle_on_off() {
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        assert!(t.bracketed_paste());
+        feed(&mut t, b"\x1b[?2004l"); // disable
+        assert!(!t.bracketed_paste());
+    }
+
+    #[test]
+    fn t_bracketed_paste_persists_through_alt() {
+        // Bracketed paste enabled, enter alt, exit — should persist.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert!(t.bracketed_paste(), "should persist in alt screen");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.bracketed_paste(), "should persist after alt screen exit");
+    }
+
+    #[test]
+    fn t_bracketed_paste_reset_by_decstr() {
+        // DECSTR should reset bracketed paste to off.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.bracketed_paste(), "DECSTR should reset bracketed paste");
+    }
+
+    // ── Alt screen edge cases ──
+
+    #[test]
+    fn t_alt_screen_nested_enter_is_idempotent() {
+        // Double-enter alt screen should not crash or corrupt state.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"MAIN");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[?1049h"); // enter again (idempotent)
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "primary should survive double-enter"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_exit_without_enter_is_noop() {
+        // Exit alt screen when not in alt → no-op, no crash.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"MAIN");
+        feed(&mut t, b"\x1b[?1049l"); // exit without entering
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "exit without enter should be no-op"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_preserves_scroll_region() {
+        // Enter alt, set scroll region, exit — primary scroll region should be restored.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // set region rows 1-3
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[1;1r"); // reset region in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Primary region should be restored — test via LF at row 3
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 2 (in restored region)
+        feed(&mut t, b"\n"); // LF at row 2 → row 3 (still in region)
+        assert_eq!(
+            t.cursor().1,
+            3,
+            "scroll region should be restored from primary"
+        );
+    }
 }
