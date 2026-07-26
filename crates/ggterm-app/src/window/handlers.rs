@@ -3397,27 +3397,28 @@ impl DesktopApp {
         }
 
         // Scan left for word start — stop at different char class or wide spacer.
-        let target_class = match cell_class(col_u) {
-            Some(c) => c,
+        // If clicked on a wide spacer, start from the lead cell instead.
+        let (target_class, start_col) = match cell_class(col_u) {
+            Some(c) => (c, col_u),
             None => {
                 // Clicked on a wide spacer — back up to the lead cell.
                 if col_u == 0 {
                     return;
                 }
                 match cell_class(col_u - 1) {
-                    Some(c) => c,
+                    Some(c) => (c, col_u - 1),
                     None => return,
                 }
             }
         };
 
-        let mut start = col_u;
+        let mut start = start_col;
         while start > 0 && cell_class(start - 1) == Some(target_class) {
             start -= 1;
         }
 
         // Scan right for word end.
-        let mut end = col_u;
+        let mut end = start_col;
         while cell_class(end + 1) == Some(target_class) {
             end += 1;
         }
