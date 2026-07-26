@@ -14484,4 +14484,252 @@ mod tests {
         assert_eq!(cell.fg, Color::Indexed(196));
         assert_eq!(cell.bg, Color::Indexed(21));
     }
+
+    // ── Round 5-3: Scroll region, ED/EL, alt screen edges ─────────────
+
+    #[test]
+    fn t_r5_ed_0_from_middle_row() {
+        // ED 0: erase from cursor to end of display.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"AAAAA\r\nBBBBB\r\nCCCCC\r\nDDDDD");
+        feed(&mut t, b"\x1b[2;3H"); // row 2, col 3 (middle of "BBBBB")
+        feed(&mut t, b"\x1b[0J"); // erase from cursor to end
+        // Row 1 (BBBBB): cols 0-1 remain, cols 2-4 erased
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 1).unwrap().ch, ' ');
+        // Row 2 (CCCCC): fully erased
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ');
+        // Row 3 (DDDDD): fully erased
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, ' ');
+        // Row 0 (AAAAA): untouched
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_r5_ed_1_from_middle_row() {
+        // ED 1: erase from start of display to cursor.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"AAAAA\r\nBBBBB\r\nCCCCC\r\nDDDDD");
+        feed(&mut t, b"\x1b[3;3H"); // row 3, col 3 (in "CCCCC")
+        feed(&mut t, b"\x1b[1J"); // erase from start to cursor
+        // Row 0 (AAAAA): fully erased
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ');
+        // Row 1 (BBBBB): fully erased
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ');
+        // Row 2 (CCCCC): cols 0-2 erased, col 3+ remains
+        assert_eq!(t.grid().cell(2, 2).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(3, 2).unwrap().ch, 'C');
+        // Row 3 (DDDDD): untouched
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_r5_ed_2_clears_all() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AAA\r\nBBB\r\nCCC");
+        feed(&mut t, b"\x1b[2J");
+        for r in 0..3 {
+            for c in 0..3 {
+                assert_eq!(t.grid().cell(c, r).unwrap().ch, ' ', "row {r} col {c}");
+            }
+        }
+    }
+
+    #[test]
+    fn t_r5_ed_3_clears_scrollback_preserves_screen() {
+        let mut t = Terminal::with_scrollback(10, 3, 1000);
+        for i in 0..5 {
+            feed(&mut t, format!("Line{}\r\n", i).as_bytes());
+        }
+        assert!(t.grid().scrollback_len() > 0);
+        feed(&mut t, b"\x1b[3J"); // clear scrollback only
+        assert_eq!(t.grid().scrollback_len(), 0);
+        // Visible screen should NOT be cleared
+        assert!(
+            t.grid().cell(0, 0).unwrap().ch != ' ',
+            "visible screen preserved"
+        );
+    }
+
+    #[test]
+    fn t_r5_el_0_at_cursor_erases_to_end() {
+        // EL 0: erase from cursor to end of line (including cursor position).
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"HelloXXXXX");
+        feed(&mut t, b"\x1b[5G"); // col 5 (0-based: 4 = 'o')
+        feed(&mut t, b"\x1b[0K"); // erase from cursor (inclusive) to end
+        // Chars before cursor preserved
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            'l',
+            "before cursor preserved"
+        );
+        // Cursor position and after erased
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "at cursor erased");
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, ' ', "after cursor erased");
+    }
+
+    #[test]
+    fn t_r5_el_1_erases_to_cursor() {
+        // EL 1: erase from start to cursor.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"HelloXXXXX");
+        feed(&mut t, b"\x1b[3G"); // col 3
+        feed(&mut t, b"\x1b[1K"); // erase from start to cursor
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "start erased");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "at cursor erased");
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            'l',
+            "after cursor preserved"
+        );
+    }
+
+    #[test]
+    fn t_r5_el_2_clears_entire_line() {
+        // EL 2: erase entire line.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"Hello\r\nWorld");
+        feed(&mut t, b"\x1b[1;1H"); // go to row 1
+        feed(&mut t, b"\x1b[2K"); // erase entire line
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "row 1 cleared");
+        // Row 2 should be untouched
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'W', "row 2 preserved");
+    }
+
+    // ── Scroll region LF at boundary ──────────────────────────────
+
+    #[test]
+    fn t_r5_lf_at_scroll_region_bottom_scrolls() {
+        // When cursor is at scroll region bottom, LF should scroll, not move.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r"); // scroll region rows 1-3
+        feed(&mut t, b"\x1b[3;1H"); // go to last row of region
+        let cursor_y_before = t.cursor().1;
+        feed(&mut t, b"\n"); // LF at bottom
+        // Cursor should NOT have moved past the scroll region bottom.
+        // It should stay at the same row (content scrolled up).
+        assert_eq!(
+            t.cursor().1,
+            cursor_y_before,
+            "LF at scroll bottom should not move cursor"
+        );
+    }
+
+    #[test]
+    fn t_r5_lf_outside_scroll_region_no_scroll() {
+        // LF outside scroll region should not scroll.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4
+        feed(&mut t, b"\x1b[5;1H"); // cursor at row 5 (below region)
+        feed(&mut t, b"Line5");
+        feed(&mut t, b"\x1b[1;1H"); // back to row 1 (above region)
+        feed(&mut t, b"Line1");
+        // Row 1 content should be intact
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'L');
+    }
+
+    #[test]
+    fn t_r5_decstbm_default_params_full_screen() {
+        // CSI r with no params resets scroll region to full screen.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // set region
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (1, 4));
+        feed(&mut t, b"\x1b[r"); // reset
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!((top2, bottom2), (0, 5), "CSI r should reset to full screen");
+    }
+
+    #[test]
+    fn t_r5_decstbm_invalid_top_ge_bottom_ignored() {
+        // top >= bottom should be ignored.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;3r"); // top == bottom → invalid
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(
+            (top, bottom),
+            (0, 5),
+            "invalid region (top>=bottom) should be ignored"
+        );
+    }
+
+    #[test]
+    fn t_r5_decstbm_bottom_defaults_to_height() {
+        // CSI 2 r → top=2, bottom=height.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2r"); // top=2, bottom defaults to 5
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 1, "top = 2 (0-based: 1)");
+        assert_eq!(bottom, 5, "bottom defaults to height");
+    }
+
+    // ── Alt screen: cursor style and charset preservation ────────
+
+    #[test]
+    fn t_r5_alt_screen_cursor_style_preserved() {
+        // Mode 1049 should save and restore cursor style.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3 q"); // blinking underline cursor
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[5 q"); // change to bar in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Should restore the original blinking underline cursor
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::BlinkUnderline,
+            "cursor style should be restored after alt screen"
+        );
+    }
+
+    #[test]
+    fn t_r5_alt_screen_charset_preserved() {
+        // Charset should be preserved across alt screen switch (1049).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special Graphics
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b(B"); // G0 = ASCII in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.g0_charset(),
+            Charset::DecSpecial,
+            "G0 charset should be restored after alt screen"
+        );
+    }
+
+    #[test]
+    fn t_r5_alt_screen_content_preserved() {
+        // Primary content should survive alt screen round-trip.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"Primary1\r\nPrimary2");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"AltScreen");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'P',
+            "primary content row 1"
+        );
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'P',
+            "primary content row 2"
+        );
+    }
+
+    #[test]
+    fn t_r5_alt_screen_does_not_leak_alt_content() {
+        // Alt screen content should NOT appear on primary after exit.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"SECRET_ALT_DATA");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Primary should be blank
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "no alt content leaked"
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "primary is blank");
+    }
 }
