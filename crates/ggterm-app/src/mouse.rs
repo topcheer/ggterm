@@ -92,8 +92,14 @@ pub fn encode_sgr_release(ev: &MouseEvent) -> String {
 /// Encode a mouse event using URXVT (mode 1015) encoding.
 ///
 /// Format: `CSI Cb ; Cx ; Cy M`
+///
+/// For button release, bit 5 (32) is set on Cb, matching xterm behavior.
+/// (Previous code incorrectly added 3 instead of using the standard bit.)
 pub fn encode_urxvt(ev: &MouseEvent, pressed: bool) -> String {
-    let cb = ev.button.sgr_code() | (ev.mods.sgr_code() + if pressed { 0 } else { 3 });
+    let mut cb = ev.button.sgr_code() | ev.mods.sgr_code();
+    if !pressed {
+        cb += 32; // Bit 5 = release/motion flag (matches legacy encoding).
+    }
     format!("\x1b[{cb};{};{}M", ev.x + 1, ev.y + 1)
 }
 
@@ -1233,5 +1239,57 @@ mod tests {
         // file:// has no registered scheme in find_urls, so won't be detected.
         assert!(find_urls("file:///etc/passwd").is_empty());
         assert!(find_urls("javascript:alert(1)").is_empty());
+    }
+
+    #[test]
+    fn test_urxvt_release_uses_bit5_not_plus3() {
+        // URXVT release should set bit 5 (add 32), NOT add 3.
+        // Bug: old code added 3 to modifier bits, corrupting the button code.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        // Press: Cb=0 → "CSI 0;1;1M"
+        assert_eq!(encode_urxvt(&ev, true), "\x1b[0;1;1M");
+        // Release: Cb=0+32=32 → "CSI 32;1;1M"
+        assert_eq!(encode_urxvt(&ev, false), "\x1b[32;1;1M");
+    }
+
+    #[test]
+    fn test_urxvt_release_with_modifiers() {
+        // With Shift+Ctrl held, release should add 32 (not corrupt mod bits).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 10,
+            mods: MouseModifiers {
+                shift: true,
+                ctrl: true,
+                ..Default::default()
+            },
+        };
+        // Press: Cb = 0 | 4 | 16 = 20 → "CSI 20;6;11M"
+        assert_eq!(encode_urxvt(&ev, true), "\x1b[20;6;11M");
+        // Release: Cb = 20 + 32 = 52 → "CSI 52;6;11M"
+        assert_eq!(encode_urxvt(&ev, false), "\x1b[52;6;11M");
+    }
+
+    #[test]
+    fn test_legacy_wheel_down_does_not_overflow_cb() {
+        // WheelDown (65) + Shift(4) + Alt(8) + Ctrl(16) = 93 → 93+32 = 125, OK.
+        let ev = MouseEvent {
+            button: MouseButton::WheelDown,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers {
+                shift: true,
+                alt: true,
+                ctrl: true,
+            },
+        };
+        let bytes = encode_legacy(&ev).unwrap();
+        assert_eq!(bytes[2], 125); // 93 + 32 = 125, no overflow
     }
 }
