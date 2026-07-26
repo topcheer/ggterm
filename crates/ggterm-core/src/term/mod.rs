@@ -2660,6 +2660,14 @@ impl Perform for Terminal {
                 self.modes.focus_event = false;
                 self.modes.alternate_scroll = true; // xterm default: enabled
                 self.modes.reverse_video = false; // DECSCNM off per DECSTR spec
+                // Reset mouse tracking modes (DECSET 1000/1002/1003/1006/1005/1015/1016)
+                self.modes.mouse_tracking = false;
+                self.modes.mouse_button_event = false;
+                self.modes.mouse_any_event = false;
+                self.modes.mouse_sgr = false;
+                self.modes.mouse_utf8 = false;
+                self.modes.mouse_urxvt = false;
+                self.modes.mouse_sgr_pixel = false;
                 // Reset tab stops
                 let width = self.grid.width();
                 self.tab_stops = vec![false; width.max(1)];
@@ -18451,5 +18459,274 @@ mod tests {
         assert!(t.grid().scrollback_len() > 0, "scrollback exists");
         feed(&mut t, b"\x1bc"); // RIS
         assert_eq!(t.grid().scrollback_len(), 0, "RIS clears scrollback");
+    }
+
+    // ── Round 16-1: Mouse tracking mode flags ──────────────────────────
+
+    #[test]
+    fn t_r16_mouse_mode_defaults_off() {
+        let t = Terminal::new(10, 5);
+        assert!(!t.mouse_tracking_enabled(), "1000 default off");
+        assert!(!t.mouse_button_event_enabled(), "1002 default off");
+        assert!(!t.mouse_any_event_enabled(), "1003 default off");
+        assert!(!t.mouse_sgr_enabled(), "1006 default off");
+        assert!(!t.mouse_urxvt_enabled(), "1015 default off");
+        assert!(!t.mouse_sgr_pixel_enabled(), "1016 default off");
+    }
+
+    #[test]
+    fn t_r16_mouse_1000_toggle() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1000h");
+        assert!(t.mouse_tracking_enabled());
+        feed(&mut t, b"\x1b[?1000l");
+        assert!(!t.mouse_tracking_enabled());
+    }
+
+    #[test]
+    fn t_r16_mouse_1002_toggle() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1002h");
+        assert!(t.mouse_button_event_enabled());
+        feed(&mut t, b"\x1b[?1002l");
+        assert!(!t.mouse_button_event_enabled());
+    }
+
+    #[test]
+    fn t_r16_mouse_1003_toggle() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1003h");
+        assert!(t.mouse_any_event_enabled());
+        feed(&mut t, b"\x1b[?1003l");
+        assert!(!t.mouse_any_event_enabled());
+    }
+
+    #[test]
+    fn t_r16_mouse_sgr_1006_independent_from_tracking() {
+        // SGR encoding can be enabled independently of tracking mode.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1006h");
+        assert!(t.mouse_sgr_enabled());
+        assert!(
+            !t.mouse_tracking_enabled(),
+            "SGR encoding independent from tracking"
+        );
+    }
+
+    #[test]
+    fn t_r16_mouse_modes_reset_by_ris() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h");
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.mouse_tracking_enabled(), "RIS resets 1000");
+        assert!(!t.mouse_button_event_enabled(), "RIS resets 1002");
+        assert!(!t.mouse_any_event_enabled(), "RIS resets 1003");
+        assert!(!t.mouse_sgr_enabled(), "RIS resets 1006");
+    }
+
+    #[test]
+    fn t_r16_mouse_modes_reset_by_decstr() {
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1000h\x1b[?1006h");
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.mouse_tracking_enabled(), "DECSTR resets 1000");
+        assert!(!t.mouse_sgr_enabled(), "DECSTR resets 1006");
+    }
+
+    // ── Round 16-2: Tab stop edge cases ────────────────────────────────
+
+    #[test]
+    fn t_r16_tab_from_last_col_stays() {
+        // Tab at last column should stay at last column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;10H"); // cursor at last col
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 9, "tab at last col stays");
+    }
+
+    #[test]
+    fn t_r16_tab_with_no_stops_goes_to_end() {
+        // With all stops cleared, tab goes to last col.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"\x1b[1;1H"); // col 0
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 19, "no stops → tab to last col");
+    }
+
+    #[test]
+    fn t_r16_tab_stops_restored_by_ris() {
+        // RIS should restore default tab stops (every 8 cols).
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1bc"); // RIS
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\t"); // tab from col 0
+        assert_eq!(t.cursor().0, 8, "RIS restores default 8-col stops");
+    }
+
+    #[test]
+    fn t_r16_cht_basic() {
+        // CHT (CSI Ps I) advances n tab stops.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[2I"); // CHT 2 — advance 2 stops from col 0
+        assert_eq!(t.cursor().0, 16, "CHT 2 from col 0 → col 16");
+    }
+
+    #[test]
+    fn t_r16_cbt_basic() {
+        // CBT (CSI Ps Z) goes back n tab stops.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;25H"); // col 24
+        feed(&mut t, b"\x1b[1Z"); // CBT 1
+        assert_eq!(t.cursor().0, 16, "CBT 1 from col 24 → col 16");
+    }
+
+    #[test]
+    fn t_r16_tbc_0_clears_current_stop() {
+        // TBC 0 (default) clears current column's stop.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;9H"); // at col 8 (stop)
+        feed(&mut t, b"\x1b[g"); // TBC 0
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\t"); // tab from col 0
+        // Col 8 stop removed → should go to col 16
+        assert_eq!(t.cursor().0, 16, "stop at 8 cleared");
+    }
+
+    // ── Round 16-3: OSC edge cases ─────────────────────────────────────
+
+    #[test]
+    fn t_r16_osc_title_strips_control_chars() {
+        // OSC 0/2 title should strip control chars.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]2;Hello\x01World\x07"); // BEL terminated
+        assert_eq!(t.title(), "HelloWorld", "control chars stripped from title");
+    }
+
+    #[test]
+    fn t_r16_osc_title_cap_256() {
+        // Title longer than 256 chars should be truncated.
+        let mut t = Terminal::new(10, 5);
+        let long_title = "A".repeat(300);
+        let osc = format!("\x1b]2;{}\x07", long_title);
+        feed(&mut t, osc.as_bytes());
+        assert_eq!(t.title().len(), 256, "title capped at 256 chars");
+    }
+
+    #[test]
+    fn t_r16_osc_8_empty_uri_clears() {
+        // OSC 8 with empty URI clears hyperlink.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;http://example.com\x1b\\");
+        assert!(t.current_hyperlink.is_some());
+        feed(&mut t, b"\x1b]8;;\x1b\\");
+        assert!(t.current_hyperlink.is_none(), "empty URI clears hyperlink");
+    }
+
+    #[test]
+    fn t_r16_osc_8_with_params() {
+        // OSC 8 with params section.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;id=123;http://example.com\x1b\\");
+        assert_eq!(
+            t.current_hyperlink.as_deref(),
+            Some("http://example.com"),
+            "params ignored, URI stored"
+        );
+    }
+
+    #[test]
+    fn t_r16_osc_8_uri_cap_2048() {
+        // URI longer than 2048 bytes should be truncated.
+        let mut t = Terminal::new(20, 3);
+        let long_uri = format!("http://{}.com", "a".repeat(2100));
+        let osc = format!("\x1b]8;;{}\x1b\\", long_uri);
+        feed(&mut t, osc.as_bytes());
+        // Should not panic, should be truncated
+        let hl = t.current_hyperlink.as_ref().unwrap();
+        assert!(hl.len() <= 2048, "URI capped at 2048 bytes");
+    }
+
+    #[test]
+    fn t_r16_osc_4_color_query_response_format() {
+        // OSC 4 query should respond with rgb:xx/xx/xx format.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]4;0;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(
+            s.starts_with("\x1b]4;0;rgb:"),
+            "OSC 4 query response format: {}",
+            s
+        );
+        assert!(s.ends_with("\x1b\\"), "OSC 4 response ends with ST");
+    }
+
+    #[test]
+    fn t_r16_osc_4_color_set_then_query() {
+        // Set color via OSC 4 then query to verify.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]4;1;rgb:ff/00/00\x1b\\"); // set index 1 to red
+        feed(&mut t, b"\x1b]4;1;?\x1b\\"); // query
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(
+            s.contains("rgb:ff/00/00"),
+            "set then query returns overridden color: {}",
+            s
+        );
+    }
+
+    #[test]
+    fn t_r16_osc_10_query_response_format() {
+        // OSC 10 query for fg color.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(
+            s.starts_with("\x1b]10;rgb:"),
+            "OSC 10 query response format: {}",
+            s
+        );
+    }
+
+    #[test]
+    fn t_r16_osc_11_query_response_format() {
+        // OSC 11 query for bg color.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(
+            s.starts_with("\x1b]11;rgb:"),
+            "OSC 11 query response format: {}",
+            s
+        );
+    }
+
+    #[test]
+    fn t_r16_osc_4_multiple_colors_in_one_sequence() {
+        // OSC 4 can set/query multiple colors in one sequence.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]4;0;rgb:10/20/30;1;?\x1b\\"); // set 0, query 1
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        // Should only respond to the query for index 1
+        assert!(s.starts_with("\x1b]4;1;rgb:"), "responds to query only");
+    }
+
+    #[test]
+    fn t_r16_osc_110_reset_fg() {
+        // OSC 110 resets dynamic fg to default.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]10;rgb:ff/ff/00\x1b\\"); // set fg yellow
+        feed(&mut t, b"\x1b]110\x1b\\"); // reset fg
+        feed(&mut t, b"\x1b]10;?\x1b\\"); // query fg
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        // Should NOT be the yellow we set
+        assert!(!s.contains("ffff00"), "OSC 110 resets fg");
     }
 }
