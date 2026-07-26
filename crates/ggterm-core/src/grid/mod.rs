@@ -2279,4 +2279,102 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn scroll_up_preserves_display_offset() {
+        // When user is scrolled up in history and new content scrolls,
+        // the display_offset should be advanced to keep the same view.
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        // Fill 3 rows then scroll to create scrollback
+        g.put_char(0, 0, 'A');
+        g.put_char(0, 1, 'B');
+        g.put_char(0, 2, 'C');
+        // Simulate scroll up (push row 0 to scrollback)
+        g.scroll_up(1);
+        assert_eq!(g.scrollback_len(), 1);
+        // Scroll viewport up by 1 to view history
+        g.scroll_up_viewport(1);
+        assert_eq!(g.display_offset, 1);
+        // Now scroll up again — display_offset should advance
+        g.scroll_up(1);
+        assert_eq!(
+            g.display_offset, 2,
+            "display_offset should advance when scrolled up"
+        );
+    }
+
+    #[test]
+    fn reflow_wide_char_at_boundary_no_corrupt() {
+        // Wide char at exact column boundary during reflow.
+        let mut g = Grid::with_scrollback(4, 2, 100);
+        g.put_char(0, 0, 'A');
+        g.put_char(1, 0, 'B');
+        // Wide char at cols 2-3
+        g.put_char(2, 0, '\u{4E00}');
+        g.set_row_wrap(0, true);
+        g.put_char(0, 1, 'C');
+        // Reflow to width 3 — wide char doesn't fit at col 2 (needs 2 cols)
+        g.reflow_resize(3, 2);
+        // Check no orphaned wide char anywhere
+        for r in 0..g.height() {
+            if let Some(row) = g.row(r) {
+                for (c, cell) in row.cells.iter().enumerate() {
+                    if cell.is_wide() {
+                        // Wide lead must have spacer at next col
+                        assert!(
+                            c + 1 < row.cells.len(),
+                            "WIDE_CHAR at col {} row {} has no spacer (end of row)",
+                            c,
+                            r
+                        );
+                        assert!(
+                            row.cells[c + 1].is_wide_spacer(),
+                            "WIDE_CHAR at col {} row {} missing spacer at col {}",
+                            c,
+                            r,
+                            c + 1
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn resize_grow_pulls_from_scrollback() {
+        // Height increase with reflow should pull rows from scrollback into visible area.
+        let mut g = Grid::with_scrollback(5, 2, 100);
+        // Fill visible area
+        for r in 0..2 {
+            g.put_char(0, r, ('A' as u8 + r as u8) as char);
+        }
+        // Create scrollback by scrolling up
+        g.scroll_up(1);
+        assert_eq!(g.scrollback_len(), 1);
+        // Grow from height 2 to 3 using reflow (same width)
+        g.reflow_resize(5, 3);
+        assert_eq!(g.height(), 3);
+        assert_eq!(
+            g.scrollback_len(),
+            0,
+            "scrollback should be drained by reflow"
+        );
+    }
+
+    #[test]
+    fn scroll_down_viewport_clamps_at_zero() {
+        // Scrolling viewport down past the bottom should clamp at display_offset = 0.
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        // Create scrollback
+        for _ in 0..5 {
+            g.scroll_up(1);
+        }
+        assert!(g.scrollback_len() > 0);
+        // Scroll viewport up
+        g.scroll_up_viewport(3);
+        assert!(g.display_offset > 0);
+        // Scroll viewport down past bottom
+        g.scroll_down_viewport(100);
+        assert_eq!(g.display_offset, 0, "viewport should clamp at bottom");
+    }
 }
