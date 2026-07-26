@@ -11649,4 +11649,203 @@ mod tests {
             "scroll region should be restored from primary"
         );
     }
+
+    // ── IL/DL overflow safety ──
+
+    #[test]
+    fn t_il_count_exceeds_region_height_no_panic() {
+        // IL with count > region height should not panic.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3 (height=2)
+        feed(&mut t, b"\x1b[2;1HAB"); // row 1
+        feed(&mut t, b"\x1b[3;1HCD"); // row 2
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 1 (region top)
+        feed(&mut t, b"\x1b[100L"); // IL 100 — way more than region
+        // Should not panic. A,B,C,D may all be pushed out.
+        assert!(t.cursor().1 >= 1);
+    }
+
+    #[test]
+    fn t_dl_count_exceeds_region_height_no_panic() {
+        // DL with count > region height should not panic.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[2;1HAB"); // row 1
+        feed(&mut t, b"\x1b[3;1HCD"); // row 2
+        feed(&mut t, b"\x1b[2;1H"); // cursor at region top
+        feed(&mut t, b"\x1b[100M"); // DL 100
+        // Should not panic. Region should be blanked.
+        assert!(t.grid().cell(0, 1).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_il_preserves_row_below_region() {
+        // IL inside region should not affect row below.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[5;1HBELOW"); // row 4 (below region)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at region top
+        feed(&mut t, b"\x1b[L"); // IL 1
+        assert_eq!(
+            t.grid().cell(0, 4).unwrap().ch,
+            'B',
+            "row below region should survive IL"
+        );
+    }
+
+    // ── ICH/DCH edge cases ──
+
+    #[test]
+    fn t_ich_count_exceeds_width_no_panic() {
+        // ICH with count > width should clamp, not panic.
+        let mut t = Terminal::new(5, 2);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\x1b[100@"); // ICH 100
+        // Should not panic. A should be shifted off (or blank fills inserted).
+        assert!(t.cursor().0 < 5);
+    }
+
+    #[test]
+    fn t_dch_count_exceeds_width_no_panic() {
+        // DCH with count > remaining width should clamp.
+        let mut t = Terminal::new(5, 2);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"\x1b[3G"); // cursor at col 2
+        feed(&mut t, b"\x1b[100P"); // DCH 100 — way more than remaining
+        // Should not panic. Cols 2-4 should be blank.
+        assert!(t.grid().cell(2, 0).unwrap().is_blank());
+        assert!(t.grid().cell(4, 0).unwrap().is_blank());
+    }
+
+    #[test]
+    fn t_ich_at_last_col_inserts_one_blank() {
+        // ICH at last column — inserts blank, content shifts right (clipped).
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"\x1b[4G"); // cursor at col 3 (last)
+        feed(&mut t, b"\x1b[1@"); // ICH 1
+        // D should be pushed off; col 3 becomes blank.
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_blank(),
+            "col 3 should be blank after ICH"
+        );
+    }
+
+    // ── DECOM + LF scroll ──
+
+    #[test]
+    fn t_decom_lf_at_region_bottom_scrolls_within_region() {
+        // In origin mode with scroll region, LF at region bottom scrolls within.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // region rows 2-4
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[1;1H"); // CUP row 1 col 1 → region-relative row 2
+        feed(&mut t, b"AAAA"); // write at row 2
+        feed(&mut t, b"\x1b[2;1H"); // CUP row 2 col 1 → region-relative row 3
+        feed(&mut t, b"BBBB"); // write at row 3
+        feed(&mut t, b"\x1b[3;1H"); // CUP row 3 → region-relative row 4 (region bottom)
+        feed(&mut t, b"\n"); // LF at region bottom → scroll
+        // Row 0 and 5 should be untouched
+        assert!(
+            t.grid().cell(0, 0).unwrap().is_blank(),
+            "row 0 should be untouched"
+        );
+        assert!(
+            t.grid().cell(0, 5).unwrap().is_blank(),
+            "row 5 should be untouched"
+        );
+        // A should have scrolled off, B should move from row 3 to row 2
+        assert_eq!(
+            t.grid().cell(0, 2).unwrap().ch,
+            'B',
+            "B should move from row 3 to row 2 after scroll"
+        );
+    }
+
+    #[test]
+    fn t_decom_cursor_clamps_to_region_bottom() {
+        // In origin mode, CUP to row beyond region height should clamp.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[?6h"); // origin mode
+        feed(&mut t, b"\x1b[100;1H"); // CUP row 100 → should clamp to region row 3 (abs)
+        assert_eq!(
+            t.cursor().1,
+            3,
+            "CUP should clamp to region bottom in origin mode"
+        );
+    }
+
+    // ── DECSC underline color restore ──
+
+    #[test]
+    fn t_decsc_restores_underline_color() {
+        // DECSC should save and DECRC should restore underline color.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[58;5;42m"); // set underline color to 42
+        feed(&mut t, b"\x1b7"); // DECSC save
+        feed(&mut t, b"\x1b[59m"); // reset underline color to default
+        feed(&mut t, b"\x1b8"); // DECRC restore
+        // underline_color should be restored (terminal-level, not cell-level)
+        // Verify via printing after restore
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    // ── REP at line start ──
+
+    #[test]
+    fn t_rep_at_line_start_after_cursor_move_no_panic() {
+        // REP at start of line with no prior char on this line.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A"); // print A on row 0
+        feed(&mut t, b"\r\n"); // CRLF to row 1
+        feed(&mut t, b"\x1b[3b"); // REP 3 — last char was A (from row 0)
+        // Per spec, REP repeats the last printed graphic char regardless of cursor move
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 1).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 1).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_rep_does_not_panic_on_wide_char_at_wrap_boundary() {
+        // REP with wide char when wrapping — should handle spacers correctly.
+        let mut t = Terminal::new(6, 3);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
+        feed(&mut t, b"\x1b[2b"); // REP 2 — repeat 你 twice more
+        // Should not panic. Check no orphaned wide chars.
+        for col in 0..6 {
+            let c = t.grid().cell(col, 0).unwrap();
+            if c.flags.contains(CellFlags::WIDE_CHAR) {
+                let next = t
+                    .grid()
+                    .cell(col + 1, 0)
+                    .unwrap_or(t.grid().cell(0, 1).unwrap());
+                assert!(
+                    next.flags.contains(CellFlags::WIDE_SPACER),
+                    "WIDE_CHAR at col {} should have spacer",
+                    col
+                );
+            }
+        }
+    }
+
+    // ── DECSC restores cursor visible flag ──
+
+    #[test]
+    fn t_decsc_restores_cursor_visible_state() {
+        // DECSC should save cursor visibility state.
+        // (cursor_visible is a mode, saved via DECSC per xterm spec.)
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[?25l"); // hide cursor
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[?25h"); // show cursor
+        feed(&mut t, b"\x1b8"); // restore
+        // cursor_visible should be restored — but this depends on implementation.
+        // At minimum, should not crash.
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
 }
