@@ -15416,4 +15416,124 @@ mod tests {
             "1048 should restore charset"
         );
     }
+
+    // ── Round 7-4: Resize edge case audits ─────────────────────────────
+
+    #[test]
+    fn t_r7_resize_shrink_drops_content_beyond_width() {
+        // When shrinking width with reflow, content is re-wrapped.
+        // A 20-char line becomes two 10-char rows (extra row goes to scrollback).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"ABCDEFGHIJKLMNOPQRST"); // 20 chars fills row 0
+        t.resize(10, 5);
+        assert_eq!(t.grid().width(), 10);
+        // Content should be preserved somewhere (visible or scrollback)
+        // after reflow, not lost.
+        assert!(
+            t.grid().scrollback_len() > 0,
+            "reflow should push overflow to scrollback"
+        );
+    }
+
+    #[test]
+    fn t_r7_resize_grow_new_cells_blank() {
+        // When growing, new cells should be blank.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE");
+        t.resize(10, 3);
+        // Old content preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'E');
+        // New cells are blank
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_r7_resize_cursor_clamped_after_shrink() {
+        // Cursor should be clamped to new bounds after shrink.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[8;15H"); // row 8, col 15
+        t.resize(10, 3);
+        assert_eq!(t.cursor(), (9, 2), "cursor clamped to (9, 2)");
+    }
+
+    #[test]
+    fn t_r7_resize_clears_pending_wrap() {
+        // pending_wrap should be cleared after resize.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        assert!(t.cursor.pending_wrap);
+        t.resize(10, 3);
+        assert!(!t.cursor.pending_wrap, "pending_wrap cleared after resize");
+    }
+
+    #[test]
+    fn t_r7_resize_resets_scroll_region() {
+        // Resize should reset scroll region to full screen.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[3;7r"); // scroll region rows 3-7
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (2, 7));
+        t.resize(20, 8); // change height to trigger resize
+        // Scroll region should be reset to full screen (0, 8)
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!((top2, bottom2), (0, 8), "scroll region reset after resize");
+    }
+
+    #[test]
+    fn t_r7_resize_alt_screen_simple_truncation() {
+        // In alt screen, resize should be simple truncation (no reflow).
+        // Content that already wrapped before resize stays where it is.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ABCDEFGHIJKLMNOPQRST"); // exactly 20 chars, fills row 0
+        t.resize(10, 5);
+        // Row 0 truncated to 10 chars
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, 'J');
+        // No reflow: K-T is dropped (not moved to row 1)
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            ' ',
+            "no reflow in alt screen"
+        );
+    }
+
+    #[test]
+    fn t_r7_resize_clears_utf8_buffer() {
+        // After resize, Terminal's internal UTF-8 buffer should be empty.
+        // (The VTE Parser handles its own UTF-8 state separately.)
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"Hello");
+        t.resize(15, 3);
+        assert!(t.utf8_buf.is_empty(), "UTF-8 buffer cleared after resize");
+    }
+
+    #[test]
+    fn t_r7_resize_shrink_to_one_col() {
+        // Resize to 1 column should not panic and content should survive.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC");
+        t.resize(1, 3);
+        assert_eq!(t.cursor().0, 0, "cursor x clamped to 0");
+        assert_eq!(t.grid().width(), 1);
+    }
+
+    #[test]
+    fn t_r7_resize_grow_pulls_scrollback() {
+        // Growing height should pull rows from scrollback into visible area.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        for i in 0..10 {
+            feed(&mut t, format!("L{}\n", i).as_bytes());
+        }
+        let sb_before = t.grid().scrollback_len();
+        assert!(sb_before > 0, "should have scrollback");
+        t.resize(10, 8); // grow height
+        let sb_after = t.grid().scrollback_len();
+        assert!(
+            sb_after < sb_before,
+            "scrollback should shrink when growing height"
+        );
+    }
 }

@@ -166,6 +166,9 @@ impl Grid {
                 }
             }
             self.height = height;
+            // Reset scroll region to full screen (consistent with resize()).
+            self.scroll_top = 0;
+            self.scroll_bottom = height;
             self.damage.mark_all(height);
             self.content_dirty = true;
             return;
