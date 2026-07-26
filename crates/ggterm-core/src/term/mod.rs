@@ -2660,6 +2660,12 @@ impl Perform for Terminal {
                 self.modes.focus_event = false;
                 self.modes.alternate_scroll = true; // xterm default: enabled
                 self.modes.reverse_video = false; // DECSCNM off per DECSTR spec
+                self.modes.cursor_blink = true; // DECSET 12 default = on
+                // Reset keypad application mode (DECKPAM/DECPNM)
+                self.modes.keypad_app = false;
+                // Reset Kitty keyboard protocol flags
+                self.modes.kitty_keyboard = 0;
+                self.kitty_kb_stack.clear();
                 // Reset mouse tracking modes (DECSET 1000/1002/1003/1006/1005/1015/1016)
                 self.modes.mouse_tracking = false;
                 self.modes.mouse_button_event = false;
@@ -18728,5 +18734,215 @@ mod tests {
         let s = String::from_utf8(resp).unwrap();
         // Should NOT be the yellow we set
         assert!(!s.contains("ffff00"), "OSC 110 resets fg");
+    }
+
+    // ── Round 17-1: DECSTR complete audit ──────────────────────────────
+
+    #[test]
+    fn t_r17_decstr_resets_keypad_app() {
+        // DECSTR should reset keypad application mode (DECPAM/DECPNM).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b="); // DECPAM — keypad app mode
+        assert!(t.modes.keypad_app);
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.modes.keypad_app, "DECSTR resets keypad_app");
+    }
+
+    #[test]
+    fn t_r17_decstr_resets_kitty_keyboard() {
+        // DECSTR should reset Kitty keyboard protocol to 0.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[>1u"); // Kitty keyboard enable
+        assert!(t.modes.kitty_keyboard > 0);
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert_eq!(t.modes.kitty_keyboard, 0, "DECSTR resets kitty_keyboard");
+    }
+
+    #[test]
+    fn t_r17_decstr_resets_kitty_kb_stack() {
+        // DECSTR should clear the Kitty keyboard push/pop stack.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[>1u"); // enable
+        feed(&mut t, b"\x1b[>1u"); // push flags
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(t.kitty_kb_stack.is_empty(), "DECSTR clears kitty_kb_stack");
+    }
+
+    #[test]
+    fn t_r17_decstr_resets_cursor_blink() {
+        // DECSTR should reset cursor_blink to default (true).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?12l"); // cursor blink off
+        assert!(!t.modes.cursor_blink);
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(
+            t.modes.cursor_blink,
+            "DECSTR resets cursor_blink to default"
+        );
+    }
+
+    // ── Round 17-A: Alt screen edge cases ──────────────────────────────
+
+    #[test]
+    fn t_r17_alt_screen_content_isolated() {
+        // Writing to alt screen should not affect main screen content.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"MAIN1\r\nMAIN2");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[2J"); // clear alt
+        feed(&mut t, b"ALT_DATA");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Main screen content should be intact
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "main screen row 0 preserved"
+        );
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'M',
+            "main screen row 1 preserved"
+        );
+    }
+
+    #[test]
+    fn t_r17_alt_screen_cursor_restored_after_write() {
+        // Cursor should be fully restored after writing in alt screen.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[4;7H"); // cursor at (6, 3)
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        for _ in 0..5 {
+            feed(&mut t, b"X\r\n"); // write and move cursor
+        }
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(t.cursor(), (6, 3), "cursor fully restored after alt writes");
+    }
+
+    #[test]
+    fn t_r17_alt_screen_scroll_region_independent() {
+        // 1049 clears screen AND resets scroll region.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 2-4
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (1, 4));
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — clears screen
+        // In alt screen, scroll region should be full screen
+        let (alt_top, alt_bottom) = t.grid().scroll_region();
+        assert_eq!(
+            (alt_top, alt_bottom),
+            (0, 8),
+            "scroll region reset in alt screen"
+        );
+    }
+
+    #[test]
+    fn t_r17_alt_screen_no_leak_on_repeated_toggle() {
+        // Repeatedly toggling alt screen should not accumulate content.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"BASE");
+        for _ in 0..5 {
+            feed(&mut t, b"\x1b[?1049h");
+            feed(&mut t, b"TEMP");
+            feed(&mut t, b"\x1b[?1049l");
+        }
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B', "base content intact");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A', "base content intact");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'S', "base content intact");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E', "base content intact");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "no leak");
+    }
+
+    // ── Round 17-B: Wide character / Unicode boundaries ────────────────
+
+    #[test]
+    fn t_r17_wide_char_at_n_minus_1_wraps() {
+        // Wide char at last column (n-1) with only 1 col left should wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCD"); // cursor at col 4, only 1 col left
+        feed(&mut t, "你".as_bytes()); // needs 2 cols
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你', "wrapped to row 1");
+        assert!(t.grid().cell(1, 1).unwrap().is_wide_spacer());
+    }
+
+    #[test]
+    fn t_r17_wide_char_overwrite_preserves_combining() {
+        // Overwriting a wide char that has combining marks should clear them.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, "\u{0301}".as_bytes()); // combining on lead
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(!cell.combining.is_empty(), "combining attached");
+        // Now overwrite with narrow char
+        feed(&mut t, b"\r");
+        feed(&mut t, b"X");
+        let cell2 = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell2.ch, 'X');
+        assert!(cell2.combining.is_empty(), "combining cleared on overwrite");
+    }
+
+    #[test]
+    fn t_r17_two_wide_chars_adjacent() {
+        // Two adjacent wide chars should produce 4 cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你好".as_bytes());
+        assert!(t.grid().cell(0, 0).unwrap().is_wide(), "first lead");
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "first spacer"
+        );
+        assert!(t.grid().cell(2, 0).unwrap().is_wide(), "second lead");
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_wide_spacer(),
+            "second spacer"
+        );
+        assert_eq!(t.cursor().0, 4, "cursor at col 4");
+    }
+
+    // ── Round 17-C: Scroll region boundaries ───────────────────────────
+
+    #[test]
+    fn t_r17_su_at_region_top_scrolls_content() {
+        // SU at region top should push content up within region.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 2-5 (0-based: 1..5)
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;1H"); // cursor at region top
+        feed(&mut t, b"\x1b[1S"); // SU 1
+        // Row 0 (above region) should be preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r17_il_at_region_bottom_pushes_out() {
+        // IL at region bottom should push lines out of region bottom.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 2-5
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[5;1H"); // cursor at region bottom (row 5)
+        feed(&mut t, b"\x1b[1L"); // IL 1
+        // Row 0 (above region) should be preserved
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r17_dl_at_region_top_pulls_up() {
+        // DL at region top should pull lines up from below.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 2-5
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;1H"); // cursor at region top
+        feed(&mut t, b"\x1b[1M"); // DL 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
+    }
+
+    #[test]
+    fn t_r17_sd_pushes_down_from_top() {
+        // SD at region top should push content down, blanks at top.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 2-5
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;1H"); // cursor at region top
+        feed(&mut t, b"\x1b[1T"); // SD 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
     }
 }
