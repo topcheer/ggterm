@@ -3285,7 +3285,11 @@ impl Perform for Terminal {
         if intermediates.contains(&b'#') {
             if final_byte == b'8' {
                 // DECALN — fill the entire screen with 'E' for alignment testing.
-                // This also tests that scroll regions are NOT affected (they stay set).
+                // Per VT220/xterm spec, DECALN also:
+                // 1. Resets the cursor to home (0,0)
+                // 2. Resets SGR attributes to default
+                // 3. Resets scroll region to full screen
+                // 4. Resets tab stops to default (every 8 columns)
                 for row in 0..self.grid.height() {
                     for col in 0..self.grid.width() {
                         if let Some(c) = self.grid.cell_mut(col, row) {
@@ -3296,6 +3300,13 @@ impl Perform for Terminal {
                         }
                     }
                 }
+                self.cursor = Cursor::default();
+                self.fg = Color::Default;
+                self.bg = Color::Default;
+                self.underline_color = Color::Default;
+                self.flags = CellFlags::empty();
+                self.grid.set_scroll_region(0, self.grid.height());
+                self.reset_tab_stops();
                 self.grid.mark_all_dirty();
             }
             return;
@@ -5674,14 +5685,15 @@ mod tests {
 
     #[test]
     fn t_decaln_preserves_scroll_region() {
+        // DECALN fills entire screen with 'E' regardless of scroll region.
+        // Per xterm spec, DECALN also resets scroll region to full screen.
         let mut t = Terminal::new(10, 6);
         // Set scroll region to rows 1-4 (0-based)
         feed(&mut t, b"\x1b[2;5r");
-        // DECALN fills entire screen regardless of scroll region
         feed(&mut t, b"\x1b#8");
         let (top, bottom) = t.grid().scroll_region();
-        assert_eq!(top, 1, "scroll region top preserved after DECALN");
-        assert_eq!(bottom, 5, "scroll region bottom preserved after DECALN");
+        assert_eq!(top, 0, "scroll region reset to full screen by DECALN");
+        assert_eq!(bottom, 6, "scroll region reset to full screen by DECALN");
     }
 
     #[test]
@@ -16341,5 +16353,187 @@ mod tests {
         // Should wrap to next line
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你', "wide char wrapped");
         assert!(t.grid().cell(0, 1).unwrap().is_wide(), "wide flag set");
+    }
+
+    // ── Round 10-1: DECSC/DECRC + DECALN audits ────────────────────────
+
+    #[test]
+    fn t_r10_decsc_restores_cursor_position() {
+        // DECSC saves cursor pos, DECRC restores it.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3;5H"); // (row3, col5)
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[1;1H"); // move to (0,0)
+        feed(&mut t, b"\x1b8"); // restore
+        assert_eq!(t.cursor(), (4, 2), "cursor restored to (4,2)");
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_pending_wrap() {
+        // DECSC should save pending_wrap, DECRC should restore it.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        assert!(t.cursor.pending_wrap);
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[1;1H"); // move — clears pending_wrap
+        assert!(!t.cursor.pending_wrap);
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(t.cursor.pending_wrap, "pending_wrap restored by DECRC");
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_all_sgr() {
+        // DECSC/DECRC should save/restore fg, bg, underline_color, flags.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[1;3;4;5;9m"); // bold, italic, underline, blink, strikethrough
+        feed(&mut t, b"\x1b[38;2;100;150;200m"); // fg RGB
+        feed(&mut t, b"\x1b[48;5;42m"); // bg indexed
+        feed(&mut t, b"\x1b[58;2;10;20;30m"); // underline RGB
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[0m"); // reset all
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(t.flags.contains(CellFlags::BOLD), "bold restored");
+        assert!(t.flags.contains(CellFlags::ITALIC), "italic restored");
+        assert!(t.flags.contains(CellFlags::UNDERLINE), "underline restored");
+        assert!(t.flags.contains(CellFlags::BLINK), "blink restored");
+        assert!(
+            t.flags.contains(CellFlags::STRIKETHROUGH),
+            "strikethrough restored"
+        );
+        assert_eq!(t.fg, Color::Rgb(100, 150, 200), "fg RGB restored");
+        assert_eq!(t.bg, Color::Indexed(42), "bg indexed restored");
+        assert_eq!(
+            t.underline_color,
+            Color::Rgb(10, 20, 30),
+            "underline color restored"
+        );
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_charset() {
+        // DECSC/DECRC should save/restore charset designation.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special Graphics
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b(B"); // G0 = ASCII
+        feed(&mut t, b"\x1b8"); // restore
+        assert_eq!(t.g0_charset(), Charset::DecSpecial, "G0 charset restored");
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_origin_mode() {
+        // DECSC/DECRC should save/restore origin mode.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[?6l"); // origin off
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(t.modes.origin, "origin mode restored");
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_auto_wrap() {
+        // DECSC/DECRC should save/restore auto-wrap mode.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[?7l"); // DECAWM off
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[?7h"); // DECAWM on
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(!t.modes.auto_wrap, "auto-wrap restored to off");
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_protected_attr() {
+        // DECSC/DECRC should save/restore DECSCA protected attribute.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[1\"q"); // DECSCA = protected
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[2\"q"); // DECSCA = unprotected
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(t.protected_attr, "protected attr restored");
+    }
+
+    #[test]
+    fn t_r10_decsc_restores_cursor_style() {
+        // DECSC/DECRC should save/restore cursor style (DECSCUSR).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[4 q"); // steady underline
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[0 q"); // default
+        feed(&mut t, b"\x1b8"); // restore
+        assert_eq!(
+            t.cursor_style,
+            CursorStyle::SteadyUnderline,
+            "cursor style restored"
+        );
+    }
+
+    #[test]
+    fn t_r10_decrc_without_decsc_restores_defaults() {
+        // DECRC without prior DECSC should restore defaults.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[5;10H\x1b[1;31m"); // move + bold red
+        feed(&mut t, b"\x1b8"); // DECRC without save
+        assert_eq!(t.cursor(), (0, 0), "cursor at (0,0) default");
+        assert!(!t.flags.contains(CellFlags::BOLD), "bold cleared");
+        assert_eq!(t.fg, Color::Default, "fg default");
+    }
+
+    #[test]
+    fn t_r10_decsc_multiple_saves_overwrite() {
+        // Multiple DECSC should overwrite (only one saved state).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[2;3H"); // position 1
+        feed(&mut t, b"\x1b7"); // save 1
+        feed(&mut t, b"\x1b[5;10H"); // position 2
+        feed(&mut t, b"\x1b7"); // save 2 (overwrites)
+        feed(&mut t, b"\x1b[1;1H"); // move away
+        feed(&mut t, b"\x1b8"); // restore
+        assert_eq!(t.cursor(), (9, 4), "second save wins");
+    }
+
+    #[test]
+    fn t_r10_decaln_resets_tab_stops() {
+        // DECALN (ESC # 8) should reset tab stops to defaults (every 8).
+        let mut t = Terminal::new(40, 5);
+        // Set custom tab stop at col 5
+        feed(&mut t, b"\x1b[6G\x1bH"); // cursor at col 6 (0-based: 5), set HTS
+        assert!(t.tab_stops[5], "custom stop at col 5");
+        feed(&mut t, b"\x1b#8"); // DECALN
+        // After DECALN, col 5 should NOT have a custom stop.
+        // Default stops are at 0, 8, 16, 24, 32...
+        assert!(
+            !t.tab_stops[5],
+            "DECALN should reset custom tab stop at col 5"
+        );
+        assert!(t.tab_stops[8], "DECALN preserves default stop at col 8");
+    }
+
+    #[test]
+    fn t_r10_decaln_resets_cursor_and_attrs() {
+        // DECALN should reset cursor to (0,0) and clear SGR attributes.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H\x1b[1;33;44m"); // move + bold yellow on blue
+        feed(&mut t, b"\x1b#8"); // DECALN
+        assert_eq!(t.cursor(), (0, 0), "DECALN homes cursor");
+        assert!(!t.flags.contains(CellFlags::BOLD), "DECALN clears bold");
+        assert_eq!(t.fg, Color::Default, "DECALN resets fg");
+        assert_eq!(t.bg, Color::Default, "DECALN resets bg");
+    }
+
+    #[test]
+    fn t_r10_decaln_resets_scroll_region() {
+        // Per xterm, DECALN should reset scroll region to full screen.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;5r"); // scroll region rows 2-5
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (1, 5));
+        feed(&mut t, b"\x1b#8"); // DECALN
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!(
+            (top2, bottom2),
+            (0, 6),
+            "DECALN resets scroll region to full screen"
+        );
     }
 }
