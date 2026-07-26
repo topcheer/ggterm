@@ -12049,4 +12049,117 @@ mod tests {
             "row 2 should be erased"
         );
     }
+
+    // ── Tab stop boundary probes ──
+
+    #[test]
+    fn t_cht_after_custom_tab_stop() {
+        // Set custom tab stop at col 5, then CHT should jump to it.
+        let mut t = Terminal::new(20, 2);
+        feed(&mut t, b"\x1b[6G\x1bH"); // cursor at col 5, set tab stop
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\x1b[I"); // CHT forward 1
+        assert_eq!(
+            t.cursor().0,
+            5,
+            "CHT should jump to custom tab stop at col 5"
+        );
+    }
+
+    #[test]
+    fn t_cbt_to_custom_tab_stop() {
+        // Clear all default tab stops, set custom at col 3, CBT should land on it.
+        let mut t = Terminal::new(20, 2);
+        feed(&mut t, b"\x1b[3g"); // clear all tab stops
+        feed(&mut t, b"\x1b[4G\x1bH"); // cursor at col 3 (1-indexed 4), set tab stop
+        feed(&mut t, b"\x1b[10G"); // cursor at col 9
+        feed(&mut t, b"\x1b[Z"); // CBT backward 1
+        assert_eq!(
+            t.cursor().0,
+            3,
+            "CBT should land on custom tab stop at col 3"
+        );
+    }
+
+    #[test]
+    fn t_cbt_multiple_stops() {
+        // CBT 2 should skip over one tab stop and land on the previous.
+        let mut t = Terminal::new(40, 2);
+        // Default stops at 8, 16, 24, 32
+        feed(&mut t, b"\x1b[25G"); // cursor at col 24
+        feed(&mut t, b"\x1b[2Z"); // CBT 2 → should land at col 8
+        assert_eq!(t.cursor().0, 8, "CBT 2 from col 24 should land at col 8");
+    }
+
+    #[test]
+    fn t_cht_at_last_column_no_panic() {
+        // CHT when cursor is already at last column — should not panic.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"\x1b[10G"); // cursor at col 9 (last)
+        feed(&mut t, b"\x1b[I"); // CHT forward 1
+        assert_eq!(t.cursor().0, 9, "CHT at last column stays at last");
+    }
+
+    #[test]
+    fn t_tbc_clear_custom_then_default_unchanged() {
+        // Clear custom tab stop, default stops should still work.
+        let mut t = Terminal::new(20, 2);
+        feed(&mut t, b"\x1b[6G\x1bH"); // set tab stop at col 5
+        feed(&mut t, b"\x1b[6G\x1b[0g"); // clear tab stop at col 5
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\t"); // TAB → should skip col 5, land at col 8
+        assert_eq!(
+            t.cursor().0,
+            8,
+            "TAB should skip cleared custom stop, land at default 8"
+        );
+    }
+
+    #[test]
+    fn t_scp_rcp_only_saves_cursor_position() {
+        // SCP/RCP (CSI s/u) should ONLY save cursor position, not SGR.
+        // This differs from DECSC/DECRC which saves everything.
+        let mut t = Terminal::new(20, 4);
+        feed(&mut t, b"\x1b[1;31m"); // red fg
+        feed(&mut t, b"\x1b[s"); // SCP save
+        feed(&mut t, b"\x1b[0;32m"); // reset, green fg
+        feed(&mut t, b"\x1b[u"); // RCP restore
+        // SGR should NOT be restored — only cursor position.
+        feed(&mut t, b"X");
+        let cell = t
+            .grid()
+            .cell(t.cursor().0.saturating_sub(1), t.cursor().1)
+            .unwrap();
+        assert_eq!(
+            cell.fg,
+            Color::Indexed(2),
+            "SCP/RCP should NOT restore SGR (green stays)"
+        );
+    }
+
+    #[test]
+    fn t_decsc_then_alt_screen_then_decrc() {
+        // DECSC saves state, then alt screen switches cursor position,
+        // then DECRC should restore the DECSC-saved state (not alt screen state).
+        let mut t = Terminal::new(20, 4);
+        feed(&mut t, b"\x1b[2;5H"); // cursor at (4,1)
+        feed(&mut t, b"\x1b[1;33m"); // bold yellow
+        feed(&mut t, b"\x1b7"); // DECSC save
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        feed(&mut t, b"\x1b[4;4H"); // move cursor in alt
+        feed(&mut t, b"\x1b[0;34m"); // blue in alt
+        feed(&mut t, b"\x1b8"); // DECRC restore — should restore from before alt
+        assert_eq!(
+            t.cursor(),
+            (4, 1),
+            "DECRC should restore pre-alt cursor position"
+        );
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(4, 1).unwrap();
+        assert_eq!(
+            cell.fg,
+            Color::Indexed(3),
+            "DECRC should restore pre-alt SGR (yellow)"
+        );
+    }
 }
