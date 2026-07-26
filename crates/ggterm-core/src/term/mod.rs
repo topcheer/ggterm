@@ -13277,4 +13277,78 @@ mod tests {
             assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'T');
         }
     }
+
+    // ── OSC/DCS string boundary tests ──────────────────────────────────
+
+    #[test]
+    fn t_osc_title_cap_256() {
+        // OSC 0 with a very long title — should be capped at 256 chars.
+        let mut t = Terminal::new(80, 24);
+        let title: String = "A".repeat(10000);
+        feed(&mut t, format!("\x1b]0;{}\x07", title).as_bytes());
+        assert!(
+            t.title().len() <= 256,
+            "OSC title should be capped at 256 chars, got {}",
+            t.title().len()
+        );
+        assert!(!t.title().is_empty(), "title should contain content");
+    }
+
+    #[test]
+    fn t_osc_8_uri_cap_2048() {
+        // OSC 8 with a very long URI — should be capped at 2048 chars.
+        let mut t = Terminal::new(80, 24);
+        let uri: String = "https://example.com/".repeat(1000); // ~20KB
+        feed(&mut t, format!("\x1b]8;;{}\x07", uri).as_bytes());
+        // Current hyperlink should be set and capped
+        assert!(t.current_hyperlink.is_some(), "hyperlink should be set");
+        let hl = t.current_hyperlink.as_ref().unwrap();
+        assert!(
+            hl.len() <= 2048,
+            "URI should be capped at 2048, got {}",
+            hl.len()
+        );
+    }
+
+    #[test]
+    fn t_osc_title_no_bel_injection() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]0;Hello\x07World\x07");
+        // The \x07 in the title should have been stripped
+        assert!(
+            !t.title().contains('\x07'),
+            "OSC title should not contain BEL chars"
+        );
+    }
+
+    #[test]
+    fn t_dcs_10k_payload_no_hang() {
+        // DCS with a long payload — should not hang or crash.
+        let mut t = Terminal::new(80, 24);
+        let payload: String = "X".repeat(10000);
+        feed(&mut t, format!("\x1bPq{}\x1b\\", payload).as_bytes());
+        // Should not hang. Terminal should still be functional.
+        feed(&mut t, b"OK");
+        assert_eq!(t.cursor().0, 2);
+    }
+
+    #[test]
+    fn t_osc_unterminated_recovers() {
+        // OSC without ST/BEL, then a new escape sequence — should recover.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b]0;Title"); // OSC without terminator
+        feed(&mut t, b"\x1b[H"); // New escape — should terminate OSC and process
+        feed(&mut t, b"OK");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'O');
+    }
+
+    #[test]
+    fn t_osc_invalid_utf8_title_survives() {
+        // OSC title with invalid UTF-8 bytes — should not crash.
+        let mut t = Terminal::new(80, 24);
+        // OSC 0; + invalid UTF-8 (0xFF) + BEL
+        feed(&mut t, b"\x1b]0;Hello\xffWorld\x07");
+        // Should not crash. Title may contain replacement chars.
+        assert!(t.title().contains("Hello") || t.title().contains("World"));
+    }
 }
