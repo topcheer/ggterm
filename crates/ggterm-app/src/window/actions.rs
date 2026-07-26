@@ -1619,7 +1619,15 @@ impl DesktopApp {
             self.show_toast("Clipboard empty".to_string());
             return;
         };
-        let text = text.trim_end_matches(['\n', '\r']);
+        // Normalize CRLF → LF (same as paste_from_source).
+        // Some clipboard sources (Windows apps, web pages) embed \r\n which
+        // causes stray \r bytes in the PTY stream.
+        let text = if text.contains('\r') {
+            text.replace("\r\n", "\n").replace('\r', "\n")
+        } else {
+            text
+        };
+        let text = text.trim_end_matches('\n');
         if text.is_empty() {
             self.show_toast("Clipboard empty".to_string());
             return;
