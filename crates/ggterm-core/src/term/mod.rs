@@ -9626,7 +9626,11 @@ mod tests {
         let long_title = "A".repeat(5000);
         let seq = format!("\x1b]0;{}\x07", long_title);
         feed(&mut t, seq.as_bytes());
-        assert!(t.title().len() <= 256, "title should be capped at 256 chars, got {}", t.title().len());
+        assert!(
+            t.title().len() <= 256,
+            "title should be capped at 256 chars, got {}",
+            t.title().len()
+        );
     }
 
     #[test]
@@ -9668,9 +9672,9 @@ mod tests {
         // After ESC(B, chars should be normal ASCII again.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"\x1b(0"); // activate DEC special
-        feed(&mut t, b"q");       // should be ─
-        feed(&mut t, b"\x1b(B");  // back to ASCII
-        feed(&mut t, b"q");       // should be literal 'q'
+        feed(&mut t, b"q"); // should be ─
+        feed(&mut t, b"\x1b(B"); // back to ASCII
+        feed(&mut t, b"q"); // should be literal 'q'
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
         assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'q');
     }
@@ -9680,7 +9684,7 @@ mod tests {
         // Chars outside the DEC graphics range (0x5f-0x7e) should pass through.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"\x1b(0"); // activate DEC special
-        feed(&mut t, b"ABC");    // uppercase — not mapped
+        feed(&mut t, b"ABC"); // uppercase — not mapped
         feed(&mut t, b"\x1b(B"); // back to ASCII
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
         assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
@@ -9694,11 +9698,11 @@ mod tests {
         //           └──┘
         let mut t = Terminal::new(6, 4);
         feed(&mut t, b"\x1b(0");
-        feed(&mut t, b"lqqqk");     // ┌───┐
-        feed(&mut t, b"\r\n");       // CR+LF (LNM default off needs explicit CR)
-        feed(&mut t, b"x   x");      // │   │ (x=│, space is mapped too)
+        feed(&mut t, b"lqqqk"); // ┌───┐
+        feed(&mut t, b"\r\n"); // CR+LF (LNM default off needs explicit CR)
+        feed(&mut t, b"x   x"); // │   │ (x=│, space is mapped too)
         feed(&mut t, b"\r\n");
-        feed(&mut t, b"mqqqj");     // └───┘
+        feed(&mut t, b"mqqqj"); // └───┘
         feed(&mut t, b"\x1b(B");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250C}'); // ┌
         assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2510}'); // ┐
@@ -9726,9 +9730,9 @@ mod tests {
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"\x1b[3g"); // clear all defaults
         feed(&mut t, b"\x1b[4C"); // move right 4 (cursor at col 4)
-        feed(&mut t, b"\x1bH");   // HTS — set tab stop at col 4
-        feed(&mut t, b"\r");      // back to col 0
-        feed(&mut t, b"\t");      // tab — should stop at col 4
+        feed(&mut t, b"\x1bH"); // HTS — set tab stop at col 4
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\t"); // tab — should stop at col 4
         assert_eq!(t.cursor().0, 4, "tab should stop at col 4 (HTS-set)");
     }
 
@@ -9737,10 +9741,10 @@ mod tests {
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"\x1b[3g"); // clear all
         feed(&mut t, b"\x1b[4C"); // move to col 4
-        feed(&mut t, b"\x1bH");   // set tab stop at col 4
+        feed(&mut t, b"\x1bH"); // set tab stop at col 4
         feed(&mut t, b"\x1b[0g"); // TBC param 0: clear current stop
-        feed(&mut t, b"\r");      // back to col 0
-        feed(&mut t, b"\t");      // tab — should go to last col (no stop at 4)
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\t"); // tab — should go to last col (no stop at 4)
         assert_eq!(t.cursor().0, 9, "tab should skip col 4 (cleared by TBC)");
     }
 
@@ -9837,18 +9841,26 @@ mod tests {
     #[test]
     fn t_lf_at_scroll_region_bottom_scrolls() {
         let mut t = Terminal::new(10, 5);
-        feed(&mut t, b"\x1b[1;3r");     // region rows 0-2
-        feed(&mut t, b"\x1b[4;1HOUT");  // row 3 (outside region)
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"\x1b[4;1HOUT"); // row 3 (outside region)
         // OUT should be at row 3
-        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O', "OUT should be at row 3");
-        feed(&mut t, b"\x1b[1;1HA");    // row 0
-        feed(&mut t, b"\x1b[2;1HB");    // row 1
-        feed(&mut t, b"\x1b[3;1HC");    // row 2
-        feed(&mut t, b"\x1b[3;1H");     // cursor at row 2 (bottom of region)
-        feed(&mut t, b"\n");             // LF at bottom → scroll up
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            'O',
+            "OUT should be at row 3"
+        );
+        feed(&mut t, b"\x1b[1;1HA"); // row 0
+        feed(&mut t, b"\x1b[2;1HB"); // row 1
+        feed(&mut t, b"\x1b[3;1HC"); // row 2
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 2 (bottom of region)
+        feed(&mut t, b"\n"); // LF at bottom → scroll up
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
-        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O', "OUT at row 3 should survive scroll");
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            'O',
+            "OUT at row 3 should survive scroll"
+        );
     }
 
     #[test]
@@ -9869,17 +9881,21 @@ mod tests {
         // RI (reverse index) at top of a scroll region starting at row 0
         // but not reaching the bottom — content below the region must survive.
         let mut t = Terminal::new(10, 5);
-        feed(&mut t, b"\x1b[1;3r");     // region rows 0-2
-        feed(&mut t, b"\x1b[1;1HA");    // row 0
-        feed(&mut t, b"\x1b[2;1HB");    // row 1
-        feed(&mut t, b"\x1b[4;1HOUT");  // row 3 (below region)
-        feed(&mut t, b"\x1b[1;1H");     // cursor at top of region
-        feed(&mut t, b"\x1bM");         // RI — scroll down within region
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"\x1b[1;1HA"); // row 0
+        feed(&mut t, b"\x1b[2;1HB"); // row 1
+        feed(&mut t, b"\x1b[4;1HOUT"); // row 3 (below region)
+        feed(&mut t, b"\x1b[1;1H"); // cursor at top of region
+        feed(&mut t, b"\x1bM"); // RI — scroll down within region
         // A should move to row 1, row 0 is blank
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A');
         assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'B');
         // OUT at row 3 must survive (scroll_down bug would corrupt it)
-        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O', "OUT should survive RI");
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            'O',
+            "OUT should survive RI"
+        );
     }
 
     #[test]
@@ -9888,11 +9904,23 @@ mod tests {
         // The lead + spacer should both be gone, no orphaned spacer.
         let mut t = Terminal::new(10, 2);
         feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
-        feed(&mut t, b"X");            // normal char at col 2
-        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::WIDE_CHAR));
-        assert!(t.grid().cell(1, 0).unwrap().flags.contains(CellFlags::WIDE_SPACER));
-        feed(&mut t, b"\x1b[1G");     // cursor to col 0
-        feed(&mut t, b"\x1b[P");      // DCH 1: delete char at col 0
+        feed(&mut t, b"X"); // normal char at col 2
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_CHAR)
+        );
+        assert!(
+            t.grid()
+                .cell(1, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::WIDE_SPACER)
+        );
+        feed(&mut t, b"\x1b[1G"); // cursor to col 0
+        feed(&mut t, b"\x1b[P"); // DCH 1: delete char at col 0
         // The wide char should be gone. What replaced it depends on DCH
         // shifting — but there should be NO orphaned WIDE_CHAR flag
         // without a corresponding WIDE_SPACER.
@@ -9900,8 +9928,10 @@ mod tests {
         let spacer = t.grid().cell(1, 0).unwrap();
         // No cell should have WIDE_CHAR without its spacer neighbor
         if lead.flags.contains(CellFlags::WIDE_CHAR) {
-            assert!(spacer.flags.contains(CellFlags::WIDE_SPACER),
-                "WIDE_CHAR at col 0 must have spacer at col 1");
+            assert!(
+                spacer.flags.contains(CellFlags::WIDE_SPACER),
+                "WIDE_CHAR at col 0 must have spacer at col 1"
+            );
         }
     }
 
@@ -9910,14 +9940,16 @@ mod tests {
         // DCH 2 starting at the wide char lead should remove both cells cleanly.
         let mut t = Terminal::new(10, 2);
         feed(&mut t, "你好".as_bytes()); // two wide chars: cols 0-1, 2-3
-        feed(&mut t, b"Z");              // col 4
-        feed(&mut t, b"\x1b[1G");       // cursor at col 0
-        feed(&mut t, b"\x1b[2P");       // DCH 2
+        feed(&mut t, b"Z"); // col 4
+        feed(&mut t, b"\x1b[1G"); // cursor at col 0
+        feed(&mut t, b"\x1b[2P"); // DCH 2
         // After deleting 2 cells, 好 should shift to col 0
         let c0 = t.grid().cell(0, 0).unwrap();
         // No orphaned WIDE_SPACER at col 0
-        assert!(!c0.flags.contains(CellFlags::WIDE_SPACER),
-            "col 0 should not have orphaned WIDE_SPACER after DCH 2");
+        assert!(
+            !c0.flags.contains(CellFlags::WIDE_SPACER),
+            "col 0 should not have orphaned WIDE_SPACER after DCH 2"
+        );
     }
 
     #[test]
@@ -9929,7 +9961,12 @@ mod tests {
         feed(&mut t, "你".as_bytes()); // width=2, wraps
         // 你 should be at row 1, cols 0-1
         assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('你'));
-        assert!(t.grid().cell(1, 1).map(|c| c.is_wide_spacer()).unwrap_or(false));
+        assert!(
+            t.grid()
+                .cell(1, 1)
+                .map(|c| c.is_wide_spacer())
+                .unwrap_or(false)
+        );
         // Col 4 of row 0 should be blank (not the wide char)
         assert_eq!(t.grid().cell(4, 0).map(|c| c.is_blank()), Some(true));
     }
@@ -9942,7 +9979,7 @@ mod tests {
         // tab goes to col 7 (last col, since width=8, last index=7).
         let mut t = Terminal::new(8, 2);
         feed(&mut t, "你".as_bytes()); // wide char at cols 0-1, cursor at col 2
-        feed(&mut t, b"\t");           // tab from col 2
+        feed(&mut t, b"\t"); // tab from col 2
         // Default tab stops: col 0 (set), then every 8.
         // From col 2, next stop is col 8 but max is col 7 → col 7.
         assert_eq!(t.cursor().0, 7, "tab should reach col 7 (last col)");
@@ -9953,7 +9990,7 @@ mod tests {
         // Backspace at col 0 should NOT wrap to previous row.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"AB\r"); // write AB, CR back to col 0
-        feed(&mut t, b"\x08");   // BS at col 0
+        feed(&mut t, b"\x08"); // BS at col 0
         assert_eq!(t.cursor().0, 0, "BS at col 0 should stay at col 0");
         assert_eq!(t.cursor().1, 0, "BS at col 0 should NOT wrap to prev row");
     }
@@ -9964,7 +10001,7 @@ mod tests {
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"AB\x08"); // write AB (cursor at col 2), BS → col 1
         assert_eq!(t.cursor().0, 1);
-        feed(&mut t, b"\x08");   // BS → col 0
+        feed(&mut t, b"\x08"); // BS → col 0
         assert_eq!(t.cursor().0, 0);
     }
 
@@ -9974,12 +10011,14 @@ mod tests {
         // Should clear both the spacer AND the lead (no orphaned WIDE_CHAR).
         let mut t = Terminal::new(6, 2);
         feed(&mut t, "你".as_bytes()); // cols 0-1
-        feed(&mut t, b"XY");           // cols 2-3
-        feed(&mut t, b"\x1b[2G");     // cursor to col 1 (spacer)
-        feed(&mut t, b"\x1b[K");      // EL 0: clear from cursor to end
+        feed(&mut t, b"XY"); // cols 2-3
+        feed(&mut t, b"\x1b[2G"); // cursor to col 1 (spacer)
+        feed(&mut t, b"\x1b[K"); // EL 0: clear from cursor to end
         let lead = t.grid().cell(0, 0).unwrap();
-        assert!(!lead.flags.contains(CellFlags::WIDE_CHAR),
-            "no orphaned WIDE_CHAR after EL 0 on spacer");
+        assert!(
+            !lead.flags.contains(CellFlags::WIDE_CHAR),
+            "no orphaned WIDE_CHAR after EL 0 on spacer"
+        );
         assert!(lead.is_blank(), "lead cell should be cleared");
     }
 
@@ -9989,11 +10028,13 @@ mod tests {
         // Cursor on lead (col 0). Should clear both lead and spacer.
         let mut t = Terminal::new(6, 2);
         feed(&mut t, "你".as_bytes()); // cols 0-1
-        feed(&mut t, b"\x1b[1G");     // cursor to col 0 (lead)
-        feed(&mut t, b"\x1b[1J");     // ED 1: clear from start to cursor
+        feed(&mut t, b"\x1b[1G"); // cursor to col 0 (lead)
+        feed(&mut t, b"\x1b[1J"); // ED 1: clear from start to cursor
         let spacer = t.grid().cell(1, 0).unwrap();
-        assert!(!spacer.flags.contains(CellFlags::WIDE_SPACER),
-            "no orphaned WIDE_SPACER after ED 1 on lead");
+        assert!(
+            !spacer.flags.contains(CellFlags::WIDE_SPACER),
+            "no orphaned WIDE_SPACER after ED 1 on lead"
+        );
     }
 
     #[test]
@@ -10004,17 +10045,21 @@ mod tests {
         let mut t = Terminal::new(6, 2);
         feed(&mut t, b"AB");
         feed(&mut t, "你".as_bytes()); // cols 2-3
-        feed(&mut t, b"CD");           // cols 4-5
-        feed(&mut t, b"\x1b[3G");     // cursor to col 2
-        feed(&mut t, b"\x1b[2@");     // ICH 2
+        feed(&mut t, b"CD"); // cols 4-5
+        feed(&mut t, b"\x1b[3G"); // cursor to col 2
+        feed(&mut t, b"\x1b[2@"); // ICH 2
         // Cols 2-3 should be blank (inserted). 你 should have shifted right.
         // Check no orphaned wide chars anywhere
         for col in 0..6 {
             let c = t.grid().cell(col, 0).unwrap();
             if c.flags.contains(CellFlags::WIDE_CHAR) {
                 let next = t.grid().cell(col + 1, 0).unwrap();
-                assert!(next.flags.contains(CellFlags::WIDE_SPACER),
-                    "WIDE_CHAR at col {} has no spacer at col {}", col, col + 1);
+                assert!(
+                    next.flags.contains(CellFlags::WIDE_SPACER),
+                    "WIDE_CHAR at col {} has no spacer at col {}",
+                    col,
+                    col + 1
+                );
             }
         }
     }
@@ -10025,15 +10070,18 @@ mod tests {
         // After restore, pending_wrap should be set.
         // Write one more char — it should wrap to next line.
         let mut t = Terminal::new(4, 3);
-        feed(&mut t, b"ABCD");     // fills row 0, pending_wrap=true
-        feed(&mut t, b"\x1b7");     // DECSC save (with pending_wrap)
+        feed(&mut t, b"ABCD"); // fills row 0, pending_wrap=true
+        feed(&mut t, b"\x1b7"); // DECSC save (with pending_wrap)
         feed(&mut t, b"\x1b[3;3H"); // move cursor away
-        feed(&mut t, b"\x1b8");     // DECRC restore
+        feed(&mut t, b"\x1b8"); // DECRC restore
         // Now pending_wrap should be restored. Writing 'E' should wrap.
         feed(&mut t, b"E");
         // E should be on row 1 (wrapped from row 0)
-        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('E'),
-            "E should wrap to row 1 after DECSC restored pending_wrap");
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some('E'),
+            "E should wrap to row 1 after DECSC restored pending_wrap"
+        );
     }
 
     #[test]
@@ -10041,12 +10089,16 @@ mod tests {
         // Write a wide char, then REP 3 → total 4 wide chars.
         let mut t = Terminal::new(10, 4);
         feed(&mut t, "你".as_bytes()); // 1 wide char (cols 0-1)
-        feed(&mut t, b"\x1b[3b");      // REP 3
+        feed(&mut t, b"\x1b[3b"); // REP 3
         // 4 wide chars = 8 cols. Check all are present.
         for i in 0..4 {
             let lead_col = i * 2;
             let lead = t.grid().cell(lead_col, 0).unwrap();
-            assert_eq!(lead.ch, '你', "wide char {} should be at col {}", i, lead_col);
+            assert_eq!(
+                lead.ch, '你',
+                "wide char {} should be at col {}",
+                i, lead_col
+            );
             assert!(lead.flags.contains(CellFlags::WIDE_CHAR));
             let spacer = t.grid().cell(lead_col + 1, 0).unwrap();
             assert!(spacer.flags.contains(CellFlags::WIDE_SPACER));
@@ -10063,7 +10115,11 @@ mod tests {
         }
         feed(&mut t, s.as_bytes());
         let cell = t.grid().cell(0, 0).unwrap();
-        assert_eq!(cell.combining.len(), 8, "combining marks should be capped at 8");
+        assert_eq!(
+            cell.combining.len(),
+            8,
+            "combining marks should be capped at 8"
+        );
     }
 
     #[test]
@@ -10079,7 +10135,10 @@ mod tests {
         feed(&mut t, b"\x1b[5G"); // cursor to col 4
         feed(&mut t, b"Z");
         let z = t.grid().cell(4, 0).unwrap();
-        assert!(z.hyperlink.is_none(), "cell after OSC 8 close should have no hyperlink");
+        assert!(
+            z.hyperlink.is_none(),
+            "cell after OSC 8 close should have no hyperlink"
+        );
     }
 
     #[test]
@@ -10097,9 +10156,15 @@ mod tests {
         let mut t = Terminal::new(10, 3);
         assert!(!t.bracketed_paste());
         feed(&mut t, b"\x1b[?2004h");
-        assert!(t.bracketed_paste(), "DECSET 2004 should enable bracketed paste");
+        assert!(
+            t.bracketed_paste(),
+            "DECSET 2004 should enable bracketed paste"
+        );
         feed(&mut t, b"\x1b[?2004l");
-        assert!(!t.bracketed_paste(), "DECRST 2004 should disable bracketed paste");
+        assert!(
+            !t.bracketed_paste(),
+            "DECRST 2004 should disable bracketed paste"
+        );
     }
 
     #[test]
@@ -10119,8 +10184,16 @@ mod tests {
         feed(&mut t, "你\u{0301}".as_bytes()); // 你 + combining acute
         let cell = t.grid().cell(0, 0).unwrap();
         assert_eq!(cell.ch, '你');
-        assert_eq!(cell.combining, vec!['\u{0301}'], "combining should attach to wide char");
-        assert_eq!(t.cursor().0, 2, "cursor should be at col 2 (after wide char + spacer)");
+        assert_eq!(
+            cell.combining,
+            vec!['\u{0301}'],
+            "combining should attach to wide char"
+        );
+        assert_eq!(
+            t.cursor().0,
+            2,
+            "cursor should be at col 2 (after wide char + spacer)"
+        );
     }
 
     #[test]
@@ -10154,33 +10227,39 @@ mod tests {
     fn t_decsc_restores_reverse_video() {
         // DECSC should save reverse video flag.
         let mut t = Terminal::new(10, 2);
-        feed(&mut t, b"\x1b[7m");  // reverse video
-        feed(&mut t, b"\x1b7");     // save
-        feed(&mut t, b"\x1b[0m");   // reset
-        feed(&mut t, b"\x1b8");     // restore
-        assert!(t.flags.contains(CellFlags::REVERSE), "reverse video should be restored");
+        feed(&mut t, b"\x1b[7m"); // reverse video
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[0m"); // reset
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(
+            t.flags.contains(CellFlags::REVERSE),
+            "reverse video should be restored"
+        );
     }
 
     #[test]
     fn t_decsc_restores_charset() {
         // DECSC should save G0 charset designation.
         let mut t = Terminal::new(10, 2);
-        feed(&mut t, b"\x1b(0");   // DEC Special Graphics
-        feed(&mut t, b"\x1b7");     // save
-        feed(&mut t, b"\x1b(B");    // back to ASCII
-        feed(&mut t, b"\x1b8");     // restore
-        feed(&mut t, b"q");         // if DEC Special restored, q should be ─
-        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}',
-            "DECSC should restore charset — q should be ─");
+        feed(&mut t, b"\x1b(0"); // DEC Special Graphics
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b(B"); // back to ASCII
+        feed(&mut t, b"\x1b8"); // restore
+        feed(&mut t, b"q"); // if DEC Special restored, q should be ─
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            '\u{2500}',
+            "DECSC should restore charset — q should be ─"
+        );
     }
 
     #[test]
     fn t_origin_mode_cup_relative() {
         // Origin mode: CUP row 1 should be scroll region top, not absolute row 0.
         let mut t = Terminal::new(10, 6);
-        feed(&mut t, b"\x1b[3;6r");   // region rows 2-5 (0-indexed)
-        feed(&mut t, b"\x1b[?6h");     // enable origin mode
-        feed(&mut t, b"\x1b[1;1H");    // CUP 1,1
+        feed(&mut t, b"\x1b[3;6r"); // region rows 2-5 (0-indexed)
+        feed(&mut t, b"\x1b[?6h"); // enable origin mode
+        feed(&mut t, b"\x1b[1;1H"); // CUP 1,1
         assert_eq!(t.cursor().1, 2, "origin mode: row 1 → region top (row 2)");
     }
 
@@ -10188,9 +10267,9 @@ mod tests {
     fn t_origin_mode_off_cup_absolute() {
         // Without origin mode, CUP 1,1 goes to absolute row 0 even with scroll region.
         let mut t = Terminal::new(10, 6);
-        feed(&mut t, b"\x1b[3;6r");   // region rows 2-5
-        feed(&mut t, b"\x1b[?6l");     // disable origin mode (explicit)
-        feed(&mut t, b"\x1b[1;1H");    // CUP 1,1
+        feed(&mut t, b"\x1b[3;6r"); // region rows 2-5
+        feed(&mut t, b"\x1b[?6l"); // disable origin mode (explicit)
+        feed(&mut t, b"\x1b[1;1H"); // CUP 1,1
         assert_eq!(t.cursor().1, 0, "non-origin mode: row 1 → absolute row 0");
     }
 
@@ -10202,8 +10281,11 @@ mod tests {
         feed(&mut t, b"ABCDE");
         // E should overwrite D at col 3
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E');
-        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some(' '),
-            "no wrap to next line with autowrap off");
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some(' '),
+            "no wrap to next line with autowrap off"
+        );
     }
 
     #[test]
@@ -10221,7 +10303,7 @@ mod tests {
         // After autowrap, CR should return to col 0 of current row.
         let mut t = Terminal::new(4, 3);
         feed(&mut t, b"ABCDE"); // wraps: D at row 0 col 3, E at row 1 col 0
-        feed(&mut t, b"\r");     // CR
+        feed(&mut t, b"\r"); // CR
         assert_eq!(t.cursor().0, 0, "CR after wrap should go to col 0");
         assert_eq!(t.cursor().1, 1, "CR should stay on row 1");
     }
@@ -10243,13 +10325,16 @@ mod tests {
     fn t_dch_more_than_content() {
         // DCH with count > remaining content fills with blanks.
         let mut t = Terminal::new(4, 2);
-        feed(&mut t, b"AB");   // cols 0-1, cols 2-3 blank
+        feed(&mut t, b"AB"); // cols 0-1, cols 2-3 blank
         feed(&mut t, b"\x1b[1G"); // cursor at col 0
         feed(&mut t, b"\x1b[4P"); // DCH 4 — delete all 4
         // All should be blank
         for col in 0..4 {
-            assert!(t.grid().cell(col, 0).unwrap().is_blank(),
-                "col {} should be blank after DCH 4", col);
+            assert!(
+                t.grid().cell(col, 0).unwrap().is_blank(),
+                "col {} should be blank after DCH 4",
+                col
+            );
         }
     }
 
@@ -10261,7 +10346,11 @@ mod tests {
         feed(&mut t, b"\x1b[2G");
         feed(&mut t, b"\x1b[K");
         let cell = t.grid().cell(2, 0).unwrap();
-        assert_eq!(cell.bg, Color::Default, "erased cell should have default bg");
+        assert_eq!(
+            cell.bg,
+            Color::Default,
+            "erased cell should have default bg"
+        );
     }
 
     #[test]
@@ -10312,8 +10401,11 @@ mod tests {
         feed(&mut t, b"\x1b[4;1HOUT");
         feed(&mut t, b"\x1b[1;1H");
         feed(&mut t, b"AAAAAAAAAAAA");
-        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O',
-            "OUT below scroll region should survive autowrap scroll");
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            'O',
+            "OUT below scroll region should survive autowrap scroll"
+        );
     }
 
     #[test]
@@ -10335,7 +10427,11 @@ mod tests {
         feed(&mut t, b"\x1b[?1047l"); // exit alt
         // Cursor should NOT be restored to (4,2) — 1047 doesn't save cursor
         // It should be at (0,0) since 1047 exits go to home
-        assert_ne!(t.cursor(), (4, 2), "1047 should not restore cursor position");
+        assert_ne!(
+            t.cursor(),
+            (4, 2),
+            "1047 should not restore cursor position"
+        );
     }
 
     #[test]
@@ -10344,7 +10440,7 @@ mod tests {
         let mut t = Terminal::new(10, 5);
         feed(&mut t, b"\x1b[3;5H"); // cursor at (4,2)
         feed(&mut t, b"\x1b[?1049h"); // enter alt (saves cursor)
-        feed(&mut t, b"\x1b[5;5H");  // move cursor in alt
+        feed(&mut t, b"\x1b[5;5H"); // move cursor in alt
         feed(&mut t, b"\x1b[?1049l"); // exit alt (restores cursor)
         assert_eq!(t.cursor(), (4, 2), "1049 should restore cursor to (4,2)");
     }
@@ -10353,13 +10449,19 @@ mod tests {
     fn t_decscusr_persists_through_alt_screen() {
         // Cursor style set before entering alt screen should persist.
         let mut t = Terminal::new(10, 3);
-        feed(&mut t, b"\x1b[4 q");  // DECSCUSR: steady underline
+        feed(&mut t, b"\x1b[4 q"); // DECSCUSR: steady underline
         feed(&mut t, b"\x1b[?1049h"); // enter alt
-        assert_eq!(t.cursor_style(), CursorStyle::SteadyUnderline,
-            "cursor style should persist into alt screen");
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::SteadyUnderline,
+            "cursor style should persist into alt screen"
+        );
         feed(&mut t, b"\x1b[?1049l"); // exit alt
-        assert_eq!(t.cursor_style(), CursorStyle::SteadyUnderline,
-            "cursor style should persist after alt screen exit");
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::SteadyUnderline,
+            "cursor style should persist after alt screen exit"
+        );
     }
 
     #[test]
@@ -10372,8 +10474,11 @@ mod tests {
         feed(&mut t, b"\x1b[?1049h"); // enter alt
         feed(&mut t, b"ALTERNATE");
         feed(&mut t, b"\x1b[?1049l"); // exit alt
-        assert_eq!(t.grid().scrollback_len(), sb_before,
-            "scrollback should survive alt screen round-trip");
+        assert_eq!(
+            t.grid().scrollback_len(),
+            sb_before,
+            "scrollback should survive alt screen round-trip"
+        );
     }
 
     #[test]
@@ -10381,9 +10486,9 @@ mod tests {
         // CSI s / CSI u (ANSI SC/RC) should save/restore cursor position.
         let mut t = Terminal::new(10, 5);
         feed(&mut t, b"\x1b[3;5H"); // cursor at (4,2)
-        feed(&mut t, b"\x1b[s");     // ANSI save
+        feed(&mut t, b"\x1b[s"); // ANSI save
         feed(&mut t, b"\x1b[5;1H"); // move cursor
-        feed(&mut t, b"\x1b[u");     // ANSI restore
+        feed(&mut t, b"\x1b[u"); // ANSI restore
         assert_eq!(t.cursor(), (4, 2), "CSI u should restore cursor to (4,2)");
     }
 
@@ -10393,9 +10498,9 @@ mod tests {
         // Verify the behavior is at least consistent.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, b"\x1b[1;31m"); // bold red
-        feed(&mut t, b"\x1b[s");      // save
-        feed(&mut t, b"\x1b[0m");     // reset
-        feed(&mut t, b"\x1b[u");      // restore
+        feed(&mut t, b"\x1b[s"); // save
+        feed(&mut t, b"\x1b[0m"); // reset
+        feed(&mut t, b"\x1b[u"); // restore
         // CSI s/u in xterm only saves position, not attributes.
         // Verify current SGR state (should be reset since CSI s doesn't save SGR).
         // But implementation may differ — just verify position is correct.
@@ -10406,11 +10511,14 @@ mod tests {
     fn t_origin_mode_disable_homes_cursor() {
         // Per VT spec, DECOM (both enable AND disable) moves cursor to home.
         let mut t = Terminal::new(10, 6);
-        feed(&mut t, b"\x1b[?6h");  // enable origin
+        feed(&mut t, b"\x1b[?6h"); // enable origin
         feed(&mut t, b"\x1b[3;5H"); // move cursor to (4,2)
-        feed(&mut t, b"\x1b[?6l");  // disable origin — should home cursor
-        assert_eq!(t.cursor(), (0, 0),
-            "DECOM disable should home cursor per VT spec");
+        feed(&mut t, b"\x1b[?6l"); // disable origin — should home cursor
+        assert_eq!(
+            t.cursor(),
+            (0, 0),
+            "DECOM disable should home cursor per VT spec"
+        );
     }
 
     #[test]
@@ -10423,7 +10531,10 @@ mod tests {
         feed(&mut t, b"\x08"); // BS
         // BS should move to col 1, but since col 1 is a spacer, it should
         // go to col 0 (the lead). Behavior may vary — test what we have.
-        assert!(t.cursor().0 <= 1, "BS after wide char should go to col 0 or 1");
+        assert!(
+            t.cursor().0 <= 1,
+            "BS after wide char should go to col 0 or 1"
+        );
     }
 
     // ── Scroll region edge cases ──
@@ -10432,11 +10543,11 @@ mod tests {
     fn t_scroll_region_cursor_outside_lf_no_scroll() {
         // Cursor outside region (above). LF should NOT scroll the region.
         let mut t = Terminal::new(10, 6);
-        feed(&mut t, b"\x1b[4;6r");    // region rows 3-5
-        feed(&mut t, b"\x1b[1;1HA");   // row 0
-        feed(&mut t, b"\x1b[2;1HB");   // row 1
-        feed(&mut t, b"\x1b[1;1H");    // cursor at row 0 (above region)
-        feed(&mut t, b"\n");           // LF at row 0 → moves to row 1
+        feed(&mut t, b"\x1b[4;6r"); // region rows 3-5
+        feed(&mut t, b"\x1b[1;1HA"); // row 0
+        feed(&mut t, b"\x1b[2;1HB"); // row 1
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0 (above region)
+        feed(&mut t, b"\n"); // LF at row 0 → moves to row 1
         // A and B should NOT have moved (no scroll outside region)
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'B');
@@ -10446,10 +10557,10 @@ mod tests {
     fn t_il_outside_region_upper_is_noop() {
         // IL with cursor above scroll region should be a no-op.
         let mut t = Terminal::new(10, 6);
-        feed(&mut t, b"\x1b[4;6r");    // region rows 3-5
+        feed(&mut t, b"\x1b[4;6r"); // region rows 3-5
         feed(&mut t, b"\x1b[1;1HTOP"); // row 0
-        feed(&mut t, b"\x1b[1;1H");    // cursor at row 0 (above region)
-        feed(&mut t, b"\x1b[L");        // IL — no-op
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0 (above region)
+        feed(&mut t, b"\x1b[L"); // IL — no-op
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'T');
     }
 
@@ -10457,10 +10568,10 @@ mod tests {
     fn t_dl_outside_region_lower_is_noop() {
         // DL with cursor below scroll region should be a no-op.
         let mut t = Terminal::new(10, 6);
-        feed(&mut t, b"\x1b[1;4r");    // region rows 0-3
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
         feed(&mut t, b"\x1b[5;1HBOT"); // row 4 (below region)
-        feed(&mut t, b"\x1b[5;1H");    // cursor at row 4 (below region)
-        feed(&mut t, b"\x1b[M");        // DL — no-op
+        feed(&mut t, b"\x1b[5;1H"); // cursor at row 4 (below region)
+        feed(&mut t, b"\x1b[M"); // DL — no-op
         assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'B');
     }
 
@@ -10468,22 +10579,29 @@ mod tests {
     fn t_ich_works_outside_scroll_region() {
         // ICH/DCH operate on the current line regardless of scroll region.
         let mut t = Terminal::new(6, 6);
-        feed(&mut t, b"\x1b[2;4r");    // region rows 1-3
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
         feed(&mut t, b"\x1b[1;1HABC"); // row 0 (outside region), 3 chars
-        feed(&mut t, b"\x1b[2G");       // CHA col 2 → cursor at col 1
-        feed(&mut t, b"\x1b[2@");       // ICH 2 — insert 2 blanks at col 1
+        feed(&mut t, b"\x1b[2G"); // CHA col 2 → cursor at col 1
+        feed(&mut t, b"\x1b[2@"); // ICH 2 — insert 2 blanks at col 1
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
-        assert!(t.grid().cell(1, 0).unwrap().is_blank(), "col 1 should be blank");
-        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B', "B should shift to col 3");
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_blank(),
+            "col 1 should be blank"
+        );
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            'B',
+            "B should shift to col 3"
+        );
     }
 
     #[test]
     fn t_decstbm_origin_mode_cup_relative() {
         // Origin mode + DECSTBM: CUP uses region-relative coordinates.
         let mut t = Terminal::new(10, 8);
-        feed(&mut t, b"\x1b[3;6r");     // region rows 2-5
-        feed(&mut t, b"\x1b[?6h");       // origin mode on
-        feed(&mut t, b"\x1b[2;3H");      // CUP row 2, col 3
+        feed(&mut t, b"\x1b[3;6r"); // region rows 2-5
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[2;3H"); // CUP row 2, col 3
         // Row 2 relative to region top (row 2) = absolute row 3
         assert_eq!(t.cursor().1, 3, "origin: CUP row 2 → absolute row 3");
         assert_eq!(t.cursor().0, 2, "col 3 → col 2");
@@ -10495,11 +10613,15 @@ mod tests {
     fn t_pending_wrap_cleared_by_cup() {
         // Fill to last col (pending_wrap set), CUP should clear it.
         let mut t = Terminal::new(4, 3);
-        feed(&mut t, b"ABCD");          // pending_wrap = true
-        feed(&mut t, b"\x1b[1;1H");     // CUP — should clear pending_wrap
-        feed(&mut t, b"X");              // should overwrite col 0, not wrap
+        feed(&mut t, b"ABCD"); // pending_wrap = true
+        feed(&mut t, b"\x1b[1;1H"); // CUP — should clear pending_wrap
+        feed(&mut t, b"X"); // should overwrite col 0, not wrap
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
-        assert_eq!(t.cursor().1, 0, "should stay on row 0 after CUP cleared pending_wrap");
+        assert_eq!(
+            t.cursor().1,
+            0,
+            "should stay on row 0 after CUP cleared pending_wrap"
+        );
     }
 
     #[test]
@@ -10508,13 +10630,16 @@ mod tests {
         // LF should clear pending_wrap and move down ONE row only.
         // LNM off: LF keeps column. So cursor stays at col 3, row 1.
         let mut t = Terminal::new(4, 3);
-        feed(&mut t, b"ABCD");          // pending_wrap = true
-        feed(&mut t, b"\n");            // LF — clear pending_wrap, move to row 1
+        feed(&mut t, b"ABCD"); // pending_wrap = true
+        feed(&mut t, b"\n"); // LF — clear pending_wrap, move to row 1
         assert_eq!(t.cursor().1, 1, "LF should move to row 1");
-        feed(&mut t, b"X");              // X at col 3 row 1
+        feed(&mut t, b"X"); // X at col 3 row 1
         assert_eq!(t.grid().cell(3, 1).unwrap().ch, 'X');
-        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some(' '),
-            "X should not be at col 0 — LF without LNM keeps column");
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some(' '),
+            "X should not be at col 0 — LF without LNM keeps column"
+        );
     }
 
     #[test]
@@ -10522,18 +10647,26 @@ mod tests {
         // Fill to last col (pending_wrap set), then print another char.
         // Should WRAP to next line (not overwrite the char at last col).
         let mut t = Terminal::new(4, 3);
-        feed(&mut t, b"ABCD");          // pending_wrap = true, D at col 3
-        feed(&mut t, b"E");              // should wrap
-        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D', "D should remain at col 3");
-        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E', "E should wrap to row 1");
+        feed(&mut t, b"ABCD"); // pending_wrap = true, D at col 3
+        feed(&mut t, b"E"); // should wrap
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            'D',
+            "D should remain at col 3"
+        );
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'E',
+            "E should wrap to row 1"
+        );
     }
 
     #[test]
     fn t_decbawm_off_char_at_last_col_overwrites() {
         // With autowrap off, printing at the last column overwrites in place.
         let mut t = Terminal::new(4, 3);
-        feed(&mut t, b"\x1b[?7l");      // autowrap off
-        feed(&mut t, b"ABCDE");          // 5 chars on 4-wide terminal
+        feed(&mut t, b"\x1b[?7l"); // autowrap off
+        feed(&mut t, b"ABCDE"); // 5 chars on 4-wide terminal
         // E should overwrite D at col 3
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E');
         assert_eq!(t.cursor().0, 3, "cursor stays at last col");
@@ -10545,10 +10678,10 @@ mod tests {
         // Fill to last col (pending_wrap), then CUU (cursor up).
         // CUU should clear pending_wrap. Column stays, row decreases.
         let mut t = Terminal::new(4, 4);
-        feed(&mut t, b"\x1b[2;1H");     // row 1
-        feed(&mut t, b"ABCD");           // fill row 1, pending_wrap = true
-        feed(&mut t, b"\x1b[A");         // CUU — cursor up to row 0, col stays at 3
-        feed(&mut t, b"X");              // print at (3,0)
+        feed(&mut t, b"\x1b[2;1H"); // row 1
+        feed(&mut t, b"ABCD"); // fill row 1, pending_wrap = true
+        feed(&mut t, b"\x1b[A"); // CUU — cursor up to row 0, col stays at 3
+        feed(&mut t, b"X"); // print at (3,0)
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'X');
         assert_eq!(t.cursor().1, 0, "should be on row 0");
     }
