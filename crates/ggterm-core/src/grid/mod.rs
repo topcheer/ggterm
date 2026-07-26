@@ -1952,6 +1952,33 @@ mod tests {
     }
 
     #[test]
+    fn reflow_height_only_preserves_content() {
+        // Fast path: width unchanged, height grows — content must be preserved.
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        g[(0, 0)] = Cell::with_char('A');
+        g[(1, 0)] = Cell::with_char('B');
+        g[(2, 0)] = Cell::with_char('C');
+        g.reflow_resize(10, 5);
+        assert_eq!(g.width(), 10);
+        assert_eq!(g.height(), 5);
+        assert_eq!(g[(0, 0)].ch, 'A');
+        assert_eq!(g[(1, 0)].ch, 'B');
+        assert_eq!(g[(2, 0)].ch, 'C');
+    }
+
+    #[test]
+    fn reflow_height_only_shrink_pushes_bottom() {
+        // Fast path: width unchanged, height shrinks — bottom rows go to scrollback.
+        let mut g = Grid::new(10, 5);
+        g[(0, 0)] = Cell::with_char('T'); // top
+        g[(0, 4)] = Cell::with_char('B'); // bottom
+        g.reflow_resize(10, 3);
+        assert_eq!(g.height(), 3);
+        assert_eq!(g.scrollback_len(), 2);
+        assert_eq!(g[(0, 0)].ch, 'T');
+    }
+
+    #[test]
     fn set_display_offset_clamps() {
         let mut g = Grid::with_scrollback(5, 4, 100);
         g.scroll_up(4); // push 4 rows to scrollback (height = 4)
