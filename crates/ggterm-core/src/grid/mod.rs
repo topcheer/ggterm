@@ -744,6 +744,11 @@ impl Grid {
 
     /// Push a row to the scrollback, evicting oldest if over capacity.
     fn push_scrollback(&mut self, row: Row) {
+        // If scrollback is disabled (max_scrollback == 0, e.g. alt screen),
+        // do not accumulate any rows.
+        if self.max_scrollback == 0 {
+            return;
+        }
         if self.scrollback.len() >= self.max_scrollback {
             self.scrollback.pop_front();
             self.total_evicted += 1;

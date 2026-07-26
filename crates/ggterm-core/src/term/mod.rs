@@ -1531,7 +1531,8 @@ impl Terminal {
                     // Enter alt-screen: save primary grid + tab stops
                     self.alt_saved_grid = Some(self.grid.clone());
                     self.alt_saved_tab_stops = Some(self.tab_stops.clone());
-                    self.grid = Grid::new(self.width(), self.height());
+                    // Alt screen should NOT have scrollback (xterm behavior).
+                    self.grid = Grid::with_scrollback(self.width(), self.height(), 0);
                     self.reset_tab_stops();
                     if mode == 1047 {
                         // 1047: clear the alt screen (already fresh)
@@ -1585,7 +1586,8 @@ impl Terminal {
                     });
                     self.alt_saved_grid = Some(self.grid.clone());
                     self.alt_saved_tab_stops = Some(self.tab_stops.clone());
-                    self.grid = Grid::new(self.width(), self.height());
+                    // Alt screen should NOT have scrollback (xterm behavior).
+                    self.grid = Grid::with_scrollback(self.width(), self.height(), 0);
                     self.reset_tab_stops();
                     self.cursor = Cursor::default();
                     self.current_hyperlink = None; // Clear hyperlink state on alt screen enter
@@ -13509,5 +13511,105 @@ mod tests {
             s.contains("\x1b[8;30;100t"),
             "text area report after resize should reflect new size, got: {s:?}"
         );
+    }
+
+    // ── Alt screen scrollback leak test ────────────────────────────────
+
+    #[test]
+    fn t_alt_screen_no_scrollback_accumulation() {
+        // In the alternate screen, scrolling should NOT accumulate scrollback.
+        // xterm explicitly disables scrollback in the alt screen.
+        let mut t = Terminal::with_scrollback(20, 3, 1000);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        // Fill the screen and scroll past it
+        for i in 0..10 {
+            feed(&mut t, format!("Line {}\n", i).as_bytes());
+        }
+        assert_eq!(
+            t.grid().scrollback_len(),
+            0,
+            "alt screen should not accumulate scrollback"
+        );
+    }
+
+    #[test]
+    fn t_primary_screen_scrollback_works() {
+        // Verify scrollback works on primary screen (contrast with above).
+        let mut t = Terminal::with_scrollback(20, 3, 1000);
+        for i in 0..10 {
+            feed(&mut t, format!("Line {}\n", i).as_bytes());
+        }
+        assert!(
+            t.grid().scrollback_len() > 0,
+            "primary screen should accumulate scrollback"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_exit_restores_primary_scrollback() {
+        // After entering/exiting alt screen, primary scrollback should be intact.
+        let mut t = Terminal::with_scrollback(20, 3, 1000);
+        for i in 0..5 {
+            feed(&mut t, format!("Primary {}\n", i).as_bytes());
+        }
+        let sb_before = t.grid().scrollback_len();
+        assert!(sb_before > 0);
+
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        for i in 0..10 {
+            feed(&mut t, format!("Alt {}\n", i).as_bytes());
+        }
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+
+        assert_eq!(
+            t.grid().scrollback_len(),
+            sb_before,
+            "primary scrollback should be preserved after alt screen"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_sgr_state_preserved_1049() {
+        // Mode 1049 should save and restore SGR state.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        // SGR state should be saved; alt screen starts with default SGR
+        feed(&mut t, b"\x1b[32mA"); // green text in alt
+        let alt_cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(
+            alt_cell.fg,
+            Color::Indexed(2),
+            "alt screen should have green"
+        );
+
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — restores SGR to bold+red
+        feed(&mut t, b"B");
+        // Cursor was restored to (0,0) by 1049 exit (cursor was at start)
+        let restored_cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(
+            restored_cell.fg,
+            Color::Indexed(1),
+            "primary should restore red fg after alt exit, got: {:?}",
+            restored_cell.fg
+        );
+        assert!(
+            restored_cell.flags.contains(CellFlags::BOLD),
+            "primary should restore bold after alt exit"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_1047_no_cursor_save() {
+        // Mode 1047 does NOT save/restore cursor position (unlike 1049).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"Hello"); // cursor at col 5, row 0
+        let (cx_before, cy_before) = t.cursor();
+        feed(&mut t, b"\x1b[?1047h"); // enter alt (no cursor save)
+        // Cursor position should remain the same
+        assert_eq!(t.cursor(), (cx_before, cy_before));
+        feed(&mut t, b"\x1b[?1047l"); // exit alt
+        // Cursor should still be the same
+        assert_eq!(t.cursor(), (cx_before, cy_before));
     }
 }
