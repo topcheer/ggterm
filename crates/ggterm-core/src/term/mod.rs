@@ -9575,4 +9575,161 @@ mod tests {
         assert!(!t.flags.contains(CellFlags::BOLD));
         assert!(!t.flags.contains(CellFlags::DIM));
     }
+
+    // ── OSC sequence probe tests ──
+
+    #[test]
+    fn t_osc_title_bel_terminated() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;Hello World\x07"); // BEL-terminated
+        assert_eq!(t.title(), "Hello World");
+    }
+
+    #[test]
+    fn t_osc_title_st_terminated_form() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]2;ST Title\x1b\\"); // ST-terminated
+        assert_eq!(t.title(), "ST Title");
+    }
+
+    #[test]
+    fn t_osc_title_empty() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;Initial\x07");
+        feed(&mut t, b"\x1b]0;\x07"); // empty title
+        assert_eq!(t.title(), "");
+    }
+
+    #[test]
+    fn t_osc_title_with_semicolons() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;Title;With;Semicolons\x07");
+        // splitn(2, ';') means only first semicolon separates cmd from payload
+        assert_eq!(t.title(), "Title;With;Semicolons");
+    }
+
+    #[test]
+    fn t_osc_title_very_long() {
+        let mut t = Terminal::new(10, 3);
+        let long_title = "A".repeat(5000);
+        let seq = format!("\x1b]0;{}\x07", long_title);
+        feed(&mut t, seq.as_bytes());
+        assert!(t.title().len() <= 256, "title should be capped at 256 chars, got {}", t.title().len());
+    }
+
+    #[test]
+    fn t_osc52_does_not_corrupt_screen() {
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"\x1b]52;c;SGVsbG8=\x07"); // OSC 52 clipboard set
+        // Screen content should be unchanged
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'E');
+    }
+
+    #[test]
+    fn t_osc8_hyperlink_does_not_corrupt_screen() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"link");
+        feed(&mut t, b"\x1b]8;;\x1b\\");
+        // 'link' should appear normally on screen
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'l');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'k');
+    }
+
+    // ── DEC Special Graphics charset probe tests ──
+
+    #[test]
+    fn t_dec_special_graphics_box_drawing() {
+        // ESC(0 activates DEC Special Graphics.
+        // 'l' = ┌, 'q' = ─, 'k' = ┐
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0lqk"); // box drawing: ┌─┐
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250C}'); // ┌
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2510}'); // ┐
+    }
+
+    #[test]
+    fn t_dec_special_graphics_back_to_ascii() {
+        // After ESC(B, chars should be normal ASCII again.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0"); // activate DEC special
+        feed(&mut t, b"q");       // should be ─
+        feed(&mut t, b"\x1b(B");  // back to ASCII
+        feed(&mut t, b"q");       // should be literal 'q'
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'q');
+    }
+
+    #[test]
+    fn t_dec_special_graphics_passes_through_non_mapped() {
+        // Chars outside the DEC graphics range (0x5f-0x7e) should pass through.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0"); // activate DEC special
+        feed(&mut t, b"ABC");    // uppercase — not mapped
+        feed(&mut t, b"\x1b(B"); // back to ASCII
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_dec_special_graphics_full_box() {
+        // Full box: ┌──┐
+        //           │  │
+        //           └──┘
+        let mut t = Terminal::new(6, 4);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"lqqqk");     // ┌───┐
+        feed(&mut t, b"\r\n");       // CR+LF (LNM default off needs explicit CR)
+        feed(&mut t, b"x   x");      // │   │ (x=│, space is mapped too)
+        feed(&mut t, b"\r\n");
+        feed(&mut t, b"mqqqj");     // └───┘
+        feed(&mut t, b"\x1b(B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250C}'); // ┌
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2510}'); // ┐
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, '\u{2514}'); // └
+        assert_eq!(t.grid().cell(4, 2).unwrap().ch, '\u{2518}'); // ┘
+    }
+
+    // ── Tab stop edge cases ──
+
+    #[test]
+    fn t_tab_no_stops_at_all() {
+        // Clear all tab stops, then tab should go to last column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all tab stops
+        feed(&mut t, b"X\tY");
+        // Tab with no stops should jump to last column.
+        // Y should be at the last column (col 9).
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, 'Y');
+    }
+
+    #[test]
+    fn t_hts_sets_tab_stop() {
+        // Move to col 3, set tab stop with HTS (ESC H).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all defaults
+        feed(&mut t, b"\x1b[4C"); // move right 4 (cursor at col 4)
+        feed(&mut t, b"\x1bH");   // HTS — set tab stop at col 4
+        feed(&mut t, b"\r");      // back to col 0
+        feed(&mut t, b"\t");      // tab — should stop at col 4
+        assert_eq!(t.cursor().0, 4, "tab should stop at col 4 (HTS-set)");
+    }
+
+    #[test]
+    fn t_tbc_clears_current_stop() {
+        // Set a tab stop at col 4, then clear it with TBC (CSI 0g).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[4C"); // move to col 4
+        feed(&mut t, b"\x1bH");   // set tab stop at col 4
+        feed(&mut t, b"\x1b[0g"); // TBC param 0: clear current stop
+        feed(&mut t, b"\r");      // back to col 0
+        feed(&mut t, b"\t");      // tab — should go to last col (no stop at 4)
+        assert_eq!(t.cursor().0, 9, "tab should skip col 4 (cleared by TBC)");
+    }
 }
