@@ -13943,4 +13943,191 @@ mod tests {
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, '\u{2502}'); // │
         assert_eq!(t.grid().cell(5, 1).unwrap().ch, '\u{2502}'); // │
     }
+
+    // ── Round 5-1: Cursor movement edge cases ──────────────────────────
+
+    #[test]
+    fn t_cup_default_params_home() {
+        // CSI H with no params should go to (1,1) = home.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"Hello\r\nWorld");
+        feed(&mut t, b"\x1b[H"); // CUP with no params
+        assert_eq!(t.cursor(), (0, 0), "CSI H should home cursor");
+    }
+
+    #[test]
+    fn t_cup_zero_row_zero_col() {
+        // CSI 0;0 H should be treated as CSI 1;1 H (home).
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"Test");
+        feed(&mut t, b"\x1b[0;0H");
+        assert_eq!(t.cursor(), (0, 0), "CSI 0;0H should normalize to home");
+    }
+
+    #[test]
+    fn t_cup_large_values_clamped() {
+        // CSI 999;999 H should clamp to screen size.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[999;999H");
+        assert_eq!(
+            t.cursor(),
+            (19, 9),
+            "CUP with large values should clamp to last col/row"
+        );
+    }
+
+    #[test]
+    fn t_cuf_at_last_column_no_overflow() {
+        // CUF at last column should not overflow.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[10G"); // go to col 10
+        feed(&mut t, b"\x1b[5C"); // try to move right 5
+        assert_eq!(t.cursor().0, 9, "CUF at last col should clamp to width-1");
+    }
+
+    #[test]
+    fn t_cub_at_first_column_no_underflow() {
+        // CUB at first column should not underflow.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[5D"); // try to move left 5 from col 0
+        assert_eq!(t.cursor().0, 0, "CUB at col 0 should stay at 0");
+    }
+
+    #[test]
+    fn t_cuf_zero_param_moves_one() {
+        // CSI 0 C should move by 1 (default param).
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[0C");
+        assert_eq!(t.cursor().0, 1, "CUF with param 0 should move by 1");
+    }
+
+    #[test]
+    fn t_cuu_at_top_row_stays() {
+        // CUU at row 0 should stay at row 0.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[5A"); // move up 5 from row 0
+        assert_eq!(t.cursor().1, 0, "CUU at top should stay at 0");
+    }
+
+    #[test]
+    fn t_cud_at_bottom_row_stays() {
+        // CUD at last row should stay.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[24B"); // move down 24 from row 0
+        assert_eq!(t.cursor().1, 9, "CUD at bottom should clamp to height-1");
+    }
+
+    #[test]
+    fn t_cha_default_param_col1() {
+        // CSI G with no param should go to col 1.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"Hello"); // cursor at col 5
+        feed(&mut t, b"\x1b[G"); // CHA with no param
+        assert_eq!(t.cursor().0, 0, "CSI G should go to col 1 (0-based: 0)");
+    }
+
+    #[test]
+    fn t_cha_zero_param_col1() {
+        // CSI 0 G should go to col 1.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"Hello");
+        feed(&mut t, b"\x1b[0G");
+        assert_eq!(t.cursor().0, 0, "CSI 0G should go to col 1");
+    }
+
+    #[test]
+    fn t_cha_clamped_to_width() {
+        // CSI 999 G should clamp to last column.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[999G");
+        assert_eq!(t.cursor().0, 19, "CHA should clamp to width-1");
+    }
+
+    #[test]
+    fn t_vpa_default_param_row1() {
+        // CSI d with no param should go to row 1.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3;1H"); // row 3
+        feed(&mut t, b"\x1b[d"); // VPA no param
+        assert_eq!(t.cursor().1, 0, "CSI d should go to row 1 (0-based: 0)");
+    }
+
+    #[test]
+    fn t_vpa_clamped_to_height() {
+        // CSI 999 d should clamp.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[999d");
+        assert_eq!(t.cursor().1, 4, "VPA should clamp to height-1");
+    }
+
+    #[test]
+    fn t_cup_origin_mode_relative() {
+        // In origin mode, CUP coordinates are relative to scroll region top.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[3;8r"); // scroll region rows 3-8 (1-based)
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[1;1H"); // CUP to row 1 col 1
+        assert_eq!(
+            t.cursor(),
+            (0, 2),
+            "origin mode row 1 = physical row 3 (0-based 2)"
+        );
+    }
+
+    #[test]
+    fn t_cup_origin_mode_clamped_to_region() {
+        // In origin mode, CUP cannot go below scroll region bottom.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[3;5r"); // scroll region rows 3-5
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[10;1H"); // try row 10 in origin mode
+        // Should clamp to scroll bottom (row 5 = 0-based 4)
+        assert_eq!(
+            t.cursor().1,
+            4,
+            "CUP in origin mode should clamp to region bottom"
+        );
+    }
+
+    #[test]
+    fn t_cup_clears_pending_wrap() {
+        // CUP should clear pending_wrap state.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"1234567890"); // fills row, sets pending_wrap
+        feed(&mut t, b"\x1b[1;1H"); // CUP to home
+        // Writing a char now should go to (0,0), not wrap
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_cnl_cpl_move_and_col0() {
+        // CNL (CSI Pn E): move down N, col=0
+        // CPL (CSI Pn F): move up N, col=0
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[5;5H"); // row 5, col 5
+        feed(&mut t, b"\x1b[2E"); // CNL 2: row 7, col 0
+        assert_eq!(t.cursor(), (0, 6), "CNL should move down and reset col");
+        feed(&mut t, b"\x1b[3F"); // CPL 3: row 4, col 0
+        assert_eq!(t.cursor(), (0, 3), "CPL should move up and reset col");
+    }
+
+    #[test]
+    fn t_cuu_cud_default_move_one() {
+        // CSI A and CSI B with no param should move by 1.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[5;5H"); // row 5, col 5
+        feed(&mut t, b"\x1b[A"); // up 1
+        assert_eq!(t.cursor().1, 3, "CUF no param should move up 1");
+        feed(&mut t, b"\x1b[B"); // down 1
+        assert_eq!(t.cursor().1, 4, "CUD no param should move down 1");
+    }
+
+    #[test]
+    fn t_hpa_same_as_cha() {
+        // CSI Ps ` (HPA) should behave same as CSI Ps G (CHA).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[10`"); // HPA col 10
+        assert_eq!(t.cursor().0, 9, "HPA should set col to Ps (0-based: Ps-1)");
+    }
 }
