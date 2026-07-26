@@ -2659,6 +2659,7 @@ impl Perform for Terminal {
                 self.modes.reflow = true;
                 self.modes.focus_event = false;
                 self.modes.alternate_scroll = true; // xterm default: enabled
+                self.modes.reverse_video = false; // DECSCNM off per DECSTR spec
                 // Reset tab stops
                 let width = self.grid.width();
                 self.tab_stops = vec![false; width.max(1)];
@@ -17978,5 +17979,225 @@ mod tests {
         feed(&mut t, b"\x1b[1;1H"); // move — clears pending_wrap
         feed(&mut t, b"\x1b[u"); // restore
         assert!(!t.cursor.pending_wrap, "SCORC clears pending_wrap");
+    }
+
+    // ── Round 14-1: Cursor movement edge cases + REP ───────────────────
+
+    #[test]
+    fn t_r14_cha_origin_mode() {
+        // CHA (CSI G) in origin mode should be relative to scroll region.
+        // Actually per spec, CHA is NOT affected by origin mode (only row-based
+        // commands like CUP are). Column stays absolute.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[5G"); // CHA col 5
+        assert_eq!(t.cursor().0, 4, "CHA col 5 → x=4 (0-based)");
+    }
+
+    #[test]
+    fn t_r14_vpa_origin_mode() {
+        // VPA (CSI d) in origin mode should be relative to scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[2d"); // VPA row 2 → abs y = top + (2-1) = 3
+        assert_eq!(t.cursor().1, 3, "VPA origin mode row 2 → abs y=3");
+    }
+
+    #[test]
+    fn t_r14_cnl_cpl_default_param() {
+        // CNL/CPL with no param default to 1.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;3H"); // (2, 2)
+        feed(&mut t, b"\x1b[E"); // CNL default 1
+        assert_eq!(t.cursor(), (0, 3), "CNL default moves to next row col 0");
+        feed(&mut t, b"\x1b[F"); // CPL default 1
+        assert_eq!(t.cursor(), (0, 2), "CPL default moves to prev row col 0");
+    }
+
+    #[test]
+    fn t_r14_cnl_clamps_to_bottom() {
+        // CNL should clamp at scroll region bottom (or last row).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[4;1H"); // row 4
+        feed(&mut t, b"\x1b[99E"); // CNL 99
+        assert_eq!(t.cursor().1, 4, "CNL clamped to last row");
+    }
+
+    #[test]
+    fn t_r14_cpl_clamps_to_top() {
+        // CPL should clamp at row 0 (or scroll region top).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;1H"); // row 2
+        feed(&mut t, b"\x1b[99F"); // CPL 99
+        assert_eq!(t.cursor().1, 0, "CPL clamped to row 0");
+    }
+
+    #[test]
+    fn t_r14_rep_basic() {
+        // REP (CSI b) repeats last printed char.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"A"); // last_printed = A
+        feed(&mut t, b"\x1b[3b"); // REP 3
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'A', "A at cols 0,1,2,3");
+        assert_eq!(t.cursor().0, 4, "cursor at col 4");
+    }
+
+    #[test]
+    fn t_r14_rep_no_preceding_char() {
+        // REP with no preceding printable char should be no-op.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[5b"); // REP 5 — no preceding char
+        assert_eq!(t.cursor(), (0, 0), "cursor unchanged");
+    }
+
+    #[test]
+    fn t_r14_rep_after_control_char() {
+        // REP after a control char (e.g. CR) should repeat the last PRINTABLE char.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"X"); // last_printed = X
+        feed(&mut t, b"\r"); // CR — does not change last_printed
+        feed(&mut t, b"\x1b[2b"); // REP 2 — should repeat X
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X', "X at col 1");
+    }
+
+    #[test]
+    fn t_r14_cup_origin_mode_clamps_to_region() {
+        // CUP in origin mode should not exceed scroll region.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[3;6r"); // region rows 3-6 (0-based: 2..6)
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[99;1H"); // CUP row 99 → clamp to region bottom
+        assert_eq!(t.cursor().1, 5, "CUP clamped to region bottom (0-based: 5)");
+    }
+
+    // ── Round 14-2: Cursor visibility + DECOM edge cases ───────────────
+
+    #[test]
+    fn t_r14_cursor_hide_show() {
+        // DECSET 25 (show cursor), DECRST 25 (hide cursor).
+        let mut t = Terminal::new(10, 5);
+        assert!(t.cursor_visible(), "cursor visible by default");
+        feed(&mut t, b"\x1b[?25l"); // hide
+        assert!(!t.cursor_visible(), "cursor hidden");
+        feed(&mut t, b"\x1b[?25h"); // show
+        assert!(t.cursor_visible(), "cursor shown");
+    }
+
+    #[test]
+    fn t_r14_cursor_visible_after_decstr() {
+        // DECSTR should reset cursor visibility to on.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?25l"); // hide
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(t.cursor_visible(), "DECSTR resets cursor to visible");
+    }
+
+    #[test]
+    fn t_r14_decom_cursor_homes_on_enable() {
+        // DECOM (origin mode) should home cursor on enable.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor (4, 2)
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        // Cursor should move to region top (0 in abs, or region top if region set)
+        assert_eq!(t.cursor().0, 0, "DECOM homes cursor x to 0");
+    }
+
+    #[test]
+    fn t_r14_decom_disable_homes_cursor() {
+        // DECRST 6 should also home cursor.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?6h"); // enable
+        feed(&mut t, b"\x1b[3;5H"); // cursor at (4, 3)
+        feed(&mut t, b"\x1b[?6l"); // disable
+        assert_eq!(t.cursor().0, 0, "DECRST 6 homes cursor x to 0");
+    }
+
+    #[test]
+    fn t_r14_cursor_visible_after_ris() {
+        // RIS should reset cursor to visible.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?25l"); // hide
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(t.cursor_visible(), "RIS resets cursor to visible");
+    }
+
+    // ── Round 14-3: DECSET modes edge cases ────────────────────────────
+
+    #[test]
+    fn t_r14_decscnm_reverse_video_toggle() {
+        // DECSET 5 / DECRST 5 — reverse video mode.
+        let mut t = Terminal::new(10, 5);
+        assert!(!t.reverse_video(), "reverse video default off");
+        feed(&mut t, b"\x1b[?5h"); // enable
+        assert!(t.reverse_video(), "reverse video on");
+        feed(&mut t, b"\x1b[?5l"); // disable
+        assert!(!t.reverse_video(), "reverse video off");
+    }
+
+    #[test]
+    fn t_r14_decscnm_reset_by_decstr() {
+        // DECSTR should reset reverse video to off.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?5h"); // enable
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.reverse_video(), "DECSTR resets reverse video");
+    }
+
+    #[test]
+    fn t_r14_decckm_app_cursor_keys_default() {
+        // DECSET 1 / DECRST 1 — application cursor keys.
+        let mut t = Terminal::new(10, 5);
+        assert!(!t.cursor_keys_app(), "app cursor default off");
+        feed(&mut t, b"\x1b[?1h"); // enable
+        assert!(t.cursor_keys_app(), "app cursor on");
+        feed(&mut t, b"\x1b[?1l"); // disable
+        assert!(!t.cursor_keys_app(), "app cursor off");
+    }
+
+    #[test]
+    fn t_r14_decckm_reset_by_decstr() {
+        // DECSTR should reset app cursor keys.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1h"); // enable
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.cursor_keys_app(), "DECSTR resets app cursor");
+    }
+
+    #[test]
+    fn t_r14_decom_reset_by_ris() {
+        // RIS should reset origin mode.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.modes.origin, "RIS resets origin mode");
+    }
+
+    #[test]
+    fn t_r14_reverse_video_reset_by_ris() {
+        // RIS should reset reverse video.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?5h"); // reverse on
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.reverse_video(), "RIS resets reverse video");
+    }
+
+    #[test]
+    fn t_r14_cursor_pos_param_exceeds_width() {
+        // CUP with col > width should clamp.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;99H"); // col 99 → clamp to 10
+        assert_eq!(t.cursor().0, 9, "col clamped to last col");
+    }
+
+    #[test]
+    fn t_r14_cursor_pos_param_exceeds_height() {
+        // CUP with row > height should clamp.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[99;1H"); // row 99 → clamp to 5
+        assert_eq!(t.cursor().1, 4, "row clamped to last row");
     }
 }
