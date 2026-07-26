@@ -18945,4 +18945,188 @@ mod tests {
         feed(&mut t, b"\x1b[1T"); // SD 1
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 preserved");
     }
+
+    // ── Round 18-1: DECSC/DECRC audit ─────────────────────────────────
+
+    #[test]
+    fn t_r18_decsc_decrc_preserves_protected_attr() {
+        // DECSC should save and restore protected_attr.
+        // DECSCA format is CSI Ps " q (intermediate after param).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1\"q"); // DECSCA set protected
+        assert!(t.protected_attr, "DECSCA 1 sets protected");
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[2\"q"); // DECSCA unset protected
+        assert!(!t.protected_attr, "DECSCA 2 unsets");
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(t.protected_attr, "protected_attr restored by DECRC");
+    }
+
+    #[test]
+    fn t_r18_decsc_decrc_preserves_cursor_style() {
+        // DECSC should save and restore cursor_style.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[4 q"); // steady underline
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[2 q"); // steady block
+        feed(&mut t, b"\x1b8"); // restore
+        assert_eq!(
+            t.cursor_style,
+            CursorStyle::SteadyUnderline,
+            "cursor_style restored by DECRC"
+        );
+    }
+
+    #[test]
+    fn t_r18_decsc_decrc_preserves_pending_wrap() {
+        // DECSC should save pending_wrap state.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        feed(&mut t, b"\x1b7"); // save (pending_wrap = true)
+        feed(&mut t, b"\x1b[1;1H"); // move away, clears pending_wrap
+        feed(&mut t, b"\x1b8"); // restore
+        assert!(t.cursor.pending_wrap, "pending_wrap restored by DECRC");
+    }
+
+    #[test]
+    fn t_r18_decrc_default_no_save() {
+        // DECRC without prior DECSC should restore defaults.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red
+        feed(&mut t, b"\x1b[3;5H"); // cursor (4, 2)
+        feed(&mut t, b"\x1b8"); // DECRC without DECSC
+        assert_eq!(t.cursor(), (0, 0), "default cursor position");
+        assert!(!t.flags.contains(CellFlags::BOLD), "default SGR");
+        assert_eq!(t.fg, Color::Default, "default fg");
+    }
+
+    // ── Round 18-2: Tab stop edge cases ────────────────────────────────
+
+    #[test]
+    fn t_r18_tab_stops_after_shrink_grow() {
+        // Tab stops should be correct after shrink then grow.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;1H\t");
+        assert_eq!(t.cursor().0, 8, "tab to col 8 on 20-wide");
+        t.resize(10, 3); // shrink
+        feed(&mut t, b"\x1b[1;1H\t");
+        assert_eq!(t.cursor().0, 8, "tab to col 8 on 10-wide");
+        t.resize(20, 3); // grow back
+        feed(&mut t, b"\x1b[1;1H\t");
+        assert_eq!(t.cursor().0, 8, "tab to col 8 after grow back");
+    }
+
+    #[test]
+    fn t_r18_tab_from_non_stop_column() {
+        // Tab from a non-stop column should go to next stop.
+        let mut t = Terminal::new(30, 3);
+        feed(&mut t, b"\x1b[1;5H"); // cursor at col 4 (between stops 0 and 8)
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 8, "tab from col 4 → col 8");
+    }
+
+    #[test]
+    fn t_r18_tab_into_scroll_region() {
+        // Tab should not cross line boundaries regardless of scroll region.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 2-4
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 8, "tab works within scroll region");
+        assert_eq!(t.cursor().1, 0, "tab does not change row");
+    }
+
+    #[test]
+    fn t_r18_cht_at_last_tab_stop() {
+        // CHT at/past last tab stop should go to last column.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;17H"); // cursor at col 16 (last stop)
+        feed(&mut t, b"\x1b[1I"); // CHT 1
+        // Should go to last column (19) since no more stops
+        assert_eq!(t.cursor().0, 19, "CHT at last stop → last column");
+    }
+
+    #[test]
+    fn t_r18_cbt_at_first_stop() {
+        // CBT from first tab stop should go to col 0.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;9H"); // col 8 (first stop)
+        feed(&mut t, b"\x1b[1Z"); // CBT 1
+        assert_eq!(t.cursor().0, 0, "CBT from col 8 → col 0");
+    }
+
+    #[test]
+    fn t_r18_cbt_at_col_0_stays() {
+        // CBT at col 0 should stay at col 0.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1Z"); // CBT from col 0
+        assert_eq!(t.cursor().0, 0, "CBT at col 0 stays");
+    }
+
+    // ── Round 18-3: DECAWM (auto-wrap) edge cases ──────────────────────
+
+    #[test]
+    fn t_r18_decawm_off_cursor_clamps_at_last_col() {
+        // With DECAWM off, cursor should stay at last column after writing.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // DECAWM off
+        feed(&mut t, b"ABCDEF"); // 6 chars into 5-col terminal
+        assert_eq!(t.cursor().0, 4, "cursor clamped at last col");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'F', "last char at col 4");
+    }
+
+    #[test]
+    fn t_r18_decawm_off_wide_char_at_boundary() {
+        // With DECAWM off, wide char at penultimate col (1 col left).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // DECAWM off
+        feed(&mut t, b"ABCD"); // cursor at col 4, 1 col left
+        feed(&mut t, "你".as_bytes()); // wide char, only 1 col available
+        // Should NOT wrap. The char should be placed (put_char at col 4
+        // with wide flag but no spacer since col+1 >= width).
+        assert_eq!(t.cursor().1, 0, "no wrap to row 1");
+    }
+
+    #[test]
+    fn t_r18_decawm_off_then_on_wraps() {
+        // Re-enabling DECAWM should restore normal wrapping.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // off
+        feed(&mut t, b"\x1b[?7h"); // on
+        feed(&mut t, b"ABCDE"); // fills exactly
+        assert!(t.cursor.pending_wrap, "pending_wrap set after filling row");
+        feed(&mut t, b"F"); // should wrap
+        assert_eq!(t.cursor().1, 1, "wraps to row 1");
+    }
+
+    #[test]
+    fn t_r18_decawm_wrap_clears_pending_on_cup() {
+        // CUP should clear pending_wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap
+        assert!(t.cursor.pending_wrap);
+        feed(&mut t, b"\x1b[1;1H"); // CUP to (0, 0)
+        assert!(!t.cursor.pending_wrap, "CUP clears pending_wrap");
+    }
+
+    #[test]
+    fn t_r18_decawm_wrap_creates_correct_display() {
+        // When auto-wrap triggers, content should be on row 1.
+        let mut t = Terminal::with_scrollback(5, 3, 100);
+        feed(&mut t, b"ABCDEF"); // F wraps to row 1
+        // Content should be correct
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "row 0 col 0");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'E', "row 0 col 4");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'F', "F wrapped to row 1");
+    }
+
+    #[test]
+    fn t_r18_decawm_off_content_stays_on_one_row() {
+        // With DECAWM off, writing past last col should keep all content on row 0.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // off
+        feed(&mut t, b"ABCDEF"); // overwrites last col
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no content on row 1");
+        assert_eq!(t.cursor().1, 0, "cursor stays on row 0");
+    }
 }
