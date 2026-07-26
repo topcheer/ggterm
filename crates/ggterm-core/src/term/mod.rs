@@ -1233,25 +1233,43 @@ impl Terminal {
         if w == 0 {
             let cx = self.cursor.x;
             let cy = self.cursor.y;
-            // If cursor is right after a wide char, cx-1 is the spacer.
-            // Target the lead cell at cx-2 instead.
-            let target_col = if cx >= 2
-                && self
-                    .grid
-                    .cell(cx.saturating_sub(1), cy)
-                    .is_some_and(|c| c.is_wide_spacer())
-            {
-                cx.saturating_sub(2)
+            // When pending_wrap is true, the cursor X is at the last column
+            // (same as the last printed char), not past it. The combining
+            // char should attach to the cell at cx, not cx-1.
+            let base = if self.cursor.pending_wrap {
+                cx
             } else {
                 cx.saturating_sub(1)
             };
-            if cx > 0
-                && let Some(c) = self.grid.cell_mut(target_col, cy)
+            // If cursor is right after a wide char, base is the spacer.
+            // Target the lead cell at base-1 instead.
+            let target_col =
+                if base >= 1 && self.grid.cell(base, cy).is_some_and(|c| c.is_wide_spacer()) {
+                    base.saturating_sub(1)
+                } else {
+                    base
+                };
+            #[allow(clippy::collapsible_if)]
+            if target_col > 0 || self.cursor.pending_wrap || cx > 0 {
+                if let Some(c) = self.grid.cell_mut(target_col, cy)
+                    && !c.flags.contains(CellFlags::WIDE_SPACER)
+                    && !c.is_blank()
+                {
+                    // Cap combining chars to prevent memory exhaustion from
+                    // sequences that emit many zero-width characters.
+                    if c.combining.len() < 8 {
+                        c.combining.push(ch);
+                    }
+                    return;
+                }
+            }
+            // Fallback: try cx-1 for normal (non-pending_wrap) case
+            if !self.cursor.pending_wrap
+                && cx > 0
+                && let Some(c) = self.grid.cell_mut(cx.saturating_sub(1), cy)
                 && !c.flags.contains(CellFlags::WIDE_SPACER)
                 && !c.is_blank()
             {
-                // Cap combining chars to prevent memory exhaustion from
-                // sequences that emit many zero-width characters.
                 if c.combining.len() < 8 {
                     c.combining.push(ch);
                 }
@@ -12410,5 +12428,137 @@ mod tests {
         feed(&mut t, b"\x1b[H"); // cursor home
         feed(&mut t, b"OK");
         assert_eq!(t.cursor().0, 2, "cursor should advance by 2 after 'OK'");
+    }
+
+    // ── Tab stop edge cases ─────────────────────────────────────────────
+
+    #[test]
+    fn t_tab_at_last_column_no_autowrap() {
+        // TAB at the last column with DECAWM off should not wrap.
+        let mut t = Terminal::new(10, 3);
+        // Move cursor to col 8 (0-based), TAB should advance to col 9 (last)
+        feed(&mut t, b"\x1b[9G"); // CHA to col 9 (0-based 8)
+        feed(&mut t, b"\t"); // TAB
+        assert_eq!(t.cursor().0, 9, "TAB should stop at last column");
+        // Another TAB — should stay at last column (no wrap)
+        feed(&mut t, b"\t");
+        assert_eq!(
+            t.cursor().0,
+            9,
+            "TAB at last column should not advance past width"
+        );
+    }
+
+    #[test]
+    fn t_tab_no_tab_stops_set() {
+        // Clear all tab stops, then TAB should advance to last column only.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // TBC: clear all tab stops
+        feed(&mut t, b"\t"); // TAB from col 0
+        // With no tab stops, TAB advances to the last column (width-1)
+        assert_eq!(
+            t.cursor().0,
+            19,
+            "TAB with no tab stops should go to last col"
+        );
+    }
+
+    #[test]
+    fn t_cht_extreme_params() {
+        // CHT with param 0 should default to 1, param 255 should clamp
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[0I"); // CHT 0 → should be treated as 1
+        assert_eq!(t.cursor().0, 8, "CHT 0 should tab once (to col 8)");
+        feed(&mut t, b"\x1b[H"); // back home
+        feed(&mut t, b"\x1b[255I"); // CHT 255 — should not crash
+        assert!(t.cursor().0 <= 19, "CHT 255 should not exceed last col");
+    }
+
+    #[test]
+    fn t_tab_then_set_clear_tab_stop() {
+        // HTS sets a tab stop at current column, TBC clears it.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[6G"); // move to col 6 (1-based) = col 5 (0-based)
+        feed(&mut t, b"\x1bH"); // HTS: set tab stop at col 5 (0-based)
+        feed(&mut t, b"\x1b[1G"); // back to col 0
+        feed(&mut t, b"\t"); // TAB should stop at col 5 (0-based)
+        assert_eq!(t.cursor().0, 5, "TAB should stop at HTS-set tab stop");
+        feed(&mut t, b"\x1b[6G"); // back to col 5
+        feed(&mut t, b"\x1b[0g"); // TBC: clear tab stop at current col
+        feed(&mut t, b"\x1b[1G");
+        feed(&mut t, b"\t"); // TAB should now skip past col 5
+        assert_eq!(t.cursor().0, 19, "TAB should not stop at cleared tab stop");
+    }
+
+    // ── Combining character edge cases ──────────────────────────────────
+
+    #[test]
+    fn t_combining_char_at_col0_no_crash() {
+        // Combining char at col 0 with no preceding char should be dropped
+        // silently — not crash, not advance cursor.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute accent at col 0
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "combining char at col 0 should not advance cursor"
+        );
+        assert_eq!(t.cursor().1, 0, "should stay on row 0");
+    }
+
+    #[test]
+    fn t_combining_char_advances_zero_columns() {
+        // Write "e" + combining acute → cursor should advance only 1 (for 'e')
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "e\u{0301}".as_bytes());
+        assert_eq!(
+            t.cursor().0,
+            1,
+            "cursor should advance only 1 col (combining is 0-width)"
+        );
+        // Verify the combining char was attached
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            !cell.combining.is_empty(),
+            "combining char should be attached"
+        );
+        assert_eq!(cell.combining[0], '\u{0301}');
+    }
+
+    #[test]
+    fn t_combining_char_after_pending_wrap() {
+        // When cursor is at pending_wrap state (just wrote to last column),
+        // a combining char should attach to the last column's char, not
+        // trigger a wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills all 5 cols, cursor at pending_wrap
+        // Now send a combining char — should attach to 'E' at col 4
+        feed(&mut t, "\u{0301}".as_bytes());
+        assert_eq!(
+            t.cursor().0,
+            4,
+            "combining after pending_wrap should not change cursor"
+        );
+        assert_eq!(t.cursor().1, 0, "should not wrap to next line");
+        let cell = t.grid().cell(4, 0).unwrap();
+        assert!(!cell.combining.is_empty(), "combining should attach to 'E'");
+    }
+
+    #[test]
+    fn t_combining_char_excess_cap() {
+        // Send more than 8 combining chars — should cap at 8
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"a");
+        // Send 20 combining chars
+        for _ in 0..20 {
+            feed(&mut t, "\u{0301}".as_bytes());
+        }
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(
+            cell.combining.len(),
+            8,
+            "combining chars should be capped at 8"
+        );
     }
 }
