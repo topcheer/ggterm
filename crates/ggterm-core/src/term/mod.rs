@@ -12626,4 +12626,121 @@ mod tests {
             "alt screen activity should not populate primary scrollback"
         );
     }
+
+    // ── REP (Repeat) edge cases ────────────────────────────────────────
+
+    #[test]
+    fn t_rep_extreme_no_prev() {
+        // REP with no previously printed char should be a no-op.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[5b"); // REP 5 with no prior char
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "REP with no previous char should not move cursor"
+        );
+    }
+
+    #[test]
+    fn t_rep_fills_correct_columns() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"A"); // print 'A' at col 0
+        feed(&mut t, b"\x1b[3b"); // REP 3 → fill cols 1,2,3 with 'A'
+        assert_eq!(t.cursor().0, 4, "cursor should be at col 4 after A + REP 3");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_rep_extreme_count() {
+        // REP with huge count should be clamped, not crash.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"X");
+        feed(&mut t, b"\x1b[65535b"); // huge REP count
+        // Should not crash. Cursor should be somewhere on row 0 or wrapped.
+        assert!(t.cursor().1 < 3, "cursor should not go past visible rows");
+    }
+
+    // ── ECH (Erase Character) with wide char boundary ──────────────────
+
+    #[test]
+    fn t_ech_wide_lead_in_range() {
+        // ECH starting on a wide char lead should erase both cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "AB\u{4E00}CD".as_bytes()); // A B [wide] C D
+        // Wide char at cols 2-3, C at 4, D at 5
+        feed(&mut t, b"\x1b[3G"); // move to col 2 (0-based) = wide char lead
+        feed(&mut t, b"\x1b[1X"); // ECH 1 — should erase the wide char pair
+        assert!(
+            t.grid().cell(2, 0).unwrap().is_blank(),
+            "wide lead should be erased"
+        );
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_blank(),
+            "wide spacer should be erased"
+        );
+        // C and D should still be intact
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_ech_outside_wide_lead() {
+        // ECH whose range ends right before a wide spacer should include it.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "AB\u{4E00}".as_bytes()); // A B [wide at 2-3]
+        feed(&mut t, b"\x1b[1G"); // move to col 0
+        feed(&mut t, b"\x1b[2X"); // ECH 2 → erase cols 0,1 — should also eat spacer at 2?
+        // The wide lead at col 2 is NOT in range [0,2), but its spacer at col 3
+        // would be orphaned. Actually col 2 is the lead, ECH 2 covers cols 0-1.
+        // The wide char should be intact (it's outside the erase range).
+        assert!(t.grid().cell(0, 0).unwrap().is_blank());
+        assert!(t.grid().cell(1, 0).unwrap().is_blank());
+        assert_eq!(
+            t.grid().cell(2, 0).unwrap().ch,
+            '\u{4E00}',
+            "wide lead should survive"
+        );
+    }
+
+    // ── SU/SD (Scroll Up/Down) within scroll region ────────────────────
+
+    #[test]
+    fn t_su_preserves_outside_region() {
+        // SU when scroll region is set should only scroll within the region.
+        let mut t = Terminal::new(10, 5);
+        // Put unique chars in each row to track them
+        for row in 0..5 {
+            let ch = (b'A' + row as u8) as char;
+            feed(&mut t, b"\x1b[H");
+            // Move to specific row using CUP
+            feed(&mut t, format!("\x1b[{};1H", row + 1).as_bytes());
+            let mut buf = [0u8; 4];
+            feed(&mut t, ch.encode_utf8(&mut buf).as_bytes());
+        }
+        // Verify setup
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 4).unwrap().ch, 'E');
+
+        // Set scroll region to rows 2-4 (1-based) = rows 1-3 (0-based)
+        feed(&mut t, b"\x1b[2;4r");
+        // Cursor must be inside the region for SU to scroll within it
+        feed(&mut t, b"\x1b[2;1H"); // move to row 2 (inside region)
+
+        // SU 1 — should scroll region 1-3 only
+        feed(&mut t, b"\x1b[1S");
+
+        // Row 0 (A) and row 4 (E) should be preserved (outside scroll region)
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "row 0 outside region must survive"
+        );
+        assert_eq!(
+            t.grid().cell(0, 4).unwrap().ch,
+            'E',
+            "row 4 outside region must survive"
+        );
+    }
 }
