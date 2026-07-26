@@ -13797,4 +13797,150 @@ mod tests {
         feed(&mut t, b"\x1b]1337;ClearScrollback\x1b\\");
         assert_eq!(t.grid().scrollback_len(), 0, "scrollback should be cleared");
     }
+
+    // ── DEC line drawing completeness ──────────────────────────────────
+
+    #[test]
+    fn t_dec_line_all_corner_chars() {
+        // Verify all 4 corner characters render correctly.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0"); // DEC Special Graphics
+        feed(&mut t, b"lkjm"); // ┌┐┘└ (l=┌, k=┐, j=┘, m=└)
+        feed(&mut t, b"\x1b(B"); // back to ASCII
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250c}'); // ┌ (l)
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2510}'); // ┐ (k)
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2518}'); // ┘ (j)
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{2514}'); // └ (m)
+    }
+
+    #[test]
+    fn t_dec_line_all_tee_chars() {
+        // Verify all 4 tee characters render correctly.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"tuvw"); // ├┤┴┬
+        feed(&mut t, b"\x1b(B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{251c}'); // ├
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2524}'); // ┤
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2534}'); // ┴
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{252c}'); // ┬
+    }
+
+    #[test]
+    fn t_dec_line_cross_and_lines() {
+        // Cross and horizontal/vertical lines.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"nqx"); // ┼─│
+        feed(&mut t, b"\x1b(B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{253c}'); // ┼
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2502}'); // │
+    }
+
+    #[test]
+    fn t_dec_special_symbols() {
+        // Verify symbols: diamond, degree, plus-minus, pi, etc.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"`fg{|}~"); // diamond degree plus-minus pi neq pound dot
+        feed(&mut t, b"\x1b(B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{25c6}'); // ◆
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{00b0}'); // °
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{00b1}'); // ±
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{03c0}'); // π
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2260}'); // ≠
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, '\u{00a3}'); // £
+        assert_eq!(t.grid().cell(6, 0).unwrap().ch, '\u{00b7}'); // ·
+    }
+
+    #[test]
+    fn t_dec_special_comparison_operators() {
+        // ≤ and ≥
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"yz"); // ≤≥
+        feed(&mut t, b"\x1b(B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2264}'); // ≤
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2265}'); // ≥
+    }
+
+    #[test]
+    fn t_charset_g1_line_drawing_via_so() {
+        // Designate G1 as DEC Special, then use SO to activate.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b)0"); // ESC ) 0 — G1 = DEC Special
+        feed(&mut t, b"\x0e"); // SO — activate G1
+        feed(&mut t, b"qq"); // horizontal lines
+        feed(&mut t, b"\x0f"); // SI — back to G0
+        feed(&mut t, b"AB"); // normal ASCII
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_charset_so_si_toggle_alternating() {
+        // Toggle between G0 and G1 multiple times.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b)0"); // G1 = DEC Special
+        feed(&mut t, b"\x0e"); // SO → G1
+        feed(&mut t, b"q"); // ─
+        feed(&mut t, b"\x0f"); // SI → G0
+        feed(&mut t, b"A");
+        feed(&mut t, b"\x0e"); // SO → G1
+        feed(&mut t, b"x"); // │
+        feed(&mut t, b"\x0f"); // SI → G0
+        feed(&mut t, b"B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_charset_decstr_resets_charset() {
+        // DECSTR should reset charset to default (ASCII).
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special
+        feed(&mut t, b"\x1b[!p"); // DECSTR — soft reset
+        assert_eq!(t.g0_charset(), Charset::Ascii, "DECSTR should reset G0");
+    }
+
+    #[test]
+    fn t_charset_decstr_resets_g1_and_active() {
+        // DECSTR should reset G1 charset and active_g1 flag.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b)0"); // G1 = DEC Special
+        feed(&mut t, b"\x0e"); // SO — activate G1
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert_eq!(t.g1_charset(), Charset::Ascii, "DECSTR should reset G1");
+        assert!(!t.active_g1(), "DECSTR should reset active_g1");
+    }
+
+    #[test]
+    fn t_charset_full_box_drawing_render() {
+        // Render a small box using DEC line drawing and verify all corners.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b(0");
+        // ┌────┐
+        // │    │
+        // └────┘
+        feed(&mut t, b"lqqqqk\r\n"); // ┌────┐
+        feed(&mut t, b"x    x\r\n"); // │    │
+        feed(&mut t, b"mqqqqj"); // └────┘
+        feed(&mut t, b"\x1b(B");
+        // Verify corners
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{250c}'); // ┌ (l)
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, '\u{2510}'); // ┐ (k)
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, '\u{2514}'); // └ (m)
+        assert_eq!(t.grid().cell(5, 2).unwrap().ch, '\u{2518}'); // ┘ (j)
+        // Verify horizontal lines
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2500}'); // ─
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2500}'); // ─
+        // Verify vertical lines
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '\u{2502}'); // │
+        assert_eq!(t.grid().cell(5, 1).unwrap().ch, '\u{2502}'); // │
+    }
 }
