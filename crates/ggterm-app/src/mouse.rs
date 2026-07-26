@@ -1292,4 +1292,200 @@ mod tests {
         let bytes = encode_legacy(&ev).unwrap();
         assert_eq!(bytes[2], 125); // 93 + 32 = 125, no overflow
     }
+
+    // ── Large coordinates (col > 95) ─────────────────────────────
+
+    #[test]
+    fn test_sgr_large_coordinates() {
+        // SGR mode supports arbitrary coordinates (no 223 limit).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 200,
+            y: 100,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_sgr_press(&ev);
+        assert_eq!(s, "\x1b[<0;201;101M");
+    }
+
+    #[test]
+    fn test_legacy_large_coordinates_return_none() {
+        // Legacy mode caps at x/y = 223 (byte 255).
+        // x=224 should return None (out of range).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 224,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        assert!(encode_legacy(&ev).is_none());
+    }
+
+    #[test]
+    fn test_legacy_boundary_223() {
+        // x=223 should work (byte 255).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 223,
+            y: 223,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_legacy(&ev).unwrap();
+        assert_eq!(bytes[3], 255); // 223 + 32 = 255
+        assert_eq!(bytes[4], 255);
+    }
+
+    #[test]
+    fn test_urxvt_large_coordinates() {
+        // URXVT mode uses decimal, so no byte limit.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 500,
+            y: 300,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_urxvt(&ev, true);
+        assert_eq!(s, "\x1b[0;501;301M");
+    }
+
+    // ── Modifier + wheel combinations ────────────────────────────
+
+    #[test]
+    fn test_sgr_ctrl_wheel_up() {
+        let ev = MouseEvent {
+            button: MouseButton::WheelUp,
+            x: 10,
+            y: 5,
+            mods: MouseModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        };
+        let s = encode_sgr_press(&ev);
+        // Cb = 64 (wheel up) + 16 (ctrl) = 80
+        assert_eq!(s, "\x1b[<80;11;6M");
+    }
+
+    #[test]
+    fn test_sgr_shift_alt_click() {
+        let ev = MouseEvent {
+            button: MouseButton::Right,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers {
+                shift: true,
+                alt: true,
+                ..Default::default()
+            },
+        };
+        let s = encode_sgr_press(&ev);
+        // Cb = 2 (right) + 4 (shift) + 8 (alt) = 14
+        assert_eq!(s, "\x1b[<14;1;1M");
+    }
+
+    // ── Motion event encoding ────────────────────────────────────
+
+    #[test]
+    fn test_sgr_motion_with_ctrl() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 3,
+            mods: MouseModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        };
+        // Motion: Cb = 0 (left) + 32 (motion bit) + 16 (ctrl) = 48
+        let s = encode_sgr_motion(&ev, true);
+        assert_eq!(s, "\x1b[<48;6;4M");
+    }
+
+    #[test]
+    fn test_should_report_motion_any_event() {
+        // Mode 1003: always report motion
+        assert!(should_report_motion(true, false, false));
+        assert!(should_report_motion(true, false, true));
+    }
+
+    #[test]
+    fn test_should_report_motion_button_event() {
+        // Mode 1002: only report when button held
+        assert!(!should_report_motion(false, true, false));
+        assert!(should_report_motion(false, true, true));
+    }
+
+    #[test]
+    fn test_should_report_motion_neither() {
+        // Neither mode: never report
+        assert!(!should_report_motion(false, false, false));
+        assert!(!should_report_motion(false, false, true));
+    }
+
+    // ── Pixel mode (1016) ────────────────────────────────────────
+
+    #[test]
+    fn test_pixel_mode_press() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 10,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event_pixel(&ev, 320, 160, true).unwrap();
+        let s = String::from_utf8(bytes).unwrap();
+        assert_eq!(s, "\x1b[<0;320;160M");
+    }
+
+    #[test]
+    fn test_pixel_mode_release() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 10,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event_pixel(&ev, 320, 160, false).unwrap();
+        let s = String::from_utf8(bytes).unwrap();
+        assert_eq!(s, "\x1b[<0;320;160m");
+    }
+
+    // ── Dispatch function ────────────────────────────────────────
+
+    #[test]
+    fn test_encode_mouse_event_urxvt() {
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 10,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event(&ev, false, true, true).unwrap();
+        let s = String::from_utf8(bytes).unwrap();
+        assert_eq!(s, "\x1b[0;11;6M");
+    }
+
+    #[test]
+    fn test_encode_mouse_event_legacy_out_of_range() {
+        // Legacy with out-of-range coordinates → None (drop event)
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 300,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        assert!(encode_mouse_event(&ev, false, false, true).is_none());
+    }
+
+    #[test]
+    fn test_all_buttons_sgr_codes() {
+        // Verify SGR button codes match xterm spec
+        assert_eq!(MouseButton::Left.sgr_code(), 0);
+        assert_eq!(MouseButton::Middle.sgr_code(), 1);
+        assert_eq!(MouseButton::Right.sgr_code(), 2);
+        assert_eq!(MouseButton::WheelUp.sgr_code(), 64);
+        assert_eq!(MouseButton::WheelDown.sgr_code(), 65);
+        assert_eq!(MouseButton::WheelLeft.sgr_code(), 66);
+        assert_eq!(MouseButton::WheelRight.sgr_code(), 67);
+    }
 }
