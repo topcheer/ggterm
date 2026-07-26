@@ -150,17 +150,20 @@ impl InputEncoder {
 
         // ── Ctrl combinations ──
         if mods.ctrl {
+            // Ctrl+Alt+key → ESC + ^key (meta prefix on control char, like xterm)
+            let alt_prefix = mods.alt;
+            let send = |b: u8| -> Vec<u8> { if alt_prefix { vec![0x1b, b] } else { vec![b] } };
             // Ctrl+Space → NUL
             if ch == ' ' {
-                return vec![0x00];
+                return send(0x00);
             }
             // Ctrl+letter → 0x01..0x1A
             if ch.is_ascii_alphabetic() {
-                return vec![(ch.to_ascii_lowercase() as u8) & 0x1f];
+                return send((ch.to_ascii_lowercase() as u8) & 0x1f);
             }
             // Ctrl+non-alpha control characters (punctuation + digits)
             if let Some(b) = ctrl_char(ch) {
-                return vec![b];
+                return send(b);
             }
         }
 
@@ -1380,5 +1383,57 @@ mod tests {
         // Mode 1: unmodified keys are NOT affected, only modified ones
         let key = InputKey::Special(SpecialKey::Down, KeyModifiers::default());
         assert_eq!(enc.encode(&key), b"\x1b[B");
+    }
+
+    #[test]
+    fn test_ctrl_alt_letter_sends_esc_prefix() {
+        // Ctrl+Alt+x should send ESC + ^X = \x1b\x18 (meta prefix on control char).
+        // Bug: previously Ctrl branch returned early, dropping the ESC prefix.
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            ctrl: true,
+            alt: true,
+            ..Default::default()
+        };
+        let key = InputKey::Char('x', mods);
+        assert_eq!(enc.encode(&key), b"\x1b\x18");
+    }
+
+    #[test]
+    fn test_ctrl_alt_c_sends_esc_etx() {
+        // Ctrl+Alt+C → ESC + ^C = \x1b\x03 (interrupt with meta).
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            ctrl: true,
+            alt: true,
+            ..Default::default()
+        };
+        let key = InputKey::Char('c', mods);
+        assert_eq!(enc.encode(&key), b"\x1b\x03");
+    }
+
+    #[test]
+    fn test_ctrl_alt_space_sends_esc_nul() {
+        // Ctrl+Alt+Space → ESC + NUL = \x1b\x00.
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            ctrl: true,
+            alt: true,
+            ..Default::default()
+        };
+        let key = InputKey::Char(' ', mods);
+        assert_eq!(enc.encode(&key), b"\x1b\x00");
+    }
+
+    #[test]
+    fn test_ctrl_without_alt_still_works() {
+        // Ctrl+x without Alt → just ^X, no ESC prefix.
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            ctrl: true,
+            ..Default::default()
+        };
+        let key = InputKey::Char('x', mods);
+        assert_eq!(enc.encode(&key), b"\x18");
     }
 }
