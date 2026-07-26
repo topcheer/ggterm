@@ -1346,7 +1346,13 @@ impl DesktopApp {
                     }
                 }
             }
-            text.push('\n');
+            // Only insert newline if this row is NOT soft-wrapped (wrap=true).
+            // Soft-wrapped rows continue to the next line without a break.
+            let is_soft_wrapped =
+                grid.display_row(row as usize).is_some_and(|r| r.wrap) && row != ey; // Last selected row always gets a newline boundary
+            if !is_soft_wrapped {
+                text.push('\n');
+            }
         }
         // Trim trailing whitespace per line and remove empty leading/trailing lines.
         let mut lines: Vec<&str> = text.lines().map(|l| l.trim_end()).collect();
