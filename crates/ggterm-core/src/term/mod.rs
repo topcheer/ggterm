@@ -9907,4 +9907,52 @@ mod tests {
         assert!(!c0.flags.contains(CellFlags::WIDE_SPACER),
             "col 0 should not have orphaned WIDE_SPACER after DCH 2");
     }
+
+    #[test]
+    fn t_wide_char_not_enough_room_wraps() {
+        // Width=5, write 4 ASCII (cursor at col 4 = 1 col left).
+        // Wide char needs 2 cols — must wrap to next line.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCD"); // cursor at col 4, 1 col remaining
+        feed(&mut t, "你".as_bytes()); // width=2, wraps
+        // 你 should be at row 1, cols 0-1
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('你'));
+        assert!(t.grid().cell(1, 1).map(|c| c.is_wide_spacer()).unwrap_or(false));
+        // Col 4 of row 0 should be blank (not the wide char)
+        assert_eq!(t.grid().cell(4, 0).map(|c| c.is_blank()), Some(true));
+    }
+
+    #[test]
+    fn t_tab_after_wide_char_correct_stop() {
+        // Width=8, write a wide char (cols 0-1), then Tab.
+        // Tab should advance to the next tab stop.
+        // Default tab stops are at cols 0, 8, 16... So from col 2,
+        // tab goes to col 7 (last col, since width=8, last index=7).
+        let mut t = Terminal::new(8, 2);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1, cursor at col 2
+        feed(&mut t, b"\t");           // tab from col 2
+        // Default tab stops: col 0 (set), then every 8.
+        // From col 2, next stop is col 8 but max is col 7 → col 7.
+        assert_eq!(t.cursor().0, 7, "tab should reach col 7 (last col)");
+    }
+
+    #[test]
+    fn t_backspace_at_col0_no_wrap_up() {
+        // Backspace at col 0 should NOT wrap to previous row.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB\r"); // write AB, CR back to col 0
+        feed(&mut t, b"\x08");   // BS at col 0
+        assert_eq!(t.cursor().0, 0, "BS at col 0 should stay at col 0");
+        assert_eq!(t.cursor().1, 0, "BS at col 0 should NOT wrap to prev row");
+    }
+
+    #[test]
+    fn t_backspace_from_col1_to_col0() {
+        // Normal BS from col 1 → col 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB\x08"); // write AB (cursor at col 2), BS → col 1
+        assert_eq!(t.cursor().0, 1);
+        feed(&mut t, b"\x08");   // BS → col 0
+        assert_eq!(t.cursor().0, 0);
+    }
 }
