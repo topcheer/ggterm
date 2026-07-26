@@ -18200,4 +18200,256 @@ mod tests {
         feed(&mut t, b"\x1b[99;1H"); // row 99 → clamp to 5
         assert_eq!(t.cursor().1, 4, "row clamped to last row");
     }
+
+    // ── Round 15-1: SGR parsing edge cases ─────────────────────────────
+
+    #[test]
+    fn t_r15_sgr_semicolon_only_resets() {
+        // CSI ;m should parse as [0, 0] → reset.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red
+        feed(&mut t, b"\x1b[;m"); // ;m → [0,0] → reset
+        assert!(!t.flags.contains(CellFlags::BOLD), "bold cleared by ;m");
+        assert_eq!(t.fg, Color::Default, "fg reset by ;m");
+    }
+
+    #[test]
+    fn t_r15_sgr_zero_semicolon_resets() {
+        // CSI 0;m → [0, 0] → reset.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1m\x1b[0;m");
+        assert!(!t.flags.contains(CellFlags::BOLD), "bold cleared");
+    }
+
+    #[test]
+    fn t_r15_sgr_empty_middle_param() {
+        // CSI 1;;m → [1, 0] → bold then reset.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;;m"); // bold, then param 0 (reset)
+        assert!(!t.flags.contains(CellFlags::BOLD), "middle empty→0 resets");
+    }
+
+    #[test]
+    fn t_r15_sgr_trailing_empty_param() {
+        // CSI 1; → parser drops trailing empty param, so just bold.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[1;m"); // trailing empty dropped → [1]
+        assert!(
+            t.flags.contains(CellFlags::BOLD),
+            "trailing empty dropped, bold stays"
+        );
+    }
+
+    #[test]
+    fn t_r15_sgr_53_55_overline() {
+        // SGR 53 = overline on, 55 = off.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[53m");
+        assert!(t.flags.contains(CellFlags::OVERLINE), "overline on");
+        feed(&mut t, b"\x1b[55m");
+        assert!(!t.flags.contains(CellFlags::OVERLINE), "overline off");
+    }
+
+    #[test]
+    fn t_r15_sgr_8_28_hidden() {
+        // SGR 8 = hidden/conceal on, 28 = off.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[8m");
+        assert!(t.flags.contains(CellFlags::HIDDEN), "hidden on");
+        feed(&mut t, b"\x1b[28m");
+        assert!(!t.flags.contains(CellFlags::HIDDEN), "hidden off");
+    }
+
+    #[test]
+    fn t_r15_sgr_true_color_black_white() {
+        // True color at extremes: (0,0,0) and (255,255,255).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[38;2;0;0;0m");
+        assert_eq!(t.fg, Color::Rgb(0, 0, 0), "fg = black");
+        feed(&mut t, b"\x1b[38;2;255;255;255m");
+        assert_eq!(t.fg, Color::Rgb(255, 255, 255), "fg = white");
+    }
+
+    #[test]
+    fn t_r15_sgr_39_preserves_bg() {
+        // SGR 39 (default fg) should NOT reset bg.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[31;42m"); // red fg, green bg
+        feed(&mut t, b"\x1b[39m"); // default fg only
+        assert_eq!(t.fg, Color::Default, "fg reset");
+        assert_eq!(t.bg, Color::Indexed(2), "bg preserved");
+    }
+
+    #[test]
+    fn t_r15_sgr_49_preserves_fg() {
+        // SGR 49 (default bg) should NOT reset fg.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[31;42m");
+        feed(&mut t, b"\x1b[49m");
+        assert_eq!(t.fg, Color::Indexed(1), "fg preserved");
+        assert_eq!(t.bg, Color::Default, "bg reset");
+    }
+
+    // ── Round 15-2: UTF-8 / wide char edge cases ───────────────────────
+
+    #[test]
+    fn t_r15_backspace_after_wide_char() {
+        // Backspace after writing wide char should move cursor back 1.
+        // (BS moves 1 column, not width)
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // cursor at col 2
+        feed(&mut t, b"\x08"); // BS → col 1 (spacer)
+        assert_eq!(t.cursor().0, 1, "BS moves 1 col to spacer");
+    }
+
+    #[test]
+    fn t_r15_zero_width_space_no_output() {
+        // ZWSP (U+200B) is zero-width — should not advance cursor or write.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{200B}".as_bytes());
+        assert_eq!(t.cursor(), (0, 0), "ZWSP does not advance cursor");
+    }
+
+    #[test]
+    fn t_r15_combining_nfc_vs_nfd() {
+        // é as NFC (U+00E9) = width 1.
+        // é as NFD (e + U+0301) = also visually 1 column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{00E9}".as_bytes()); // NFC é
+        assert_eq!(t.cursor().0, 1, "NFC é advances 1 col");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[K"); // clear line
+        feed(&mut t, "e\u{0301}".as_bytes()); // NFD: e + combining acute
+        assert_eq!(t.cursor().0, 1, "NFD e+combining advances 1 col total");
+    }
+
+    #[test]
+    fn t_r15_wide_char_at_exact_boundary() {
+        // Wide char at penultimate column (n-2) fits exactly.
+        let mut t = Terminal::new(6, 3);
+        feed(&mut t, b"ABCD"); // cursor at col 4, cols 4-5 available
+        feed(&mut t, "你".as_bytes()); // fits exactly at cols 4-5
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '你');
+        assert!(t.grid().cell(5, 0).unwrap().is_wide_spacer());
+        // Cursor at last col (5) with pending_wrap set
+        assert_eq!(t.cursor().0, 5, "cursor at last col with pending_wrap");
+        assert!(t.cursor.pending_wrap, "pending_wrap set");
+    }
+
+    #[test]
+    fn t_r15_cjk_range_width() {
+        // CJK chars from 0x4E00 range should be width 2.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "字".as_bytes()); // U+5B57 CJK
+        assert!(t.grid().cell(0, 0).unwrap().is_wide(), "CJK char is wide");
+        assert_eq!(t.cursor().0, 2, "cursor advanced by 2");
+    }
+
+    #[test]
+    fn t_r15_wide_char_bg_propagates_to_cell() {
+        // BG on wide char should be visible on both cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[44m"); // blue bg
+        feed(&mut t, "你".as_bytes());
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().bg,
+            Color::Indexed(4),
+            "lead has bg"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().bg,
+            Color::Indexed(4),
+            "spacer has bg"
+        );
+    }
+
+    // ── Round 15-3: Scrollback / alternate screen edge cases ───────────
+
+    #[test]
+    fn t_r15_alt_screen_no_scrollback() {
+        // Alt screen should not accumulate scrollback.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        for _ in 0..10 {
+            feed(&mut t, b"TEST\r\n");
+        }
+        assert_eq!(t.grid().scrollback_len(), 0, "alt screen has no scrollback");
+    }
+
+    #[test]
+    fn t_r15_primary_scrollback_preserved_after_alt() {
+        // Primary scrollback should be preserved after alt screen round-trip.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        for _ in 0..6 {
+            feed(&mut t, b"LINE\r\n");
+        }
+        let before = t.grid().scrollback_len();
+        assert!(before > 0, "scrollback accumulated");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.grid().scrollback_len(),
+            before,
+            "scrollback preserved after alt round-trip"
+        );
+    }
+
+    #[test]
+    fn t_r15_scroll_region_does_not_affect_scrollback_above() {
+        // Lines above scroll region should not be pushed to scrollback
+        // when scrolling within the region.
+        let mut t = Terminal::with_scrollback(5, 6, 100);
+        feed(&mut t, b"R0\r\nR1\r\nR2\r\nR3\r\nR4\r\nR5");
+        feed(&mut t, b"\x1b[3;5r"); // region rows 3-5 (0-based: 2..5)
+        feed(&mut t, b"\x1b[5;1H"); // cursor at bottom of region
+        feed(&mut t, b"\n"); // LF → scroll within region
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'R', "row 0 preserved");
+        assert_eq!(
+            t.grid().scrollback_len(),
+            0,
+            "scroll within region does not create scrollback"
+        );
+    }
+
+    #[test]
+    fn t_r15_alt_screen_cursor_row_preserved() {
+        // 1049 should restore cursor row (not just column).
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[5;3H"); // cursor at (2, 4)
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[1;1H"); // move in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(t.cursor(), (2, 4), "cursor position fully restored");
+    }
+
+    #[test]
+    fn t_r15_alt_1047_vs_1049_cursor_handling() {
+        // Mode 1047 does NOT save/restore cursor; 1049 does.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;3H"); // cursor (2, 2)
+        feed(&mut t, b"\x1b[?1047h"); // enter alt via 1047 — no cursor save
+        feed(&mut t, b"\x1b[1;1H"); // move in alt
+        feed(&mut t, b"\x1b[?1047l"); // exit alt — no cursor restore
+        assert_eq!(t.cursor(), (0, 0), "1047 does not restore cursor");
+
+        // Now test 1049
+        feed(&mut t, b"\x1b[3;3H"); // cursor (2, 2)
+        feed(&mut t, b"\x1b[?1049h"); // enter alt via 1049
+        feed(&mut t, b"\x1b[1;1H"); // move in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — cursor restored
+        assert_eq!(t.cursor(), (2, 2), "1049 restores cursor");
+    }
+
+    #[test]
+    fn t_r15_scrollback_clear_on_ris() {
+        // RIS should clear scrollback.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        for _ in 0..6 {
+            feed(&mut t, b"DATA\r\n");
+        }
+        assert!(t.grid().scrollback_len() > 0, "scrollback exists");
+        feed(&mut t, b"\x1bc"); // RIS
+        assert_eq!(t.grid().scrollback_len(), 0, "RIS clears scrollback");
+    }
 }
