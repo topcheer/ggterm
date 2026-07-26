@@ -363,7 +363,7 @@ impl Grid {
         if n == 0 {
             return;
         }
-        if self.scroll_top == 0 {
+        if self.scroll_top == 0 && self.scroll_bottom == self.height {
             // Full-screen scroll: truncate last n rows, restore from scrollback.
             // This is O(n) instead of O(rows × n) with per-line remove/insert.
             let len = self.rows.len();

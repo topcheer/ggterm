@@ -9851,4 +9851,60 @@ mod tests {
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B');
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'C');
     }
+
+    #[test]
+    fn t_ri_at_top_of_partial_region_preserves_below() {
+        // RI (reverse index) at top of a scroll region starting at row 0
+        // but not reaching the bottom — content below the region must survive.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;3r");     // region rows 0-2
+        feed(&mut t, b"\x1b[1;1HA");    // row 0
+        feed(&mut t, b"\x1b[2;1HB");    // row 1
+        feed(&mut t, b"\x1b[4;1HOUT");  // row 3 (below region)
+        feed(&mut t, b"\x1b[1;1H");     // cursor at top of region
+        feed(&mut t, b"\x1bM");         // RI — scroll down within region
+        // A should move to row 1, row 0 is blank
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'B');
+        // OUT at row 3 must survive (scroll_down bug would corrupt it)
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, 'O', "OUT should survive RI");
+    }
+
+    #[test]
+    fn t_dch_on_wide_char_no_orphan() {
+        // Write a wide char (occupies 2 cells), then DCH at its position.
+        // The lead + spacer should both be gone, no orphaned spacer.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
+        feed(&mut t, b"X");            // normal char at col 2
+        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::WIDE_CHAR));
+        assert!(t.grid().cell(1, 0).unwrap().flags.contains(CellFlags::WIDE_SPACER));
+        feed(&mut t, b"\x1b[1G");     // cursor to col 0
+        feed(&mut t, b"\x1b[P");      // DCH 1: delete char at col 0
+        // The wide char should be gone. What replaced it depends on DCH
+        // shifting — but there should be NO orphaned WIDE_CHAR flag
+        // without a corresponding WIDE_SPACER.
+        let lead = t.grid().cell(0, 0).unwrap();
+        let spacer = t.grid().cell(1, 0).unwrap();
+        // No cell should have WIDE_CHAR without its spacer neighbor
+        if lead.flags.contains(CellFlags::WIDE_CHAR) {
+            assert!(spacer.flags.contains(CellFlags::WIDE_SPACER),
+                "WIDE_CHAR at col 0 must have spacer at col 1");
+        }
+    }
+
+    #[test]
+    fn t_dch_2_removes_full_wide_char() {
+        // DCH 2 starting at the wide char lead should remove both cells cleanly.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "你好".as_bytes()); // two wide chars: cols 0-1, 2-3
+        feed(&mut t, b"Z");              // col 4
+        feed(&mut t, b"\x1b[1G");       // cursor at col 0
+        feed(&mut t, b"\x1b[2P");       // DCH 2
+        // After deleting 2 cells, 好 should shift to col 0
+        let c0 = t.grid().cell(0, 0).unwrap();
+        // No orphaned WIDE_SPACER at col 0
+        assert!(!c0.flags.contains(CellFlags::WIDE_SPACER),
+            "col 0 should not have orphaned WIDE_SPACER after DCH 2");
+    }
 }
