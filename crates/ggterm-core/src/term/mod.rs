@@ -9387,4 +9387,65 @@ mod tests {
             "X should move down to row 3"
         );
     }
+
+    #[test]
+    fn t_pending_wrap_then_cr_no_double_line() {
+        // Fill to last col (pending_wrap set), then CR + char.
+        // CR should clear pending_wrap. Next char should NOT skip a line.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, b"ABCD"); // fills row 0, pending_wrap=true
+        feed(&mut t, b"\r"); // CR — clears pending_wrap
+        feed(&mut t, b"X"); // Should overwrite col 0 row 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        assert_eq!(t.cursor().1, 0, "should still be on row 0");
+    }
+
+    #[test]
+    fn t_wide_char_at_last_col_wraps() {
+        // A wide char at the last column with only 1 col left should wrap.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, b"ABC"); // cursor at col 3 (1 col left)
+        feed(&mut t, "中".as_bytes()); // width=2, not enough room → wrap
+        assert_eq!(
+            t.grid().cell(3, 0).map(|c| c.is_blank()),
+            Some(true),
+            "last col of row 0 should be blank"
+        );
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('中'));
+    }
+
+    #[test]
+    fn t_origin_mode_clamps_cursor() {
+        // Origin mode constrains cursor positioning to scroll region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[3;5r"); // region rows 2-4 (0-indexed)
+        feed(&mut t, b"\x1b[?6h"); // enable origin mode
+        feed(&mut t, b"\x1b[1;1H"); // CUP to (1,1) — should map to region origin
+        assert_eq!(t.cursor().1, 2, "origin mode: row 1 → region top (row 2)");
+        assert_eq!(t.cursor().0, 0, "origin mode: col 1 → col 0");
+    }
+
+    #[test]
+    fn t_origin_mode_cup_below_region_clamps() {
+        // In origin mode, CUP to a row below the scroll region should clamp
+        // to the bottom of the region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3 (0-indexed)
+        feed(&mut t, b"\x1b[?6h"); // origin mode
+        feed(&mut t, b"\x1b[10;1H"); // CUP to row 10 — way below region
+        assert_eq!(t.cursor().1, 3, "should clamp to region bottom (row 3)");
+    }
+
+    #[test]
+    fn t_pending_wrap_then_backspace() {
+        // Backspace after pending_wrap should clear it and move cursor left.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD"); // fills row, pending_wrap=true
+        feed(&mut t, b"\x08"); // BS
+        // After BS, cursor should be at col 2 (pending_wrap cleared).
+        // Print a char — it should land at col 2, row 0 (NOT wrap to next line).
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(2, 0).map(|c| c.ch), Some('X'));
+        assert_eq!(t.cursor().1, 0, "should still be on row 0");
+    }
 }
