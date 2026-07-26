@@ -13171,4 +13171,110 @@ mod tests {
             "ED2 clears all rows"
         );
     }
+
+    // ── Fuzz: scroll region + cursor positioning ───────────────────────
+
+    #[test]
+    fn t_fuzz_scroll_region_cursor_combinations() {
+        // Fuzz: combine scroll region setup with cursor positioning and output.
+        // Goal: find panics or state corruption.
+        let mut state: u32 = 42;
+        let mut rng = || {
+            state = state.wrapping_mul(1103515245).wrapping_add(12345);
+            state
+        };
+        for _ in 0..500 {
+            let w = (rng() % 40 + 1) as usize;
+            let h = (rng() % 20 + 1) as usize;
+            let mut t = Terminal::with_scrollback(w, h, 200);
+
+            // Random scroll region
+            if h > 2 {
+                let top = (rng() % (h as u32 / 2) + 1) as usize;
+                let bot = (rng() % (h as u32 / 2) + h as u32 / 2 + 1) as usize;
+                feed(&mut t, format!("\x1b[{};{}r", top + 1, bot).as_bytes());
+            }
+
+            // Random origin mode
+            if rng() % 2 == 1 {
+                feed(&mut t, b"\x1b[?6h");
+            }
+
+            // Random cursor positioning
+            let cup_row = (rng() % (h.max(1) as u32 * 2) + 1) as usize;
+            let cup_col = (rng() % (w.max(1) as u32 * 2) + 1) as usize;
+            feed(&mut t, format!("\x1b[{};{}H", cup_row, cup_col).as_bytes());
+
+            // Write some random chars
+            let n = (rng() % (w as u32 * 2)) as usize;
+            for _ in 0..n {
+                let ch = (b'A' + (rng() % 26) as u8) as char;
+                let mut buf = [0u8; 4];
+                feed(&mut t, ch.encode_utf8(&mut buf).as_bytes());
+            }
+
+            // Random LF/CR
+            for _ in 0..3 {
+                match rng() % 3 {
+                    0 => feed(&mut t, b"\n"),
+                    1 => feed(&mut t, b"\r"),
+                    _ => feed(&mut t, b"\x1bD"),
+                }
+            }
+
+            // Resize to verify no corruption
+            let nw = (rng() % 40 + 1) as usize;
+            let nh = (rng() % 20 + 1) as usize;
+            t.resize(nw, nh);
+
+            // Final state validation
+            assert!(t.cursor().0 < nw);
+            assert!(t.cursor().1 < nh);
+        }
+    }
+
+    // ── Fuzz: SGR stacking + output ────────────────────────────────────
+
+    #[test]
+    fn t_fuzz_sgr_stacking_output() {
+        let mut state: u32 = 99;
+        let mut rng = || {
+            state = state.wrapping_mul(1103515245).wrapping_add(12345);
+            state
+        };
+        for _ in 0..300 {
+            let mut t = Terminal::new(20, 5);
+            // Stack random SGR attributes
+            let n_sgr = (rng() % 9) as usize;
+            let mut sgr_seq = String::from("\x1b[");
+            for i in 0..n_sgr {
+                if i > 0 {
+                    sgr_seq.push(';');
+                }
+                let attr = match rng() % 15 {
+                    0 => "0",
+                    1 => "1",
+                    2 => "2",
+                    3 => "4",
+                    4 => "5",
+                    5 => "7",
+                    6 => "9",
+                    7 => "22",
+                    8 => "31",
+                    9 => "42",
+                    10 => "38;5;200",
+                    11 => "38;2;100;150;200",
+                    12 => "48;5;100",
+                    13 => "58;5;50",
+                    _ => "39",
+                };
+                sgr_seq.push_str(attr);
+            }
+            sgr_seq.push('m');
+            feed(&mut t, sgr_seq.as_bytes());
+            feed(&mut t, b"TEST");
+            // Should not panic. Cell should have 'T' at col 0.
+            assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'T');
+        }
+    }
 }
