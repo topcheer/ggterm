@@ -2388,8 +2388,8 @@ impl Perform for Terminal {
                 self.response_buffer
                     .extend_from_slice(b"\x1bP!|00000000\x1b\\");
             }
-            // DSR — device status report (CSI 6 n → cursor position)
-            b'n' => {
+            // DSR — device status report
+            b'n' if !is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     5 => {
@@ -2411,6 +2411,25 @@ impl Perform for Terminal {
                     }
                     _ => {}
                 }
+            }
+            // DECXCPR — DEC Extended Cursor Position Report (CSI ? 6 n)
+            // Response must include '?' prefix: CSI ? row;col R
+            b'n' if is_private => {
+                let mode = params.first().copied().unwrap_or(0);
+                if mode == 6 {
+                    // DECXCPR: respond with CSI ? row;col R
+                    let (cx, cy) = (self.cursor.x + 1, self.cursor.y + 1);
+                    let report_row = if self.modes.origin {
+                        let (top, _) = self.grid.scroll_region();
+                        cy.saturating_sub(top + 1).max(1)
+                    } else {
+                        cy
+                    };
+                    let resp = format!("\x1b[?{};{}R", report_row, cx);
+                    self.response_buffer.extend_from_slice(resp.as_bytes());
+                }
+                // Other private DSR queries (printer status, UDK status, etc.)
+                // are not supported — silently ignore.
             }
             // Text area size report (CSI Ps t)
             b't' if !intermediates.contains(&b'$') => {
@@ -13350,5 +13369,145 @@ mod tests {
         feed(&mut t, b"\x1b]0;Hello\xffWorld\x07");
         // Should not crash. Title may contain replacement chars.
         assert!(t.title().contains("Hello") || t.title().contains("World"));
+    }
+
+    // ── CPR / DSR / DA edge cases ──────────────────────────────────────
+
+    #[test]
+    fn t_cpr_decxcpr_private_has_question_mark() {
+        // CSI ? 6 n — DECXCPR (DEC Extended Cursor Position Report)
+        // Response MUST include the '?' prefix: CSI ? row;col R
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[?6n");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("\x1b[?"),
+            "DECXCPR response must have '?' prefix, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_cpr_standard_no_question_mark() {
+        // CSI 6 n — standard CPR, response should NOT have '?' prefix.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            !s.contains("\x1b[?"),
+            "standard CPR response should not have '?' prefix, got: {s:?}"
+        );
+        assert!(s.contains("\x1b[1;1R"));
+    }
+
+    #[test]
+    fn t_cpr_with_pending_wrap() {
+        // CPR when cursor is at last column with pending_wrap.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"1234567890"); // fills row 0, pending_wrap at col 9
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Cursor is at col 10 (1-based), row 1
+        assert!(
+            s.contains("1;10R"),
+            "CPR with pending_wrap should report last col, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_cpr_origin_mode_relative_to_scroll_top() {
+        // CPR in origin mode should report relative to scroll region.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[3;8r"); // scroll region rows 3-8 (1-based) = 2-7 (0-based)
+        feed(&mut t, b"\x1b[?6h"); // origin mode on
+        feed(&mut t, b"\x1b[1;1H"); // home → cursor at row 3 (0-based 2) relative row 1
+        feed(&mut t, b"AB"); // write 2 chars, cursor at col 3 (relative), row 1
+        feed(&mut t, b"\x1b[6n");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Should report row 1 (relative), col 3
+        assert!(
+            s.contains("1;3R"),
+            "CPR in origin mode should report relative position, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_da1_with_explicit_param() {
+        // CSI 0 c should produce same response as CSI c
+        let mut t1 = Terminal::new(80, 24);
+        feed(&mut t1, b"\x1b[c");
+        let resp1 = t1.take_response();
+
+        let mut t2 = Terminal::new(80, 24);
+        feed(&mut t2, b"\x1b[0c");
+        let resp2 = t2.take_response();
+
+        assert_eq!(
+            resp1, resp2,
+            "CSI c and CSI 0c should produce identical DA1 responses"
+        );
+    }
+
+    #[test]
+    fn t_da2_response_format() {
+        // DA2 response: CSI > Pp ; Pv ; Pc c
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>c");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        // Should start with CSI > and end with c
+        assert!(
+            s.starts_with("\x1b[>"),
+            "DA2 should start with CSI >, got: {s:?}"
+        );
+        assert!(s.ends_with('c'), "DA2 should end with 'c', got: {s:?}");
+        // Should have exactly 3 semicolons-separated fields after >
+        let body = &s["\x1b[>".len()..s.len() - 1];
+        let parts: Vec<&str> = body.split(';').collect();
+        assert_eq!(parts.len(), 3, "DA2 should have 3 fields, got {parts:?}");
+    }
+
+    #[test]
+    fn t_xtversion_response_format() {
+        // XTVERSION: CSI > q → DCS >| <name>(<version>) ST
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[>q");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.starts_with("\x1bP>|") && s.ends_with("\x1b\\"),
+            "XTVERSION should be DCS >| name(version) ST, got: {s:?}"
+        );
+        assert!(s.contains("ggterm"), "should contain terminal name");
+    }
+
+    #[test]
+    fn t_text_area_size_report() {
+        // CSI 18 t → CSI 8 ; rows ; cols t
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[18t");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("\x1b[8;24;80t"),
+            "text area report should be CSI 8;24;80t, got: {s:?}"
+        );
+    }
+
+    #[test]
+    fn t_text_area_size_after_resize() {
+        // CSI 18 t after resize should reflect new size.
+        let mut t = Terminal::new(80, 24);
+        t.resize(100, 30);
+        feed(&mut t, b"\x1b[18t");
+        let resp = t.take_response();
+        let s = String::from_utf8_lossy(&resp);
+        assert!(
+            s.contains("\x1b[8;30;100t"),
+            "text area report after resize should reflect new size, got: {s:?}"
+        );
     }
 }
