@@ -113,6 +113,17 @@ impl AIBridge {
         self.busy
     }
 
+    /// Cancel any in-flight request. The background task will still complete
+    /// (we can't kill the HTTP connection), but the results are discarded
+    /// and the bridge is immediately available for new requests.
+    pub fn cancel(&mut self) {
+        if self.busy {
+            self.busy = false;
+            self.delta_rx = None;
+            log::info!("AI request cancelled by user");
+        }
+    }
+
     /// Submit a new AI request. Returns `false` if a request is already pending.
     pub fn request(&mut self, req: AIRequest) -> bool {
         if self.busy || self.engine.is_none() {

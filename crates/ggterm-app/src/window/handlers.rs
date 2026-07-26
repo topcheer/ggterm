@@ -1953,6 +1953,12 @@ impl DesktopApp {
             match &event.physical_key {
                 PhysicalKey::Code(KeyCode::Escape) => {
                     self.ai_overlay.hide();
+                    // Cancel any in-flight AI request so user can immediately
+                    // submit a new one without waiting for the old response.
+                    #[cfg(feature = "ai")]
+                    if let Some(ref mut bridge) = self.ai_bridge {
+                        bridge.cancel();
+                    }
                     return;
                 }
                 // Tab: insert AI response into terminal (for Suggest/NL2Cmd)
