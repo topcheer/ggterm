@@ -782,7 +782,7 @@ mod tests {
         // leave a WIDE_CHAR flag without a spacer.
         let mut row = Row::new(4);
         // Place a wide char at col 3 (last column) — only 1 cell available.
-        let consumed = row.put_char(3, '\u{4e00}'); // CJK wide char
+        let _consumed = row.put_char(3, '\u{4e00}'); // CJK wide char
         // The char should NOT have been placed as a wide char lead without
         // its spacer. It should either be rejected (consumed=0) or placed
         // as a narrow fallback.

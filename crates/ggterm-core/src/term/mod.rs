@@ -2177,6 +2177,15 @@ impl Perform for Terminal {
                     self.cursor.y.saturating_sub(n)
                 };
                 self.cursor.pending_wrap = false;
+                // If cursor landed on a wide char spacer, adjust to the lead.
+                // Same adjustment as CUF/CUB/set_cursor — cursor should never
+                // rest on a spacer.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
             }
             b'B' => {
                 let n = Self::param(params, 0, 1) as usize;
@@ -2189,6 +2198,13 @@ impl Perform for Terminal {
                     (self.cursor.y + n).min(self.grid.height().saturating_sub(1))
                 };
                 self.cursor.pending_wrap = false;
+                // If cursor landed on a wide char spacer, adjust to the lead.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
             }
             b'C' => {
                 let n = Self::param(params, 0, 1) as usize;
@@ -26350,6 +26366,50 @@ mod tests {
         assert!(
             resp.contains("53"),
             "DECRQSS SGR with overline should contain 53, got: {resp}"
+        );
+    }
+
+    // ── Round 16: CUU/CUD wide char spacer adjustment ──────────────────
+    #[test]
+    fn t_r16_cuu_landing_on_wide_spacer() {
+        // CUU (cursor up) should adjust back to the lead if the new
+        // position lands on a wide char spacer. Same as CUF/CUB.
+        let mut t = Terminal::new(10, 4);
+        // Row 0: place a wide char at cols 3-4 (lead at 3, spacer at 4)
+        feed(&mut t, b"\x1b[1;4H");
+        feed(&mut t, "\u{4e00}".as_bytes()); // CJK wide char at col 3, spacer at col 4
+        // Row 0 has a wide char at cols 3-4. Now move to row 1, col 4.
+        // Row 1 col 4 is blank, so cursor stays at col 4.
+        feed(&mut t, b"\x1b[2;5H"); // row 2, col 5 (0-based: row 1, col 4)
+        assert_eq!(t.cursor(), (4, 1), "cursor at col 4 on blank row 1");
+        // CUU — cursor goes to row 0, col 4. Col 4 on row 0 is the spacer.
+        // Cursor should adjust to col 3 (the lead).
+        feed(&mut t, b"\x1b[A"); // CUU 1
+        assert_eq!(
+            t.cursor().0,
+            3,
+            "CUU should not land on wide spacer — adjust to lead (col 3)"
+        );
+    }
+
+    #[test]
+    fn t_r16_cud_landing_on_wide_spacer() {
+        // CUD (cursor down) should adjust back to the lead if the new
+        // position lands on a wide char spacer.
+        let mut t = Terminal::new(10, 4);
+        // Row 1: place a wide char at cols 3-4
+        feed(&mut t, b"\x1b[2;4H");
+        feed(&mut t, "\u{4e00}".as_bytes()); // CJK wide char
+        // Row 1 has wide char at cols 3-4. Move to row 0, col 4.
+        feed(&mut t, b"\x1b[1;5H"); // row 1, col 5 (0-based: row 0, col 4)
+        assert_eq!(t.cursor(), (4, 0), "cursor at col 4 on blank row 0");
+        // CUD — cursor goes to row 1, col 4. Col 4 on row 1 is the spacer.
+        // Cursor should adjust to col 3 (the lead).
+        feed(&mut t, b"\x1b[B"); // CUD 1
+        assert_eq!(
+            t.cursor().0,
+            3,
+            "CUD should not land on wide spacer — adjust to lead (col 3)"
         );
     }
 }
