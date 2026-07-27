@@ -6057,6 +6057,67 @@ mod tests {
         assert_eq!(bottom, 15, "Scroll region bottom should be unchanged");
     }
 
+    #[test]
+    fn t_scroll_region_lf_at_boundary() {
+        // LF at the bottom of the scroll region should scroll, not
+        // move the cursor past the region.
+        let mut t = Terminal::new(10, 5);
+        // Set scroll region to rows 1-3 (0-based: 0-2)
+        feed(&mut t, b"\x1b[1;3r");
+        feed(&mut t, b"\x1b[1;1H"); // cursor at (0,0) — top of region
+        feed(&mut t, b"ABC");
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 1 (0-based), col 0
+        feed(&mut t, b"DEF");
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 2 (0-based), col 0
+        feed(&mut t, b"GHI");
+        // Cursor at row 2 (bottom of region, 0-based). LF should scroll.
+        feed(&mut t, b"\n");
+        // Cursor should stay at row 2 (bottom of region after scroll)
+        assert_eq!(
+            t.cursor().1,
+            2,
+            "LF at region bottom should keep cursor at bottom"
+        );
+        // After scroll, row 0 should contain "DEF" (shifted up from row 1)
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'D',
+            "row 0 should be shifted content"
+        );
+    }
+
+    #[test]
+    fn t_scroll_region_cuu_respects_boundary() {
+        // CUU at the top of scroll region should stop, not go above it.
+        let mut t = Terminal::new(10, 10);
+        // Set scroll region to rows 3-7 (0-based: 2-6)
+        feed(&mut t, b"\x1b[3;7r");
+        feed(&mut t, b"\x1b[5;1H"); // row 4 (0-based), inside region
+        // CUU 10 — should stop at region top (row 2)
+        feed(&mut t, b"\x1b[10A");
+        assert_eq!(
+            t.cursor().1,
+            2,
+            "CUU should stop at scroll region top, not row 0"
+        );
+    }
+
+    #[test]
+    fn t_scroll_region_cud_respects_boundary() {
+        // CUD at the bottom of scroll region should stop, not go below it.
+        let mut t = Terminal::new(10, 10);
+        // Set scroll region to rows 3-7 (0-based: 2-6)
+        feed(&mut t, b"\x1b[3;7r");
+        feed(&mut t, b"\x1b[5;1H"); // row 4 (0-based), inside region
+        // CUD 10 — should stop at region bottom (row 6)
+        feed(&mut t, b"\x1b[10B");
+        assert_eq!(
+            t.cursor().1,
+            6,
+            "CUD should stop at scroll region bottom, not last row"
+        );
+    }
+
     // ==================================================================
     // P3-A: OSC 133 Shell Integration (Command Marks)
     // ==================================================================
