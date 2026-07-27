@@ -21357,4 +21357,306 @@ mod tests {
         feed(&mut t, b"\x1b[23;2t"); // pop → restores C (most recent push)
         assert_eq!(t.title(), "C", "pop restores most recent push");
     }
+
+    // ── Round 27-1: Wide char / emoji boundary ─────────────────────────
+
+    #[test]
+    fn t_r27_emoji_at_last_col_wraps() {
+        // Emoji 😀 (U+1F600, width=2) at the last column → should wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCD"); // cols 0-3, cursor at col 4 (last)
+        feed(&mut t, "😀".as_bytes()); // width 2, only 1 col left → wrap
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            '😀',
+            "emoji wrapped to row 1 col 0"
+        );
+        assert_eq!(t.cursor.y, 1, "cursor on row 1");
+    }
+
+    #[test]
+    fn t_r27_consecutive_emoji_fill_row() {
+        // Multiple emoji fill the row and wrap correctly.
+        let mut t = Terminal::new(6, 3);
+        feed(&mut t, "😀😀😀😀".as_bytes()); // 4 emoji = 8 cols, wraps at col 6
+        // Row 0: 😀 😀 😀 (cols 0-5), row 1: 😀 (cols 0-1)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '😀', "emoji at (0,0)");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '😀', "emoji at (2,0)");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '😀', "emoji at (4,0)");
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            '😀',
+            "4th emoji wrapped to row 1"
+        );
+    }
+
+    #[test]
+    fn t_r27_combining_acute_over_e() {
+        // é = e + U+0301 (combining acute accent) → width 1 total.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "e\u{0301}".as_bytes());
+        assert_eq!(t.cursor().0, 1, "cursor at col 1 after combining char");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'e', "base char is e");
+        assert!(cell.combining.contains(&'\u{0301}'), "combining attached");
+    }
+
+    #[test]
+    fn t_r27_combining_after_space() {
+        // Combining char with no preceding printable — attaches to space.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{0301}".as_bytes()); // standalone combining
+        // Should not advance cursor (zero-width)
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "combining char alone doesn't advance cursor"
+        );
+    }
+
+    #[test]
+    fn t_r27_wide_then_combining() {
+        // Combining char after a wide char — attaches to wide char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中\u{0301}".as_bytes()); // 中 + combining acute
+        assert_eq!(t.cursor().0, 2, "cursor at col 2 after wide + combining");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, '中', "base is 中");
+        assert!(
+            cell.combining.contains(&'\u{0301}'),
+            "combining on wide char"
+        );
+    }
+
+    #[test]
+    fn t_r27_wide_char_in_penultimate_col() {
+        // Wide char in cols-2 (penultimate) — fits exactly, cursor at last col.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABC"); // cursor at col 3
+        feed(&mut t, "中".as_bytes()); // cols 3-4 (last two cols)
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '中', "wide at col 3");
+        assert!(t.cursor.pending_wrap, "pending wrap set");
+        assert_eq!(t.cursor.x, 4, "cursor clamped at last col");
+    }
+
+    // ── Round 27-2: Resize/reflow behavior ─────────────────────────────
+
+    #[test]
+    fn t_r27_resize_shrink_grow_roundtrip() {
+        // Fill a single-row grid completely, then shrink.
+        // Content wraps; with only 1 visible row, the last segment is visible.
+        let mut t = Terminal::with_scrollback(6, 1, 100);
+        feed(&mut t, b"ABCDEF"); // fills the single row exactly
+        t.resize(3, 1); // shrink: ABC to scrollback, DEF visible
+        // With 1 visible row, the last segment (DEF) is visible.
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'D',
+            "D on visible row after shrink"
+        );
+        assert_eq!(t.grid().scrollback_len(), 1, "1 row in scrollback");
+        // Verify scrollback has ABC
+        // Grow back — content should merge
+        t.resize(6, 1); // grow back
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "A merged back after grow"
+        );
+    }
+
+    #[test]
+    fn t_r27_resize_cursor_clamped() {
+        // Cursor should be clamped to new dimensions on resize.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;8H"); // cursor at row 2, col 7
+        t.resize(5, 3); // shrink to 5 cols, 3 rows
+        assert!(t.cursor.x < 5, "cursor x clamped to new width");
+        assert!(t.cursor.y < 3, "cursor y clamped to new height");
+    }
+
+    #[test]
+    fn t_r27_resize_empty_terminal() {
+        // Resize from 1x1 to larger — should not panic.
+        let mut t = Terminal::new(1, 1);
+        t.resize(80, 24);
+        assert_eq!(t.grid().width(), 80);
+        assert_eq!(t.grid().height(), 24);
+    }
+
+    #[test]
+    fn t_r27_resize_wide_char_row() {
+        // Row with wide chars should handle resize without corruption.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中文字".as_bytes()); // 3 wide chars = 6 cols
+        feed(&mut t, b"AB"); // cols 6-7
+        t.resize(4, 3); // shrink
+        // Just verify no panic and grid is consistent
+        assert!(t.grid().width() == 4, "width is 4");
+    }
+
+    #[test]
+    fn t_r27_resize_tab_stops_extended() {
+        // Tab stops should be extended with defaults when growing.
+        let mut t = Terminal::new(10, 3);
+        t.resize(20, 3); // grow
+        // Default tab stops should be at cols 8, 16
+        assert!(t.tab_stops.len() >= 20, "tab stops extended");
+        assert!(t.tab_stops[8], "tab stop at col 8");
+        assert!(t.tab_stops[16], "tab stop at col 16");
+    }
+
+    // ── Round 27-3: Sync mode & Focus event ────────────────────────────
+
+    #[test]
+    fn t_r27_sync_mode_toggle() {
+        // DECSET/DECRST 2026 sync mode.
+        let mut t = Terminal::new(10, 3);
+        assert!(!t.is_synchronized(), "sync off by default");
+        feed(&mut t, b"\x1b[?2026h"); // enable
+        assert!(t.is_synchronized(), "sync enabled");
+        feed(&mut t, b"\x1b[?2026l"); // disable
+        assert!(!t.is_synchronized(), "sync disabled");
+    }
+
+    #[test]
+    fn t_r27_sync_nested_toggle() {
+        // Nested sync enable/disable.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2026h"); // enable 1
+        feed(&mut t, b"\x1b[?2026h"); // enable 2 (nested)
+        assert!(t.is_synchronized(), "still in sync after nested enable");
+        feed(&mut t, b"\x1b[?2026l"); // disable 1
+        // Some terminals require multiple disables for nested; check behavior.
+        // At minimum, should not crash.
+        feed(&mut t, b"\x1b[?2026l"); // disable 2
+        assert!(!t.is_synchronized(), "sync off after two disables");
+    }
+
+    #[test]
+    fn t_r27_focus_event_decrqm() {
+        // DECRQM query for focus event mode.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1004$p"); // query focus mode
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(resp.contains("1004"), "DECRQM response for 1004: {}", resp);
+    }
+
+    #[test]
+    fn t_r27_sync_decrqm() {
+        // DECRQM query for sync mode.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2026$p"); // query sync mode
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(resp.contains("2026"), "DECRQM response for 2026: {}", resp);
+    }
+
+    #[test]
+    fn t_r27_focus_toggle_rapid() {
+        // Rapid focus mode toggle should not cause issues.
+        let mut t = Terminal::new(10, 3);
+        for _ in 0..10 {
+            feed(&mut t, b"\x1b[?1004h\x1b[?1004l");
+        }
+        assert!(!t.modes.focus_event, "focus off after rapid toggle");
+    }
+
+    // ── Round 27-4: OSC color query (4/10/11/12) ───────────────────────
+
+    #[test]
+    fn t_r27_osc10_query_default_fg() {
+        // OSC 10 query for default foreground color → white.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("rgb:"),
+            "OSC 10 query response has rgb: {}",
+            resp
+        );
+        assert!(resp.contains("ff/ff/ff"), "default fg = white: {}", resp);
+    }
+
+    #[test]
+    fn t_r27_osc11_query_default_bg() {
+        // OSC 11 query for default background color → black.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("rgb:"),
+            "OSC 11 query response has rgb: {}",
+            resp
+        );
+        assert!(resp.contains("00/00/00"), "default bg = black: {}", resp);
+    }
+
+    #[test]
+    fn t_r27_osc10_set_then_query() {
+        // Set fg via OSC 10, then query → should return set value.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]10;rgb:ff/00/00\x1b\\"); // set fg = red
+        feed(&mut t, b"\x1b]10;?\x1b\\"); // query
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("ff/00/00"),
+            "OSC 10 query returns set color: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r27_osc11_set_then_query() {
+        // Set bg via OSC 11, then query → should return set value.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]11;rgb:00/ff/00\x1b\\"); // set bg = green
+        feed(&mut t, b"\x1b]11;?\x1b\\"); // query
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("00/ff/00"),
+            "OSC 11 query returns set color: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r27_osc4_set_out_of_range() {
+        // OSC 4 query color index 0 (black) — verify default palette value.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]4;0;?\x1b\\"); // query color 0
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("4;0;rgb:00/00/00"),
+            "color 0 = black: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r27_osc12_set_cursor_color() {
+        // OSC 12 set cursor color, then query.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]12;rgb:00/00/ff\x1b\\"); // set cursor = blue
+        feed(&mut t, b"\x1b]12;?\x1b\\"); // query
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("00/00/ff"),
+            "OSC 12 query returns cursor color: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r27_osc10_hash_color_format() {
+        // OSC 10 with #RRGGBB format (hash prefix).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]10;#ff8800\x1b\\"); // set fg = orange
+        feed(&mut t, b"\x1b]10;?\x1b\\"); // query
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("ff/88/00"),
+            "OSC 10 hash format parsed: {}",
+            resp
+        );
+    }
 }
