@@ -2266,8 +2266,21 @@ impl Perform for Terminal {
                             self.grid.set_row_wrap(r, false);
                         }
                     }
-                    1 => self.selective_erase_to(self.cursor.x, self.cursor.y),
-                    2 => self.selective_erase_all(),
+                    1 => {
+                        self.selective_erase_to(self.cursor.x, self.cursor.y);
+                        // Clear wrap flags for all erased lines (stale wrap
+                        // flags cause incorrect reflow on resize).
+                        for r in 0..=self.cursor.y {
+                            self.grid.set_row_wrap(r, false);
+                        }
+                    }
+                    2 => {
+                        self.selective_erase_all();
+                        // Clear wrap flags for all lines.
+                        for r in 0..self.grid.height() {
+                            self.grid.set_row_wrap(r, false);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -2364,6 +2377,8 @@ impl Perform for Terminal {
                                 *cell = Cell::blank();
                             }
                         }
+                        // Erasing entire line removes soft-wrap continuation.
+                        self.grid.set_row_wrap(cy, false);
                     }
                     _ => {}
                 }
@@ -7775,6 +7790,60 @@ mod tests {
         assert!(
             !spacer.is_wide_spacer(),
             "orphaned spacer should be cleared after DECSEL 1"
+        );
+    }
+    #[test]
+    fn t_decsel_mode2_clears_wrap_flag() {
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"E"); // wraps — row 0 is soft-wrapped
+        assert!(t.grid().row(0).unwrap().wrap);
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[?2K"); // DECSEL 2
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "DECSEL 2 should clear row_wrap flag"
+        );
+    }
+
+    #[test]
+    fn t_decsel_mode0_clears_wrap_flag() {
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"E");
+        assert!(t.grid().row(0).unwrap().wrap);
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[?0K");
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "DECSEL 0 should clear row_wrap flag"
+        );
+    }
+
+    #[test]
+    fn t_decsed_mode1_clears_wrap_flag() {
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"E");
+        assert!(t.grid().row(0).unwrap().wrap);
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"\x1b[?1J");
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "DECSED 1 should clear row_wrap flag"
+        );
+    }
+
+    #[test]
+    fn t_decsed_mode2_clears_wrap_flag() {
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"ABCD");
+        feed(&mut t, b"E");
+        assert!(t.grid().row(0).unwrap().wrap);
+        feed(&mut t, b"\x1b[?2J");
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "DECSED 2 should clear row_wrap flag"
         );
     }
 
