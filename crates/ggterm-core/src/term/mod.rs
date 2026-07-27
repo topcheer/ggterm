@@ -2721,7 +2721,10 @@ impl Perform for Terminal {
                 }
             }
             // SCP — save cursor position (legacy ANSI.SYS)
-            b's' => {
+            // Only valid with no intermediate bytes; CSI $ s is DECSLRM
+            // (left/right margin) which we don't support, but must not
+            // treat it as a cursor save.
+            b's' if intermediates.is_empty() => {
                 self.saved_cursor = self.cursor;
             }
             // Kitty keyboard protocol: push flags (CSI > Ps u)
@@ -2765,7 +2768,9 @@ impl Perform for Terminal {
                 }
             }
             // RCP — restore cursor position (legacy ANSI.SYS)
-            b'u' => {
+            // Only valid with no intermediate bytes; CSI > u is Kitty
+            // keyboard, CSI = u is terminal mode, etc.
+            b'u' if intermediates.is_empty() => {
                 self.cursor = self.saved_cursor;
                 self.cursor.pending_wrap = false;
                 // Clamp to grid bounds (may have been resized since SCP).
