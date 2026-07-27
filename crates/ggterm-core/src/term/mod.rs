@@ -1663,6 +1663,9 @@ impl Terminal {
                         self.cursor.y = self.cursor.y.min(h.saturating_sub(1));
                         self.cursor.pending_wrap = false;
                     }
+                    // Clear hyperlink state set during alt screen so it
+                    // doesn't leak onto the main screen.
+                    self.current_hyperlink = None;
                     self.modes.alt_screen = false;
                 }
             }
@@ -5205,6 +5208,31 @@ mod tests {
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'P');
         // No saved grid should remain (alt_saved_grid is None after exit).
         assert!(t.alt_saved_grid.is_none());
+    }
+
+    #[test]
+    fn t_alt_screen_no_hyperlink_leak_on_exit() {
+        // OSC 8 hyperlink state set in alt screen must not carry over
+        // to the main screen when exiting via mode 1049.
+        let mut t = Terminal::new(80, 24);
+        // Enter alt screen
+        feed(&mut t, b"\x1b[?1049h");
+        // Set a hyperlink in alt screen
+        feed(&mut t, b"\x1b]8;;https://evil.example.com\x1b\\");
+        feed(&mut t, b"linked");
+        // Exit alt screen
+        feed(&mut t, b"\x1b[?1049l");
+        // current_hyperlink should be cleared
+        assert!(
+            t.current_hyperlink.is_none(),
+            "hyperlink state should not leak from alt screen"
+        );
+        // Print a char on main screen — it should NOT have a hyperlink
+        feed(&mut t, b"X");
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_none(),
+            "main screen cell should not have alt screen's hyperlink"
+        );
     }
 
     #[test]
