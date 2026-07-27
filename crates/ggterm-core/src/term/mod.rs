@@ -1863,8 +1863,14 @@ impl Terminal {
     fn selective_erase_from(&mut self, col: usize, row: usize) {
         let width = self.grid.width();
         let height = self.grid.height();
+        // If starting on a wide spacer, include the lead cell.
+        let start = if col > 0 && self.grid.cell(col, row).is_some_and(|c| c.is_wide_spacer()) {
+            col - 1
+        } else {
+            col
+        };
         // Erase from cursor to end of current row
-        for c in col..width {
+        for c in start..width {
             if let Some(cell) = self.grid.cell_mut(c, row)
                 && !cell.flags.contains(CellFlags::PROTECTED)
             {
@@ -1898,12 +1904,25 @@ impl Terminal {
             }
         }
         // Erase from start of current row to cursor (inclusive)
-        for c in 0..=col.min(width.saturating_sub(1)) {
+        let end = col.min(width.saturating_sub(1));
+        for c in 0..=end {
             if let Some(cell) = self.grid.cell_mut(c, row)
                 && !cell.flags.contains(CellFlags::PROTECTED)
             {
                 *cell = Cell::blank();
             }
+        }
+        // If the cell right after the erase range is a wide spacer
+        // whose lead was just erased, clear the orphaned spacer.
+        if end + 1 < width
+            && self
+                .grid
+                .cell(end + 1, row)
+                .is_some_and(|c| c.is_wide_spacer())
+            && self.grid.cell(end, row).is_some_and(|c| !c.is_wide())
+            && let Some(cell) = self.grid.cell_mut(end + 1, row)
+        {
+            *cell = Cell::blank();
         }
         self.grid_mut().mark_all_dirty();
     }
@@ -2229,7 +2248,14 @@ impl Perform for Terminal {
                 match mode {
                     0 => {
                         // Erase from cursor to end of line (non-protected only)
-                        for c in cx..width {
+                        let start = if cx > 0
+                            && self.grid.cell(cx, cy).is_some_and(|c| c.is_wide_spacer())
+                        {
+                            cx - 1
+                        } else {
+                            cx
+                        };
+                        for c in start..width {
                             if let Some(cell) = self.grid.cell_mut(c, cy)
                                 && !cell.flags.contains(CellFlags::PROTECTED)
                             {
@@ -2239,12 +2265,25 @@ impl Perform for Terminal {
                     }
                     1 => {
                         // Erase from start of line to cursor (non-protected only)
-                        for c in 0..=cx.min(width.saturating_sub(1)) {
+                        let end = cx.min(width.saturating_sub(1));
+                        for c in 0..=end {
                             if let Some(cell) = self.grid.cell_mut(c, cy)
                                 && !cell.flags.contains(CellFlags::PROTECTED)
                             {
                                 *cell = Cell::blank();
                             }
+                        }
+                        // If the cell right after the erase range is a wide spacer
+                        // whose lead was just erased, clear the orphaned spacer.
+                        if end + 1 < width
+                            && self
+                                .grid
+                                .cell(end + 1, cy)
+                                .is_some_and(|c| c.is_wide_spacer())
+                            && self.grid.cell(end, cy).is_some_and(|c| !c.is_wide())
+                            && let Some(cell) = self.grid.cell_mut(end + 1, cy)
+                        {
+                            *cell = Cell::blank();
                         }
                     }
                     2 => {
@@ -7392,6 +7431,49 @@ mod tests {
         // Cols 3-4 should be erased
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ');
         assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_decsel_mode0_wide_char_at_cursor() {
+        // DECSEL 0 (erase cursor to end of line) when cursor is on a
+        // wide char spacer should also clear the lead cell.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, b"A");
+        feed(&mut t, "中".as_bytes()); // wide char at cols 1-2
+        feed(&mut t, b"B");
+        // Cursor is now at col 3. Move to col 2 (the spacer).
+        feed(&mut t, b"\x1b[1;3H"); // 1-based col 3 = 0-based col 2
+        feed(&mut t, b"\x1b[?0K"); // DECSEL 0
+        // Lead at col 1 should be cleared (not orphaned).
+        let lead = t.grid().cell(1, 0).unwrap();
+        assert!(
+            !lead.is_wide(),
+            "wide lead should be cleared, not orphaned by DECSEL 0"
+        );
+        // 'A' at col 0 should survive.
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+    }
+
+    #[test]
+    fn t_decsel_mode1_wide_char_after_range() {
+        // DECSEL 1 (erase start to cursor) when the cell right after the
+        // erase range is a wide spacer whose lead was erased.
+        let mut t = Terminal::new(10, 2);
+        feed(&mut t, "中".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"BCD");
+        // Cursor at col 3. Erase from start to col 1 (inclusive).
+        // This erases the wide lead at col 0 and 'B' at col 2.
+        // Wait — col 1 is the spacer. DECSEL 1 erases 0..=col where col=cursor.x.
+        // Move cursor to col 0 (lead), erase 0..=0, which erases the lead.
+        // The spacer at col 1 should also be cleared (orphan cleanup).
+        feed(&mut t, b"\x1b[1;1H"); // col 0
+        feed(&mut t, b"\x1b[?1K"); // DECSEL 1: erase start to cursor
+        // The spacer at col 1 should not be orphaned.
+        let spacer = t.grid().cell(1, 0).unwrap();
+        assert!(
+            !spacer.is_wide_spacer(),
+            "orphaned spacer should be cleared after DECSEL 1"
+        );
     }
 
     // ===== P24-E: OSC 9 / OSC 777 notification tests =====
