@@ -260,15 +260,12 @@ impl Row {
         self.cells[col].ch = ch;
 
         if w == 2 {
-            // Only set WIDE_CHAR + spacer if there's room for both cells.
-            // At the last column (no room for spacer), fall back to
-            // narrow rendering to avoid a dangling WIDE_CHAR flag.
+            // Set WIDE_CHAR flag and spacer if there's room for both cells.
             if col + 1 < len {
-                self.cells[col].flags |= CellFlags::WIDE_CHAR;
                 self.cells[col + 1].set_wide_spacer();
-                return 2;
             }
-            // No room for spacer — render as narrow (width 1).
+            self.cells[col].flags |= CellFlags::WIDE_CHAR;
+            return 2;
         }
 
         1
@@ -345,21 +342,17 @@ mod tests {
 
     #[test]
     fn t_put_wide_char_at_last_column_no_dangling() {
-        // A wide char at the last column can't have a spacer.
-        // It should render as narrow (width 1) instead of creating
-        // a dangling WIDE_CHAR flag without a spacer.
+        // A wide char at the last column can't have a spacer,
+        // but should still be marked as wide (WIDE_CHAR flag set)
+        // and return width 2 so the terminal layer knows it consumed 2.
         let mut row = Row::new(3);
-        // Fill columns 0-1 with regular chars.
         row.put_char(0, 'A');
         row.put_char(1, 'B');
-        // Put a wide char (CJK) at column 2 (the last column).
         let consumed = row.put_char(2, 'あ');
-        // Should return 1 (narrow fallback), not 2.
-        assert_eq!(consumed, 1, "wide char at last col should render as narrow");
-        // Should NOT have WIDE_CHAR flag (no spacer possible).
+        assert_eq!(consumed, 2, "wide char always returns width 2");
         assert!(
-            !row.cells[2].is_wide(),
-            "no WIDE_CHAR flag at last column without spacer"
+            row.cells[2].is_wide(),
+            "WIDE_CHAR flag set even without spacer"
         );
     }
 
@@ -632,15 +625,17 @@ mod tests {
 
     #[test]
     fn t_r37_row_set_cell_wide_at_last_col() {
-        // set_cell with wide char at last column — spacer can't fit.
-        // Per fix: wide char at last column falls back to narrow (width 1).
+        // set_cell with wide char at last column — spacer can't fit
+        // but WIDE_CHAR flag should still be set and width returned as 2.
         let mut row = Row::new(3);
         row.put_char(0, 'A');
         row.put_char(1, 'B');
         let w = row.put_char(2, '中'); // wide at last col
-        assert_eq!(w, 1, "wide char at last col renders as narrow");
-        assert!(!row.cells[2].is_wide(), "no WIDE_CHAR flag without spacer");
-        // text() should still include the char.
+        assert_eq!(w, 2, "wide char always returns width 2");
+        assert!(
+            row.cells[2].is_wide(),
+            "WIDE_CHAR flag set even without spacer"
+        );
         assert!(row.text().contains('中'));
     }
 
