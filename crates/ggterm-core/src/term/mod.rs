@@ -2909,6 +2909,25 @@ impl Perform for Terminal {
                     self.cursor.pending_wrap = false;
                 }
             }
+            // DECIC — Insert Column (CSI Ps ' } )
+            // Insert Ps blank columns at the cursor column. Cells to the
+            // right shift right; cells past the edge are lost.
+            // Intermediate byte: 0x27 (').
+            b'}' if intermediates.contains(&0x27) => {
+                let n = Self::param(params, 0, 1) as usize;
+                let col = self.cursor.x.min(self.grid.width().saturating_sub(1));
+                self.grid.insert_column(col, n);
+                self.cursor.pending_wrap = false;
+            }
+            // DECDC — Delete Column (CSI Ps ' ~ )
+            // Delete Ps columns at the cursor column. Cells to the right
+            // shift left; blanks fill the right edge.
+            b'~' if intermediates.contains(&0x27) => {
+                let n = Self::param(params, 0, 1) as usize;
+                let col = self.cursor.x.min(self.grid.width().saturating_sub(1));
+                self.grid.delete_column(col, n);
+                self.cursor.pending_wrap = false;
+            }
             // DECRA — Copy Rectangle Area (CSI Pt;Pl;Pb;Pr;Pk;Pp $ v)
             // Copy the source rectangle to the destination top-left corner.
             // Source and destination may overlap — data is buffered first.
@@ -3414,6 +3433,13 @@ impl Perform for Terminal {
             b'H' if self.cursor.x < self.tab_stops.len() => {
                 self.tab_stops[self.cursor.x] = true;
             }
+            // SS2 (ESC N) and SS3 (ESC O) — single-shift G2/G3 invocation.
+            // We don't implement G2/G3 character sets (only G0/G1 are used).
+            // These are primarily input-side sequences (function keys).
+            // On output, the next character would use G2/G3, but since we
+            // don't track those sets, treat as no-op (matches xterm behavior
+            // when no G2/G3 charset is designated).
+            b'N' | b'O' => {}
             _ => {}
         }
     }
@@ -20810,5 +20836,261 @@ mod tests {
         );
         // Spacer should also get UNDERLINE for visual consistency
         // (implementation detail — just verify it doesn't crash)
+    }
+
+    // ── Round 25-1: SS2/SS3 single shift (no-op) ───────────────────────
+
+    #[test]
+    fn t_r25_ss3_esc_o_no_op() {
+        // ESC O (SS3) should be silently consumed — no error, no output.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1bOABC");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "text after SS3 printed"
+        );
+        assert_eq!(
+            t.grid().cell(2, 0).unwrap().ch,
+            'C',
+            "text after SS3 printed"
+        );
+    }
+
+    #[test]
+    fn t_r25_ss2_esc_n_no_op() {
+        // ESC N (SS2) should be silently consumed.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1bNABC");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "text after SS2 printed"
+        );
+        assert_eq!(
+            t.grid().cell(2, 0).unwrap().ch,
+            'C',
+            "text after SS2 printed"
+        );
+    }
+
+    #[test]
+    fn t_r25_ss3_does_not_break_cursor() {
+        // SS3 should not affect cursor position.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1bO");
+        assert_eq!(t.cursor().0, 0, "cursor unchanged after SS3");
+    }
+
+    // ── Round 25-2: DECIC/DECDC insert/delete column ───────────────────
+
+    #[test]
+    fn t_r25_decic_insert_column() {
+        // DECIC inserts blank columns at cursor position, affecting all rows.
+        let mut t = Terminal::new(8, 3);
+        // Fill row 0 with text to verify shift
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[3C"); // cursor at col 3
+        feed(&mut t, b"\x1b[2'}"); // DECIC 2 — insert 2 blank columns at col 3
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A at col 0");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C', "C at col 2");
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            ' ',
+            "blank at col 3 (inserted)"
+        );
+        assert_eq!(
+            t.grid().cell(4, 0).unwrap().ch,
+            ' ',
+            "blank at col 4 (inserted)"
+        );
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'D', "D shifted to col 5");
+    }
+
+    #[test]
+    fn t_r25_decdc_delete_column() {
+        // DECDC deletes columns at cursor position.
+        let mut t = Terminal::new(8, 3);
+        for i in 0..5 {
+            let ch = (b'A' + i as u8) as char;
+            feed(&mut t, format!("\x1b[{};1H{}", i + 1, ch).as_bytes());
+        }
+        // Row 0: A......, Row 1: B......, etc.
+        feed(&mut t, b"\x1b[1;1H"); // cursor at col 0
+        feed(&mut t, b"\x1b[1'~"); // DECDC 1 — delete col 0
+        // A should be deleted, on row 0 the next col shifts in
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "row 0 col 0 (deleted, was A)"
+        );
+        // On row 1, B was at col 0, now deleted → col 0 blank
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            ' ',
+            "row 1 col 0 (B deleted)"
+        );
+    }
+
+    #[test]
+    fn t_r25_decic_default_count() {
+        // DECIC with no param → insert 1 column.
+        let mut t = Terminal::new(8, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[3C"); // cursor at col 3
+        feed(&mut t, b"\x1b['}"); // DECIC default = 1
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            ' ',
+            "blank inserted at col 3"
+        );
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'D', "D shifted to col 4");
+    }
+
+    #[test]
+    fn t_r25_decdc_default_count() {
+        // DECDC with no param → delete 1 column.
+        let mut t = Terminal::new(8, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[3C"); // cursor at col 3
+        feed(&mut t, b"\x1b['~"); // DECDC default = 1
+        // D at col 3 deleted, E shifts to col 3
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E', "E shifted to col 3");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'F', "F at col 4");
+    }
+
+    #[test]
+    fn t_r25_decic_count_exceeds_width() {
+        // DECIC with count > available width → clamp.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[3C"); // cursor at col 3
+        feed(&mut t, b"\x1b[100'}"); // DECIC 100 — clamp to 2 (width - col)
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "blank at col 3");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "blank at col 4");
+    }
+
+    #[test]
+    fn t_r25_decic_decdc_roundtrip() {
+        // Insert then delete should restore original layout.
+        let mut t = Terminal::new(8, 2);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[4C"); // cursor at col 4
+        feed(&mut t, b"\x1b[2'}"); // insert 2 columns
+        feed(&mut t, b"\x1b['~"); // delete 1 column
+        // After insert 2 + delete 1 = net +1 column shift
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "col 4 blank (net +1)");
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'E', "E at col 5");
+    }
+
+    // ── Round 25-3: OSC / charset / tab edge cases ─────────────────────
+
+    #[test]
+    fn t_r25_osc_very_long_title() {
+        // Very long title should be capped at 256 chars (security limit).
+        let mut t = Terminal::new(10, 3);
+        let long_title = "X".repeat(1000);
+        let osc = format!("\x1b]0;{}\x07", long_title);
+        feed(&mut t, osc.as_bytes());
+        assert_eq!(t.title().len(), 256, "long title capped at 256 chars");
+    }
+
+    #[test]
+    fn t_r25_osc_title_with_semicolons() {
+        // Title containing semicolons (OSC 2 has format: title;text).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;A;B;C\x07");
+        // OSC 0: payload is "A;B;C" — first param is 0, rest is title
+        assert_eq!(t.title(), "A;B;C", "title with semicolons");
+    }
+
+    #[test]
+    fn t_r25_osc_set_then_overwrite_title() {
+        // Set title then overwrite — should have the new title.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;First\x07");
+        feed(&mut t, b"\x1b]0;Second\x07");
+        assert_eq!(t.title(), "Second", "title overwritten");
+    }
+
+    #[test]
+    fn t_r25_charset_dec_special_then_ascii_back() {
+        // Switch to DEC special, print, switch back, print — verify no bleed.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0qq\x1b(Bqq"); // DEC: --, ASCII: qq
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            '\u{2500}',
+            "DEC line at col 0"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            '\u{2500}',
+            "DEC line at col 1"
+        );
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'q', "ASCII q at col 2");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'q', "ASCII q at col 3");
+    }
+
+    #[test]
+    fn t_r25_charset_g1_so_si_rapid_toggle() {
+        // Rapid SO/SI toggling should not corrupt charset state.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b)0"); // G1 = DEC Special
+        feed(&mut t, b"\x0eqq\x0fq\x0eq\x0f"); // SO qq SI q SO q SI
+        // SO: q→─, SI: q→q
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}', "G1 q at col 0");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2500}', "G1 q at col 1");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'q', "G0 q at col 2");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{2500}', "G1 q at col 3");
+    }
+
+    #[test]
+    fn t_r25_tab_at_col_0_with_clear() {
+        // Tab at col 0 after clearing all stops → last col.
+        let mut t = Terminal::new(15, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\t"); // tab from col 0
+        assert_eq!(t.cursor().0, 14, "tab to last col (no stops)");
+    }
+
+    #[test]
+    fn t_r25_cht_at_last_tab_stop() {
+        // CHT when already at a tab stop — should advance to next.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;9H"); // cursor at col 8 (first default stop)
+        feed(&mut t, b"\x1b[I"); // CHT 1 → should go to col 16
+        assert_eq!(t.cursor().0, 16, "CHT from stop to next");
+    }
+
+    #[test]
+    fn t_r25_cbt_at_col_0_stays() {
+        // CBT at col 0 — should stay at col 0.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[Z"); // CBT 1 from col 0
+        assert_eq!(t.cursor().0, 0, "CBT at col 0 stays");
+    }
+
+    #[test]
+    fn t_r25_decset_no_param_default() {
+        // DECSET with no parameter — should be treated as default (1? or no-op).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?h"); // DECSET with no param
+        // Should not panic — just no-op or treat as mode 1
+        assert!(t.modes.cursor_visible, "no crash from paramless DECSET");
+    }
+
+    #[test]
+    fn t_r25_decrst_no_param_default() {
+        // DECRST with no parameter — should be treated as default.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?l"); // DECRST with no param
+        // Should not panic
+        assert!(t.modes.cursor_visible, "no crash from paramless DECRST");
     }
 }

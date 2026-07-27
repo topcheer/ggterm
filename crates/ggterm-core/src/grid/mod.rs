@@ -479,6 +479,40 @@ impl Grid {
         }
     }
 
+    /// Insert `count` blank columns at `(col, row)` for every row in
+    /// the scroll region (DECIC — Insert Column).
+    /// Cells to the right of `col` shift right; cells pushed past the
+    /// right edge are lost.
+    pub fn insert_column(&mut self, col: usize, count: usize) {
+        if col >= self.width {
+            return;
+        }
+        let count = count.min(self.width - col);
+        for row in 0..self.height {
+            if let Some(r) = self.rows.get_mut(row) {
+                r.insert_char(col, count);
+            }
+        }
+        self.damage.mark_all(self.height);
+        self.content_dirty = true;
+    }
+
+    /// Delete `count` columns at `(col, row)` for every row (DECDC — Delete Column).
+    /// Cells to the right shift left; blank cells fill the right edge.
+    pub fn delete_column(&mut self, col: usize, count: usize) {
+        if col >= self.width {
+            return;
+        }
+        let count = count.min(self.width - col);
+        for row in 0..self.height {
+            if let Some(r) = self.rows.get_mut(row) {
+                r.delete_char(col, count);
+            }
+        }
+        self.damage.mark_all(self.height);
+        self.content_dirty = true;
+    }
+
     /// Place a character at `(col, row)` with wide-char handling.
     ///
     /// Returns the number of cells consumed (0, 1, or 2).
