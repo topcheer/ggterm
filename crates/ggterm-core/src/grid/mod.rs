@@ -1107,10 +1107,9 @@ fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
         if chunk
             .last()
             .is_some_and(|c| c.flags.contains(CellFlags::WIDE_CHAR))
+            && let Some(last) = chunk.last_mut()
         {
-            if let Some(last) = chunk.last_mut() {
-                *last = Cell::blank();
-            }
+            *last = Cell::blank();
         }
 
         out.push(Row {

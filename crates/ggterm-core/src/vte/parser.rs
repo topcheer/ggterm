@@ -340,20 +340,17 @@ impl Parser {
                 // malformed/malicious sequences without a terminator.
                 self.string_buffer.push(byte);
             }
-            c if c >= 0x20 => {
+            c if c >= 0x20 && self.string_buffer.len() == 65536 => {
                 // Buffer full — stay in OscString but stop accumulating.
                 // This consumes remaining bytes until the terminator
                 // (BEL or ST) arrives, preventing them from being
                 // processed as terminal output (which would print
                 // the overflow bytes as text on the screen).
-                // Log only once: when we first hit the cap.
-                if self.string_buffer.len() == 65536 {
-                    log::warn!("OSC string exceeded 64KB cap — consuming until terminator");
-                    // Prevent re-logging by trimming buffer to 65535.
-                    // This is safe: the OSC will be dispatched truncated,
-                    // which is harmless for a 64KB+ sequence.
-                    self.string_buffer.pop();
-                }
+                log::warn!("OSC string exceeded 64KB cap — consuming until terminator");
+                // Prevent re-logging by trimming buffer to 65535.
+                // This is safe: the OSC will be dispatched truncated,
+                // which is harmless for a 64KB+ sequence.
+                self.string_buffer.pop();
             }
             _ => {}
         }
@@ -472,16 +469,13 @@ impl Parser {
                 // Cap DCS string at 1MB — Sixel images can be large.
                 self.string_buffer.push(byte);
             }
-            c if c >= 0x20 => {
+            c if c >= 0x20 && self.string_buffer.len() == 1048576 => {
                 // Buffer full — stay in DcsString but stop accumulating.
                 // This consumes remaining bytes until the terminator
                 // (BEL or ST) arrives, preventing them from being
                 // processed as terminal output.
-                // Log only once: when we first hit the cap.
-                if self.string_buffer.len() == 1048576 {
-                    log::warn!("DCS string exceeded 1MB cap — consuming until terminator");
-                    self.string_buffer.pop();
-                }
+                log::warn!("DCS string exceeded 1MB cap — consuming until terminator");
+                self.string_buffer.pop();
             }
             _ => {}
         }

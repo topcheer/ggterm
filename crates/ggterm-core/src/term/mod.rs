@@ -2966,7 +2966,7 @@ impl Perform for Terminal {
                 // Pch = fill char (must be 32-126 or 160-255, else ignored)
                 let pch = params.first().copied().unwrap_or(0);
                 // Validate fill char per DEC STD 070
-                let valid_fill = (pch >= 0x20 && pch <= 0x7e) || (pch >= 0xa0 && pch <= 0xff);
+                let valid_fill = (0x20..=0x7e).contains(&pch) || (0xa0..=0xff).contains(&pch);
                 if !valid_fill {
                     return;
                 }
