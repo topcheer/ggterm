@@ -809,6 +809,15 @@ impl Grid {
             self.scrollback.pop_front();
             self.total_evicted += 1;
         }
+        // Clamp display_offset to the new (possibly smaller) scrollback
+        // length. Without this, a scrollback capacity reduction (e.g. config
+        // reload) while the user is scrolled up would leave display_offset
+        // pointing past the end of scrollback, showing stale/blank content.
+        if self.display_offset > self.scrollback.len() {
+            self.display_offset = self.scrollback.len();
+            self.damage.mark_all(self.height);
+            self.content_dirty = true;
+        }
     }
 
     /// Return the current scrollback limit.
@@ -2594,5 +2603,155 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn t_p131_reflow_preserves_sgr_colors() {
+        // SGR colors should be preserved across reflow.
+        use crate::grid::cell::CellFlags;
+        let mut g = Grid::with_scrollback(10, 2, 100);
+        // Write red text then wrap to next line
+        let mut cell = Cell::with_char('R');
+        cell.fg = crate::Color::Indexed(1); // Red
+        g.cell_mut(0, 0).unwrap();
+        for col in 0..10 {
+            let c = g.cell_mut(col, 0).unwrap();
+            c.ch = 'R';
+            c.fg = crate::Color::Indexed(1);
+        }
+        g.set_row_wrap(0, true);
+        // Write more on second line
+        for col in 0..5 {
+            let c = g.cell_mut(col, 1).unwrap();
+            c.ch = 'R';
+            c.fg = crate::Color::Indexed(1);
+        }
+        // Shrink to 5 columns — should reflow
+        g.reflow_resize(5, 4);
+        // All non-blank cells should still have red foreground
+        for row in 0..g.height() {
+            for col in 0..g.width() {
+                if let Some(c) = g.cell(col, row) {
+                    if c.ch == 'R' {
+                        assert_eq!(
+                            c.fg,
+                            crate::Color::Indexed(1),
+                            "SGR color lost at ({},{}) after reflow",
+                            col,
+                            row
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn t_p131_reflow_wide_char_at_shrink_boundary() {
+        // When shrinking, a wide char pair should not be split across rows.
+        // Place content: "AB你CD" at cols 0-5 (6 cols), shrink to 4.
+        // 你 is at cols 2-3 (lead + spacer). Width 4 boundary is at col 4.
+        // The wide pair fits within the first row.
+        let mut g = Grid::with_scrollback(6, 2, 100);
+        g.cell_mut(0, 0).unwrap().ch = 'A';
+        g.cell_mut(1, 0).unwrap().ch = 'B';
+        // Place wide char at cols 2-3
+        let lead = g.cell_mut(2, 0).unwrap();
+        lead.ch = '你';
+        lead.flags.insert(CellFlags::WIDE_CHAR);
+        let spacer = g.cell_mut(3, 0).unwrap();
+        spacer.ch = '\0';
+        spacer.flags.insert(CellFlags::WIDE_SPACER);
+        g.cell_mut(4, 0).unwrap().ch = 'C';
+        g.cell_mut(5, 0).unwrap().ch = 'D';
+        // Shrink to 4 cols
+        g.reflow_resize(4, 3);
+        // Row 0 should have: A B 你(spacer)
+        assert_eq!(g.cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(g.cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(g.cell(2, 0).unwrap().ch, '你');
+        assert!(g.cell(3, 0).unwrap().is_wide_spacer());
+        // C D should be on the next row
+        assert_eq!(g.cell(0, 1).unwrap().ch, 'C');
+        assert_eq!(g.cell(1, 1).unwrap().ch, 'D');
+    }
+
+    #[test]
+    fn t_p131_reflow_wide_char_pushed_to_next_row() {
+        // When shrinking so a wide char pair straddles the boundary,
+        // the wide char should be pushed to the next row (not split).
+        // Content: "你BC" at cols 0-2 (3 cols), shrink to 2.
+        // 你 takes cols 0-1. Shrinking to width 2 means the boundary is col 2.
+        // The wide pair (cols 0-1) fits in the first row, B goes to row 2.
+        let mut g = Grid::with_scrollback(4, 2, 100);
+        let lead = g.cell_mut(0, 0).unwrap();
+        lead.ch = '你';
+        lead.flags.insert(CellFlags::WIDE_CHAR);
+        let spacer = g.cell_mut(1, 0).unwrap();
+        spacer.ch = '\0';
+        spacer.flags.insert(CellFlags::WIDE_SPACER);
+        g.cell_mut(2, 0).unwrap().ch = 'B';
+        g.cell_mut(3, 0).unwrap().ch = 'C';
+        // Shrink to 2 cols
+        g.reflow_resize(2, 4);
+        // Row 0: 你(spacer)
+        assert_eq!(g.cell(0, 0).unwrap().ch, '你');
+        assert!(g.cell(1, 0).unwrap().is_wide_spacer());
+        // B C on next row
+        assert_eq!(g.cell(0, 1).unwrap().ch, 'B');
+        assert_eq!(g.cell(1, 1).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_p131_reflow_blank_line_not_doubled() {
+        // Blank lines should not be doubled when shrinking.
+        let mut g = Grid::with_scrollback(10, 4, 100);
+        // Row 0-3 are all blank (default)
+        // Shrink from 10 to 5 columns
+        g.reflow_resize(5, 4);
+        // Should still have exactly 4 rows (no doubling)
+        assert_eq!(g.height(), 4);
+        // All rows should still be blank
+        for row in 0..4 {
+            for col in 0..5 {
+                assert!(
+                    g.cell(col, row).unwrap().is_blank(),
+                    "expected blank at ({},{})",
+                    col,
+                    row
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn t_p131_set_max_scrollback_clamps_display_offset() {
+        // When scrollback capacity is reduced while the user is scrolled up,
+        // display_offset must be clamped to the new scrollback length.
+        let mut g = Grid::with_scrollback(10, 3, 100);
+        // Fill content to create scrollback
+        for _ in 0..20 {
+            for col in 0..10 {
+                let c = g.cell_mut(col, 0).unwrap();
+                c.ch = 'X';
+            }
+            g.scroll_up(1);
+        }
+        assert!(g.scrollback_len() > 0, "should have scrollback");
+        let sb_len = g.scrollback_len();
+        // Scroll up to view scrollback
+        g.scroll_up_viewport(sb_len);
+        assert_eq!(g.display_offset(), sb_len);
+        // Reduce scrollback capacity to less than current display_offset
+        let new_max = sb_len / 2;
+        g.set_max_scrollback(new_max);
+        // display_offset should be clamped to new scrollback length
+        assert!(
+            g.display_offset() <= g.scrollback_len(),
+            "display_offset {} should be <= scrollback_len {} after capacity reduction",
+            g.display_offset(),
+            g.scrollback_len()
+        );
+        assert_eq!(g.scrollback_len(), new_max);
     }
 }

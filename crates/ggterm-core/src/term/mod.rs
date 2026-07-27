@@ -26013,4 +26013,126 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn t_p131_sgr_truecolor_fg() {
+        // CSI 38;2;R;G;Bm — set foreground truecolor
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;255;128;0m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Rgb(255, 128, 0),
+            "truecolor fg should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_truecolor_bg() {
+        // CSI 48;2;R;G;Bm — set background truecolor
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[48;2;0;64;255m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().bg,
+            Color::Rgb(0, 64, 255),
+            "truecolor bg should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_256color_fg() {
+        // CSI 38;5;Nm — set foreground from 256-color palette
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;5;196m"); // bright red in 256-color
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(196),
+            "256-color fg should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_256color_bg() {
+        // CSI 48;5;Nm — set background from 256-color palette
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[48;5;22m"); // dark green
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().bg,
+            Color::Indexed(22),
+            "256-color bg should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_truecolor_colon_syntax() {
+        // CSI 38:2:R:G:Bm — colon-separated truecolor (used by some apps)
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38:2:100:200:50m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Rgb(100, 200, 50),
+            "colon syntax truecolor fg should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_truecolor_colon_with_colorspace() {
+        // CSI 38:2:Pr:R:G:Bm — colon syntax with colorspace ID (ignored)
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38:2:0:100:200:50m"); // Pr=0, R=100, G=200, B=50
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Rgb(100, 200, 50),
+            "colon syntax with colorspace should skip Pr and use RGB"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_combined_truecolor_and_attr() {
+        // Multiple SGR params in one sequence: bold + truecolor fg + bg
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;38;2;255;0;0;48;2;0;0;255m");
+        feed(&mut t, b"X");
+        assert!(t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD));
+        assert_eq!(t.grid().cell(0, 0).unwrap().fg, Color::Rgb(255, 0, 0));
+        assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn t_p131_sgr_256color_colon_syntax() {
+        // CSI 38:5:Nm — colon-separated 256-color
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38:5:33m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(33),
+            "colon syntax 256-color fg should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_sgr_underline_color_rgb() {
+        // SGR 58;2;R;G;Bm — set underline color (truecolor)
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4;58;2;255;0;255m"); // underline + magenta underline color
+        feed(&mut t, b"X");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::UNDERLINE)
+        );
+        assert_eq!(
+            *t.underline_color_ref(),
+            Color::Rgb(255, 0, 255),
+            "underline color should be set"
+        );
+    }
 }
