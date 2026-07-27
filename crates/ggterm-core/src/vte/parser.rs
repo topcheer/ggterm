@@ -103,20 +103,19 @@ impl Parser {
             State::DcsString => self.dcs_string(byte, perform),
             State::DcsEsc => {
                 // After ESC in DCS context: ST = ESC \
-                if byte != b'\\' {
-                    // Not ST — push the byte into DCS buffer and resume string.
-                    if byte == 0x1b {
-                        self.state = State::DcsEsc;
-                    } else if byte >= 0x20 && self.string_buffer.len() < 1048576 {
-                        self.string_buffer.push(byte);
-                        self.state = State::DcsString;
-                    } else {
-                        self.state = State::DcsString;
-                    }
-                } else {
+                if byte == b'\\' {
                     // ST received — end of DCS sequence
                     self.dispatch_dcs(perform);
                     self.state = State::Ground;
+                } else {
+                    // Not ST — abort DCS without dispatching.
+                    // Re-enter escape state to process this byte as part of
+                    // a new escape sequence (e.g. ESC [ for CSI).
+                    // Previously this byte was pushed into the DCS string
+                    // buffer, causing sequences like \ePqdata\e[2J to lose
+                    // the [ and swallow the entire CSI into the DCS buffer.
+                    self.state = State::Escape;
+                    self.escape(byte, perform);
                 }
             }
         }

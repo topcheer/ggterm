@@ -477,3 +477,29 @@ fn test_osc_overflow_does_not_corrupt_content() {
         panic!("expected OSC event");
     }
 }
+
+#[test]
+fn test_dcs_esc_not_st_aborts_and_reprocesses() {
+    // When ESC is received inside a DCS string followed by something
+    // other than '\' (backslash), the DCS should be aborted and the
+    // ESC + byte should be processed as a new escape sequence.
+    // This matches xterm behavior and the OscEsc handler.
+    //
+    // Without this fix, the byte after ESC (e.g. '[') gets swallowed
+    // into the DCS string buffer, and subsequent CSI sequences are lost.
+    let mut parser = Parser::new();
+    let mut p = MockPerform::new();
+
+    // DCS sequence without proper ST termination, then a CSI sequence.
+    // ESC P q data ESC [ 2 J
+    // The ESC [ should abort the DCS and start CSI 2J.
+    parser.feed(b"\x1bPqdata\x1b[2J", &mut p);
+
+    // Should NOT have a CSI event if the bug is present.
+    let has_csi = p.events.iter().any(|e| matches!(e, Event::Csi(_, b'J')));
+    assert!(
+        has_csi,
+        "CSI 2J after aborted DCS should be processed, events: {:?}",
+        p.events
+    );
+}
