@@ -23844,4 +23844,266 @@ mod tests {
             "X at col 0 after dropped combining"
         );
     }
+
+    // ── Round 39: Resize, reflow, and content preservation ─────────────
+
+    #[test]
+    fn t_r39_reflow_wide_char_at_boundary_shrink() {
+        // Shrink width — wide chars must be preserved through reflow.
+        // Use enough height to avoid content scrolling into scrollback.
+        let mut t = Terminal::new(8, 2);
+        feed(&mut t, "中文AB".as_bytes()); // cols 0-5 on row 0
+        t.resize(3, 12); // shrink width, grow height so all content is visible
+        // 中 and 文 should appear somewhere in the visible area
+        let mut found_zhong = false;
+        let mut found_wen = false;
+        for r in 0..t.grid().height() {
+            for c in 0..t.grid().width() {
+                if let Some(cell) = t.grid().cell(c, r) {
+                    if cell.ch == '中' {
+                        found_zhong = true;
+                    }
+                    if cell.ch == '文' {
+                        found_wen = true;
+                    }
+                }
+            }
+        }
+        assert!(found_zhong, "中 preserved after reflow shrink");
+        assert!(found_wen, "文 preserved after reflow shrink");
+    }
+
+    #[test]
+    fn t_r39_reflow_shrink_grow_roundtrip_preserves_ascii() {
+        // Shrink then grow back — ASCII content should be preserved.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"Hello World");
+        let original = t.grid().row_text(0).unwrap_or_default();
+        t.resize(10, 5); // shrink width
+        t.resize(20, 5); // grow back
+        let restored = t.grid().row_text(0).unwrap_or_default();
+        assert!(
+            restored.starts_with("Hello"),
+            "content preserved after shrink-grow: got '{}'",
+            restored
+        );
+    }
+
+    #[test]
+    fn t_r39_reflow_shrink_grow_roundtrip_cjk() {
+        // Shrink then grow back — CJK content should be preserved.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, "中文测试数据".as_bytes());
+        t.resize(4, 5); // shrink to 4 (fits exactly 2 wide chars per row)
+        t.resize(20, 5); // grow back
+        // Content should be reflowed and contain the original chars
+        let all_text: String = (0..t.grid().height())
+            .filter_map(|r| t.grid().row_text(r))
+            .collect();
+        assert!(all_text.contains("中"), "中 preserved: {}", all_text);
+        assert!(all_text.contains("据"), "据 preserved: {}", all_text);
+    }
+
+    #[test]
+    fn t_r39_resize_cursor_bottom_right_shrink() {
+        // Cursor at bottom-right, shrink — cursor must be clamped.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[10;20H"); // cursor at row 9, col 19 (bottom-right)
+        t.resize(5, 3); // shrink to 5x3
+        assert!(t.cursor().0 < 5, "cursor x clamped: got {}", t.cursor().0);
+        assert!(t.cursor().1 < 3, "cursor y clamped: got {}", t.cursor().1);
+    }
+
+    #[test]
+    fn t_r39_resize_alt_screen_preserves_main() {
+        // In alt screen, resize should not corrupt main screen content.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"MAIN"); // main screen content
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ALT");
+        t.resize(15, 8); // resize while in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Main content should be preserved
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "main content preserved after alt resize"
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_with_scrollback_shrink_grow() {
+        // Resize with scrollback content — should survive shrink/grow.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        // Fill and scroll to create scrollback
+        feed(&mut t, b"Line1\r\nLine2\r\nLine3\r\nLine4\r\nLine5\r\nNow");
+        let sb_before = t.grid().scrollback_len();
+        assert!(sb_before > 0, "scrollback exists before resize");
+        // Shrink width — reflow may change scrollback
+        t.resize(5, 3);
+        // Grow back
+        t.resize(10, 3);
+        // Content should still be accessible
+        assert!(
+            t.grid().scrollback_len() > 0,
+            "scrollback survived resize round-trip"
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_height_grow_pulls_scrollback() {
+        // Growing height should pull scrollback lines into visible area.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        feed(&mut t, b"L1\r\nL2\r\nL3\r\nL4\r\nL5\r\n");
+        let sb_before = t.grid().scrollback_len();
+        t.resize(10, 8); // grow height — should pull scrollback
+        assert!(
+            t.grid().scrollback_len() < sb_before,
+            "scrollback consumed on height grow: was={}, now={}",
+            sb_before,
+            t.grid().scrollback_len()
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_height_shrink_pushes_to_scrollback() {
+        // Shrinking height should push visible rows to scrollback.
+        let mut t = Terminal::with_scrollback(10, 5, 100);
+        feed(&mut t, b"L1\r\nL2\r\nL3\r\nL4\r\nL5\r\n");
+        let sb_before = t.grid().scrollback_len();
+        t.resize(10, 2); // shrink height
+        assert!(
+            t.grid().scrollback_len() > sb_before,
+            "rows pushed to scrollback on height shrink: was={}, now={}",
+            sb_before,
+            t.grid().scrollback_len()
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_rapid_cycle_no_corruption() {
+        // Multiple rapid resize cycles — no corruption or panic.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"Test Content Here");
+        for _ in 0..10 {
+            t.resize(5, 3);
+            t.resize(15, 7);
+            t.resize(30, 15);
+            t.resize(20, 10);
+        }
+        // Terminal should still be functional
+        feed(&mut t, b"\x1b[1;1HX");
+        let all_text: String = (0..t.grid().height())
+            .filter_map(|r| t.grid().row_text(r))
+            .collect();
+        assert!(
+            all_text.contains("X"),
+            "terminal functional after rapid resize cycle"
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_to_1x1_then_back() {
+        // Resize to 1x1 then back — content truncated but terminal works.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"Hello World ABC");
+        t.resize(1, 1); // minimal size
+        assert_eq!(t.grid().width(), 1);
+        assert_eq!(t.grid().height(), 1);
+        t.resize(10, 5); // grow back
+        // Terminal should work
+        feed(&mut t, b"\x1b[1;1HZ");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'Z',
+            "terminal works after 1x1 resize cycle"
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_preserves_sgr_after_reflow() {
+        // Content with colors should preserve color attributes after reflow.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[31mRed\x1b[0m Text");
+        t.resize(5, 3); // shrink — reflow
+        t.resize(10, 3); // grow back
+        // Find the 'R' cell and check it's still red
+        let mut found_red = false;
+        for r in 0..t.grid().height() {
+            for c in 0..t.grid().width() {
+                if let Some(cell) = t.grid().cell(c, r) {
+                    if cell.ch == 'R' && cell.fg == Color::Indexed(1) {
+                        found_red = true;
+                    }
+                }
+            }
+        }
+        assert!(found_red, "red 'R' preserved after reflow");
+    }
+
+    #[test]
+    fn t_r39_reflow_wrapped_content_shrink_width() {
+        // Soft-wrapped content should reflow correctly when width shrinks.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ"); // fills row 0, auto-wraps
+        feed(&mut t, b"KLMNOPQRST"); // fills row 1 (soft-wrapped from row 0)
+        // Row 0 has wrap=true (soft-wrapped)
+        // Shrink to 5 — the logical line ABCDEFGHIJKLMNOPQRST should reflow
+        t.resize(5, 6); // wider height to see all reflowed lines
+        // First row should start with A
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "reflowed content starts with A"
+        );
+        // Collect all text from visible rows
+        let all_text: String = (0..t.grid().height())
+            .filter_map(|r| t.grid().row_text(r))
+            .collect::<Vec<_>>()
+            .join("");
+        // The logical line ABCDEFGHIJKLMNOPQRST should be present
+        assert!(
+            all_text.contains("ABCDEFGHIJKLMNOP"),
+            "reflowed content preserved: {}",
+            all_text
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_alt_screen_no_reflow() {
+        // Alt screen should NOT reflow — simple truncation only.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt (no reflow)
+        feed(&mut t, b"ABCDEFGHIJ"); // fills row 0 exactly
+        feed(&mut t, b"K"); // K wraps to row 1 (deferred wrap)
+        t.resize(5, 4); // shrink width — NO reflow in alt
+        // In alt screen, row 0 should be truncated to 5 chars
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "alt screen: A at col 0 (truncated, not reflowed)"
+        );
+        assert_eq!(
+            t.grid().cell(4, 0).unwrap().ch,
+            'E',
+            "alt screen: E at col 4 (truncated)"
+        );
+    }
+
+    #[test]
+    fn t_r39_resize_scrollback_cap_enforced() {
+        // After resize, scrollback should not exceed max_scrollback.
+        let max_sb = 50;
+        let mut t = Terminal::with_scrollback(5, 2, max_sb);
+        // Generate lots of scrollback
+        for i in 0..200 {
+            feed(&mut t, format!("Line{}\r\n", i).as_bytes());
+        }
+        t.resize(3, 2); // shrink — reflow may create more scrollback
+        assert!(
+            t.grid().scrollback_len() <= max_sb,
+            "scrollback cap enforced after resize: got {}",
+            t.grid().scrollback_len()
+        );
+    }
 }
