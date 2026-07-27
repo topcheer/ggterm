@@ -1525,7 +1525,15 @@ impl Terminal {
 
     fn set_dec_mode(&mut self, mode: u16, enable: bool) {
         match mode {
-            7 => self.modes.auto_wrap = enable,
+            7 => {
+                self.modes.auto_wrap = enable;
+                // When DECAWM is turned off, clear any pending wrap.
+                // xterm clears do_wrap when DECAWM is disabled so that
+                // re-enabling DECAWM doesn't trigger a stale deferred wrap.
+                if !enable {
+                    self.cursor.pending_wrap = false;
+                }
+            }
             5 => {
                 if self.modes.reverse_video != enable {
                     self.modes.reverse_video = enable;
@@ -6024,6 +6032,30 @@ mod tests {
         feed(&mut t, b"E");
         assert_eq!(t.cursor().1, 1); // row 1
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'E');
+    }
+
+    #[test]
+    fn t_decawm_off_clears_pending_wrap() {
+        // Turning off DECAWM (mode 7) should clear pending_wrap.
+        // This matches xterm behavior: when vim/tmux disable autowrap
+        // after filling the last column, they expect no deferred wrap
+        // to trigger even if DECAWM is later re-enabled.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD"); // Fill line, pending_wrap = true
+        assert!(t.cursor.pending_wrap);
+        // Turn off DECAWM
+        feed(&mut t, b"\x1b[?7l");
+        assert!(
+            !t.cursor.pending_wrap,
+            "pending_wrap should be cleared when DECAWM is turned off"
+        );
+        // Turn DECAWM back on, then write a char.
+        // It should overwrite at the last column, NOT wrap.
+        feed(&mut t, b"\x1b[?7h");
+        feed(&mut t, b"X");
+        assert_eq!(t.cursor().0, 3, "should overwrite at last column");
+        assert_eq!(t.cursor().1, 0, "should NOT wrap to next line");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'X');
     }
 
     #[test]
