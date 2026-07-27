@@ -77,11 +77,22 @@ impl Row {
 
     /// Resize the row. New cells are blank.
     pub fn resize(&mut self, new_width: usize) {
-        // When shrinking: if the new last cell is a wide-char lead without
-        // its spacer (because the spacer got truncated), clear the lead to
-        // avoid a dangling WIDE_CHAR flag that would render at wrong width.
-        if new_width < self.cells.len() && new_width > 0 && self.cells[new_width - 1].is_wide() {
-            self.cells[new_width - 1] = Cell::blank();
+        // When shrinking: handle wide char pairs at the new boundary.
+        if new_width < self.cells.len() && new_width > 0 {
+            // Case 1: new last cell is a wide-char lead without its spacer
+            // (spacer got truncated) → clear the lead.
+            if self.cells[new_width - 1].is_wide() {
+                self.cells[new_width - 1] = Cell::blank();
+            }
+            // Case 2: new last cell is a wide-char spacer (lead at new_width-2)
+            // → the lead's spacer got truncated, leaving a dangling WIDE_CHAR flag.
+            // Clear the lead to avoid rendering it at wrong width.
+            if new_width >= 2
+                && self.cells[new_width - 1].is_wide_spacer()
+                && self.cells[new_width - 2].is_wide()
+            {
+                self.cells[new_width - 2] = Cell::blank();
+            }
         }
         self.cells.resize(new_width, Cell::blank());
     }
@@ -722,5 +733,39 @@ mod tests {
         // Erasing at col 4 when row is 5 wide — clears cols 4 to end
         assert_eq!(row.cells[4].ch, ' ', "last cell erased");
         assert_eq!(row.cells[0].ch, 'A', "content before erased preserved");
+    }
+
+    #[test]
+    fn t_resize_shrink_truncates_wide_char_spacer_clears_lead() {
+        // When shrinking truncates a wide char's spacer, the lead cell
+        // should be cleared (no dangling WIDE_CHAR flag).
+        let mut row = Row::new(5);
+        row.put_char(2, '你'); // wide char at cols 2-3
+        // Row: [blank, blank, 你(WIDE), spacer, blank]
+        assert!(row.cells[2].is_wide());
+        assert!(row.cells[3].is_wide_spacer());
+        // Shrink to 3 — col 3 (spacer) is truncated, lead at col 2 should be cleared
+        row.resize(3);
+        assert_eq!(row.cells.len(), 3);
+        // Without fix: cells[2] would still have WIDE_CHAR flag (orphaned lead).
+        // With fix: cells[2] is cleared because its spacer was truncated.
+        assert!(
+            !row.cells[2].is_wide(),
+            "lead should be cleared when spacer is truncated by resize"
+        );
+        assert_eq!(row.cells[2].ch, ' ', "cleared to blank");
+    }
+
+    #[test]
+    fn t_resize_shrink_truncates_wide_char_lead_clears_it() {
+        // When shrinking truncates a wide char's lead (lead at last position),
+        // the lead should be cleared.
+        let mut row = Row::new(5);
+        row.put_char(3, '你'); // wide char at cols 3-4
+        // Row: [blank, blank, blank, 你(WIDE), spacer]
+        // Shrink to 4 — col 4 (spacer) truncated, lead at col 3 is now last
+        // but without its spacer → should be cleared.
+        row.resize(4);
+        assert!(!row.cells[3].is_wide(), "orphaned lead should be cleared");
     }
 }
