@@ -3402,14 +3402,11 @@ impl DesktopApp {
         };
 
         let word_chars = self.word_chars_config();
-        // Classify a grid cell at a given column — skip wide spacers.
-        let cell_class = |c: usize| -> Option<u8> {
-            let cell = display_row.cell(c)?;
-            if cell.is_wide_spacer() {
-                return None;
-            }
-            let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
-            Some(if ch.is_alphanumeric() || ch == '_' {
+        // Classify a grid cell at a given column.
+        // Wide spacers are transparent — they inherit the class of their lead
+        // cell so word selection spans wide characters correctly.
+        let classify_char = |ch: char| -> u8 {
+            if ch.is_alphanumeric() || ch == '_' {
                 0
             } else if ch.is_whitespace() {
                 2
@@ -3417,7 +3414,22 @@ impl DesktopApp {
                 0
             } else {
                 1
-            })
+            }
+        };
+        let cell_class = |c: usize| -> Option<u8> {
+            let cell = display_row.cell(c)?;
+            if cell.is_wide_spacer() {
+                // Transparent: return the lead cell's class.
+                // This allows word selection to span wide characters.
+                if c == 0 {
+                    return None;
+                }
+                let lead = display_row.cell(c - 1)?;
+                let ch = if lead.ch == '\0' { ' ' } else { lead.ch };
+                return Some(classify_char(ch));
+            }
+            let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
+            Some(classify_char(ch))
         };
 
         // If the clicked cell is whitespace, select just that cell.
@@ -3428,7 +3440,7 @@ impl DesktopApp {
             return;
         }
 
-        // Scan left for word start — stop at different char class or wide spacer.
+        // Scan left for word start — stop at different char class.
         // If clicked on a wide spacer, start from the lead cell instead.
         let (target_class, start_col) = match cell_class(col_u) {
             Some(c) => (c, col_u),
