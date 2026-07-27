@@ -249,6 +249,13 @@ impl Row {
             self.cells[col - 1].clear();
         }
 
+        // When writing a WIDE char at col, the new spacer will be placed
+        // at col+1. If col+1 is currently a wide lead (its own spacer is
+        // at col+2), the old spacer at col+2 would be orphaned. Clear it.
+        if w == 2 && col + 2 < len && self.cells[col + 1].is_wide() {
+            self.cells[col + 2].clear();
+        }
+
         self.cells[col].clear();
         self.cells[col].ch = ch;
 
@@ -401,6 +408,30 @@ mod tests {
         assert!(!row.cells[1].is_wide(), "wide lead should be cleared");
         assert!(!row.cells[2].is_wide_spacer(), "spacer should be cleared");
         assert_eq!(row.cells[3].ch, 'B', "col 3 should be untouched");
+    }
+
+    #[test]
+    fn t_put_wide_over_wide_lead_no_orphan_spacer() {
+        // Overwriting a wide char lead with another wide char must not
+        // orphan the old char's spacer at col+2.
+        let mut row = Row::new(5);
+        row.put_char(0, 'A');
+        row.put_char(1, 'あ'); // wide at 1-2
+        row.put_char(3, 'B');
+        // Now overwrite col 1 with another wide char '大'.
+        // The old spacer at col 2 must be reclaimed (replaced by the new
+        // spacer), and col 3 must NOT retain an orphaned WIDE_SPACER.
+        row.put_char(1, '大');
+        assert!(row.cells[1].is_wide(), "new wide lead should be at col 1");
+        assert!(
+            row.cells[2].is_wide_spacer(),
+            "new spacer should be at col 2"
+        );
+        assert!(
+            !row.cells[3].is_wide_spacer(),
+            "col 3 should not be an orphaned spacer"
+        );
+        assert_eq!(row.cells[3].ch, 'B', "col 3 should still be 'B'");
     }
 
     // ── insert_char (ICH) tests ─────────────────────────────────
