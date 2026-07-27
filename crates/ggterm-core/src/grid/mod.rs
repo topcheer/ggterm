@@ -1029,6 +1029,19 @@ fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
         return;
     }
 
+    // Optimization / correctness fix: if the entire row is blank (all cells
+    // are spaces with no attributes), don't split it into multiple rows when
+    // shrinking. A blank line should remain a single blank line regardless
+    // of width. Without this, shrinking from e.g. 80→40 columns would turn
+    // each blank row into 2 blank rows, pushing real content into scrollback.
+    if cells.iter().all(|c| c.is_blank()) {
+        out.push(Row {
+            cells: vec![Cell::blank(); width],
+            wrap: false,
+        });
+        return;
+    }
+
     let mut start = 0;
     while start < total {
         let mut end = (start + width).min(total);

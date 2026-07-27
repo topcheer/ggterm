@@ -25568,4 +25568,162 @@ mod tests {
         let resp = String::from_utf8_lossy(t.response_buffer());
         assert!(resp.contains("0m"), "default SGR should report 0: {resp}");
     }
+
+    // ── Wide char wrapping at last line (triggers scroll) ──────────
+
+    #[test]
+    fn t_wide_char_wrap_at_last_line_triggers_scroll() {
+        // Wide char that needs to wrap at the last line should scroll
+        // the scrollback, not crash or corrupt state.
+        let mut t = Terminal::new(4, 2);
+        // Fill row 0 with ABC, cursor at col 3
+        feed(&mut t, b"ABC");
+        // Move to last row (row 1), col 3
+        feed(&mut t, b"\x1b[2;4H");
+        // Print a wide char — only 1 col left, should wrap to next line.
+        // But we're on the last line → should scroll.
+        feed(&mut t, "你".as_bytes());
+        // After scroll, "你" should be on the visible last row
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some('你'),
+            "wide char should appear on last row after scroll"
+        );
+        // Row 0 content should have scrolled to scrollback
+        assert_eq!(
+            t.grid().scrollback_len(),
+            1,
+            "1 row should scroll to scrollback"
+        );
+    }
+
+    #[test]
+    fn t_wide_char_wrap_pending_then_wide_again() {
+        // Two consecutive wide chars where the first triggers pending_wrap.
+        // Terminal width=2: first wide char fills the entire line.
+        let mut t = Terminal::new(2, 3);
+        feed(&mut t, "你".as_bytes()); // fills cols 0-1, pending_wrap
+        feed(&mut t, "好".as_bytes()); // should wrap to next line
+        assert_eq!(t.grid().cell(0, 0).map(|c| c.ch), Some('你'));
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('好'));
+    }
+
+    // ── IRM edge cases ─────────────────────────────────────────────
+
+    #[test]
+    fn t_irm_insert_wide_char_at_last_col() {
+        // Insert mode: inserting a wide char when there's only room for 1
+        // normal char at the end should work correctly.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"ABCD"); // fills cols 0-3, cursor at col 4
+        // Insert a wide char at col 4 — should wrap since only 1 col left
+        feed(&mut t, "你".as_bytes());
+        // Wide char should wrap to next line
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some('你'),
+            "wide char should wrap when inserting at last col with IRM"
+        );
+    }
+
+    #[test]
+    fn t_irm_insert_at_wide_spacer() {
+        // Insert mode: inserting at the lead position of a wide char.
+        // The wide char pair should be cleared, not split.
+        // Note: set_cursor adjusts off spacers to the lead cell, so we
+        // can't position directly on the spacer — inserting at the lead
+        // exercises the same code path.
+        let mut t = Terminal::new(6, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1 = wide char
+        feed(&mut t, b"XY"); // cols 2-3
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, b"\x1b[1;1H"); // move to col 0 (the wide char lead)
+        feed(&mut t, b"Z"); // insert at lead position
+        // IRM shifts existing cells right. The wide char pair (2 cells) is
+        // cleared by insert_char's spacer check. Z occupies cell 0.
+        // The shift moves X,Y right by 1 (count=1 for narrow char 'Z').
+        // Row: [Z, _, X, Y, _, _]
+        assert_eq!(t.grid().cell(0, 0).map(|c| c.ch), Some('Z'));
+        assert_eq!(t.grid().cell(1, 0).map(|c| c.ch), Some(' '));
+        assert_eq!(t.grid().cell(2, 0).map(|c| c.ch), Some(' '));
+        assert_eq!(t.grid().cell(3, 0).map(|c| c.ch), Some('X'));
+        assert_eq!(t.grid().cell(4, 0).map(|c| c.ch), Some('Y'));
+    }
+
+    // ── Reflow wide char boundary ──────────────────────────────────
+
+    #[test]
+    fn t_reflow_wide_char_across_boundary() {
+        // When reflowing narrower, a wide char that fits at the boundary
+        // stays on the same row.
+        let mut t = Terminal::new(6, 3);
+        feed(&mut t, b"AB"); // cols 0-1
+        feed(&mut t, "你".as_bytes()); // cols 2-3 = wide char
+        feed(&mut t, b"CD"); // cols 4-5
+        // Shrink to width 4 — "你" occupies cols 2-3, fits exactly
+        t.resize(4, 3);
+        // Logical line [AB你_C] reflows to:
+        //   row 0: [A,B,你,spacer] (wrap=true) — 4 cols
+        //   row 1: [C,D,_,_] (wrap=false)
+        // Plus 2 blank rows → total 4 reflown rows, height 3
+        // → 1 row in scrollback: [A,B,你,spacer]
+        // → visible: [C,D,_,_], blank, blank
+        assert_eq!(t.grid().scrollback_len(), 1, "1 row in scrollback");
+        // Verify the wide char is in scrollback
+        assert_eq!(
+            t.grid().cell(0, 0).map(|c| c.ch),
+            Some('C'),
+            "visible row 0 = C"
+        );
+    }
+
+    #[test]
+    fn t_reflow_wide_char_split_boundary() {
+        // Shrink so that a wide char would be split at the boundary.
+        // The wide char should move entirely to the next line.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"AB"); // cols 0-1
+        feed(&mut t, "你".as_bytes()); // cols 2-3 = wide char
+        feed(&mut t, b"C"); // col 4
+        // Shrink to width 3 — "你" starts at col 2, needs cols 2-3 but
+        // only col 2 is in the first row → should push "你" to next line
+        t.resize(3, 4);
+        // After reflow, the 5-cell logical line [AB你_C] splits into:
+        //   row 0: [A,B,_] (wrap=true)
+        //   row 1: [你,spacer,C] (wrap=false)
+        // The 3 blank rows each remain single rows (blank-line fix).
+        // Total reflown: 2 + 3 = 5 rows, height 4 → 1 in scrollback, 4 visible.
+        // Scrollback gets: [A,B,_]
+        // Visible: [你,spacer,C], [___], [___], [___]
+        assert_eq!(
+            t.grid().cell(0, 0).map(|c| c.ch),
+            Some('你'),
+            "wide char should be at start of visible row 0 after reflow"
+        );
+        assert_eq!(
+            t.grid().cell(2, 0).map(|c| c.ch),
+            Some('C'),
+            "C should follow the wide char"
+        );
+    }
+
+    #[test]
+    fn t_reflow_wider_unwraps_lines() {
+        // When growing wider, previously wrapped lines should unwrap.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"ABCDEFGH"); // 8 chars on width-5 → wraps to 2 rows
+        // Row 0: ABCDE, Row 1: FGH
+        assert_eq!(t.grid().cell(0, 1).map(|c| c.ch), Some('F'));
+        // Grow to width 10 — should unwrap into one row
+        t.resize(10, 4);
+        // All 8 chars should be on row 0
+        assert_eq!(t.grid().cell(0, 0).map(|c| c.ch), Some('A'));
+        assert_eq!(t.grid().cell(7, 0).map(|c| c.ch), Some('H'));
+        assert_eq!(
+            t.grid().cell(0, 1).map(|c| c.ch),
+            Some(' '),
+            "row 1 should be empty after unwrap"
+        );
+    }
 }
