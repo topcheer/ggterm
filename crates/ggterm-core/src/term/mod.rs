@@ -25007,4 +25007,42 @@ mod tests {
             "N has no link"
         );
     }
+
+    #[test]
+    fn t_sos_pm_apc_does_not_leak_prior_osc_data() {
+        // ESC X (SOS), ESC ^ (PM), ESC _ (APC) should clear the string
+        // buffer before accumulating, so leftover data from a prior OSC
+        // or DCS doesn't leak into the dispatch.
+        let mut t = Terminal::new(20, 3);
+        // Send OSC 0;Title ST to set a title.
+        feed(&mut t, b"\x1b]0;TestTitle\x1b\\");
+        assert_eq!(t.title(), "TestTitle");
+        // Now send a PM sequence that contains garbage, then another OSC.
+        feed(&mut t, b"\x1b^garbage\x1b\\");
+        feed(&mut t, b"\x1b]0;NewTitle\x1b\\");
+        // Title should be updated, not corrupted by PM data.
+        assert_eq!(
+            t.title(),
+            "NewTitle",
+            "PM sequence should not leak OSC data"
+        );
+
+        // Same for APC.
+        feed(&mut t, b"\x1b_apayload\x1b\\");
+        feed(&mut t, b"\x1b]0;AfterAPC\x1b\\");
+        assert_eq!(
+            t.title(),
+            "AfterAPC",
+            "APC sequence should not leak OSC data"
+        );
+
+        // Same for SOS.
+        feed(&mut t, b"\x1bXsosdata\x1b\\");
+        feed(&mut t, b"\x1b]0;AfterSOS\x1b\\");
+        assert_eq!(
+            t.title(),
+            "AfterSOS",
+            "SOS sequence should not leak OSC data"
+        );
+    }
 }

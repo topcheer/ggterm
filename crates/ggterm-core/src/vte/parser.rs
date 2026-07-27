@@ -154,6 +154,8 @@ impl Parser {
             b'X' | b'^' | b'_' => {
                 // SOS (ESC X), PM (ESC ^), APC (ESC _) — string sequences
                 // that must be consumed until ST, same as DCS.
+                self.string_buffer.clear();
+                self.dcs_final = 0;
                 self.state = State::DcsString;
             }
             // 0x20-0x2F: intermediate bytes
