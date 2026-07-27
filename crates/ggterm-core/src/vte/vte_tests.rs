@@ -340,23 +340,24 @@ fn test_utf8_4_byte_emoji() {
 }
 
 #[test]
-fn test_osc_overflow_recovers() {
+fn test_osc_overflow_consumes_until_terminator() {
     // When an OSC string exceeds the 64KB cap, the parser should
-    // return to Ground state so subsequent bytes are processed normally.
+    // stay in OscString state, consuming bytes until the terminator
+    // (BEL or ST) arrives. This prevents overflow bytes from being
+    // printed as terminal output (which would corrupt the display).
     let mut parser = Parser::new();
     let mut p = MockPerform::new();
 
     // Start OSC sequence, fill buffer to cap, then try to push more.
     let mut data = vec![0x1b, b']']; // ESC ]
     data.extend(vec![b'A'; 65540]); // Exceed 64KB cap
-    data.extend(b"hello"); // Normal text after the aborted OSC
+    data.push(0x07); // BEL terminates the OSC
+    data.extend(b"hello"); // Normal text after the terminated OSC
 
     parser.feed(&data, &mut p);
 
-    // After the cap is hit (at byte 65537), the parser returns to Ground.
-    // The few overflow bytes that triggered the recovery are consumed as
-    // the transition, then "hello" is printed normally.
-    // The key assertion: parser recovered and printed "hello".
+    // The overflow bytes should NOT be printed. Only "hello" after
+    // the terminator should appear in the output.
     let prints: String = p
         .events
         .iter()
@@ -365,27 +366,30 @@ fn test_osc_overflow_recovers() {
             _ => None,
         })
         .collect();
-    assert!(
-        prints.ends_with("hello"),
-        "parser should recover after OSC overflow and print 'hello', got: {prints}"
+    assert_eq!(
+        prints, "hello",
+        "overflow OSC bytes must be consumed, not printed; got: {prints}"
     );
 }
 
 #[test]
-fn test_dcs_overflow_recovers() {
+fn test_dcs_overflow_consumes_until_terminator() {
     // When a DCS string exceeds the 1MB cap, the parser should
-    // return to Ground state so subsequent bytes are processed normally.
+    // stay in DcsString state, consuming bytes until the terminator
+    // (BEL or ST) arrives.
     let mut parser = Parser::new();
     let mut p = MockPerform::new();
 
     // Start DCS sequence (ESC P), fill buffer past 1MB cap, then send normal text.
     let mut data = vec![0x1b, b'P']; // ESC P
     data.extend(vec![b'X'; 1048580]); // Exceed 1MB cap
-    data.extend(b"world"); // Normal text after the aborted DCS
+    data.extend(b"\x1b\\"); // ST terminates the DCS
+    data.extend(b"world"); // Normal text after the terminated DCS
 
     parser.feed(&data, &mut p);
 
-    // Parser should recover and print "world".
+    // The overflow bytes should NOT be printed. Only "world" after
+    // the terminator should appear in the output.
     let prints: String = p
         .events
         .iter()
@@ -394,8 +398,8 @@ fn test_dcs_overflow_recovers() {
             _ => None,
         })
         .collect();
-    assert!(
-        prints.ends_with("world"),
-        "parser should recover after DCS overflow and print 'world', got: {prints}"
+    assert_eq!(
+        prints, "world",
+        "overflow DCS bytes must be consumed, not printed; got: {prints}"
     );
 }

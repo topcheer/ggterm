@@ -11169,6 +11169,29 @@ mod tests {
     }
 
     #[test]
+    fn t_osc_overflow_consumes_until_terminator() {
+        // When OSC exceeds the 64KB parser buffer cap, the parser must
+        // stay in OscString state (consuming bytes) until the terminator
+        // arrives. It must NOT return to Ground state, which would cause
+        // the overflow bytes to be printed as terminal output.
+        let mut t = Terminal::new(80, 5);
+        // Build a 70KB OSC title sequence (> 64KB cap).
+        let long_payload = "X".repeat(70000);
+        // After the OSC, write "TEST" — this should appear at col 0.
+        let input = format!("\x1b]0;{}\x07TEST", long_payload);
+        feed(&mut t, input.as_bytes());
+        // "TEST" should be at the start of the grid — the OSC terminator
+        // (BEL) correctly ended the sequence. If the overflow bug existed,
+        // some 'X' bytes would appear before "TEST".
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(
+            cell.ch, 'T',
+            "overflow OSC must consume bytes until terminator; got '{}' at (0,0)",
+            cell.ch
+        );
+    }
+
+    #[test]
     fn t_osc_title_strips_control_chars() {
         // OSC 0 title should strip control characters.
         let mut t = Terminal::new(10, 2);
