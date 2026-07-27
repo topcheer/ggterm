@@ -88,9 +88,6 @@ impl Grid {
     pub fn resize(&mut self, width: usize, height: usize) {
         let width = width.max(1);
         let height = height.max(1);
-        // Save the current scroll position — we restore it after resize
-        // so the user doesn't lose their place in the scrollback.
-        let saved_offset = self.display_offset;
 
         // Resize each existing row
         for row in &mut self.rows {
@@ -112,6 +109,12 @@ impl Grid {
             for row in overflow {
                 self.push_scrollback(row);
             }
+            // Advance display_offset by the number of newly pushed rows.
+            // Without this, the viewport shifts when the terminal shrinks
+            // while the user is scrolled up in scrollback — the pushed
+            // rows appear between the old scrollback and visible area,
+            // but display_offset doesn't account for them.
+            self.display_offset = self.display_offset.saturating_add(overflow_count);
         }
 
         self.width = width;
@@ -119,7 +122,7 @@ impl Grid {
         self.scroll_top = 0;
         self.scroll_bottom = height;
         // Restore scroll position, clamped to new scrollback size.
-        self.display_offset = saved_offset.min(self.scrollback.len());
+        self.display_offset = self.display_offset.min(self.scrollback.len());
         self.damage = DamageTracker::new(width);
         self.damage.mark_all(height);
         self.content_dirty = true;
@@ -2894,5 +2897,49 @@ mod tests {
             "no gap from trailing blanks in wrapped row"
         );
         assert_eq!(g.cell(4, 0).unwrap().ch, 'G');
+    }
+
+    #[test]
+    fn resize_shrink_preserves_viewport_when_scrolled() {
+        // When the user has scrolled up in scrollback and the terminal
+        // height shrinks, the top visible rows are pushed to scrollback.
+        // display_offset should advance by the number of pushed rows so
+        // the viewport stays at the same content position.
+        let mut g = Grid::with_scrollback(5, 6, 100);
+
+        // Fill with identifiable content.
+        for row in 0..6 {
+            for col in 0..5 {
+                g[(col, row)] = Cell::with_char(char::from_u32(b'A' as u32 + row as u32).unwrap());
+            }
+        }
+
+        // Push 3 rows to scrollback (rows A, B, C).
+        g.scroll_up(3);
+        assert_eq!(g.scrollback_len(), 3);
+
+        // User scrolls up to view scrollback.
+        g.scroll_up_viewport(2);
+        assert_eq!(g.display_offset(), 2);
+
+        // Verify what the user is viewing at display row 0.
+        let ch_before = g.display_row(0).unwrap().cells[0].ch;
+
+        // Shrink height from 6 to 4 — 2 rows pushed to scrollback.
+        g.resize(5, 4);
+
+        // display_offset should have advanced by 2 (the pushed rows).
+        assert_eq!(
+            g.display_offset(),
+            4,
+            "display_offset should advance by 2 (pushed rows)"
+        );
+
+        // The user should still see the same content at display row 0.
+        let ch_after = g.display_row(0).unwrap().cells[0].ch;
+        assert_eq!(
+            ch_before, ch_after,
+            "viewport content should be preserved after height shrink"
+        );
     }
 }
