@@ -115,32 +115,39 @@ pub fn encode_urxvt_motion(ev: &MouseEvent) -> String {
 
 /// Encode a mouse event using legacy (X10 / mode 1000) encoding.
 ///
-/// Format: `CSI Mb ; Mx ; My M` (all as raw bytes + 32)
-/// Only works for coordinates 0..=222.
+/// Format: `CSI M <button+32> <col+33> <row+33>` (raw bytes)
+///
+/// Per the xterm specification, legacy mouse positions are 1-based:
+/// the first column is position 1, encoded as byte 1+32=33.
+/// Programs decode with `byte - 32 - 1` to get a 0-based position.
+/// Only works for 0-based coordinates 0..=222 (byte range 33..=255).
 pub fn encode_legacy(ev: &MouseEvent) -> Option<Vec<u8>> {
-    if ev.x + 32 > 255 || ev.y + 32 > 255 {
+    // 1-based encoding: byte = (0-based pos) + 1 + 32 = pos + 33.
+    // Max byte 255 → max 0-based position = 222.
+    if ev.x > 222 || ev.y > 222 {
         return None;
     }
     let cb = ev.button.sgr_code() | ev.mods.sgr_code();
     let b = cb + 32;
-    let x = ev.x as u8 + 32;
-    let y = ev.y as u8 + 32;
+    let x = ev.x as u8 + 33;
+    let y = ev.y as u8 + 33;
     Some(vec![0x1b, b'[', b, x, y, b'M'])
 }
 
 /// Encode a mouse motion event using legacy (mode 1000/1002/1003) encoding.
 ///
 /// Motion events set bit 5 (32) on the button byte.
-/// Only works for coordinates 0..=222.
+/// Uses 1-based coordinates: byte = (0-based pos) + 1 + 32 = pos + 33.
+/// Only works for 0-based coordinates 0..=222 (byte range 33..=255).
 pub fn encode_legacy_motion(ev: &MouseEvent) -> Option<Vec<u8>> {
-    if ev.x + 32 > 255 || ev.y + 32 > 255 {
+    if ev.x > 222 || ev.y > 222 {
         return None;
     }
     // Motion events set bit 5 (32).
     let cb = ev.button.sgr_code() | 32 | ev.mods.sgr_code();
     let b = cb + 32;
-    let x = ev.x as u8 + 32;
-    let y = ev.y as u8 + 32;
+    let x = ev.x as u8 + 33;
+    let y = ev.y as u8 + 33;
     Some(vec![0x1b, b'[', b, x, y, b'M'])
 }
 
@@ -877,6 +884,8 @@ mod tests {
 
     #[test]
     fn test_legacy_encoding() {
+        // Legacy encoding uses 1-based coordinates per xterm spec.
+        // 0-based (0,0) → bytes (33,33) = position 1 in 1-based.
         let ev = MouseEvent {
             button: MouseButton::Left,
             x: 0,
@@ -884,7 +893,8 @@ mod tests {
             mods: MouseModifiers::default(),
         };
         let bytes = encode_legacy(&ev).unwrap();
-        assert_eq!(bytes, vec![0x1b, b'[', 32, 32, 32, b'M']);
+        // Button byte: 0 + 32 = 32, X: 0+33=33, Y: 0+33=33
+        assert_eq!(bytes, vec![0x1b, b'[', 32, 33, 33, b'M']);
     }
 
     #[test]
@@ -1336,11 +1346,12 @@ mod tests {
 
     #[test]
     fn test_legacy_large_coordinates_return_none() {
-        // Legacy mode caps at x/y = 223 (byte 255).
-        // x=224 should return None (out of range).
+        // Legacy mode uses 1-based encoding: byte = pos + 33.
+        // Max byte 255 → max 0-based position = 222.
+        // x=223 should return None (byte would be 256).
         let ev = MouseEvent {
             button: MouseButton::Left,
-            x: 224,
+            x: 223,
             y: 0,
             mods: MouseModifiers::default(),
         };
@@ -1348,16 +1359,55 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_boundary_223() {
-        // x=223 should work (byte 255).
+    fn test_legacy_encoding_1based_roundtrip() {
+        // Verify that a program decoding our legacy output gets the
+        // correct 0-based position: decode(byte) = byte - 32 - 1.
+        // This is how tmux/vim/ncurses decode legacy mouse coordinates.
+        for x in 0..=50 {
+            for y in 0..=50 {
+                let ev = MouseEvent {
+                    button: MouseButton::Left,
+                    x,
+                    y,
+                    mods: MouseModifiers::default(),
+                };
+                let bytes = encode_legacy(&ev).unwrap();
+                let decoded_x = bytes[3].saturating_sub(33) as u16;
+                let decoded_y = bytes[4].saturating_sub(33) as u16;
+                assert_eq!(decoded_x, x, "x mismatch at ({x},{y})");
+                assert_eq!(decoded_y, y, "y mismatch at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_legacy_motion_1based() {
+        // Motion encoding must also use 1-based coordinates.
         let ev = MouseEvent {
             button: MouseButton::Left,
-            x: 223,
-            y: 223,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_legacy_motion(&ev).unwrap();
+        // Button: 0|32 = 32, +32 = 64. X: 0+33=33. Y: 0+33=33.
+        assert_eq!(bytes[2], 64); // motion bit set
+        assert_eq!(bytes[3], 33); // 1-based x
+        assert_eq!(bytes[4], 33); // 1-based y
+    }
+
+    #[test]
+    fn test_legacy_boundary_223() {
+        // Max valid coordinate: 0-based 222 → byte 222+33=255.
+        // 0-based 223 → byte 223+33=256 > 255 → out of range.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 222,
+            y: 222,
             mods: MouseModifiers::default(),
         };
         let bytes = encode_legacy(&ev).unwrap();
-        assert_eq!(bytes[3], 255); // 223 + 32 = 255
+        assert_eq!(bytes[3], 255); // 222 + 33 = 255
         assert_eq!(bytes[4], 255);
     }
 
@@ -1592,7 +1642,7 @@ mod tests {
 
     #[test]
     fn t_r28_legacy_at_boundary_94() {
-        // Legacy encoding at coord 94 → byte 126 (just before DEL=127).
+        // Legacy encoding at coord 94 → byte 94+33=127 (DEL).
         let ev = MouseEvent {
             button: MouseButton::Left,
             x: 94,
@@ -1600,13 +1650,13 @@ mod tests {
             mods: MouseModifiers::default(),
         };
         let bytes = encode_legacy(&ev).unwrap();
-        // Left(0) + 32 = 32 (space), coord 94 + 32 = 126 (~)
-        assert_eq!(bytes, vec![0x1b, b'[', 32, 126, 126, b'M']);
+        // Left(0) + 32 = 32 (space), coord 94 + 33 = 127 (DEL)
+        assert_eq!(bytes, vec![0x1b, b'[', 32, 127, 127, b'M']);
     }
 
     #[test]
     fn t_r28_legacy_at_boundary_222() {
-        // Legacy at coord 222 → byte 254 (max representable).
+        // Legacy at coord 222 → byte 222+33=255 (max representable).
         let ev = MouseEvent {
             button: MouseButton::Left,
             x: 222,
@@ -1614,24 +1664,23 @@ mod tests {
             mods: MouseModifiers::default(),
         };
         let bytes = encode_legacy(&ev).unwrap();
-        assert_eq!(bytes[3], 254); // 222 + 32 = 254
-        assert_eq!(bytes[4], 254);
+        assert_eq!(bytes[3], 255); // 222 + 33 = 255
+        assert_eq!(bytes[4], 255);
     }
 
     #[test]
     fn t_r28_legacy_at_223_returns_none() {
-        // Legacy at coord 223 → 223+32=255 which is >255 for u8 with +32 offset.
-        // Actually 223+32=255, which fits in u8. But 224+32=256 overflows.
-        // The check is `ev.x + 32 > 255` → 224 + 32 = 256 > 255 → None.
+        // Legacy uses 1-based encoding: byte = pos + 33.
+        // At coord 223: byte = 223+33 = 256 > 255 → out of range.
         let ev = MouseEvent {
             button: MouseButton::Left,
-            x: 224,
-            y: 224,
+            x: 223,
+            y: 223,
             mods: MouseModifiers::default(),
         };
         assert!(
             encode_legacy(&ev).is_none(),
-            "coord 224 out of legacy range"
+            "coord 223 out of legacy range"
         );
     }
 
@@ -1752,8 +1801,8 @@ mod tests {
         };
         let bytes = encode_legacy_motion(&ev).unwrap();
         // Left(0) + 32 (motion) + 32 (offset) = 64 = '@'
-        // x=10+32=42='*', y=10+32=42='*'
-        assert_eq!(bytes, vec![0x1b, b'[', b'@', b'*', b'*', b'M']);
+        // x=10+33=43='+', y=10+33=43='+'
+        assert_eq!(bytes, vec![0x1b, b'[', b'@', b'+', b'+', b'M']);
     }
 
     #[test]
