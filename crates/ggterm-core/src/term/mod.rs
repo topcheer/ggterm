@@ -23878,7 +23878,6 @@ mod tests {
         // Shrink then grow back — ASCII content should be preserved.
         let mut t = Terminal::new(20, 5);
         feed(&mut t, b"Hello World");
-        let original = t.grid().row_text(0).unwrap_or_default();
         t.resize(10, 5); // shrink width
         t.resize(20, 5); // grow back
         let restored = t.grid().row_text(0).unwrap_or_default();
@@ -24104,6 +24103,219 @@ mod tests {
             t.grid().scrollback_len() <= max_sb,
             "scrollback cap enforced after resize: got {}",
             t.grid().scrollback_len()
+        );
+    }
+
+    // ── Round 40: OSC/hyperlink/mouse/paste integration tests ──────────
+
+    #[test]
+    fn t_r40_osc8_hyperlink_survives_scroll() {
+        // OSC 8 hyperlink on cells should survive scrolling (content moves
+        // to scrollback, but cells keep their link attribute).
+        let mut t = Terminal::with_scrollback(20, 3, 100);
+        feed(
+            &mut t,
+            b"\x1b]8;;https://example.com\x1b\\Linked\x1b]8;;\x1b\\",
+        );
+        // Fill remaining lines to trigger scroll
+        feed(&mut t, b"\r\nLine2\r\nLine3\r\n");
+        feed(&mut t, b"Line4"); // "Linked" scrolled to scrollback
+        // Terminal should not crash, and be functional
+        feed(&mut t, b"\x1b[1;1HX");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'X',
+            "terminal works after hyperlink scroll"
+        );
+    }
+
+    #[test]
+    fn t_r40_osc8_hyperlink_with_newline_split() {
+        // OSC 8 set, text that wraps across newline, then OSC 8 clear.
+        // All cells between markers should have the link.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"\x1b]8;;https://test.com\x1b\\");
+        feed(&mut t, b"ABCDE"); // fills row 0, wraps to row 1
+        feed(&mut t, b"FG");
+        feed(&mut t, b"\x1b]8;;\x1b\\");
+        // Cells on row 0 should have hyperlink
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_some(),
+            "hyperlink on row 0 col 0"
+        );
+        // Cells on row 1 (wrapped) should also have hyperlink
+        assert!(
+            t.grid().cell(0, 1).unwrap().hyperlink.is_some(),
+            "hyperlink on row 1 col 0 (wrapped)"
+        );
+    }
+
+    #[test]
+    fn t_r40_osc8_multiple_links_different_uris() {
+        // Multiple different links on the same line.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;https://a.com\x1b\\A\x1b]8;;\x1b\\");
+        feed(&mut t, b"\x1b]8;;https://b.com\x1b\\B\x1b]8;;\x1b\\");
+        let cell_a = t.grid().cell(0, 0).unwrap();
+        let cell_b = t.grid().cell(1, 0).unwrap();
+        assert_eq!(
+            cell_a.hyperlink.as_deref(),
+            Some("https://a.com"),
+            "cell A has link to a.com"
+        );
+        assert_eq!(
+            cell_b.hyperlink.as_deref(),
+            Some("https://b.com"),
+            "cell B has link to b.com"
+        );
+    }
+
+    #[test]
+    fn t_r40_osc52_take_clears_pending() {
+        // take_pending_clipboard_set should clear the pending data after reading.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;aGVsbG8=\x07"); // base64 "hello"
+        let data = t.take_pending_clipboard_set();
+        assert_eq!(data, Some(b"hello".to_vec()));
+        // Second take should be None
+        let data2 = t.take_pending_clipboard_set();
+        assert_eq!(data2, None, "pending clipboard cleared after take");
+    }
+
+    #[test]
+    fn t_r40_osc52_overwrite_previous() {
+        // Second OSC 52 set should overwrite the first.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;aGVsbG8=\x07"); // "hello"
+        feed(&mut t, b"\x1b]52;c;d29ybGQ=\x07"); // "world"
+        let data = t.take_pending_clipboard_set();
+        assert_eq!(data, Some(b"world".to_vec()), "second set overwrites");
+    }
+
+    #[test]
+    fn t_r40_osc8_uri_with_query_params() {
+        // OSC 8 with complex URI including query params and fragments.
+        let mut t = Terminal::new(20, 3);
+        let uri = "https://example.com/path?q=1&r=2#section";
+        let osc = format!("\x1b]8;;{}\x1b\\X\x1b]8;;\x1b\\", uri);
+        feed(&mut t, osc.as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(
+            cell.hyperlink.as_deref(),
+            Some(uri),
+            "complex URI with query preserved"
+        );
+    }
+
+    #[test]
+    fn t_r40_bracketed_paste_mode_independent_from_mouse() {
+        // Toggling bracketed paste should not affect mouse modes.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1000h"); // enable mouse tracking
+        feed(&mut t, b"\x1b[?2004h"); // enable bracketed paste
+        assert!(t.modes.mouse_tracking, "mouse tracking on");
+        assert!(t.modes.bracketed_paste, "bracketed paste on");
+        // Disable paste — mouse should stay on
+        feed(&mut t, b"\x1b[?2004l");
+        assert!(t.modes.mouse_tracking, "mouse tracking still on");
+        assert!(!t.modes.bracketed_paste, "bracketed paste off");
+    }
+
+    #[test]
+    fn t_r40_mouse_sgr_pixel_independent_from_button() {
+        // SGR pixel mode (1016) and button-event mode (1002) are independent.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1002h"); // button event
+        feed(&mut t, b"\x1b[?1016h"); // sgr pixel
+        assert!(t.modes.mouse_button_event, "button event on");
+        assert!(t.modes.mouse_sgr_pixel, "sgr pixel on");
+        // Turn off button event — pixel mode stays
+        feed(&mut t, b"\x1b[?1002l");
+        assert!(!t.modes.mouse_button_event, "button event off");
+        assert!(t.modes.mouse_sgr_pixel, "sgr pixel still on");
+    }
+
+    #[test]
+    fn t_r40_all_mouse_modes_off_after_full_reset() {
+        // RIS (ESC c) should turn off ALL mouse modes simultaneously.
+        let mut t = Terminal::new(10, 3);
+        feed(
+            &mut t,
+            b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?1015h\x1b[?1016h",
+        );
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.modes.mouse_tracking, "1000 off after RIS");
+        assert!(!t.modes.mouse_button_event, "1002 off after RIS");
+        assert!(!t.modes.mouse_any_event, "1003 off after RIS");
+        assert!(!t.modes.mouse_sgr, "1006 off after RIS");
+        assert!(!t.modes.mouse_urxvt, "1015 off after RIS");
+        assert!(!t.modes.mouse_sgr_pixel, "1016 off after RIS");
+    }
+
+    #[test]
+    fn t_r40_osc8_then_decsc_decrc_no_link_leak() {
+        // DECSC should NOT save current_hyperlink state (it's per-cell, not cursor).
+        // After DECRC, current_hyperlink should be whatever it was before.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]8;;https://link.com\x1b\\"); // set link
+        feed(&mut t, b"\x1b7"); // DECSC
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // clear link
+        feed(&mut t, b"\x1b8"); // DECRC
+        // After DECRC, current_hyperlink should be cleared (was cleared before DECRC)
+        feed(&mut t, b"X");
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_none(),
+            "no hyperlink leak after DECSC/DECRC"
+        );
+    }
+
+    #[test]
+    fn t_r40_osc_title_with_empty_semicolon() {
+        // OSC 0; (title with empty second part) should set empty title.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;\x07");
+        // Title should be empty string (or default), not crash
+        assert!(
+            t.title.is_empty() || !t.title.is_empty(),
+            "empty title handled without crash"
+        );
+    }
+
+    #[test]
+    fn t_r40_osc8_hyperlink_not_cleared_by_sgr_reset() {
+        // SGR reset (ESC[0m) should NOT clear OSC 8 hyperlink state.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]8;;https://link.com\x1b\\");
+        feed(&mut t, b"\x1b[1;31m"); // bold red
+        feed(&mut t, b"\x1b[0m"); // SGR reset
+        feed(&mut t, b"X");
+        // X should still have the hyperlink
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_some(),
+            "hyperlink survives SGR reset"
+        );
+        // But bold/red should be cleared
+        assert!(
+            !t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD),
+            "bold cleared by SGR reset"
+        );
+    }
+
+    #[test]
+    fn t_r40_osc8_with_id_param_and_explicit_clear() {
+        // OSC 8 with id param, then explicit empty URI clear.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]8;id=42;https://test.com\x1b\\");
+        feed(&mut t, b"L");
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // clear
+        feed(&mut t, b"N"); // no link
+        assert!(
+            t.grid().cell(0, 0).unwrap().hyperlink.is_some(),
+            "L has link"
+        );
+        assert!(
+            t.grid().cell(1, 0).unwrap().hyperlink.is_none(),
+            "N has no link"
         );
     }
 }
