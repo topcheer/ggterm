@@ -1377,8 +1377,8 @@ impl DesktopApp {
             for row in y0..=y1 {
                 for col in x0..=x1 {
                     if let Some(cell) = grid.display_cell(col as usize, row as usize) {
-                        // Skip wide-character spacer cells.
-                        if !cell.is_wide_spacer() {
+                        // Skip wide-character spacer cells and null chars.
+                        if !cell.is_wide_spacer() && cell.ch != '\0' {
                             text.push(cell.ch);
                             for &c in &cell.combining {
                                 text.push(c);
@@ -1472,8 +1472,9 @@ impl DesktopApp {
             lines.pop();
         }
         // Remove leading empty lines.
-        while lines.first().is_some_and(|l| l.is_empty()) {
-            lines.remove(0);
+        let leading_empty = lines.iter().take_while(|l| l.is_empty()).count();
+        if leading_empty > 0 {
+            lines.drain(..leading_empty);
         }
         let mut text = lines.join("\n");
 
