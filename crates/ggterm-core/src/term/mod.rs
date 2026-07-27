@@ -22966,4 +22966,234 @@ mod tests {
             resp
         );
     }
+
+    // ── Round 33-1: Wide char wrapping at line boundary ────────────────
+
+    #[test]
+    fn t_r33_wide_char_fills_then_wraps() {
+        // Fill row exactly (no pending wrap), then next wide char wraps.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, "中".as_bytes()); // cols 0-1, cursor at col 2
+        feed(&mut t, b"A"); // col 2, cursor at col 3 (1 col left)
+        feed(&mut t, "文".as_bytes()); // width=2, only 1 col → wrap
+        // A at col 2, col 3 stays blank (wide char wraps away)
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A', "A at col 2");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "col 3 blank");
+        // 文 at row 1, cols 0-1
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '文', "文 at row 1 col 0");
+        assert!(t.grid().cell(0, 1).unwrap().is_wide(), "文 is wide lead");
+    }
+
+    #[test]
+    fn t_r33_wide_char_autowrap_off_no_wrap() {
+        // With DECAWM off, wide char at boundary should NOT wrap.
+        // It should be placed at cursor position (overwriting if needed).
+        let mut t = Terminal::new(3, 3);
+        feed(&mut t, b"\x1b[?7l"); // autowrap off
+        feed(&mut t, b"AB"); // cols 0-1, cursor at col 2 (last)
+        feed(&mut t, "中".as_bytes()); // width=2, only 1 col, but no wrap
+        // Behavior: wide char at col 2 — only lead cell stored, spacer lost.
+        // Or it may just not print. Either way, no wrap to next line.
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no wrap to row 1");
+    }
+
+    #[test]
+    fn t_r33_wide_char_exact_fit() {
+        // Wide char that exactly fits remaining space (2 cols left).
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"A"); // col 0, cursor at col 1 (3 cols left)
+        feed(&mut t, "中".as_bytes()); // cols 1-2, cursor at col 3
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '中', "中 at col 1");
+        assert!(t.grid().cell(1, 0).unwrap().is_wide(), "lead at col 1");
+        assert!(
+            t.grid().cell(2, 0).unwrap().is_wide_spacer(),
+            "spacer at col 2"
+        );
+        assert_eq!(t.cursor().0, 3, "cursor at col 3");
+    }
+
+    #[test]
+    fn t_r33_two_wide_chars_fill_row() {
+        // Two wide chars fill a 4-wide row exactly.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, "中文".as_bytes()); // 中(0-1) 文(2-3), pending_wrap
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '中');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '文');
+        assert_eq!(
+            t.cursor().0,
+            3,
+            "cursor at last col after filling with wide chars"
+        );
+        // Next char should trigger deferred wrap
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'X', "X wrapped to row 1");
+    }
+
+    // ── Round 33-2: DECAWM autowrap on/off + deferred wrap ─────────────
+
+    #[test]
+    fn t_r33_autowrap_off_then_on() {
+        // Toggle autowrap off then on — wrapping should resume.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b[?7l"); // off
+        feed(&mut t, b"ABCDE"); // E overwrites D at col 3
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'E');
+        feed(&mut t, b"\x1b[1;1H"); // back to col 0
+        feed(&mut t, b"\x1b[?7h"); // on
+        feed(&mut t, b"ABCD"); // fills row, pending_wrap
+        feed(&mut t, b"E"); // should wrap
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'E',
+            "wrap works after re-enabling"
+        );
+    }
+
+    #[test]
+    fn t_r33_deferred_wrap_with_cup() {
+        // After deferred wrap (pending_wrap=true), CUP should cancel it.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD"); // pending_wrap=true
+        feed(&mut t, b"\x1b[1;1H"); // CUP — cancels pending_wrap
+        feed(&mut t, b"X"); // should overwrite A, not wrap
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'X',
+            "CUP cancels deferred wrap"
+        );
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no wrap occurred");
+    }
+
+    #[test]
+    fn t_r33_deferred_wrap_with_bs() {
+        // BS after deferred wrap cancels pending_wrap.
+        // BS moves cursor from col 3 to col 2.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD"); // pending_wrap=true
+        feed(&mut t, b"\x08"); // BS — cursor to col 2, cancels pending_wrap
+        feed(&mut t, b"X"); // overwrite at col 2 (was C)
+        assert_eq!(
+            t.grid().cell(2, 0).unwrap().ch,
+            'X',
+            "BS to col 2, overwrite C with X"
+        );
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'D', "D preserved at col 3");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no wrap after BS");
+    }
+
+    #[test]
+    fn t_r33_autowrap_off_cr_does_not_wrap() {
+        // With autowrap off, CR should not cause wrap.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"\x1b[?7l");
+        feed(&mut t, b"ABCD\r");
+        // CR should move cursor to col 0, same row
+        assert_eq!(t.cursor().0, 0, "CR to col 0");
+        assert_eq!(t.cursor().1, 0, "CR same row");
+    }
+
+    // ── Round 33-3: SGR 24-bit truecolor + 256 color boundaries ────────
+
+    #[test]
+    fn t_r33_sgr_38_2_basic_truecolor_fg() {
+        // SGR 38;2;128;64;200 — truecolor foreground.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;128;64;200m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Rgb(128, 64, 200),
+            "truecolor fg"
+        );
+    }
+
+    #[test]
+    fn t_r33_sgr_48_2_basic_truecolor_bg() {
+        // SGR 48;2;10;20;30 — truecolor background.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[48;2;10;20;30m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().bg,
+            Color::Rgb(10, 20, 30),
+            "truecolor bg"
+        );
+    }
+
+    #[test]
+    fn t_r33_sgr_38_5_202_orange() {
+        // SGR 38;5;202 — 256-color orange (208 is actually orange).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;5;202m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(202),
+            "256-color index 202"
+        );
+    }
+
+    #[test]
+    fn t_r33_sgr_38_2_truncated_values() {
+        // SGR 38;2;300;0;0 — 300 > 255, truncated to 300 as u8 = 44.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;300;0;0m");
+        feed(&mut t, b"X");
+        // 300u16 as u8 = 44 (300 - 256 = 44)
+        if let Color::Rgb(r, _, _) = t.grid().cell(0, 0).unwrap().fg {
+            assert_eq!(r, 44, "300 truncated to 44 as u8");
+        } else {
+            panic!("expected Rgb color");
+        }
+    }
+
+    #[test]
+    fn t_r33_sgr_38_2_missing_params_no_crash() {
+        // SGR 38;2;128 — missing G and B. Should not crash, no color set.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;128m");
+        feed(&mut t, b"X");
+        // With incomplete params, color should not be set (remains Default)
+        // or set to some safe value. Just verify no crash.
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'X', "char printed despite incomplete SGR");
+    }
+
+    #[test]
+    fn t_r33_sgr_38_5_missing_index_no_crash() {
+        // SGR 38;5 — missing index. Should not crash.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;5m");
+        feed(&mut t, b"X");
+        // No crash, char printed
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_r33_sgr_truecolor_then_indexed() {
+        // Switch from truecolor to indexed — should fully replace.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;100;200;50m"); // truecolor
+        feed(&mut t, b"\x1b[38;5;9m"); // indexed bright red
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(9),
+            "indexed replaces truecolor"
+        );
+    }
+
+    #[test]
+    fn t_r33_sgr_48_5_then_reset() {
+        // Set 256-color bg, then SGR 49 resets to default.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[48;5;4m"); // bg = blue
+        feed(&mut t, b"\x1b[49m"); // reset bg
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().bg,
+            Color::Default,
+            "bg reset by SGR 49"
+        );
+    }
 }
