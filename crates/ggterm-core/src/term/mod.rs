@@ -25726,4 +25726,172 @@ mod tests {
             "row 1 should be empty after unwrap"
         );
     }
+
+    // ── Alt screen mode 1049 cursor visibility restore ────────────
+
+    #[test]
+    fn t_alt_screen_1049_restores_cursor_pos() {
+        // When entering alt screen with 1049, cursor should be saved and
+        // restored on exit.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at (4, 2)
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        // In alt screen, cursor should be at (0, 0)
+        assert_eq!(t.cursor(), (0, 0), "cursor reset in alt screen");
+        feed(&mut t, b"\x1b[2;3H"); // move in alt screen
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        // Cursor should be restored to original position
+        assert_eq!(t.cursor(), (4, 2), "cursor restored after alt screen exit");
+    }
+
+    #[test]
+    fn t_alt_screen_1049_restores_sgr_attrs() {
+        // SGR attributes should be saved/restored by 1049.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;31m"); // bold red
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        // In alt screen, print something with default attrs
+        feed(&mut t, b"\x1b[0m"); // reset
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        // Should have bold red restored
+        feed(&mut t, b"X");
+        assert!(
+            t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD),
+            "bold should be restored after alt screen exit"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_1049_restores_charset() {
+        // Character set state should be saved/restored by 1049.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b(0"); // designate G0 = DEC Special Graphics
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        // In alt screen, charset should be default (ASCII)
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        // Should have DEC Special Graphics restored
+        // 'j' in DEC Special Graphics = ┘ (U+2518, lower-right corner)
+        feed(&mut t, b"j");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            '\u{2518}',
+            "DEC Special Graphics charset should be restored after alt screen"
+        );
+    }
+
+    #[test]
+    fn t_p129_alt_screen_preserves_scrollback() {
+        // Content on primary screen should be preserved when entering/exiting
+        // alt screen, including scrollback.
+        let mut t = Terminal::new(10, 3);
+        // Fill with content that scrolls
+        feed(&mut t, b"Line1\nLine2\nLine3\nLine4");
+        assert!(t.grid().scrollback_len() > 0, "should have scrollback");
+        let sb_before = t.grid().scrollback_len();
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen
+        // Alt screen should have no scrollback
+        assert_eq!(
+            t.grid().scrollback_len(),
+            0,
+            "alt screen should have no scrollback"
+        );
+        feed(&mut t, b"alt content");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt screen
+        // Scrollback should be restored
+        assert_eq!(
+            t.grid().scrollback_len(),
+            sb_before,
+            "scrollback should be restored after alt screen exit"
+        );
+    }
+
+    // ── DECSC/DECRC state save completeness ───────────────────────
+
+    #[test]
+    fn t_decsc_decrc_restores_pending_wrap() {
+        // pending_wrap should be saved/restored by DECSC/DECRC.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap set
+        assert!(t.cursor.pending_wrap, "pending_wrap should be set");
+        feed(&mut t, b"\x1b7"); // DECSC
+        feed(&mut t, b"\x1b[1;1H"); // move cursor away
+        feed(&mut t, b"\x1b8"); // DECRC
+        // pending_wrap should be restored
+        assert!(
+            t.cursor.pending_wrap,
+            "pending_wrap should be restored by DECRC"
+        );
+    }
+
+    #[test]
+    fn t_decsc_decrc_restores_origin_mode() {
+        // Origin mode should be saved/restored by DECSC/DECRC.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4r"); // scroll region rows 1-3
+        feed(&mut t, b"\x1b[?6h"); // enable origin mode
+        feed(&mut t, b"\x1b7"); // DECSC
+        feed(&mut t, b"\x1b[?6l"); // disable origin mode
+        feed(&mut t, b"\x1b8"); // DECRC
+        // Origin mode should be restored
+        assert!(t.modes.origin, "origin mode should be restored by DECRC");
+    }
+
+    // ── Tab stop edge cases ───────────────────────────────────────
+
+    #[test]
+    fn t_tab_at_last_column_stays() {
+        // Tab at the last column should not move cursor past the width.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;10H"); // cursor at col 9 (last col)
+        feed(&mut t, b"\t"); // tab
+        assert_eq!(t.cursor().0, 9, "tab at last col should stay at last col");
+    }
+
+    #[test]
+    fn t_cbt_at_col_zero_stays() {
+        // CBT at column 0 should stay at column 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;1H"); // cursor at col 0
+        feed(&mut t, b"\x1b[Z"); // CBT (backward tab)
+        assert_eq!(t.cursor().0, 0, "CBT at col 0 should stay at col 0");
+    }
+
+    #[test]
+    fn t_tab_clear_all_then_tab_goes_to_end() {
+        // After clearing all tab stops (TBC 3), tab should move to end of line.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all tab stops
+        feed(&mut t, b"\t"); // tab from col 0
+        // With no tab stops, tab should go to the last column
+        assert_eq!(t.cursor().0, 19, "tab with no stops should go to last col");
+    }
+
+    #[test]
+    fn t_p129_hts_sets_tab_stop() {
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all tab stops
+        feed(&mut t, b"\x1b[1;6H"); // move to col 5
+        feed(&mut t, b"\x1bH"); // HTS — set tab stop at col 5
+        feed(&mut t, b"\x1b[1;1H"); // move to col 0
+        feed(&mut t, b"\t"); // tab should go to col 5
+        assert_eq!(t.cursor().0, 5, "tab should stop at HTS-set position");
+    }
+
+    #[test]
+    fn t_cbt_lands_on_wide_spacer_adjusts_back() {
+        // CBT should adjust backward if it lands on a wide char spacer.
+        let mut t = Terminal::new(20, 3);
+        // Place a wide char at cols 8-9 (default tab stop is at col 8)
+        feed(&mut t, b"\x1b[1;9H"); // move to col 8
+        feed(&mut t, "你".as_bytes()); // wide char at cols 8-9
+        // Now move past it and CBT back
+        feed(&mut t, b"\x1b[1;16H"); // move to col 15
+        feed(&mut t, b"\x1b[Z"); // CBT — should go back to tab stop at col 8
+        // Cursor should be at col 8 (the wide char lead), not col 9 (spacer)
+        assert_eq!(
+            t.cursor().0,
+            8,
+            "CBT landing on wide spacer should adjust to lead cell"
+        );
+    }
 }
