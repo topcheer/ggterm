@@ -20203,4 +20203,337 @@ mod tests {
         feed(&mut t, b"\x1bc"); // RIS
         assert!(!t.is_synchronized(), "RIS resets sync output");
     }
+
+    // ── Round 23-1: Autowrap / pending_wrap edge cases ─────────────────
+
+    #[test]
+    fn t_r23_pending_wrap_cr_clears() {
+        // CR should clear pending_wrap and move to col 0.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fills row, pending_wrap=true
+        assert!(t.cursor.pending_wrap);
+        feed(&mut t, b"\r"); // CR
+        assert!(!t.cursor.pending_wrap, "CR clears pending_wrap");
+        assert_eq!(t.cursor.x, 0);
+    }
+
+    #[test]
+    fn t_r23_pending_wrap_lf_wraps() {
+        // LF after pending_wrap — the LF should just advance row (no double wrap).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // pending_wrap=true at (4,0)
+        feed(&mut t, b"\n"); // LF
+        assert!(!t.cursor.pending_wrap, "LF clears pending_wrap");
+        assert_eq!(t.cursor.y, 1, "LF advances row");
+        assert_eq!(t.cursor.x, 4, "LF preserves column (CRLF semantics)");
+    }
+
+    #[test]
+    fn t_r23_pending_wrap_print_wraps() {
+        // Pending_wrap + next print should wrap to next line.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // row 0 full, pending_wrap=true
+        feed(&mut t, b"F"); // should wrap
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'F', "F wrapped to row 1");
+    }
+
+    #[test]
+    fn t_r23_pending_wrap_cuf_clears() {
+        // CUF should clear pending_wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // pending_wrap=true
+        feed(&mut t, b"\x1b[1C"); // CUF 1 — but cursor is already at last col
+        assert!(!t.cursor.pending_wrap, "CUF clears pending_wrap");
+    }
+
+    #[test]
+    fn t_r23_pending_wrap_bs_clears() {
+        // BS should clear pending_wrap and move left.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // pending_wrap=true at col 4
+        feed(&mut t, b"\x08"); // BS
+        assert!(!t.cursor.pending_wrap, "BS clears pending_wrap");
+        assert_eq!(t.cursor.x, 3, "BS moves to col 3");
+    }
+
+    #[test]
+    fn t_r23_autowm_off_no_pending_wrap() {
+        // With DECAWM off, pending_wrap should never be set.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // DECAWM off
+        feed(&mut t, b"ABCDE"); // fills row, no wrap
+        assert!(!t.cursor.pending_wrap, "no pending_wrap when DECAWM off");
+        assert_eq!(t.cursor.x, 4, "cursor at last col");
+    }
+
+    #[test]
+    fn t_r23_pending_wrap_at_bottom_scrolls() {
+        // Pending_wrap at bottom row — next char should scroll.
+        let mut t = Terminal::new(5, 2);
+        feed(&mut t, b"ABCDE"); // row 0 full, pending_wrap
+        feed(&mut t, b"FGHIJ"); // row 1 full, pending_wrap at bottom
+        feed(&mut t, b"X"); // should scroll up
+        // Row 0 should be gone (scrolled), X should be on visible area
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'F',
+            "row shifted up after scroll"
+        );
+    }
+
+    #[test]
+    fn t_r23_autowm_off_overwrite_last_col() {
+        // DECAWM off: writing more chars overwrites last col repeatedly.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // off
+        feed(&mut t, b"ABCDEF"); // 6 chars, only 5 cols
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A at col 0");
+        assert_eq!(
+            t.grid().cell(4, 0).unwrap().ch,
+            'F',
+            "F at col 4 (overwrote E)"
+        );
+        assert_eq!(t.cursor.y, 0, "no wrap");
+    }
+
+    // ── Round 23-2: Tab stop edge cases ────────────────────────────────
+
+    #[test]
+    fn t_r23_tab_no_stops_goes_to_last_col() {
+        // Tab with no stops set → last column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor.x, 9, "tab to last col");
+    }
+
+    #[test]
+    fn t_r23_tab_clear_current_then_tab() {
+        // TBC 0 clears current stop, then tab skips it.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;9H\x1b[0g"); // clear stop at col 8
+        feed(&mut t, b"\x1b[1;1H\t"); // tab from col 0
+        // Col 8 stop is cleared, so tab goes to col 16
+        assert_eq!(t.cursor.x, 16, "tab skips cleared stop at col 8");
+    }
+
+    #[test]
+    fn t_r23_tab_from_last_col_stays() {
+        // Tab at last column should stay at last column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;10H"); // col 9
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor.x, 9, "tab at last col stays");
+    }
+
+    #[test]
+    fn t_r23_cht_multiple_tabs() {
+        // CHT 3 should advance 3 tab stops.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[3I"); // CHT 3: 0→8→16→24
+        assert_eq!(t.cursor.x, 24, "CHT 3 advances 3 stops");
+    }
+
+    #[test]
+    fn t_r23_cbt_multiple_tabs() {
+        // CBT 2 from col 24 → col 16 → col 8.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;25H"); // col 24
+        feed(&mut t, b"\x1b[2Z"); // CBT 2: 24→16→8
+        assert_eq!(t.cursor.x, 8, "CBT 2 from col 24 → col 8");
+    }
+
+    // ── Round 23-3: Wide char + ICH/DCH/ECH boundary ───────────────────
+
+    #[test]
+    fn t_r23_dch_into_wide_char() {
+        // DCH at a position before a wide char — wide char should shift left intact.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"AB");
+        feed(&mut t, "你".as_bytes()); // wide at cols 2-3
+        feed(&mut t, b"X"); // col 4
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\x1b[1P"); // DCH 1 — delete 'A', shift all left
+        // B should be at col 0, wide char at cols 1-2
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B', "B shifted to col 0");
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            '你',
+            "wide shifted to col 1"
+        );
+    }
+
+    #[test]
+    fn t_r23_ich_at_row_end() {
+        // ICH at near-end of row — cells pushed past edge are lost.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCD"); // cols 0-3 filled
+        feed(&mut t, b"\x1b[1;1H"); // cursor at col 0
+        feed(&mut t, b"\x1b[2@"); // ICH 2 — insert 2 blanks at col 0
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "blank inserted at col 0"
+        );
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A', "A shifted to col 2");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B', "B at col 3");
+    }
+
+    #[test]
+    fn t_r23_ech_at_row_middle() {
+        // ECH in the middle of a row.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGHIJ");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[3C"); // cursor at col 3
+        feed(&mut t, b"\x1b[2X"); // ECH 2 — erase cols 3-4
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C', "C preserved");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "D erased");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "E erased");
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'F', "F preserved");
+    }
+
+    #[test]
+    fn t_r23_ech_beyond_row_end() {
+        // ECH beyond row end should only erase available cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC"); // only 3 chars
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[2C"); // cursor at col 2
+        feed(&mut t, b"\x1b[100X"); // ECH 100
+        // Only col 2 should be erased (beyond is already blank)
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "B preserved");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "C erased");
+    }
+
+    #[test]
+    fn t_r23_dch_all_cells() {
+        // DCH more than available cells should clear the line from cursor.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\r");
+        feed(&mut t, b"\x1b[2C"); // cursor at col 2
+        feed(&mut t, b"\x1b[100P"); // DCH 100
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "B preserved");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "C deleted");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "D deleted");
+    }
+
+    #[test]
+    fn t_r23_wide_char_bs_deletes_both_cells() {
+        // BS after writing a wide char, then overwrite spacer — wide char should clear.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1, cursor at col 2
+        feed(&mut t, b"\x08\x08"); // BS twice: col 2→1→0
+        feed(&mut t, b"X"); // overwrite lead cell at col 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0");
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            ' ',
+            "spacer cleared when lead overwritten"
+        );
+    }
+
+    // ── Round 23-4: IL/DL/SU/SD boundary ───────────────────────────────
+
+    #[test]
+    fn t_r23_il_at_bottom_row() {
+        // IL at the bottom row of scroll region.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD"); // 4 rows
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 3 (bottom)
+        feed(&mut t, b"\x1b[L"); // IL 1
+        // Row D should scroll out, blank line at row 3
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, ' ', "row 3 blank after IL");
+    }
+
+    #[test]
+    fn t_r23_dl_at_top_row() {
+        // DL at top of scroll region.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD");
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0 (top)
+        feed(&mut t, b"\x1b[M"); // DL 1
+        // A should scroll out, B at row 0, blank at row 3
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B', "B shifted to row 0");
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, ' ', "row 3 blank");
+    }
+
+    #[test]
+    fn t_r23_su_scrolls_content_up() {
+        // SU should scroll content up within scroll region.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD");
+        feed(&mut t, b"\x1b[1;1H\x1b[1S"); // SU 1
+        // A should scroll out, blank at bottom
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B', "B at row 0 after SU");
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            ' ',
+            "blank at row 3 after SU"
+        );
+    }
+
+    #[test]
+    fn t_r23_sd_scrolls_content_down() {
+        // SD should scroll content down, blanks at top.
+        let mut t = Terminal::new(5, 4);
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD");
+        feed(&mut t, b"\x1b[1;1H\x1b[1T"); // SD 1
+        // D should scroll out, blank at top
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "blank at row 0 after SD"
+        );
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A', "A at row 1 after SD");
+    }
+
+    #[test]
+    fn t_r23_il_outside_scroll_region_noop() {
+        // IL when cursor is below scroll region — should be no-op.
+        let mut t = Terminal::new(5, 8);
+        feed(&mut t, b"\x1b[3;6r"); // region rows 3-6 (0-based: 2..6)
+        // Write rows using CUP to avoid scroll-triggering line feeds
+        for i in 0..8 {
+            let ch = (b'A' + i as u8) as char;
+            feed(&mut t, format!("\x1b[{};1H{}", i + 1, ch).as_bytes());
+        }
+        feed(&mut t, b"\x1b[7;1H"); // cursor at row 6 (region bottom)
+        // Move below region
+        feed(&mut t, b"\x1b[8;1H"); // cursor at row 7 (below region)
+        feed(&mut t, b"\x1b[L"); // IL 1 — should be no-op (cursor outside region)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+        assert_eq!(t.grid().cell(0, 7).unwrap().ch, 'H', "H preserved");
+    }
+
+    #[test]
+    fn t_r23_dl_at_region_boundary() {
+        // DL within scroll region only affects region rows.
+        let mut t = Terminal::new(5, 8);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 3-7 (0-based: 2..7)
+        for i in 0..8 {
+            let ch = (b'A' + i as u8) as char;
+            feed(&mut t, format!("\x1b[{};1H{}", i + 1, ch).as_bytes());
+        }
+        feed(&mut t, b"\x1b[3;1H"); // cursor at region top (row 2)
+        feed(&mut t, b"\x1b[M"); // DL 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'B', "B preserved");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'D', "D shifted to row 2");
+    }
+
+    #[test]
+    fn t_r23_il_count_larger_than_region() {
+        // IL with count larger than region height should clear entire region.
+        let mut t = Terminal::new(5, 6);
+        feed(&mut t, b"\x1b[2;5r"); // region rows 2-5
+        feed(&mut t, b"\x1b[1;1HA\r\nB\r\nC\r\nD\r\nE\r\nF");
+        feed(&mut t, b"\x1b[2;1H"); // cursor at region top
+        feed(&mut t, b"\x1b[100L"); // IL 100
+        // Rows in region should be blank
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "region row blank");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+    }
 }
