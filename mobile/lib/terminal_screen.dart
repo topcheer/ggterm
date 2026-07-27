@@ -2412,6 +2412,16 @@ class _TerminalPainter extends CustomPainter {
     final maxVisibleRows = math.min(rows, (size.height / cellHeight).floor());
     final fontSize = cellHeight * 0.85;
 
+    // Theme foreground/background as 0xRRGGBB for default color resolution.
+    // Cells with Color::Default (packed == 0) use these instead of hardcoded
+    // defaults in AnsiPalette, ensuring they match the selected theme.
+    final themeFg = (theme.foreground.r * 255).round() << 16 |
+        (theme.foreground.g * 255).round() << 8 |
+        (theme.foreground.b * 255).round();
+    final themeBg = (theme.background.r * 255).round() << 16 |
+        (theme.background.g * 255).round() << 8 |
+        (theme.background.b * 255).round();
+
     // Cache Paint objects to avoid per-cell allocation.
     final cellBgPaint = _cellBgPaint;
 
@@ -2428,8 +2438,12 @@ class _TerminalPainter extends CustomPainter {
         if (cell.hidden) continue;
 
         // For reverse video (SGR 7), draw fg color as background.
-        final effectiveBg = cell.reverse ? cell.fgRgb : cell.bgRgb;
-        if (effectiveBg != 0) {
+        final effectiveBg = cell.reverse
+            ? cell.fgRgbWithTheme(themeFg)
+            : cell.bgRgbWithTheme(themeBg);
+        // Skip drawing background when it matches the theme background
+        // (avoids unnecessary draw calls for default-bg cells).
+        if (effectiveBg != themeBg) {
           cellBgPaint.color = Color(0xFF000000 | effectiveBg);
           canvas.drawRect(
             Rect.fromLTWH(x, y, cellWidth, cellHeight),
@@ -2466,7 +2480,9 @@ class _TerminalPainter extends CustomPainter {
 
         if (!isEmpty) {
           // For reverse video, use bg color as text color.
-          final effectiveFg = cell.reverse ? cell.bgRgb : cell.fgRgb;
+          final effectiveFg = cell.reverse
+              ? cell.bgRgbWithTheme(themeBg)
+              : cell.fgRgbWithTheme(themeFg);
           if (runStart < 0) {
             // Start a new run.
             runStart = col;

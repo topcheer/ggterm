@@ -107,6 +107,16 @@ class GGTermCellData {
 
   /// Resolved background RGB (0xRRGGBB).
   int get bgRgb => AnsiPalette.resolve(bg, isBackground: true);
+
+  /// Resolved foreground RGB with theme-aware default color.
+  /// Uses [defaultFg] when the cell has Default foreground.
+  int fgRgbWithTheme(int defaultFg) =>
+      ColorCodec.isDefault(fg) ? defaultFg : AnsiPalette.resolve(fg, isBackground: false);
+
+  /// Resolved background RGB with theme-aware default color.
+  /// Uses [defaultBg] when the cell has Default background.
+  int bgRgbWithTheme(int defaultBg) =>
+      ColorCodec.isDefault(bg) ? defaultBg : AnsiPalette.resolve(bg, isBackground: true);
 }
 
 /// Connection parameters for SSH.
