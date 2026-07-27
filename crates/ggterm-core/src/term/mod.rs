@@ -25894,4 +25894,46 @@ mod tests {
             "CBT landing on wide spacer should adjust to lead cell"
         );
     }
+
+    #[test]
+    fn t_irm_insert_wide_char_shifts_correctly() {
+        // In insert mode, printing a wide char should shift existing content right.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDE"); // cols 0-4
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 2
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, "你".as_bytes()); // insert wide char at col 2
+        // Expected: AB你CDE (wide char at 2-3, old C shifted to 4, etc.)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '你');
+        assert!(t.grid().cell(3, 0).unwrap().is_wide_spacer());
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'D');
+        assert_eq!(t.grid().cell(6, 0).unwrap().ch, 'E');
+    }
+
+    #[test]
+    fn t_wide_char_at_boundary_wraps() {
+        // A wide char that doesn't fit at the end of a line should wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"abcd"); // fills cols 0-3, cursor pending_wrap at col 4
+        feed(&mut t, "你".as_bytes()); // wide char should wrap to next line
+        // First line: abcd (with row_wrap marker)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'a');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'd');
+        // Wide char on second line
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, '你');
+    }
+
+    #[test]
+    fn t_combining_char_attaches_to_wide_char() {
+        // Combining char should attach to the lead of a wide char pair.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute accent
+        // The combining char should be on the lead cell (col 0)
+        assert_eq!(t.grid().cell(0, 0).unwrap().combining.len(), 1);
+        assert_eq!(t.grid().cell(0, 0).unwrap().combining[0], '\u{0301}');
+    }
 }
