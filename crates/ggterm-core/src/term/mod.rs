@@ -1547,6 +1547,13 @@ impl Terminal {
         params.get(idx).copied().unwrap_or(default).max(1)
     }
 
+    /// Convert a boolean mode state to a DECRQM status code.
+    /// true → 1 (set), false → 2 (reset).
+    #[inline]
+    fn bool_to_status(is_set: bool) -> u8 {
+        if is_set { 1 } else { 2 }
+    }
+
     fn set_dec_mode(&mut self, mode: u16, enable: bool) {
         match mode {
             7 => {
@@ -2876,39 +2883,41 @@ impl Perform for Terminal {
             // CSI ? Pm ; Ps $ y  where Ps: 0=not recognized, 1=set, 2=reset, 3=permanently set, 4=permanently reset
             b'p' if intermediates.contains(&b'$') && is_private => {
                 let mode = params.first().copied().unwrap_or(0);
-                let is_set = match mode {
-                    1 => self.modes.cursor_keys_app,       // DECCKM
-                    5 => self.modes.reverse_video,         // DECSCNM
-                    6 => self.modes.origin,                // DECOM
-                    7 => self.modes.auto_wrap,             // DECAWM
-                    12 => self.modes.cursor_blink,         // Cursor blink
-                    25 => self.modes.cursor_visible,       // DECTCEM
-                    47 => self.modes.alt_screen,           // Alt screen (47)
-                    45 => false, // DECRIVM: reverse wraparound (not supported)
-                    9 => self.modes.mouse_tracking, // X10 mouse tracking
-                    1000 => self.modes.mouse_tracking, // Mouse tracking
-                    1002 => self.modes.mouse_button_event, // Button-event mouse
-                    1003 => self.modes.mouse_any_event, // Any-event mouse
-                    1004 => self.modes.focus_event, // Focus event reporting
-                    1005 => self.modes.mouse_utf8, // UTF-8 mouse
-                    1006 => self.modes.mouse_sgr, // SGR mouse
-                    1015 => self.modes.mouse_urxvt, // URXVT mouse
-                    1016 => self.modes.mouse_sgr_pixel, // SGR-pixel mouse
-                    1047 => self.modes.alt_screen, // Alt screen (1047)
+                // Return Some(is_set) for recognized modes, None for unknown.
+                // Unknown modes must report status 0 (not recognized) per spec,
+                // NOT status 2 (reset). This distinction matters because some
+                // programs use DECRQM to probe for feature support.
+                let status = match mode {
+                    1 => Self::bool_to_status(self.modes.cursor_keys_app), // DECCKM
+                    5 => Self::bool_to_status(self.modes.reverse_video),   // DECSCNM
+                    6 => Self::bool_to_status(self.modes.origin),          // DECOM
+                    7 => Self::bool_to_status(self.modes.auto_wrap),       // DECAWM
+                    12 => Self::bool_to_status(self.modes.cursor_blink),   // Cursor blink
+                    25 => Self::bool_to_status(self.modes.cursor_visible), // DECTCEM
+                    47 => Self::bool_to_status(self.modes.alt_screen),     // Alt screen (47)
+                    9 => Self::bool_to_status(self.modes.mouse_tracking),  // X10 mouse tracking
+                    1000 => Self::bool_to_status(self.modes.mouse_tracking), // Mouse tracking
+                    1002 => Self::bool_to_status(self.modes.mouse_button_event), // Button-event mouse
+                    1003 => Self::bool_to_status(self.modes.mouse_any_event),    // Any-event mouse
+                    1004 => Self::bool_to_status(self.modes.focus_event), // Focus event reporting
+                    1005 => Self::bool_to_status(self.modes.mouse_utf8),  // UTF-8 mouse
+                    1006 => Self::bool_to_status(self.modes.mouse_sgr),   // SGR mouse
+                    1015 => Self::bool_to_status(self.modes.mouse_urxvt), // URXVT mouse
+                    1016 => Self::bool_to_status(self.modes.mouse_sgr_pixel), // SGR-pixel mouse
+                    1047 => Self::bool_to_status(self.modes.alt_screen),  // Alt screen (1047)
                     // 1048 is a transient save/restore action, not a persistent
                     // mode. xterm reports it as "reset" (status 2) in DECRQM.
                     // Reporting based on decsc_state.is_some() would incorrectly
                     // report "set" after any DECSC, misleading programs that
                     // query mode state to detect alt-screen transition.
-                    1048 => false, // Always report reset (transient action)
-                    1049 => self.modes.alt_screen, // Alt screen + cursor save (1049)
-                    2004 => self.modes.bracketed_paste, // Bracketed paste
-                    2026 => self.modes.synchronized_output, // Synchronized output
-                    2027 => self.modes.reflow, // Text reflow
-                    7727 => self.modes.alternate_scroll, // Alternate scroll
-                    _ => false,
+                    1048 => 2, // Always report reset (transient action)
+                    1049 => Self::bool_to_status(self.modes.alt_screen), // Alt screen + cursor save (1049)
+                    2004 => Self::bool_to_status(self.modes.bracketed_paste), // Bracketed paste
+                    2026 => Self::bool_to_status(self.modes.synchronized_output), // Synchronized output
+                    2027 => Self::bool_to_status(self.modes.reflow),              // Text reflow
+                    7727 => Self::bool_to_status(self.modes.alternate_scroll), // Alternate scroll
+                    _ => 0, // Unknown mode — not recognized
                 };
-                let status = if is_set { 1 } else { 2 };
                 let resp = format!("\x1b[?{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
             }
@@ -2931,20 +2940,13 @@ impl Perform for Terminal {
             b'p' if intermediates.contains(&b'$') && !is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 // status: 0=not recognized, 1=set, 2=reset, 3=permanently set, 4=permanently reset
-                let (is_set, permanent) = match mode {
-                    4 => (self.modes.insert, false),         // IRM — insert mode
-                    7 => (self.modes.auto_wrap, false),      // DECAWM — autowrap
-                    12 => (self.modes.cursor_blink, false),  // Cursor blink
-                    20 => (self.modes.new_line_mode, false), // LNM — line feed/new line mode
-                    8 => (true, true), // ARM — auto-repeat, always on (permanently set)
-                    _ => (false, false),
-                };
-                let status = if permanent {
-                    3 // permanently set
-                } else if is_set {
-                    1 // set
-                } else {
-                    2 // reset
+                let status = match mode {
+                    4 => Self::bool_to_status(self.modes.insert), // IRM — insert mode
+                    7 => Self::bool_to_status(self.modes.auto_wrap), // DECAWM — autowrap
+                    12 => Self::bool_to_status(self.modes.cursor_blink), // Cursor blink
+                    20 => Self::bool_to_status(self.modes.new_line_mode), // LNM — line feed/new line mode
+                    8 => 3, // ARM — auto-repeat, always on (permanently set)
+                    _ => 0, // Unknown mode — not recognized
                 };
                 let resp = format!("\x1b[{};{}$y", mode, status);
                 self.response_buffer.extend_from_slice(resp.as_bytes());
@@ -8670,9 +8672,26 @@ mod tests {
         feed(&mut t, b"\x1b[?9999$p"); // Query unknown mode
         let resp = t.take_response();
         let resp_str = String::from_utf8_lossy(&resp);
+        // Unknown modes must report status 0 (not recognized), NOT 2 (reset).
+        // This distinction is important: programs use DECRQM to probe feature
+        // support, and reporting "reset" for unsupported features would
+        // falsely imply the terminal recognizes but hasn't enabled them.
         assert!(
-            resp_str.contains("9999;2$y"),
-            "unknown mode should be reset (2), got: {}",
+            resp_str.contains("9999;0$y"),
+            "unknown mode should be not-recognized (0), got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_decrqm_unknown_ansi_mode() {
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[99$p"); // Query unknown ANSI mode (no '?')
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains("99;0$y"),
+            "unknown ANSI mode should be not-recognized (0), got: {}",
             resp_str
         );
     }
