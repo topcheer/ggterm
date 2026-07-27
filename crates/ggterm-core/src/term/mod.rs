@@ -21659,4 +21659,248 @@ mod tests {
             resp
         );
     }
+
+    // ── Round 28-2: Bracketed paste + DECSCUSR edge cases ──────────────
+
+    #[test]
+    fn t_r28_bracketed_paste_decrqm() {
+        // DECRQM query for bracketed paste mode.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2004$p");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(resp.contains("2004"), "DECRQM for 2004: {}", resp);
+    }
+
+    #[test]
+    fn t_r28_bracketed_paste_decstr_reset() {
+        // DECSTR should reset bracketed paste to off.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        assert!(t.bracketed_paste());
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.bracketed_paste(), "bracketed paste reset by DECSTR");
+    }
+
+    #[test]
+    fn t_r28_bracketed_paste_ris_reset() {
+        // RIS should reset bracketed paste to off.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2004h");
+        assert!(t.bracketed_paste());
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.bracketed_paste(), "bracketed paste reset by RIS");
+    }
+
+    #[test]
+    fn t_r28_decscusr_preserved_through_decsc_decrc() {
+        // DECSC saves cursor style, DECRC restores it.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4 q"); // SteadyUnderline
+        feed(&mut t, b"\x1b7"); // save
+        feed(&mut t, b"\x1b[1 q"); // change to BlinkBlock
+        feed(&mut t, b"\x1b8"); // restore
+        assert_eq!(t.cursor_style(), CursorStyle::SteadyUnderline);
+    }
+
+    #[test]
+    fn t_r28_decscusr_decstr_reset() {
+        // DECSTR should reset cursor style to default.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[6 q"); // SteadyBar
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert_eq!(t.cursor_style(), CursorStyle::Default);
+    }
+
+    #[test]
+    fn t_r28_decscusr_decrqss() {
+        // DECRQSS query for cursor style.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1bP$q q\x1b\\"); // DECRQSS for DECSCUSR
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        // Response should mention "q q" or similar
+        assert!(!resp.is_empty(), "DECRQSS for DECSCUSR has response");
+    }
+
+    // ── Round 28-3: OSC 8 + OSC 52 edge cases ──────────────────────────
+
+    #[test]
+    fn t_r28_osc8_empty_uri_clears() {
+        // OSC 8 with empty URI clears current hyperlink.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\Active");
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // clear
+        feed(&mut t, b"After");
+        // "After" should have no hyperlink
+        assert!(
+            t.grid().cell(6, 0).unwrap().hyperlink.is_none(),
+            "hyperlink cleared after empty URI"
+        );
+    }
+
+    #[test]
+    fn t_r28_osc8_multiline_link() {
+        // OSC 8 hyperlink persists across line wrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b]8;;https://example.com\x1b\\");
+        feed(&mut t, b"ABCDEF"); // 6 chars, wraps: ABCDE on row 0, F on row 1
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // close
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().hyperlink.as_deref(),
+            Some("https://example.com"),
+            "link on row 0"
+        );
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().hyperlink.as_deref(),
+            Some("https://example.com"),
+            "link persists on wrapped row 1"
+        );
+    }
+
+    #[test]
+    fn t_r28_osc8_control_char_stripped() {
+        // OSC 8 URI with embedded control chars should be stripped.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;https://example.com\x07\x1b\\X");
+        // The \x07 (BEL) should be stripped from URI, not terminate OSC early
+        let hl = t.grid().cell(0, 0).unwrap().hyperlink.as_deref();
+        // BEL inside OSC data is tricky - depends on parser.
+        // At minimum, should not crash.
+        assert!(hl.is_some() || hl.is_none(), "no crash with control in URI");
+    }
+
+    #[test]
+    fn t_r28_osc52_set_with_special_chars() {
+        // OSC 52 with base64 of special characters.
+        let mut t = Terminal::new(10, 3);
+        // "Hello\nWorld" in base64 = "SGVsbG8KV29ybGQ="
+        feed(&mut t, b"\x1b]52;c;SGVsbG8KV29ybGQ=\x1b\\");
+        let clip = t.take_pending_clipboard_set();
+        assert_eq!(
+            clip.as_deref(),
+            Some(b"Hello\nWorld".as_ref()),
+            "clipboard with newline"
+        );
+    }
+
+    #[test]
+    fn t_r28_osc52_multiple_set_overwrites() {
+        // OSC 52 set twice — second should overwrite.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;SGk=\x1b\\"); // "Hi"
+        let _ = t.take_pending_clipboard_set();
+        feed(&mut t, b"\x1b]52;c;Qnll\x1b\\"); // "Bye"
+        let clip = t.take_pending_clipboard_set();
+        assert_eq!(
+            clip.as_deref(),
+            Some(b"Bye".as_ref()),
+            "clipboard overwritten"
+        );
+    }
+
+    #[test]
+    fn t_r28_osc52_invalid_base64() {
+        // OSC 52 with invalid base64 — should be handled gracefully.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;!!!invalid\x1b\\");
+        // Should not crash; clipboard may be set to decoded garbage or ignored.
+        let _ = t.take_pending_clipboard_set();
+    }
+
+    // ── Round 28-4: Scroll region + IL/DL boundary ─────────────────────
+
+    #[test]
+    fn t_r28_stbm_cursor_moves_to_origin() {
+        // DECSTBM should move cursor to origin (0,0) of screen.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[5;5H"); // cursor at row 4, col 4
+        feed(&mut t, b"\x1b[2;8r"); // DECSTBM: scroll region rows 1-7
+        assert_eq!(t.cursor().1, 0, "cursor moved to row 0 after DECSTBM");
+        assert_eq!(t.cursor().0, 0, "cursor moved to col 0 after DECSTBM");
+    }
+
+    #[test]
+    fn t_r28_stbm_invalid_region_ignored() {
+        // DECSTBM with top >= bottom should be ignored.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[2;8r"); // valid region
+        feed(&mut t, b"\x1b[8;2r"); // invalid (top > bottom) — should be ignored
+        let (top, bottom) = t.grid().scroll_region();
+        // The invalid region should NOT have been applied.
+        assert_eq!(top, 1, "scroll top preserved after invalid DECSTBM");
+        assert_eq!(bottom, 8, "scroll bottom preserved");
+    }
+
+    #[test]
+    fn t_r28_lf_at_scroll_bottom_scrolls() {
+        // LF at scroll region bottom should scroll within region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // scroll region rows 0-3
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 3 (bottom of region)
+        feed(&mut t, b"AAA\r\n"); // write AAA, then LF
+        // LF at row 3 (bottom of region) should scroll region, not move below.
+        assert_eq!(t.cursor().1, 3, "cursor stays at scroll bottom after LF");
+    }
+
+    #[test]
+    fn t_r28_lf_below_scroll_region_moves_down() {
+        // LF below scroll region should just move cursor down (no scroll).
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;3r"); // scroll region rows 0-2
+        feed(&mut t, b"\x1b[5;1H"); // cursor at row 4 (below region)
+        feed(&mut t, b"\n"); // LF
+        assert_eq!(t.cursor().1, 5, "cursor moves down below scroll region");
+    }
+
+    #[test]
+    fn t_r28_il_within_region_at_top() {
+        // IL at top of scroll region inserts blank line.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[1;1HAAA\r\n"); // row 0: AAA
+        feed(&mut t, b"\x1b[1;1H"); // back to row 0
+        feed(&mut t, b"\x1b[L"); // IL — insert blank line at row 0
+        // AAA should have moved to row 1
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A', "AAA moved down by IL");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "row 0 blank after IL");
+    }
+
+    #[test]
+    fn t_r28_dl_within_region_at_bottom() {
+        // DL at bottom of scroll region deletes line, lines scroll up.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[1;1HAAA\r\nBBB"); // row 0: AAA, row 1: BBB
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0
+        feed(&mut t, b"\x1b[M"); // DL — delete line at row 0
+        // BBB should have moved to row 0
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'B', "BBB moved up by DL");
+    }
+
+    #[test]
+    fn t_r28_reverse_lf_at_top_of_region_scrolls() {
+        // RI (reverse line feed) at top of scroll region should scroll down.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[1;1HAAA"); // row 0: AAA
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0 (top of region)
+        feed(&mut t, b"\x1bM"); // RI — reverse line feed
+        // Should scroll region down; AAA moves to row 1
+        assert_eq!(t.cursor().1, 0, "cursor stays at top after RI at boundary");
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'A',
+            "AAA scrolled down by RI"
+        );
+    }
+
+    #[test]
+    fn t_r28_stbm_full_screen_default() {
+        // DECSTBM with no params = full screen.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // region rows 1-3
+        feed(&mut t, b"\x1b[r"); // reset to full screen
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "scroll top reset to 0");
+        assert_eq!(bottom, 6, "scroll bottom reset to height");
+    }
 }

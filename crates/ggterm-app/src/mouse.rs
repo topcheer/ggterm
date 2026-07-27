@@ -1488,4 +1488,196 @@ mod tests {
         assert_eq!(MouseButton::WheelLeft.sgr_code(), 66);
         assert_eq!(MouseButton::WheelRight.sgr_code(), 67);
     }
+
+    // ── Round 28-1: Mouse encoding edge cases ──────────────────────────
+
+    #[test]
+    fn t_r28_sgr_coord_zero_zero() {
+        // SGR mouse at coordinate (0,0) → should report as (1,1).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        assert_eq!(encode_sgr_press(&ev), "\x1b[<0;1;1M");
+        assert_eq!(encode_sgr_release(&ev), "\x1b[<0;1;1m");
+    }
+
+    #[test]
+    fn t_r28_sgr_middle_button_press() {
+        // Middle button = sgr_code 1.
+        let ev = MouseEvent {
+            button: MouseButton::Middle,
+            x: 3,
+            y: 7,
+            mods: MouseModifiers::default(),
+        };
+        assert_eq!(encode_sgr_press(&ev), "\x1b[<1;4;8M");
+    }
+
+    #[test]
+    fn t_r28_sgr_all_modifiers() {
+        // Shift(4) + Alt(8) + Ctrl(16) = 28, Left(0) → Cb=28.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers {
+                shift: true,
+                ctrl: true,
+                alt: true,
+            },
+        };
+        assert_eq!(encode_sgr_press(&ev), "\x1b[<28;1;1M");
+    }
+
+    #[test]
+    fn t_r28_sgr_wheel_left_right() {
+        // WheelLeft=66, WheelRight=67.
+        let ev_l = MouseEvent {
+            button: MouseButton::WheelLeft,
+            x: 5,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        assert_eq!(encode_sgr_press(&ev_l), "\x1b[<66;6;6M");
+
+        let ev_r = MouseEvent {
+            button: MouseButton::WheelRight,
+            x: 5,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        assert_eq!(encode_sgr_press(&ev_r), "\x1b[<67;6;6M");
+    }
+
+    #[test]
+    fn t_r28_sgr_coord_beyond_223() {
+        // SGR encoding has no coordinate limit.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 500,
+            y: 500,
+            mods: MouseModifiers::default(),
+        };
+        assert_eq!(encode_sgr_press(&ev), "\x1b[<0;501;501M");
+    }
+
+    #[test]
+    fn t_r28_legacy_at_boundary_94() {
+        // Legacy encoding at coord 94 → byte 126 (just before DEL=127).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 94,
+            y: 94,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_legacy(&ev).unwrap();
+        // Left(0) + 32 = 32 (space), coord 94 + 32 = 126 (~)
+        assert_eq!(bytes, vec![0x1b, b'[', 32, 126, 126, b'M']);
+    }
+
+    #[test]
+    fn t_r28_legacy_at_boundary_222() {
+        // Legacy at coord 222 → byte 254 (max representable).
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 222,
+            y: 222,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_legacy(&ev).unwrap();
+        assert_eq!(bytes[3], 254); // 222 + 32 = 254
+        assert_eq!(bytes[4], 254);
+    }
+
+    #[test]
+    fn t_r28_legacy_at_223_returns_none() {
+        // Legacy at coord 223 → 223+32=255 which is >255 for u8 with +32 offset.
+        // Actually 223+32=255, which fits in u8. But 224+32=256 overflows.
+        // The check is `ev.x + 32 > 255` → 224 + 32 = 256 > 255 → None.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 224,
+            y: 224,
+            mods: MouseModifiers::default(),
+        };
+        assert!(
+            encode_legacy(&ev).is_none(),
+            "coord 224 out of legacy range"
+        );
+    }
+
+    #[test]
+    fn t_r28_urxvt_with_modifiers_large_coord() {
+        // URXVT encoding supports large coordinates and modifiers.
+        let ev = MouseEvent {
+            button: MouseButton::Right,
+            x: 300,
+            y: 400,
+            mods: MouseModifiers {
+                shift: false,
+                ctrl: true,
+                alt: false,
+            },
+        };
+        // Right(2) + Ctrl(16) = 18
+        let s = encode_urxvt(&ev, true);
+        assert_eq!(s, "\x1b[18;301;401M");
+    }
+
+    #[test]
+    fn t_r28_urxvt_release_sets_bit5() {
+        // URXVT release adds 32 (bit 5) to Cb.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 10,
+            y: 10,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_urxvt(&ev, false);
+        // Left(0) + 32 (release) = 32
+        assert_eq!(s, "\x1b[32;11;11M");
+    }
+
+    #[test]
+    fn t_r28_pixel_mode_basic() {
+        // SGR-pixel mode (1016) sends pixel coordinates.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 0,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event_pixel(&ev, 480, 320, true).unwrap();
+        let s = String::from_utf8(bytes).unwrap();
+        assert_eq!(s, "\x1b[<0;480;320M");
+    }
+
+    #[test]
+    fn t_r28_encode_mouse_event_dispatch_sgr() {
+        // encode_mouse_event dispatches to SGR when sgr=true.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event(&ev, true, false, true).unwrap();
+        assert_eq!(String::from_utf8(bytes).unwrap(), "\x1b[<0;6;6M");
+    }
+
+    #[test]
+    fn t_r28_encode_mouse_event_dispatch_urxvt() {
+        // encode_mouse_event dispatches to URXVT when urxvt=true.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 5,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_mouse_event(&ev, false, true, true).unwrap();
+        assert_eq!(String::from_utf8(bytes).unwrap(), "\x1b[0;6;6M");
+    }
 }
