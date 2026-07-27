@@ -274,9 +274,13 @@ impl Row {
             // Set WIDE_CHAR flag and spacer if there's room for both cells.
             if col + 1 < len {
                 self.cells[col + 1].set_wide_spacer();
+                self.cells[col].flags |= CellFlags::WIDE_CHAR;
+                return 2;
             }
-            self.cells[col].flags |= CellFlags::WIDE_CHAR;
-            return 2;
+            // Not enough room for the spacer — don't set WIDE_CHAR flag.
+            // A wide char lead without its spacer would render incorrectly
+            // and confuse cursor positioning. Fall through to return 1.
+            return 1;
         }
 
         1
@@ -353,18 +357,21 @@ mod tests {
 
     #[test]
     fn t_put_wide_char_at_last_column_no_dangling() {
-        // A wide char at the last column can't have a spacer,
-        // but should still be marked as wide (WIDE_CHAR flag set)
-        // and return width 2 so the terminal layer knows it consumed 2.
+        // A wide char at the last column can't have a spacer.
+        // It should NOT be marked as WIDE_CHAR (no dangling lead) and
+        // should return width 1 (consumed 1 cell, placed as narrow fallback).
+        // The terminal layer wraps before this happens, but Row::put_char
+        // must not create a dangling WIDE_CHAR lead without its spacer.
         let mut row = Row::new(3);
         row.put_char(0, 'A');
         row.put_char(1, 'B');
         let consumed = row.put_char(2, 'あ');
-        assert_eq!(consumed, 2, "wide char always returns width 2");
+        assert_eq!(consumed, 1, "wide char at last col returns 1 (no spacer)");
         assert!(
-            row.cells[2].is_wide(),
-            "WIDE_CHAR flag set even without spacer"
+            !row.cells[2].is_wide(),
+            "no WIDE_CHAR flag without spacer (no dangling lead)"
         );
+        assert_eq!(row.cells[2].ch, 'あ', "char still placed in cell");
     }
 
     #[test]
@@ -636,17 +643,14 @@ mod tests {
 
     #[test]
     fn t_r37_row_set_cell_wide_at_last_col() {
-        // set_cell with wide char at last column — spacer can't fit
-        // but WIDE_CHAR flag should still be set and width returned as 2.
+        // Wide char at last column — spacer can't fit.
+        // Should NOT set WIDE_CHAR flag (no dangling lead) and return 1.
         let mut row = Row::new(3);
         row.put_char(0, 'A');
         row.put_char(1, 'B');
         let w = row.put_char(2, '中'); // wide at last col
-        assert_eq!(w, 2, "wide char always returns width 2");
-        assert!(
-            row.cells[2].is_wide(),
-            "WIDE_CHAR flag set even without spacer"
-        );
+        assert_eq!(w, 1, "wide char at last col returns 1 (no spacer room)");
+        assert!(!row.cells[2].is_wide(), "no WIDE_CHAR flag without spacer");
         assert!(row.text().contains('中'));
     }
 
@@ -767,5 +771,24 @@ mod tests {
         // but without its spacer → should be cleared.
         row.resize(4);
         assert!(!row.cells[3].is_wide(), "orphaned lead should be cleared");
+    }
+
+    #[test]
+    fn put_char_wide_at_last_column_no_dangling_lead() {
+        // Writing a wide char at the last column (col == len-1) should not
+        // create a dangling WIDE_CHAR lead without a spacer. The terminal's
+        // put_printable_char wraps before calling put_char, but Row::put_char
+        // may be called from other paths (e.g., reflow, restore). It must not
+        // leave a WIDE_CHAR flag without a spacer.
+        let mut row = Row::new(4);
+        // Place a wide char at col 3 (last column) — only 1 cell available.
+        let consumed = row.put_char(3, '\u{4e00}'); // CJK wide char
+        // The char should NOT have been placed as a wide char lead without
+        // its spacer. It should either be rejected (consumed=0) or placed
+        // as a narrow fallback.
+        assert!(
+            !row.cells[3].is_wide(),
+            "wide char at last column should not create dangling WIDE_CHAR lead"
+        );
     }
 }
