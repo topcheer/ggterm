@@ -79,20 +79,15 @@ impl Row {
     pub fn resize(&mut self, new_width: usize) {
         // When shrinking: handle wide char pairs at the new boundary.
         if new_width < self.cells.len() && new_width > 0 {
-            // Case 1: new last cell is a wide-char lead without its spacer
-            // (spacer got truncated) → clear the lead.
+            // Case 1: the new last cell is a wide-char lead (its spacer
+            // was at new_width, which will be truncated). Clear the lead
+            // to avoid a dangling WIDE_CHAR without its spacer.
             if self.cells[new_width - 1].is_wide() {
                 self.cells[new_width - 1] = Cell::blank();
             }
-            // Case 2: new last cell is a wide-char spacer (lead at new_width-2)
-            // → the lead's spacer got truncated, leaving a dangling WIDE_CHAR flag.
-            // Clear the lead to avoid rendering it at wrong width.
-            if new_width >= 2
-                && self.cells[new_width - 1].is_wide_spacer()
-                && self.cells[new_width - 2].is_wide()
-            {
-                self.cells[new_width - 2] = Cell::blank();
-            }
+            // Note: if new_width-1 is a wide spacer and new_width-2 is
+            // its lead, the pair fits entirely within the new width and
+            // should be preserved. No cleanup needed.
         }
         self.cells.resize(new_width, Cell::blank());
     }
@@ -789,6 +784,43 @@ mod tests {
         assert!(
             !row.cells[3].is_wide(),
             "wide char at last column should not create dangling WIDE_CHAR lead"
+        );
+    }
+
+    #[test]
+    fn resize_preserves_wide_char_pair_at_boundary() {
+        // A wide char pair at cols 3-4 (lead+spacer) should survive a resize
+        // to width 5, since both cells fit within the new width.
+        // Case 2 in Row::resize was incorrectly blanking the lead, AND
+        // leaving an orphaned spacer.
+        let mut row = Row::new(10);
+        row.put_char(0, 'A');
+        row.put_char(1, 'B');
+        row.put_char(2, 'C');
+        row.put_char(3, '\u{4e00}'); // CJK wide char: lead at 3, spacer at 4
+
+        // Verify wide char is intact before resize
+        assert!(row.cells[3].is_wide(), "lead at col 3 before resize");
+        assert!(
+            row.cells[4].is_wide_spacer(),
+            "spacer at col 4 before resize"
+        );
+
+        // Resize to width 5 — the pair at cols 3-4 fits entirely
+        row.resize(5);
+
+        // The wide char pair should be preserved — both cells are in-bounds.
+        assert!(
+            row.cells[3].is_wide(),
+            "wide char lead at col 3 should survive resize to width 5"
+        );
+        assert!(
+            row.cells[4].is_wide_spacer(),
+            "wide char spacer at col 4 should survive resize to width 5"
+        );
+        assert_eq!(
+            row.cells[3].ch, '\u{4e00}',
+            "wide char content should be preserved"
         );
     }
 }
