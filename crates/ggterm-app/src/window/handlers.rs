@@ -3511,13 +3511,8 @@ impl DesktopApp {
         };
 
         let word_chars = self.word_chars_config();
-        let cell_class = |c: usize| -> Option<u8> {
-            let cell = display_row.cell(c)?;
-            if cell.is_wide_spacer() {
-                return None;
-            }
-            let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
-            Some(if ch.is_alphanumeric() || ch == '_' {
+        let classify_char = |ch: char| -> u8 {
+            if ch.is_alphanumeric() || ch == '_' {
                 0
             } else if ch.is_whitespace() {
                 2
@@ -3525,7 +3520,21 @@ impl DesktopApp {
                 0
             } else {
                 1
-            })
+            }
+        };
+        // Wide spacers are transparent — inherit lead cell's class.
+        let cell_class = |c: usize| -> Option<u8> {
+            let cell = display_row.cell(c)?;
+            if cell.is_wide_spacer() {
+                if c == 0 {
+                    return None;
+                }
+                let lead = display_row.cell(c - 1)?;
+                let ch = if lead.ch == '\0' { ' ' } else { lead.ch };
+                return Some(classify_char(ch));
+            }
+            let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
+            Some(classify_char(ch))
         };
 
         // If cursor is on whitespace or past the line, just extend to cursor.
