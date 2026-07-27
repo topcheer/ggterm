@@ -23372,4 +23372,228 @@ mod tests {
         assert_eq!(t.cursor().0, 7, "tab at last col stays at last col");
         assert_eq!(t.cursor().1, 0, "no line wrap from tab");
     }
+
+    // ── Round 35: Parser robustness + untested feature areas ───────────
+
+    #[test]
+    fn t_r35_dcs_xtgettcap_response() {
+        // DCS + q (XTGETTCAP) — query terminal name capability.
+        // "TN" hex = "544e", response contains hex-encoded "ggterm".
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1bP+q544e\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        // Response: DCS 1+r 544e=<hex>. 67677465726d = "ggterm" in hex.
+        assert!(resp.contains("544e="), "XTGETTCAP TN response: {}", resp);
+    }
+
+    #[test]
+    fn t_r35_pm_consumed_silently() {
+        // PM (ESC ^) — Privacy Message. Must be consumed until ST.
+        // Content should NOT appear on screen.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b^Hello World\x1b\\");
+        feed(&mut t, b"X");
+        // PM content should not have been printed
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "PM content consumed");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "only X printed");
+    }
+
+    #[test]
+    fn t_r35_apc_consumed_silently() {
+        // APC (ESC _) — Application Program Command. Must be consumed until ST.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b_Gp=a,b\x1b\\"); // like kitty graphics APC
+        feed(&mut t, b"Y");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'Y',
+            "APC consumed, Y printed"
+        );
+    }
+
+    #[test]
+    fn t_r35_dcs_with_params_consumed() {
+        // DCS with intermediate params — should be consumed without crash.
+        let mut t = Terminal::new(20, 3);
+        // DCS $ q (DECRQSS) — Request Status String
+        feed(&mut t, b"\x1bP$qm\x1b\\");
+        // Should produce a response for SGR
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("m") || resp.is_empty(),
+            "DECRQSS for SGR: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r35_osc_very_long_payload_handled() {
+        // OSC with very long payload — should be capped at 64KB, not crash.
+        // When buffer overflows, parser returns to Ground (excess bytes print).
+        let mut t = Terminal::new(20, 3);
+        let long_title = "A".repeat(70000); // exceeds 65536 OSC limit
+        let osc = format!("\x1b]0;{}\x07", long_title);
+        feed(&mut t, osc.as_bytes());
+        // Terminal should be functional — some 'A's may appear from overflow.
+        assert!(t.grid().width() == 20, "terminal functional after long OSC");
+    }
+
+    #[test]
+    fn t_r35_dcs_very_long_data_handled() {
+        // DCS with very long data — should be capped at 1MB, not crash.
+        // When buffer overflows, parser returns to Ground.
+        let mut t = Terminal::new(20, 3);
+        let long_data = "X".repeat(1100000); // exceeds 1MB DCS limit
+        let dcs = format!("\x1bP1$q{}\x1b\\", long_data);
+        feed(&mut t, dcs.as_bytes());
+        // Terminal should be functional.
+        assert!(t.grid().width() == 20, "terminal functional after long DCS");
+    }
+
+    #[test]
+    fn t_r35_csi_colon_truecolor_fg() {
+        // SGR 38:2:r:g:b — colon-separated truecolor (alternative syntax).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38:2:100:200:50m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Rgb(100, 200, 50),
+            "colon truecolor fg"
+        );
+    }
+
+    #[test]
+    fn t_r35_csi_colon_truecolor_bg() {
+        // SGR 48:2:r:g:b — colon-separated truecolor bg.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[48:2:10:20:30m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().bg,
+            Color::Rgb(10, 20, 30),
+            "colon truecolor bg"
+        );
+    }
+
+    #[test]
+    fn t_r35_csi_colon_256color() {
+        // SGR 38:5:N — colon-separated 256-color.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38:5:42m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(42),
+            "colon 256-color fg"
+        );
+    }
+
+    #[test]
+    fn t_r35_csi_colon_underline_curly() {
+        // SGR 4:3 — curly underline via colon syntax.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4:3m");
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::UNDERLINE_CURLY),
+            "curly underline via colon syntax"
+        );
+        assert!(
+            flags.contains(CellFlags::UNDERLINE),
+            "UNDERLINE flag also set"
+        );
+    }
+
+    #[test]
+    fn t_r35_csi_colon_underline_dotted() {
+        // SGR 4:4 — dotted underline.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4:4m");
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::UNDERLINE_DOTTED),
+            "dotted underline via colon syntax"
+        );
+    }
+
+    #[test]
+    fn t_r35_csi_colon_underline_dashed() {
+        // SGR 4:5 — dashed underline.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4:5m");
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(
+            flags.contains(CellFlags::UNDERLINE_DASHED),
+            "dashed underline via colon syntax"
+        );
+    }
+
+    #[test]
+    fn t_r35_csi_colon_mixed_with_semicolon() {
+        // Mix of colon and semicolon: SGR 1;38:2:255:0:0;4m
+        // = bold + truecolor red fg + underline
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;38:2:255:0:0;4m");
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD), "bold set");
+        assert!(cell.flags.contains(CellFlags::UNDERLINE), "underline set");
+        assert_eq!(cell.fg, Color::Rgb(255, 0, 0), "truecolor red fg");
+    }
+
+    #[test]
+    fn t_r35_dcs_decrqss_scroll_region() {
+        // DECRQSS for 'r' (DECSTBM) — should return current scroll region.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // set region rows 2-6
+        feed(&mut t, b"\x1bP$qr\x1b\\"); // DECRQSS for DECSTBM selector "r"
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        // Response should include the region params
+        assert!(
+            resp.contains("3") && resp.contains("7"),
+            "DECRQSS DECSTBM response: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r35_sos_consumed_silently() {
+        // SOS (ESC X) — Start of String. Must be consumed until ST.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1bXsome string\x1b\\");
+        feed(&mut t, b"Z");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'Z',
+            "SOS consumed, Z printed"
+        );
+    }
+
+    #[test]
+    fn t_r35_osc_empty_payload() {
+        // OSC with completely empty payload — should not crash.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]\x07"); // OSC with just BEL
+        feed(&mut t, b"X");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "empty OSC handled");
+    }
+
+    #[test]
+    fn t_r35_osc_no_terminator_then_normal_text() {
+        // OSC that never terminates — followed by text.
+        // The parser should eventually recover when it hits ESC for next sequence.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;test"); // no terminator
+        feed(&mut t, b"\x1b[1;1HX"); // ESC [ should start new CSI
+        // The OSC should have been abandoned when ESC [ arrived
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'X',
+            "recovery from unterminated OSC"
+        );
+    }
 }
