@@ -2471,6 +2471,7 @@ impl Perform for Terminal {
             }
             b'I' => {
                 // CHT — Cursor Horizontal Tab forward N times.
+                self.cursor.pending_wrap = false;
                 let n = (Self::param(params, 0, 1) as usize).min(self.grid.width());
                 for _ in 0..n {
                     self.execute(0x09);
