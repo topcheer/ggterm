@@ -138,6 +138,18 @@ impl Row {
         }
         // Shift right (Cell is Clone, not Copy, so use clone)
         let src_end = len - count;
+        // Check if the last cell being shifted (at src_end-1) is a wide
+        // char lead. If so, it would be moved to src_end-1+count = len-1,
+        // but its spacer (at src_end) stays behind and gets blanked.
+        // Clear the orphaned lead before shifting to avoid a dangling
+        // WIDE_CHAR flag at the shifted position.
+        if src_end > 0
+            && src_end < len
+            && self.cells[src_end - 1].is_wide()
+            && self.cells[src_end].is_wide_spacer()
+        {
+            self.cells[src_end - 1].clear();
+        }
         for i in (col..src_end).rev() {
             self.cells[i + count] = self.cells[i].clone();
         }
@@ -414,6 +426,34 @@ mod tests {
         row.cells[0].ch = 'X';
         row.insert_char(4, 3); // at last col — no effect
         assert_eq!(row.cells[0].ch, 'X');
+    }
+
+    #[test]
+    fn t_insert_char_orphans_wide_lead_at_boundary() {
+        // ICH should not leave a dangling WIDE_CHAR flag when the
+        // shift boundary splits a wide char pair.
+        // Setup: [A] [中 lead] [spacer] [B] [ ] (5 cols)
+        let mut row = Row::new(5);
+        row.cells[0].ch = 'A';
+        row.put_char(1, '中'); // wide at cols 1-2
+        row.cells[3].ch = 'B';
+        // Insert 1 at col 0 — shifts everything right by 1.
+        // The wide lead at col 3 (was col 2, shifted) would be at
+        // the last position without its spacer (spacer was blanked).
+        // After fix: the orphaned lead should be cleared.
+        row.insert_char(0, 1);
+        // The cell that was the wide lead (now shifted) should not
+        // have a dangling WIDE_CHAR flag.
+        for cell in &row.cells {
+            if cell.is_wide() {
+                // If there's a wide lead, it must have a spacer after it.
+                let idx = row.cells.iter().position(|c| c.is_wide()).unwrap();
+                assert!(
+                    idx + 1 < row.cells.len() && row.cells[idx + 1].is_wide_spacer(),
+                    "wide char lead at col {idx} must have a spacer"
+                );
+            }
+        }
     }
 
     #[test]
