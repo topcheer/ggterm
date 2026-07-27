@@ -3746,9 +3746,20 @@ impl Perform for Terminal {
                         }
                     }
                 } else {
-                    // Normal set/clear without selector prefix
+                    // No semicolon in payload: could be a bare selector
+                    // like "c" (OSC 52 ; c) or raw base64 data without a
+                    // selector. Per xterm spec, OSC 52 ; <selector> with
+                    // no data clears the clipboard. If the payload looks
+                    // like a known selector char, treat as clear.
+                    // Otherwise treat the payload as raw base64 data.
                     let base64_data = if let Some(idx) = payload.find(';') {
                         &payload[idx + 1..]
+                    } else if matches!(
+                        payload,
+                        "c" | "p" | "s" | "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"
+                    ) {
+                        // Bare selector with no data → clear clipboard.
+                        ""
                     } else {
                         payload
                     };
@@ -5322,6 +5333,21 @@ mod tests {
         assert!(t.take_pending_clipboard_set().is_some());
         // Second take should return None
         assert!(t.take_pending_clipboard_set().is_none());
+    }
+
+    #[test]
+    fn t_osc_52_bare_selector_clears() {
+        let mut t = Terminal::new(80, 24);
+        // OSC 52 ; c (bare selector, no semicolon, no data) should clear
+        // the clipboard, NOT attempt to base64-decode "c" as data.
+        // Previously this would decode "c" to garbage bytes.
+        feed(&mut t, b"\x1b]52;c\x07");
+        let result = t.take_pending_clipboard_set();
+        assert_eq!(
+            result,
+            Some(Vec::new()),
+            "bare selector should clear clipboard"
+        );
     }
 
     #[test]
