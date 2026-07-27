@@ -1980,7 +1980,7 @@ impl DesktopApp {
                         let cmd = extract_ai_command(content);
                         if !cmd.is_empty() {
                             let mut to_send = cmd.into_bytes();
-                            to_send.push(b'\n');
+                            to_send.push(b'\r'); // Enter sends \r
                             self.write_to_pty(&to_send);
                             self.ai_overlay.hide();
                             self.show_toast("Command executed");

@@ -1254,7 +1254,7 @@ impl DesktopApp {
         // Clear selection and send the command + Enter.
         self.selection.clear();
         let mut bytes = text.into_bytes();
-        bytes.push(b'\n');
+        bytes.push(b'\r');
         self.write_to_pty(&bytes);
         self.show_toast("Re-running last command".to_string());
     }
@@ -1270,7 +1270,7 @@ impl DesktopApp {
 
         // Prepare bytes before open_tab (avoids borrow conflict).
         let mut bytes = text.into_bytes();
-        bytes.push(b'\n');
+        bytes.push(b'\r');
         self.selection.clear();
         self.open_tab();
         self.write_to_pty(&bytes);
@@ -1287,7 +1287,7 @@ impl DesktopApp {
         }
 
         let mut bytes = text.into_bytes();
-        bytes.push(b'\n');
+        bytes.push(b'\r');
         self.selection.clear();
         self.split_pane_horizontal();
         self.write_to_pty(&bytes);
@@ -1648,7 +1648,7 @@ impl DesktopApp {
         let bracketed = self.active_session().app().terminal().bracketed_paste();
         let bytes = crate::clipboard::bracket_paste(text, bracketed);
         self.write_to_pty(&bytes);
-        self.write_to_pty(b"\n");
+        self.write_to_pty(b"\r"); // Enter key sends \r, not \n
         self.show_toast("Pasted and executed".to_string());
     }
 
