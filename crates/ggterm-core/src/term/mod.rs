@@ -21903,4 +21903,307 @@ mod tests {
         assert_eq!(top, 0, "scroll top reset to 0");
         assert_eq!(bottom, 6, "scroll bottom reset to height");
     }
+
+    // ── Round 29-1: Wide char CJK/emoji edge cases ─────────────────────
+
+    #[test]
+    fn t_r29_wide_char_overwrite_lead_with_narrow() {
+        // Print wide char 中 (cols 0-1), then move cursor to col 0 and
+        // overwrite with narrow 'X'. The spacer at col 1 should be blanked.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中".as_bytes());
+        feed(&mut t, b"\x1b[H"); // cursor to 0,0
+        feed(&mut t, b"X"); // overwrite lead
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'X',
+            "lead overwritten with X"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            ' ',
+            "spacer blanked after overwrite"
+        );
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "no spacer flag"
+        );
+    }
+
+    #[test]
+    fn t_r29_wide_char_overwrite_spacer_with_narrow() {
+        // Print wide char, then move cursor to col 1 (spacer) and
+        // print narrow char there. The lead should be cleared.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中".as_bytes()); // cols 0-1
+        feed(&mut t, b"\x1b[1;2H"); // cursor at col 1 (spacer)
+        feed(&mut t, b"Y"); // overwrite spacer
+        // The lead at col 0 should be cleared (can't have orphaned spacer)
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "lead cleared when spacer overwritten"
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'Y', "Y at col 1");
+    }
+
+    #[test]
+    fn t_r29_mixed_cjk_ascii_width() {
+        // Mix of CJK and ASCII — verify correct column positions.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "AB中CD".as_bytes()); // A(0) B(1) 中(2-3) C(4) D(5)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '中');
+        assert!(
+            t.grid().cell(2, 0).unwrap().is_wide(),
+            "中 is wide char lead"
+        );
+        // Spacer cell uses ' ' as ch with WIDE_SPACER flag
+        assert!(
+            t.grid().cell(3, 0).unwrap().is_wide_spacer(),
+            "col 3 is spacer"
+        );
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'C');
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'D');
+        assert_eq!(t.cursor().0, 6, "cursor at col 6");
+    }
+
+    #[test]
+    fn t_r29_wide_char_insert_mode_shifts() {
+        // In insert mode, printing a wide char shifts existing content.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCD"); // cols 0-3
+        feed(&mut t, b"\x1b[H"); // cursor to 0,0
+        feed(&mut t, b"\x1b[4h"); // IRM on
+        feed(&mut t, "中".as_bytes()); // insert wide at col 0
+        // Should shift ABCD right by 2: 中 _ A B C D
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '中');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B');
+    }
+
+    #[test]
+    fn t_r29_emoji_vs_variation_selector() {
+        // ❤ followed by VS16 (U+FE0F) — VS16 is zero-width, attaches as combining.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "❤\u{FE0F}".as_bytes());
+        // ❤ is width 1 by default, VS16 makes it width 2 (emoji presentation)
+        // But unicode-width treats VS16 as zero-width combining.
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, '❤', "base char is heart");
+        // VS16 should be in combining
+        assert!(
+            cell.combining.contains(&'\u{FE0F}'),
+            "VS16 attached as combining"
+        );
+    }
+
+    // ── Round 29-2: Resize/reflow edge cases ───────────────────────────
+
+    #[test]
+    fn t_r29_resize_preserves_pending_wrap_content() {
+        // Fill a row exactly (sets pending_wrap), then resize.
+        // Content should survive reflow.
+        // Use 1 visible row to avoid blank rows pushing content to scrollback.
+        let mut t = Terminal::with_scrollback(4, 1, 100);
+        feed(&mut t, b"ABCD"); // fills row 0, pending_wrap=true
+        t.resize(2, 1); // shrink — reflow
+        // ABCD reflows to: AB | CD (2 cols). With 1 visible row,
+        // last segment (CD) is visible, AB in scrollback.
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'C',
+            "CD visible after resize from pending_wrap"
+        );
+        assert_eq!(t.grid().scrollback_len(), 1, "AB in scrollback");
+    }
+
+    #[test]
+    fn t_r29_resize_grow_keeps_cursor_clamped() {
+        // After growing, cursor should not exceed old bounds initially.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"AB"); // cursor at col 2
+        t.resize(80, 24); // grow
+        assert_eq!(t.cursor().0, 2, "cursor x unchanged after grow");
+        assert_eq!(t.cursor().1, 0, "cursor y unchanged after grow");
+    }
+
+    #[test]
+    fn t_r29_resize_height_grow_pulls_scrollback() {
+        // Grow height — should pull from scrollback.
+        let mut t = Terminal::with_scrollback(5, 2, 100);
+        // Fill 3 rows (1 goes to scrollback)
+        feed(&mut t, b"AAA\r\n");
+        feed(&mut t, b"BBB\r\n");
+        feed(&mut t, b"CCC"); // CCC on visible, AAA in scrollback
+        let sb_before = t.grid().scrollback_len();
+        assert!(sb_before > 0, "scrollback has content");
+        t.resize(5, 3); // grow height — pull 1 from scrollback
+        assert!(
+            t.grid().scrollback_len() < sb_before,
+            "scrollback shrunk after height grow"
+        );
+    }
+
+    #[test]
+    fn t_r29_resize_to_1x1_no_panic() {
+        // Resize to minimum size — should not panic or corrupt.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"Hello World Test");
+        t.resize(1, 1);
+        assert_eq!(t.grid().width(), 1);
+        assert_eq!(t.grid().height(), 1);
+        // Grow back
+        t.resize(80, 24);
+        assert_eq!(t.grid().width(), 80);
+    }
+
+    // ── Round 29-3: Tab stops HTS/TBC/CHT/CBT edge cases ───────────────
+
+    #[test]
+    fn t_r29_tbc_clear_all_then_ht_default() {
+        // Clear all tab stops (CSI 3g), then HT should go to end of line.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"A\t"); // A at col 0, then HT
+        // With no stops, HT goes to last col
+        assert_eq!(t.cursor().0, 19, "HT goes to last col when no stops");
+    }
+
+    #[test]
+    fn t_r29_tbc_clear_current_then_ht() {
+        // Clear current tab stop, then HT should skip it.
+        let mut t = Terminal::new(20, 3);
+        // Default stops at 8, 16. Clear the one at col 8.
+        feed(&mut t, b"\x1b[1;9H"); // cursor at col 8 (the stop)
+        feed(&mut t, b"\x1b[g"); // TBC clear current (col 8)
+        feed(&mut t, b"\x1b[1;1H"); // back to col 0
+        feed(&mut t, b"\t"); // HT — should skip col 8, go to 16
+        assert_eq!(t.cursor().0, 16, "HT skips cleared stop, goes to 16");
+    }
+
+    #[test]
+    fn t_r29_hts_at_arbitrary_col_then_ht() {
+        // Set a custom tab stop at col 5, then HT from col 0 goes to 5.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[1;6H"); // cursor at col 5
+        feed(&mut t, b"\x1bH"); // HTS — set stop at col 5
+        feed(&mut t, b"\x1b[1;1H"); // back to col 0
+        feed(&mut t, b"\t"); // HT from col 0
+        assert_eq!(t.cursor().0, 5, "HT goes to custom stop at col 5");
+    }
+
+    #[test]
+    fn t_r29_cht_multiple_from_midpoint() {
+        // CHT (CSI Ps I) — forward tab N times.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;3H"); // cursor at col 2
+        feed(&mut t, b"\x1b[2I"); // CHT 2 — advance 2 tab stops
+        // From col 2: next stop 8, next stop 16
+        assert_eq!(t.cursor().0, 16, "CHT 2 from col 2 goes to col 16");
+    }
+
+    #[test]
+    fn t_r29_cbt_from_col_17() {
+        // CBT (CSI Ps Z) backward from beyond 16 goes to 8.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;18H"); // cursor at col 17
+        feed(&mut t, b"\x1b[1Z"); // CBT 1
+        assert_eq!(t.cursor().0, 16, "CBT from 17 goes to 16");
+        feed(&mut t, b"\x1b[1Z"); // CBT 1 again
+        assert_eq!(t.cursor().0, 8, "CBT from 16 goes to 8");
+    }
+
+    #[test]
+    fn t_r29_ht_preserves_custom_after_hts_at_8() {
+        // HTS at default position (col 8) — should still work.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[1;9H"); // cursor at col 8
+        feed(&mut t, b"\x1bH"); // HTS at col 8
+        feed(&mut t, b"\x1b[1;1H"); // col 0
+        feed(&mut t, b"\t"); // HT
+        assert_eq!(t.cursor().0, 8, "HT goes to re-created stop at 8");
+    }
+
+    // ── Round 29-4: Alternate screen buffer edge cases ─────────────────
+
+    #[test]
+    fn t_r29_alt_screen_main_content_preserved_on_return() {
+        // Write to main, switch to alt, write to alt, switch back.
+        // Main content must be intact.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"MAIN");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[2J"); // clear alt
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "main preserved on return"
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'A', "A of MAIN");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'I', "I of MAIN");
+    }
+
+    #[test]
+    fn t_r29_alt_screen_cursor_restored() {
+        // Cursor position should be saved on alt enter, restored on exit.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at row 2, col 4
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — saves cursor
+        feed(&mut t, b"\x1b[1;1H"); // move to home in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — restores cursor
+        assert_eq!(t.cursor().0, 4, "cursor x restored after alt");
+        assert_eq!(t.cursor().1, 2, "cursor y restored after alt");
+    }
+
+    #[test]
+    fn t_r29_alt_screen_does_not_add_to_scrollback() {
+        // Content scrolled in alt screen should NOT go to main scrollback.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        // Fill and scroll multiple lines
+        feed(&mut t, b"Line1\r\nLine2\r\nLine3\r\nLine4\r\nLine5");
+        let sb = t.grid().scrollback_len();
+        // Alt screen should not accumulate scrollback
+        assert_eq!(sb, 0, "alt screen has no scrollback: {}", sb);
+    }
+
+    #[test]
+    fn t_r29_alt_screen_1049_re_enter_is_noop() {
+        // Re-entering alt (1049h) when already in alt is a no-op,
+        // not a clear. Content persists.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ALT1");
+        feed(&mut t, b"\x1b[?1049h"); // re-enter (no-op)
+        // Content should persist (not cleared)
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "alt content persists on re-enter"
+        );
+    }
+
+    #[test]
+    fn t_r29_alt_screen_nested_enter_exit() {
+        // Multiple alt screen toggles should be stable.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"MAIN");
+        feed(&mut t, b"\x1b[?1049h"); // enter
+        feed(&mut t, b"ALT1");
+        feed(&mut t, b"\x1b[?1049l"); // exit
+        feed(&mut t, b"\x1b[?1049h"); // enter again
+        feed(&mut t, b"ALT2");
+        feed(&mut t, b"\x1b[?1049l"); // exit
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "main intact after nested"
+        );
+    }
 }
