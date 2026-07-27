@@ -3396,18 +3396,30 @@ impl Perform for Terminal {
                             handled = true;
                         }
                         (4, 2) => {
+                            self.flags &= !(CellFlags::UNDERLINE_CURLY
+                                | CellFlags::UNDERLINE_DOTTED
+                                | CellFlags::UNDERLINE_DASHED);
                             self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOUBLE;
                             handled = true;
                         }
                         (4, 3) => {
+                            self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                                | CellFlags::UNDERLINE_DOTTED
+                                | CellFlags::UNDERLINE_DASHED);
                             self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_CURLY;
                             handled = true;
                         }
                         (4, 4) => {
+                            self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                                | CellFlags::UNDERLINE_CURLY
+                                | CellFlags::UNDERLINE_DASHED);
                             self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DOTTED;
                             handled = true;
                         }
                         (4, 5) => {
+                            self.flags &= !(CellFlags::UNDERLINE_DOUBLE
+                                | CellFlags::UNDERLINE_CURLY
+                                | CellFlags::UNDERLINE_DOTTED);
                             self.flags |= CellFlags::UNDERLINE | CellFlags::UNDERLINE_DASHED;
                             handled = true;
                         }
@@ -4722,6 +4734,29 @@ mod tests {
         let flags_after = t.grid().cell(1, 0).unwrap().flags;
         assert!(!flags_after.contains(CellFlags::UNDERLINE));
         assert!(!flags_after.contains(CellFlags::UNDERLINE_CURLY));
+    }
+
+    #[test]
+    fn t_p147_underline_style_switch_clears_previous() {
+        // Switching between underline styles should clear the previous style.
+        // SGR 4:2 (double) then 4:3 (curly) should NOT leave UNDERLINE_DOUBLE set.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[4:2m");
+        assert!(t.flags.contains(CellFlags::UNDERLINE_DOUBLE));
+        assert!(!t.flags.contains(CellFlags::UNDERLINE_CURLY));
+        feed(&mut t, b"\x1b[4:3m");
+        assert!(t.flags.contains(CellFlags::UNDERLINE_CURLY));
+        assert!(
+            !t.flags.contains(CellFlags::UNDERLINE_DOUBLE),
+            "switching to curly should clear double"
+        );
+        // Also verify dotted/dashed don't accumulate.
+        feed(&mut t, b"\x1b[4:4m");
+        assert!(!t.flags.contains(CellFlags::UNDERLINE_CURLY));
+        assert!(t.flags.contains(CellFlags::UNDERLINE_DOTTED));
+        feed(&mut t, b"\x1b[4:5m");
+        assert!(!t.flags.contains(CellFlags::UNDERLINE_DOTTED));
+        assert!(t.flags.contains(CellFlags::UNDERLINE_DASHED));
     }
 
     #[test]
