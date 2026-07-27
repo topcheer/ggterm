@@ -2952,10 +2952,19 @@ impl Perform for Terminal {
             // Coordinates are 1-based. Ps determines the fill character:
             //   numeric → that code point, but most apps use space (Ps=0 or omitted).
             b'x' if intermediates.contains(&b'$') => {
-                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
-                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                // DECFRA format: CSI Pch;Pt;Pl;Pb;Pr $ x
+                // Pch = fill char (must be 32-126 or 160-255, else ignored)
+                let pch = params.first().copied().unwrap_or(0);
+                // Validate fill char per DEC STD 070
+                let valid_fill = (pch >= 0x20 && pch <= 0x7e) || (pch >= 0xa0 && pch <= 0xff);
+                if !valid_fill {
+                    return;
+                }
+                let fill_char = char::from_u32(pch as u32).unwrap_or(' ');
+                let top = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let bottom = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let right = params.get(4).copied().unwrap_or(1).saturating_sub(1) as usize;
                 let width = self.grid.width();
                 let height = self.grid.height();
                 let top = top.min(height.saturating_sub(1));
@@ -2963,12 +2972,6 @@ impl Perform for Terminal {
                 let left = left.min(width.saturating_sub(1));
                 let right = right.min(width.saturating_sub(1));
                 if top <= bottom && left <= right {
-                    let fill_char = params
-                        .get(4)
-                        .copied()
-                        .filter(|&c| c >= 0x20)
-                        .and_then(|c| char::from_u32(c as u32))
-                        .unwrap_or(' ');
                     let (fg, bg, flags) = (self.fg, self.bg, self.flags);
                     for row in top..=bottom {
                         for col in left..=right {
@@ -9506,9 +9509,9 @@ mod tests {
         let mut t = Terminal::new(10, 5);
         // Fill some text first
         feed(&mut t, b"ABCDEFGH");
-        // DECFRA: fill rect rows 2-4, cols 2-5 (1-based) = rows 1-3, cols 1-4 (0-based)
-        // CSI 2;2;4;5 $ x
-        feed(&mut t, b"\x1b[2;2;4;5$x");
+        // DECFRA format: CSI Pch;Pt;Pl;Pb;Pr $ x
+        // Pch=32 (space), fill rect rows 2-4, cols 2-5 (1-based)
+        feed(&mut t, b"\x1b[32;2;2;4;5$x");
         // Row 0 should be unchanged
         let r0 = t.grid().row(0).unwrap().text();
         assert!(r0.starts_with("ABCDEFGH"), "row 0 unchanged: {r0:?}");
@@ -9531,8 +9534,8 @@ mod tests {
         let mut t = Terminal::new(10, 4);
         // Set bg to red (SGR 41)
         feed(&mut t, b"\x1b[41m");
-        // DECFRA: fill rect rows 1-2, cols 1-3
-        feed(&mut t, b"\x1b[1;1;2;3$x");
+        // DECFRA: Pch=32 (space), fill rect rows 1-2, cols 1-3
+        feed(&mut t, b"\x1b[32;1;1;2;3$x");
         // Check cells have red background
         let cell = &t.grid()[(0, 0)];
         assert_eq!(
@@ -9545,8 +9548,8 @@ mod tests {
     #[test]
     fn t_decfra_clamps_to_screen_bounds() {
         let mut t = Terminal::new(5, 3);
-        // DECFRA with out-of-bounds coords should clamp, not panic
-        feed(&mut t, b"\x1b[1;1;100;100$x");
+        // DECFRA: Pch=32, out-of-bounds coords should clamp, not panic
+        feed(&mut t, b"\x1b[32;1;1;100;100$x");
         // Should fill entire screen without panicking
         for row in 0..3 {
             for col in 0..5 {
@@ -9561,15 +9564,46 @@ mod tests {
         let mut t = Terminal::new(5, 3);
         // Pre-fill with text
         feed(&mut t, b"HELLO");
-        // DECFRA with no params → defaults to 1;1;1;1 (single cell at 0,0)
+        // DECFRA with no params: Pch omitted (invalid, should be ignored)
+        // Per spec: if Pch is not in 32-126/160-255 range, command is ignored.
+        // With no params, Pch defaults to 0 → invalid → no-op.
         feed(&mut t, b"\x1b[$x");
-        // Cell (0,0) should be space, rest of row 0 unchanged
+        // Since Pch=0 is invalid, nothing should change.
         let r0 = t.grid().row(0).unwrap().text();
-        assert_eq!(r0.chars().next(), Some(' '), "cell 0,0 should be space");
         assert!(
-            r0[1..].starts_with("ELLO"),
-            "rest should be unchanged: {r0:?}"
+            r0.starts_with("HELLO"),
+            "DECFRA with invalid Pch should be no-op: {r0:?}"
         );
+    }
+
+    #[test]
+    fn t_decfra_invalid_pch_ignored() {
+        // Per DEC STD 070: if Pch is not in 32-126 or 160-255, command is ignored.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE");
+        // Pch=0 (invalid) → entire command ignored
+        feed(&mut t, b"\x1b[0;1;1;3;3$x");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "invalid Pch → no-op");
+
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE");
+        // Pch=10 (control char, invalid) → ignored
+        feed(&mut t, b"\x1b[10;1;1;3;3$x");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "Pch=10 (control) → no-op"
+        );
+    }
+
+    #[test]
+    fn t_decfra_valid_high_pch() {
+        // Pch in 160-255 range is valid (Latin-1 supplement).
+        let mut t = Terminal::new(5, 3);
+        // Pch=0xA0 (160) = NBSP, valid
+        feed(&mut t, b"\x1b[160;1;1;2;2$x");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch as u32, 0xA0, "Pch=160 should produce NBSP");
     }
 
     // ===== DECERA — Erase Rectangle Area tests =====
@@ -9652,8 +9686,8 @@ mod tests {
     #[test]
     fn t_decera_after_decfra_roundtrip() {
         let mut t = Terminal::new(8, 3);
-        // DECFRA: fill rect rows 1-3, cols 1-4 with red bg (fill char defaults to space)
-        feed(&mut t, b"\x1b[41m\x1b[1;1;3;4$x");
+        // DECFRA: Pch=32 (space), fill rect rows 1-3, cols 1-4 with red bg
+        feed(&mut t, b"\x1b[41m\x1b[32;1;1;3;4$x");
         // Verify filled with space and red bg
         assert_eq!(t.grid()[(0, 0)].ch, ' ', "DECFRA fills with space");
         assert_eq!(
@@ -13639,9 +13673,8 @@ mod tests {
         feed(&mut t, "\u{4E00}".as_bytes()); // wide char at cols 0-1
         assert!(t.grid().cell(1, 0).unwrap().is_wide_spacer());
 
-        // DECFRA: fill row 1, cols 1-3 (1-based) = row 0, cols 0-2 (0-based)
-        // This covers the wide char lead at col 0 and spacer at col 1
-        feed(&mut t, b"\x1b[1;1;1;3$x");
+        // DECFRA: Pch=32 (space), fill row 1, cols 1-3 (1-based) = row 0, cols 0-2
+        feed(&mut t, b"\x1b[32;1;1;1;3$x");
         // The spacer at col 1 should be cleared (not left orphaned)
         let cell1 = t.grid().cell(1, 0).unwrap();
         assert!(
@@ -21357,11 +21390,9 @@ mod tests {
     fn t_r24_decfra_fill_with_char() {
         // DECFRA with a specific fill character (e.g. 'X').
         let mut t = Terminal::new(10, 5);
-        feed(&mut t, b"\x1b[2;4;2;5;88\x24"); // DECACS not needed, DECFRA: rows 2-4, cols 2-5, char 'X'(88)
-        // Actually DECFRA is CSI Ps... $ x — let me use proper format
-        let mut t = Terminal::new(10, 5);
-        // DECFRA: top;left;bottom;right;char$ x → rows 1-3 (0-based), cols 1-4, fill with 'X'
-        feed(&mut t, b"\x1b[2;2;4;5;88$x");
+        // DECFRA format: CSI Pch;Pt;Pl;Pb;Pr $ x
+        // Pch=88 ('X'), fill rows 2-4, cols 2-5 (1-based) = rows 1-3, cols 1-4
+        feed(&mut t, b"\x1b[88;2;2;4;5$x");
         assert_eq!(t.grid().cell(1, 1).unwrap().ch, 'X', "X at (1,1)");
         assert_eq!(t.grid().cell(4, 3).unwrap().ch, 'X', "X at (4,3)");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "blank at (0,0)");
@@ -21374,7 +21405,8 @@ mod tests {
         feed(&mut t, "你".as_bytes()); // wide at cols 0-1
         feed(&mut t, b"ABCDEF"); // cols 2-7
         // Fill col 1 (spacer cell) with space via DECFRA
-        feed(&mut t, b"\x1b[1;2;1;2;32$x"); // fill col 1 (spacer) with space
+        // Format: Pch;Pt;Pl;Pb;Pr $ x → Pch=32, row 1, col 2 only
+        feed(&mut t, b"\x1b[32;1;2;1;2$x");
         // The wide char should be cleaned up — no orphan spacer at col 1
         assert!(
             !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
@@ -21553,16 +21585,15 @@ mod tests {
 
     #[test]
     fn t_r24_decfra_default_params_single_cell() {
-        // DECFRA with no params → fills cell at (0,0) with space.
+        // DECFRA with no params: Pch defaults to 0 → invalid → command ignored.
         let mut t = Terminal::new(10, 5);
         feed(&mut t, b"ABCDEFGH");
-        feed(&mut t, b"\x1b[$x"); // DECFRA with no params → fills (0,0) with space
+        feed(&mut t, b"\x1b[$x"); // No params → Pch=0 → invalid → no-op
         assert_eq!(
             t.grid().cell(0, 0).unwrap().ch,
-            ' ',
-            "cell (0,0) filled with space"
+            'A',
+            "cell (0,0) unchanged when Pch is invalid"
         );
-        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C', "neighbor preserved");
     }
 
     #[test]
