@@ -2424,15 +2424,18 @@ impl Perform for Terminal {
             }
             // DA1 — primary device attributes
             b'c' if !intermediates.contains(&b'>') && !intermediates.contains(&b'=') => {
-                // Respond: CSI ? 62 ; 1 ; 6 ; 9 ; 16 ; 22 ; 29 c
-                // VT220-level capabilities — only features we actually support:
-                //   62 = VT220, 1 = 132-cols,
-                //   6 = selective erase, 9 = national charset,
-                //   16 = locator port,
-                //   22 = ANSI color, 29 = ANSI text locator (OSC 8 hyperlinks)
-                // Removed: 4 (sixel — not rendered), 2 (printer), 15 (DEC tech)
+                // Respond: CSI ? 62 ; 6 ; 22 ; 28 ; 29 c
+                // VT220-level — only features we actually support:
+                //   62 = VT220,
+                //   6 = selective erase (DECSCA/DECSED),
+                //   22 = ANSI color (ISO 8613-6),
+                //   28 = rectangular editing (DECFRA/DECERA/DECSERA),
+                //   29 = ANSI text locator (OSC 8 hyperlinks).
+                // NOT advertised (unimplemented):
+                //   1 (132-col DECCOLM), 2 (printer), 4 (sixel),
+                //   9 (NRC), 15 (DEC tech), 16 (locator port).
                 self.response_buffer
-                    .extend_from_slice(b"\x1b[?62;1;6;9;16;22;29c");
+                    .extend_from_slice(b"\x1b[?62;6;22;28;29c");
             }
             // DA2 — secondary device attributes (CSI > c)
             b'c' if intermediates.contains(&b'>') => {
@@ -7788,6 +7791,33 @@ mod tests {
         assert!(
             s.contains(";29c") || s.contains(";29;"),
             "DA1 should report text locator (29) for OSC 8 hyperlinks, got: {s}"
+        );
+        // Must advertise rectangular editing (28) — DECFRA/DECERA/DECSERA are implemented.
+        assert!(
+            s.contains(";28;") || s.contains(";28c"),
+            "DA1 should report rectangular editing (28), got: {s}"
+        );
+        // Must NOT advertise unimplemented capabilities.
+        assert!(
+            !s.contains(";1;") && !s.contains(";1c"),
+            "DA1 should not advertise 132-col (1) — DECCOLM not implemented, got: {s}"
+        );
+        assert!(
+            !s.contains(";9;") && !s.contains(";9c"),
+            "DA1 should not advertise NRC (9) — not implemented, got: {s}"
+        );
+        assert!(
+            !s.contains(";16;") && !s.contains(";16c"),
+            "DA1 should not advertise locator port (16) — not implemented, got: {s}"
+        );
+        // Must advertise selective erase (6) and ANSI color (22).
+        assert!(
+            s.contains(";6;") || s.contains(";6c"),
+            "DA1 should report selective erase (6), got: {s}"
+        );
+        assert!(
+            s.contains(";22;") || s.contains(";22c"),
+            "DA1 should report ANSI color (22), got: {s}"
         );
     }
 
