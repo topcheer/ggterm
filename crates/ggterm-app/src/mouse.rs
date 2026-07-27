@@ -103,6 +103,16 @@ pub fn encode_urxvt(ev: &MouseEvent, pressed: bool) -> String {
     format!("\x1b[{cb};{};{}M", ev.x + 1, ev.y + 1)
 }
 
+/// Encode a mouse motion event using URXVT (mode 1015) encoding.
+///
+/// For motion events, bit 5 (32) is always set on Cb regardless of
+/// whether a button is held. URXVT always terminates with 'M'.
+pub fn encode_urxvt_motion(ev: &MouseEvent) -> String {
+    // Motion events always set bit 5 (32).
+    let cb = ev.button.sgr_code() | 32 | ev.mods.sgr_code();
+    format!("\x1b[{cb};{};{}M", ev.x + 1, ev.y + 1)
+}
+
 /// Encode a mouse event using legacy (X10 / mode 1000) encoding.
 ///
 /// Format: `CSI Mb ; Mx ; My M` (all as raw bytes + 32)
@@ -112,6 +122,22 @@ pub fn encode_legacy(ev: &MouseEvent) -> Option<Vec<u8>> {
         return None;
     }
     let cb = ev.button.sgr_code() | ev.mods.sgr_code();
+    let b = cb + 32;
+    let x = ev.x as u8 + 32;
+    let y = ev.y as u8 + 32;
+    Some(vec![0x1b, b'[', b, x, y, b'M'])
+}
+
+/// Encode a mouse motion event using legacy (mode 1000/1002/1003) encoding.
+///
+/// Motion events set bit 5 (32) on the button byte.
+/// Only works for coordinates 0..=222.
+pub fn encode_legacy_motion(ev: &MouseEvent) -> Option<Vec<u8>> {
+    if ev.x + 32 > 255 || ev.y + 32 > 255 {
+        return None;
+    }
+    // Motion events set bit 5 (32).
+    let cb = ev.button.sgr_code() | 32 | ev.mods.sgr_code();
     let b = cb + 32;
     let x = ev.x as u8 + 32;
     let y = ev.y as u8 + 32;
@@ -1679,5 +1705,66 @@ mod tests {
         };
         let bytes = encode_mouse_event(&ev, false, true, true).unwrap();
         assert_eq!(String::from_utf8(bytes).unwrap(), "\x1b[0;6;6M");
+    }
+
+    // ── Motion encoding tests (round 30) ─────────────────────────
+
+    #[test]
+    fn t_r30_urxvt_motion_sets_bit5() {
+        // URXVT motion events always set bit 5 (32) on Cb.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 5,
+            y: 7,
+            mods: MouseModifiers::default(),
+        };
+        let s = encode_urxvt_motion(&ev);
+        // Left(0) + 32 (motion) = 32
+        assert_eq!(s, "\x1b[32;6;8M");
+    }
+
+    #[test]
+    fn t_r30_urxvt_motion_with_modifiers() {
+        // URXVT motion with shift+ctrl.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 3,
+            y: 4,
+            mods: MouseModifiers {
+                shift: true,
+                ctrl: true,
+                alt: false,
+            },
+        };
+        let s = encode_urxvt_motion(&ev);
+        // Left(0) + 32 (motion) + 4 (shift) + 16 (ctrl) = 52
+        assert_eq!(s, "\x1b[52;4;5M");
+    }
+
+    #[test]
+    fn t_r30_legacy_motion_sets_bit5() {
+        // Legacy motion events set bit 5 (32) on button byte.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 10,
+            y: 10,
+            mods: MouseModifiers::default(),
+        };
+        let bytes = encode_legacy_motion(&ev).unwrap();
+        // Left(0) + 32 (motion) + 32 (offset) = 64 = '@'
+        // x=10+32=42='*', y=10+32=42='*'
+        assert_eq!(bytes, vec![0x1b, b'[', b'@', b'*', b'*', b'M']);
+    }
+
+    #[test]
+    fn t_r30_legacy_motion_out_of_range() {
+        // Legacy motion with coords > 223 should return None.
+        let ev = MouseEvent {
+            button: MouseButton::Left,
+            x: 224,
+            y: 0,
+            mods: MouseModifiers::default(),
+        };
+        assert!(encode_legacy_motion(&ev).is_none());
     }
 }

@@ -3097,14 +3097,46 @@ impl DesktopApp {
                     mods,
                 };
 
-                let sgr = {
+                let (sgr, sgr_pixel, urxvt) = {
                     let term = self.active_session().app().terminal();
-                    term.mouse_sgr_enabled() || term.mouse_sgr_pixel_enabled()
+                    (
+                        term.mouse_sgr_enabled(),
+                        term.mouse_sgr_pixel_enabled(),
+                        term.mouse_urxvt_enabled(),
+                    )
                 };
-                if sgr {
-                    let bytes = crate::mouse::encode_sgr_motion(&mouse_ev, held);
+                if sgr || sgr_pixel {
+                    let bytes = if sgr_pixel {
+                        // SGR-pixel uses cell coords converted to pixel coords.
+                        let (px, py) = if let Some(ref renderer) = self.renderer {
+                            (
+                                (col as u32 * renderer.cell_width()) as u16,
+                                (row as u32 * renderer.cell_height()) as u16,
+                            )
+                        } else {
+                            (col, row)
+                        };
+                        let pixel_ev = crate::mouse::MouseEvent {
+                            button,
+                            x: px,
+                            y: py,
+                            mods,
+                        };
+                        crate::mouse::encode_sgr_motion(&pixel_ev, held)
+                    } else {
+                        crate::mouse::encode_sgr_motion(&mouse_ev, held)
+                    };
                     // Protocol response: write directly to PTY.
                     self.active_session_mut().write_to_pty(bytes.as_bytes());
+                } else if urxvt {
+                    // urxvt (1015) motion encoding.
+                    let bytes = crate::mouse::encode_urxvt_motion(&mouse_ev);
+                    self.active_session_mut().write_to_pty(bytes.as_bytes());
+                } else {
+                    // Legacy (1000) motion encoding.
+                    if let Some(bytes) = crate::mouse::encode_legacy_motion(&mouse_ev) {
+                        self.active_session_mut().write_to_pty(&bytes);
+                    }
                 }
                 return;
             }
