@@ -2514,6 +2514,14 @@ impl Perform for Terminal {
                         self.cursor.x = p;
                     }
                 }
+                // If cursor landed on a wide char spacer, back up to the lead.
+                // Matches HT and CUB — cursor should never rest on a spacer.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
             }
             b'g' => {
                 let m = params.first().copied().unwrap_or(0);
@@ -15971,19 +15979,19 @@ mod tests {
 
     #[test]
     fn t_r6_backspace_after_cjk_moves_two() {
-        // Backspace after a CJK char should move cursor back 1 col,
-        // but the preceding cell is a WIDE_SPACER.
-        // Real backspace in terminals: BS moves cursor by 1.
-        // The CJK char's lead is at col N, spacer at col N+1.
+        // Backspace after a CJK char should skip the spacer and land
+        // on the lead cell, matching CUB (CSI D) behavior.
         // After printing CJK at col 0, cursor is at col 2.
-        // BS → col 1 (the spacer).
+        // BS → decrements to col 1 (spacer), then adjusts to col 0 (lead).
         let mut t = Terminal::new(20, 3);
         feed(&mut t, "你".as_bytes());
         assert_eq!(t.cursor().0, 2);
-        feed(&mut t, b"\x08"); // BS
-        assert_eq!(t.cursor().0, 1, "BS after CJK moves to col 1 (spacer)");
-        feed(&mut t, b"\x08"); // BS again
-        assert_eq!(t.cursor().0, 0, "BS again moves to col 0 (lead)");
+        feed(&mut t, b"\x08"); // BS → spacer → adjusts to lead
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "BS after CJK skips spacer to lead at col 0"
+        );
     }
 
     #[test]
@@ -16032,13 +16040,14 @@ mod tests {
     #[test]
     fn t_r6_multiple_cjk_then_backspace_delete() {
         // Write 3 CJK chars, then BS back to the middle one, overwrite with ASCII.
+        // BS skips spacers: from col 6, one BS goes to col 4 (spacer at 5 → lead at 4).
         let mut t = Terminal::new(20, 3);
         feed(&mut t, "你好吗".as_bytes()); // cols 0-5, cursor at 6
-        feed(&mut t, b"\x08\x08\x08"); // BS x3: 6→5→4→3 (col 3 = spacer of 吗)
-        feed(&mut t, b"\x08"); // BS: 3→2 (col 2 = lead of 吗)
-        feed(&mut t, b"X"); // overwrite at col 2
+        feed(&mut t, b"\x08"); // BS: 6→5(spacer of 吗)→4(lead of 吗)
+        feed(&mut t, b"\x08"); // BS: 4→3(spacer of 好)→2(lead of 好)
+        feed(&mut t, b"X"); // overwrite at col 2 (lead of 好)
         assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X');
-        // Cols 0-1 should still be 好
+        // Cols 0-1 should still be 你
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你');
     }
 
@@ -19500,12 +19509,12 @@ mod tests {
 
     #[test]
     fn t_r15_backspace_after_wide_char() {
-        // Backspace after writing wide char should move cursor back 1.
-        // (BS moves 1 column, not width)
+        // Backspace after writing wide char skips spacer to lead cell.
+        // BS decrements by 1 (to spacer), then adjusts back to lead.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, "你".as_bytes()); // cursor at col 2
-        feed(&mut t, b"\x08"); // BS → col 1 (spacer)
-        assert_eq!(t.cursor().0, 1, "BS moves 1 col to spacer");
+        feed(&mut t, b"\x08"); // BS → col 1 (spacer) → adjusts to col 0 (lead)
+        assert_eq!(t.cursor().0, 0, "BS skips spacer to lead cell");
     }
 
     #[test]
@@ -25996,6 +26005,23 @@ mod tests {
             t.cursor().0,
             8,
             "CBT landing on wide spacer should adjust to lead cell"
+        );
+    }
+
+    #[test]
+    fn t_p143_cbt_landing_on_wide_spacer_adjusts_to_lead() {
+        // Wide char at cols 7-8 (spacer at col 8, which is a default tab stop).
+        // CBT should land on the tab stop at col 8 (spacer) and adjust
+        // backward to col 7 (the lead cell).
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;8H"); // move to col 7
+        feed(&mut t, "你".as_bytes()); // wide char at cols 7-8
+        feed(&mut t, b"\x1b[1;16H"); // move to col 15
+        feed(&mut t, b"\x1b[Z"); // CBT — tab stop at col 8 is a spacer
+        assert_eq!(
+            t.cursor().0,
+            7,
+            "CBT landing on wide spacer should adjust to lead cell at col 7"
         );
     }
 

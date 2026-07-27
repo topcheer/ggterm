@@ -103,8 +103,12 @@ impl Grid {
                 self.rows.push(Row::new(width));
             }
         } else if height < self.rows.len() {
-            // Split off excess rows in O(n) instead of O(n²) with remove(0).
-            let overflow: Vec<Row> = self.rows.split_off(height);
+            // Shrink: push TOP rows (oldest content) to scrollback,
+            // keep BOTTOM rows (where cursor and recent output are).
+            // drain(..overflow_count) is O(rows.len()), same as split_off
+            // but keeps the correct end.
+            let overflow_count = self.rows.len() - height;
+            let overflow: Vec<Row> = self.rows.drain(..overflow_count).collect();
             for row in overflow {
                 self.push_scrollback(row);
             }
@@ -154,11 +158,11 @@ impl Grid {
                 self.scrollback.shrink_to_fit();
                 self.rows.resize_with(height, || Row::new(width));
             } else {
-                // Shrinking: push excess visible rows to scrollback.
-                let excess = self.height.saturating_sub(height);
-                if excess > 0 && self.rows.len() > height {
-                    // Keep first `height` rows, push the rest to scrollback.
-                    let overflow: Vec<Row> = self.rows.split_off(height);
+                // Shrinking: push TOP excess visible rows to scrollback,
+                // keep BOTTOM rows (where cursor and recent output are).
+                let excess = self.rows.len().saturating_sub(height);
+                if excess > 0 {
+                    let overflow: Vec<Row> = self.rows.drain(..excess).collect();
                     for row in overflow {
                         self.scrollback.push_back(row);
                     }
@@ -2118,14 +2122,21 @@ mod tests {
 
     #[test]
     fn reflow_height_only_shrink_pushes_bottom() {
-        // Fast path: width unchanged, height shrinks — bottom rows go to scrollback.
+        // Fast path: width unchanged, height shrinks — TOP rows go to
+        // scrollback, BOTTOM rows (cursor/recent output) stay visible.
         let mut g = Grid::new(10, 5);
         g[(0, 0)] = Cell::with_char('T'); // top
         g[(0, 4)] = Cell::with_char('B'); // bottom
         g.reflow_resize(10, 3);
         assert_eq!(g.height(), 3);
         assert_eq!(g.scrollback_len(), 2);
-        assert_eq!(g[(0, 0)].ch, 'T');
+        // 'T' (old row 0) is pushed to scrollback, 'B' (old row 4) stays visible
+        // at new row 2 (old row 4 - 2 pushed rows = row 2).
+        assert_eq!(
+            g[(0, 2)].ch,
+            'B',
+            "bottom content stays visible after shrink"
+        );
     }
 
     #[test]
