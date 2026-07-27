@@ -2090,6 +2090,13 @@ impl Perform for Terminal {
                     next += 1;
                 }
                 self.cursor.x = next.min(width.saturating_sub(1));
+                // If tab landed on a wide char spacer, adjust to the lead.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
                 self.cursor.pending_wrap = false;
             }
             0x0a..=0x0c => {
@@ -18120,6 +18127,58 @@ mod tests {
         feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
         feed(&mut t, b"\x1b[2G"); // CHA col 2 → cursor.x = 1 (spacer!)
         assert_eq!(t.cursor().0, 0, "CHA should adjust to lead, not spacer");
+    }
+
+    #[test]
+    fn t_ht_lands_on_wide_spacer_adjusts_to_lead() {
+        // HT (horizontal tab) should adjust cursor to lead if it lands on spacer.
+        // Set up: wide char at cols 0-1, tab stop at col 2.
+        // From col 0, tab moves to col 2 (next stop). But col 1 is the spacer.
+        // Actually we need a scenario where the tab stop IS on a spacer.
+        let mut t = Terminal::new(10, 3);
+        // Place a wide char at cols 8-9 (default tab stop at col 8)
+        feed(&mut t, b"\x1b[1;9H"); // CUP to col 8 (0-indexed)
+        feed(&mut t, "你".as_bytes()); // wide char at cols 8-9
+        // Go back to col 0, then tab
+        feed(&mut t, b"\x1b[1G"); // CHA col 1 → cursor.x = 0
+        feed(&mut t, b"\t"); // HT → next stop at col 8 (spacer!)
+        // Cursor should adjust from col 8 (spacer... wait, col 8 is lead)
+        // Actually: wide char at cols 8-9. Col 8 = lead, col 9 = spacer.
+        // HT from col 0 lands at col 8 (lead). No adjustment needed.
+        assert_eq!(t.cursor().0, 8, "HT should land at col 8 (lead)");
+
+        // Now test a scenario where HT lands on a spacer:
+        // Set tab stop at col 1, place wide char at cols 0-1
+        feed(&mut t, b"\x1b[2;1H"); // CUP row 2 col 1
+        feed(&mut t, b"\x1b[1;2H"); // CUP back to row 1, col 1 (spacer → adjusts to 0)
+        // Actually let me test differently:
+        let mut t2 = Terminal::new(10, 3);
+        feed(&mut t2, "你".as_bytes()); // wide at cols 0-1, cursor at 2
+        feed(&mut t2, b"\x1b[2;1H"); // CUP row 2
+        feed(&mut t2, "好".as_bytes()); // wide at row 2 cols 0-1
+        // Set a custom tab stop at col 1 (which will be a spacer)
+        // Actually tab stops are shared across rows...
+        // The key test: from a position before col 8, tab lands at col 8.
+        // If col 8 is a spacer, adjust.
+        feed(&mut t2, b"\x1b[3;1H"); // CUP row 3
+        feed(&mut t2, "A".as_bytes()); // A at row 3 col 0
+        // Now put a wide char spanning cols 8-9 on row 3
+        feed(&mut t2, b"\x1b[3;9H"); // CUP row 3 col 9 (0-indexed 8)
+        feed(&mut t2, "你".as_bytes()); // wide at row 3 cols 8-9
+        feed(&mut t2, b"\x1b[3;1G"); // CHA col 1 (0-indexed 0) on row 3
+        feed(&mut t2, b"\t"); // HT → lands at col 8 (lead). OK.
+        // To actually test spacer, we need a tab stop at col 9.
+        // Clear all tabs and set one at col 10 (0-indexed 9)
+        feed(&mut t2, b"\x1b[3g"); // TBC 3: clear all tabs
+        feed(&mut t2, b"\x1b[3;10H"); // CUP row 3 col 10 (0-indexed 9)
+        feed(&mut t2, b"\x1bH"); // HTS: set tab stop at col 9
+        feed(&mut t2, b"\x1b[3;1G"); // back to col 0
+        feed(&mut t2, b"\t"); // HT → lands at col 9 (spacer!)
+        assert_eq!(
+            t2.cursor().0,
+            8,
+            "HT should adjust from spacer (col 9) to lead (col 8)"
+        );
     }
 
     // ── Round 12-2: Bracketed Paste + Focus Reporting audits ───────────
