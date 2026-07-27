@@ -506,4 +506,131 @@ mod tests {
         assert_eq!(row.cells.len(), 2);
         assert_eq!(row.cells[0].ch, 'A');
     }
+
+    // ── Round 37: Row text extraction + set_cell edge cases ────────────
+
+    #[test]
+    fn t_r37_row_text_trailing_nulls_trimmed() {
+        // Cells with null char should not appear in text().
+        let mut row = Row::new(5);
+        row.cells[0].ch = 'A';
+        row.cells[1].ch = 'B';
+        // cells 2-4 have ch = '\0' (uninitialized)
+        let text = row.text();
+        assert_eq!(text, "AB", "null chars not in text, trailing trimmed");
+    }
+
+    #[test]
+    fn t_r37_row_text_mixed_wide_and_combining() {
+        // Wide char + combining + narrow chars.
+        let mut row = Row::new(6);
+        row.put_char(0, '中'); // cols 0-1
+        row.cells[0].combining.push('\u{0301}');
+        row.put_char(2, 'e'); // col 2
+        row.cells[2].combining.push('\u{0301}');
+        row.put_char(3, 'X'); // col 3
+        let text = row.text();
+        assert!(text.contains("中"), "wide char in text");
+        assert!(text.contains("e\u{0301}"), "combining after narrow");
+        assert!(text.contains("X"), "narrow char in text");
+    }
+
+    #[test]
+    fn t_r37_row_set_cell_wide_at_last_col() {
+        // set_cell with wide char at last column — spacer can't fit.
+        let mut row = Row::new(3);
+        row.put_char(0, 'A');
+        row.put_char(1, 'B');
+        let w = row.put_char(2, '中'); // wide at last col
+        assert_eq!(w, 2, "set_cell returns 2 for wide char");
+        assert!(row.cells[2].is_wide(), "lead flag set");
+        // No spacer because col+1 >= len
+        // This is a potential issue — the wide char has no spacer at the edge.
+        // text() should still include the char.
+    }
+
+    #[test]
+    fn t_r37_row_clear_from_with_combining() {
+        // clear_from should reset combining chars too.
+        let mut row = Row::new(5);
+        row.put_char(0, 'A');
+        row.cells[0].combining.push('\u{0301}');
+        row.put_char(1, 'B');
+        row.clear_from(0);
+        assert!(row.cells[0].is_blank(), "cell cleared");
+        assert!(row.cells[0].combining.is_empty(), "combining cleared");
+    }
+
+    #[test]
+    fn t_r37_row_clear_to_with_combining() {
+        // clear_to should reset combining chars.
+        let mut row = Row::new(5);
+        row.put_char(0, 'A');
+        row.put_char(1, 'B');
+        row.cells[1].combining.push('\u{0301}');
+        row.clear_to(2); // clear cols 0-1
+        assert!(row.cells[0].is_blank(), "cell 0 cleared");
+        assert!(row.cells[1].is_blank(), "cell 1 cleared");
+        assert!(row.cells[1].combining.is_empty(), "combining cleared");
+    }
+
+    #[test]
+    fn t_r37_row_resize_grow_preserves_content() {
+        // Resize wider should preserve existing content.
+        let mut row = Row::new(3);
+        row.put_char(0, 'A');
+        row.put_char(1, 'B');
+        row.put_char(2, 'C');
+        row.resize(5);
+        assert_eq!(row.cells[0].ch, 'A', "content preserved after grow");
+        assert_eq!(row.cells[2].ch, 'C', "content preserved");
+        assert!(row.cells[3].is_blank(), "new cell blank");
+        assert!(row.cells[4].is_blank(), "new cell blank");
+    }
+
+    #[test]
+    fn t_r37_row_resize_shrink_truncates() {
+        // Resize narrower should truncate content.
+        let mut row = Row::new(5);
+        row.put_char(0, 'A');
+        row.put_char(1, 'B');
+        row.put_char(4, 'E');
+        row.resize(3);
+        assert_eq!(row.cells.len(), 3, "row shrunk to 3");
+        assert_eq!(row.cells[0].ch, 'A', "A preserved");
+        assert_eq!(row.cells[2].ch, ' ', "E truncated");
+    }
+
+    #[test]
+    fn t_r37_row_text_all_blank() {
+        // Empty row text should be empty string.
+        let row = Row::new(5);
+        assert_eq!(row.text(), "", "empty row text is empty");
+    }
+
+    #[test]
+    fn t_r37_row_visible_cells_skips_spacer() {
+        // visible_cells() should skip WIDE_SPACER cells.
+        let mut row = Row::new(4);
+        row.put_char(0, '中'); // cols 0-1
+        row.put_char(2, 'A'); // col 2
+        let visible: Vec<_> = row.visible_cells().collect();
+        // Should be 3 visible cells: 中(0), A(2), blank(3) — NOT the spacer at col 1
+        assert_eq!(visible.len(), 3, "3 visible cells (spacer skipped)");
+        assert_eq!(visible[0].0, 0, "first visible at col 0");
+        assert_eq!(visible[1].0, 2, "second visible at col 2");
+    }
+
+    #[test]
+    fn t_r37_row_erase_char_at_boundary() {
+        // Erase char at the boundary of the row.
+        let mut row = Row::new(5);
+        row.put_char(0, 'A');
+        row.put_char(1, 'B');
+        row.put_char(2, 'C');
+        row.erase_char(4, 2); // erase 2 chars at col 4 (only 1 exists in range)
+        // Erasing at col 4 when row is 5 wide — clears cols 4 to end
+        assert_eq!(row.cells[4].ch, ' ', "last cell erased");
+        assert_eq!(row.cells[0].ch, 'A', "content before erased preserved");
+    }
 }

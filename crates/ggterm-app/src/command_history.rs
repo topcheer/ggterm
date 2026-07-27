@@ -570,4 +570,87 @@ mod tests {
         assert!(!state.search_active);
         assert_eq!(state.search_query, "");
     }
+
+    // ── Round 37: Command history edge cases ───────────────────────────
+
+    #[test]
+    fn t_r37_add_without_complete_auto_marks_running() {
+        // Adding a new command without completing the previous one should
+        // auto-mark the previous as not-running (but no exit code).
+        let mut state = CommandHistoryState::new();
+        state.add("cmd1".to_string(), 0);
+        state.add("cmd2".to_string(), 1);
+        let entries: Vec<_> = state.entries().collect();
+        // entries() returns oldest first
+        assert_eq!(entries[0].command, "cmd1");
+        assert!(!entries[0].running, "previous auto-marked not running");
+        assert_eq!(
+            entries[0].exit_code, None,
+            "no exit code for auto-completed"
+        );
+        assert_eq!(entries[1].command, "cmd2");
+        assert!(entries[1].running, "newest still running");
+    }
+
+    #[test]
+    fn t_r37_complete_when_no_running_is_noop() {
+        // complete_last when nothing is running should be a no-op.
+        let mut state = CommandHistoryState::new();
+        state.add("cmd".to_string(), 0);
+        state.complete_last(0); // marks as done
+        state.complete_last(1); // noop — already done
+        let entries: Vec<_> = state.entries().collect();
+        assert_eq!(entries[0].exit_code, Some(0), "exit code unchanged");
+    }
+
+    #[test]
+    fn t_r37_capacity_trim_preserves_order() {
+        // When trimming, oldest entries should be removed first.
+        let mut state = CommandHistoryState::new();
+        for i in 0..(MAX_ENTRIES + 5) {
+            state.add(format!("cmd{}", i), i);
+        }
+        let entries: Vec<_> = state.entries().collect();
+        assert_eq!(entries.len(), MAX_ENTRIES);
+        // entries() returns oldest first — newest is at the end
+        assert_eq!(
+            entries.last().unwrap().command,
+            format!("cmd{}", MAX_ENTRIES + 4),
+            "newest is last added"
+        );
+    }
+
+    #[test]
+    fn t_r37_filter_special_regex_chars() {
+        // Search query with regex special chars should be literal.
+        let mut state = CommandHistoryState::new();
+        state.add("grep foo.*".to_string(), 0);
+        state.add("echo [test]".to_string(), 1);
+        state.search_query = "foo.*".to_string();
+        let filtered = state.filtered_entries_rev();
+        assert_eq!(filtered.len(), 1, "literal match on .* ");
+        assert_eq!(filtered[0].command, "grep foo.*");
+    }
+
+    #[test]
+    fn t_r37_empty_command_added() {
+        // Empty command string should be handled gracefully.
+        let mut state = CommandHistoryState::new();
+        state.add("".to_string(), 0);
+        assert_eq!(state.len(), 1, "empty command added");
+        let entries: Vec<_> = state.entries().collect();
+        assert_eq!(entries[0].command, "");
+    }
+
+    #[test]
+    fn t_r37_filter_case_insensitive() {
+        // Search should be case-insensitive.
+        let mut state = CommandHistoryState::new();
+        state.add("GIT Status".to_string(), 0);
+        state.add("ls -la".to_string(), 1);
+        state.search_query = "git".to_string();
+        let filtered = state.filtered_entries_rev();
+        assert_eq!(filtered.len(), 1, "case insensitive match");
+        assert_eq!(filtered[0].command, "GIT Status");
+    }
 }
