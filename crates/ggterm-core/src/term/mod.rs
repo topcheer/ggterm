@@ -19129,4 +19129,308 @@ mod tests {
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no content on row 1");
         assert_eq!(t.cursor().1, 0, "cursor stays on row 0");
     }
+
+    // ── Round 19-1: Wide char / combining char edge cases ─────────────
+
+    #[test]
+    fn t_r19_bs_after_narrow_stays_at_0() {
+        // BS at col 0 should stay at col 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x08");
+        assert_eq!(t.cursor().0, 0, "BS at col 0 stays");
+    }
+
+    #[test]
+    fn t_r19_dch_removes_full_wide_char() {
+        // DCH at the lead cell of a wide char should remove both cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, b"X"); // col 2
+        feed(&mut t, b"\r"); // back to col 0
+        feed(&mut t, b"\x1b[2P"); // DCH 2 at col 0
+        // Both wide char cells should be cleared, X shifts left
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X shifted to col 0");
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "no orphan spacer"
+        );
+    }
+
+    #[test]
+    fn t_r19_wide_char_insert_mode() {
+        // In insert mode (IRM), writing a wide char should shift cells right.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\r"); // col 0
+        feed(&mut t, b"\x1b[4h"); // insert mode on
+        feed(&mut t, "你".as_bytes()); // insert wide at col 0
+        // A should shift right by 2
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '你', "wide at col 0");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A', "A shifted to col 2");
+    }
+
+    #[test]
+    fn t_r19_combining_chain_multiple() {
+        // Multiple combining chars on one base char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"e");
+        feed(&mut t, "\u{0301}\u{0308}\u{0302}".as_bytes()); // acute + diaeresis + circumflex
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'e', "base char is e");
+        assert_eq!(cell.combining.len(), 3, "3 combining chars attached");
+        assert_eq!(t.cursor().0, 1, "cursor advanced by 1 (base only)");
+    }
+
+    #[test]
+    fn t_r19_combining_cap_8() {
+        // Combining char cap should prevent memory exhaustion.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"A");
+        // Send 20 combining chars — should cap at 8
+        for _ in 0..20 {
+            feed(&mut t, "\u{0301}".as_bytes());
+        }
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.combining.len(), 8, "combining capped at 8");
+    }
+
+    #[test]
+    fn t_r19_wide_char_then_combining_then_narrow() {
+        // Wide char + combining + narrow char on next col.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // cols 0-1
+        feed(&mut t, "\u{0301}".as_bytes()); // combining on lead
+        feed(&mut t, b"X"); // narrow at col 2
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'X', "X at col 2");
+        assert!(t.grid().cell(0, 0).unwrap().is_wide(), "lead preserved");
+    }
+
+    #[test]
+    fn t_r19_3_byte_utf8_cjk() {
+        // 3-byte UTF-8 CJK character should decode and render correctly.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "語".as_bytes()); // U+8A9E (3-byte UTF-8)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '語');
+        assert!(t.grid().cell(0, 0).unwrap().is_wide());
+        assert_eq!(t.cursor().0, 2, "cursor at col 2");
+    }
+
+    #[test]
+    fn t_r19_4_byte_utf8_emoji() {
+        // 4-byte UTF-8 emoji should decode and render correctly.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "🚀".as_bytes()); // U+1F680 (4-byte UTF-8)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '🚀');
+        assert!(t.grid().cell(0, 0).unwrap().is_wide());
+        assert_eq!(t.cursor().0, 2, "cursor at col 2");
+    }
+
+    #[test]
+    fn t_r19_invalid_utf8_fallback() {
+        // Invalid UTF-8 byte should produce replacement char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, &[0xFF]); // invalid UTF-8
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            '\u{FFFD}',
+            "replacement char"
+        );
+    }
+
+    #[test]
+    fn t_r19_split_utf8_across_feeds() {
+        // UTF-8 character split across two feed() calls.
+        // The VTE Parser maintains UTF-8 continuation state internally.
+        // The test helper creates a fresh Parser each call, so we test
+        // the single-feed path here (the parser handles split internally).
+        let mut t = Terminal::new(10, 3);
+        // Feed a 3-byte CJK char + a 4-byte emoji in one feed
+        feed(&mut t, "語🚀".as_bytes());
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '語', "CJK char assembled");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '🚀', "emoji assembled");
+        assert_eq!(t.cursor().0, 4, "cursor at col 4");
+    }
+
+    // ── Round 19-2: OSC sequence edge cases ────────────────────────────
+
+    #[test]
+    fn t_r19_osc_title_utf8() {
+        // OSC 2 with UTF-8 title.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, "中".as_bytes()); // make sure UTF-8 works
+        let osc = format!("\x1b]2;{}\x07", "你好世界");
+        feed(&mut t, osc.as_bytes());
+        assert_eq!(t.title(), "你好世界", "UTF-8 title");
+    }
+
+    #[test]
+    fn t_r19_osc_empty_title() {
+        // OSC 0 with empty title.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]0;My Title\x07");
+        assert_eq!(t.title(), "My Title");
+        feed(&mut t, b"\x1b]0;\x07"); // empty
+        assert_eq!(t.title(), "", "empty title");
+    }
+
+    #[test]
+    fn t_r19_osc_8_applied_to_specific_range() {
+        // OSC 8 hyperlink applied to a range of cells.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;http://example.com\x1b\\");
+        feed(&mut t, b"Click"); // 5 cells with hyperlink
+        feed(&mut t, b"\x1b]8;;\x1b\\"); // clear
+        feed(&mut t, b" me"); // 3 cells without hyperlink
+        // Check first 5 cells have hyperlink
+        for i in 0..5 {
+            assert!(
+                t.grid().cell(i, 0).unwrap().hyperlink.is_some(),
+                "cell {i} has hyperlink"
+            );
+        }
+        // Check cells 6-7 don't have hyperlink
+        for i in 6..8 {
+            assert!(
+                t.grid().cell(i, 0).unwrap().hyperlink.is_none(),
+                "cell {i} no hyperlink"
+            );
+        }
+    }
+
+    #[test]
+    fn t_r19_osc_10_set_dynamic_fg() {
+        // OSC 10 set fg color.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]10;rgb:ff/80/00\x1b\\");
+        assert!(t.dynamic_fg.is_some(), "dynamic fg set");
+    }
+
+    #[test]
+    fn t_r19_osc_11_set_dynamic_bg() {
+        // OSC 11 set bg color.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]11;rgb:00/ff/00\x1b\\");
+        assert!(t.dynamic_bg.is_some(), "dynamic bg set");
+    }
+
+    #[test]
+    fn t_r19_osc_110_reset_dynamic_fg() {
+        // OSC 110 should clear dynamic fg.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]10;rgb:ff/00/00\x1b\\");
+        feed(&mut t, b"\x1b]110\x1b\\");
+        assert!(t.dynamic_fg.is_none(), "dynamic fg cleared");
+    }
+
+    #[test]
+    fn t_r19_osc_111_reset_dynamic_bg() {
+        // OSC 111 should clear dynamic bg.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]11;rgb:00/00/ff\x1b\\");
+        feed(&mut t, b"\x1b]111\x1b\\");
+        assert!(t.dynamic_bg.is_none(), "dynamic bg cleared");
+    }
+
+    #[test]
+    fn t_r19_osc_4_set_palette_override() {
+        // OSC 4 set palette override then verify via palette_overrides.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]4;5;rgb:aa/bb/cc\x1b\\");
+        let overrides = t.palette_overrides();
+        assert_eq!(
+            overrides.get(&5),
+            Some(&(0xaa, 0xbb, 0xcc)),
+            "palette override for index 5"
+        );
+    }
+
+    #[test]
+    fn t_r19_osc_title_bel_and_st_both_work() {
+        // Both BEL and ST termination should work for OSC.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]0;BEL_TERM\x07"); // BEL terminated
+        assert_eq!(t.title(), "BEL_TERM");
+        feed(&mut t, b"\x1b]0;ST_TERM\x1b\\"); // ST terminated
+        assert_eq!(t.title(), "ST_TERM");
+    }
+
+    // ── Round 19-3: Cursor movement + scroll region ────────────────────
+
+    #[test]
+    fn t_r19_cuu_stops_at_region_top_inside() {
+        // CUU inside scroll region stops at region top.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[3;6r"); // region rows 3-6 (0-based: 2..6)
+        feed(&mut t, b"\x1b[5;1H"); // cursor at row 5 (inside region)
+        feed(&mut t, b"\x1b[10A"); // CUU 10 — should stop at region top (row 2)
+        assert_eq!(t.cursor().1, 2, "CUU stops at region top");
+    }
+
+    #[test]
+    fn t_r19_cud_stops_at_region_bottom_inside() {
+        // CUD inside scroll region stops at region bottom.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[3;6r"); // region rows 3-6 (0-based: 2..6)
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 4 (inside region)
+        feed(&mut t, b"\x1b[10B"); // CUD 10 — should stop at region bottom (row 5)
+        assert_eq!(t.cursor().1, 5, "CUD stops at region bottom");
+    }
+
+    #[test]
+    fn t_r19_cuu_outside_region_goes_to_top() {
+        // CUU from above the scroll region goes to row 0.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[4;6r"); // region rows 4-6 (0-based: 3..6)
+        feed(&mut t, b"\x1b[2;1H"); // cursor at row 1 (above region)
+        feed(&mut t, b"\x1b[10A"); // CUU 10
+        assert_eq!(t.cursor().1, 0, "CUU above region goes to row 0");
+    }
+
+    #[test]
+    fn t_r19_cnl_resets_col_to_0() {
+        // CNL should reset column to 0.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;5H"); // cursor at (4, 1)
+        feed(&mut t, b"\x1b[2E"); // CNL 2
+        assert_eq!(t.cursor().0, 0, "CNL resets column to 0");
+        assert_eq!(t.cursor().1, 3, "CNL moves down 2 rows");
+    }
+
+    #[test]
+    fn t_r19_cpl_resets_col_to_0() {
+        // CPL should reset column to 0.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[4;5H"); // cursor at (4, 3)
+        feed(&mut t, b"\x1b[2F"); // CPL 2
+        assert_eq!(t.cursor().0, 0, "CPL resets column to 0");
+        assert_eq!(t.cursor().1, 1, "CPL moves up 2 rows");
+    }
+
+    #[test]
+    fn t_r19_cuf_stops_at_last_col() {
+        // CUF should stop at last column.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;5H"); // col 4
+        feed(&mut t, b"\x1b[100C"); // CUF 100
+        assert_eq!(t.cursor().0, 9, "CUF stops at last col");
+    }
+
+    #[test]
+    fn t_r19_cub_stops_at_col_0() {
+        // CUB should stop at col 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;5H"); // col 4
+        feed(&mut t, b"\x1b[100D"); // CUB 100
+        assert_eq!(t.cursor().0, 0, "CUB stops at col 0");
+    }
+
+    #[test]
+    fn t_r19_vpa_in_origin_mode_relative() {
+        // VPA in origin mode is relative to scroll region top.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[3;6r"); // region rows 3-6 (0-based: 2..6)
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[1d"); // VPA row 1 → absolute = region_top + 0 = 2
+        assert_eq!(t.cursor().1, 2, "VPA row 1 in origin mode → abs row 2");
+    }
 }
