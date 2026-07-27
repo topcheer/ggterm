@@ -2212,7 +2212,14 @@ impl Perform for Terminal {
             b'J' if is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
-                    0 => self.selective_erase_from(self.cursor.x, self.cursor.y),
+                    0 => {
+                        self.selective_erase_from(self.cursor.x, self.cursor.y);
+                        // Clear wrap flags for current and all lines below
+                        // (stale wrap flags cause incorrect reflow on resize).
+                        for r in self.cursor.y..self.grid.height() {
+                            self.grid.set_row_wrap(r, false);
+                        }
+                    }
                     1 => self.selective_erase_to(self.cursor.x, self.cursor.y),
                     2 => self.selective_erase_all(),
                     _ => {}
@@ -2276,6 +2283,8 @@ impl Perform for Terminal {
                                 *cell = Cell::blank();
                             }
                         }
+                        // Erasing to end of line removes the soft-wrap continuation.
+                        self.grid.set_row_wrap(cy, false);
                     }
                     1 => {
                         // Erase from start of line to cursor (non-protected only)
