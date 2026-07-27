@@ -2223,6 +2223,9 @@ impl Perform for Terminal {
                 match mode {
                     0 => {
                         self.grid.clear_line_from(self.cursor.x, self.cursor.y);
+                        // Erasing to end of display removes the soft-wrap
+                        // continuation — the line no longer wraps.
+                        self.grid.set_row_wrap(self.cursor.y, false);
                         for r in (self.cursor.y + 1)..self.grid.height() {
                             self.grid.clear_line(r);
                             self.grid.set_row_wrap(r, false);
@@ -2314,7 +2317,12 @@ impl Perform for Terminal {
             b'K' => {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
-                    0 => self.grid.clear_line_from(self.cursor.x, self.cursor.y),
+                    0 => {
+                        self.grid.clear_line_from(self.cursor.x, self.cursor.y);
+                        // Erasing to end of line removes the soft-wrap
+                        // continuation — the line no longer wraps.
+                        self.grid.set_row_wrap(self.cursor.y, false);
+                    }
                     1 => self.grid.clear_line_to(self.cursor.x, self.cursor.y),
                     2 => {
                         self.grid.clear_line(self.cursor.y);
@@ -6056,6 +6064,47 @@ mod tests {
         assert_eq!(t.cursor().0, 3, "should overwrite at last column");
         assert_eq!(t.cursor().1, 0, "should NOT wrap to next line");
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'X');
+    }
+
+    #[test]
+    fn t_el0_clears_wrap_flag() {
+        // EL 0 (erase from cursor to end of line) should clear the
+        // soft-wrap flag. Without this, a stale wrap flag causes
+        // incorrect reflow on resize (joining with the next blank line).
+        let mut t = Terminal::new(4, 3);
+        // Fill a line so it wraps (pending_wrap + row wrap flag)
+        feed(&mut t, b"ABCD"); // fills row 0, wraps to row 1 on next char
+        feed(&mut t, b"E"); // row 1
+        // Row 0 should have wrap=true
+        assert!(
+            t.grid().row(0).unwrap().wrap,
+            "row 0 should be soft-wrapped"
+        );
+        // Move to row 0, col 2, and EL 0
+        feed(&mut t, b"\x1b[1;3H");
+        feed(&mut t, b"\x1b[0K");
+        // Row 0 wrap flag should now be false
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "EL 0 should clear wrap flag — line no longer continues"
+        );
+    }
+
+    #[test]
+    fn t_ed0_clears_wrap_flag_current_line() {
+        // ED 0 (erase from cursor to end of display) should clear the
+        // wrap flag for the current line, not just lines below it.
+        let mut t = Terminal::new(4, 3);
+        feed(&mut t, b"ABCD"); // fills row 0
+        feed(&mut t, b"E"); // wraps to row 1
+        assert!(t.grid().row(0).unwrap().wrap);
+        // Move to row 0, col 2
+        feed(&mut t, b"\x1b[1;3H");
+        feed(&mut t, b"\x1b[0J"); // ED 0
+        assert!(
+            !t.grid().row(0).unwrap().wrap,
+            "ED 0 should clear wrap flag for current line"
+        );
     }
 
     #[test]
