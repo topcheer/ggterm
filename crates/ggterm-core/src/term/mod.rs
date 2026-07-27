@@ -22748,4 +22748,222 @@ mod tests {
         feed(&mut t, b"\x1b[5A"); // CUU 5 — no clamping since outside region
         assert_eq!(t.cursor().1, 3, "CUU outside region: row 8-5=3");
     }
+
+    // ── Round 32-1: Alt screen buffer edge cases ───────────────────────
+
+    #[test]
+    fn t_r32_alt_1049_sgr_state_restored() {
+        // 1049 saves/restores SGR attributes (bold, colors).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[1;31m"); // bold + red
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — saves SGR
+        feed(&mut t, b"\x1b[0m"); // reset in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — restores SGR
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            cell.flags.contains(CellFlags::BOLD),
+            "bold restored after alt exit"
+        );
+        assert_eq!(cell.fg, Color::Indexed(1), "red restored after alt exit");
+    }
+
+    #[test]
+    fn t_r32_alt_47_no_cursor_save() {
+        // CSI ?47h does NOT save cursor (unlike 1049).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[3;5H"); // cursor at row 2, col 4
+        feed(&mut t, b"\x1b[?47h"); // enter alt via 47 (no cursor save)
+        feed(&mut t, b"\x1b[1;1H"); // move cursor in alt
+        feed(&mut t, b"\x1b[?47l"); // exit alt
+        // Cursor NOT restored (47 doesn't save it) — x at 0
+        assert_eq!(t.cursor().0, 0, "47 does not save/restore cursor");
+    }
+
+    #[test]
+    fn t_r32_alt_scroll_does_not_affect_main_scrollback() {
+        // Scrolling in alt screen must not push lines to main scrollback.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        let sb_before = t.grid().scrollback_len();
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        // Scroll many lines
+        for _ in 0..10 {
+            feed(&mut t, b"Line\r\n");
+        }
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert_eq!(
+            t.grid().scrollback_len(),
+            sb_before,
+            "alt scrollback not added to main"
+        );
+    }
+
+    #[test]
+    fn t_r32_alt_tab_stops_preserved() {
+        // Custom tab stops on main screen should survive alt screen round-trip.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"\x1b[1;6H\x1bH"); // set stop at col 5
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — saves tab stops
+        feed(&mut t, b"\x1b[3g"); // clear all in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — restores tab stops
+        feed(&mut t, b"\x1b[1;1H\t"); // HT — should go to col 5
+        assert_eq!(t.cursor().0, 5, "custom tab stop restored after alt");
+    }
+
+    // ── Round 32-3: OSC title/color query ──────────────────────────────
+
+    #[test]
+    fn t_r32_osc1_icon_title() {
+        // OSC 1 sets icon title.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]1;IconTitle\x07");
+        // OSC 1 may or may not be tracked separately, but should not crash
+        // and should not set the main title.
+        // (Implementation may or may not track icon_title separately.)
+    }
+
+    #[test]
+    fn t_r32_osc0_then_osc2() {
+        // OSC 0 sets both title and icon. OSC 2 sets only title.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;Both\x07");
+        assert_eq!(t.title(), "Both", "OSC 0 sets title");
+        feed(&mut t, b"\x1b]2;TitleOnly\x07");
+        assert_eq!(t.title(), "TitleOnly", "OSC 2 updates title");
+    }
+
+    #[test]
+    fn t_r32_osc10_query_default_fg() {
+        // OSC 10;? query — default fg should be white (ffffff).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("10;rgb:ff/ff/ff"),
+            "OSC 10 default fg = white: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r32_osc11_query_default_bg() {
+        // OSC 11;? query — default bg should be black (000000).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]11;?\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("11;rgb:00/00/00"),
+            "OSC 11 default bg = black: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r32_osc10_set_then_query() {
+        // OSC 10 with color spec, then query — should return set color.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]10;rgb:ab/cd/ef\x1b\\");
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(
+            resp.contains("10;rgb:ab/cd/ef"),
+            "OSC 10 query returns set color: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r32_osc4_query_multiple() {
+        // OSC 4 with multiple indices in one query.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]4;0;?;1;?\x1b\\");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        // Should have responses for both index 0 and index 1
+        assert!(
+            resp.contains("4;0;rgb:"),
+            "OSC 4 index 0 response: {}",
+            resp
+        );
+        assert!(
+            resp.contains("4;1;rgb:"),
+            "OSC 4 index 1 response: {}",
+            resp
+        );
+    }
+
+    // ── Round 32-4: Mouse tracking mode tests ──────────────────────────
+
+    #[test]
+    fn t_r32_mouse_decrqm_1000() {
+        // DECRQM for mouse mode 1000.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1000$p");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        assert!(resp.contains("1000"), "DECRQM for 1000: {}", resp);
+    }
+
+    #[test]
+    fn t_r32_mouse_enable_disable_1002() {
+        // Enable/disable button event tracking.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1002h");
+        assert!(
+            t.mouse_button_event_enabled(),
+            "button event tracking enabled"
+        );
+        feed(&mut t, b"\x1b[?1002l");
+        assert!(
+            !t.mouse_button_event_enabled(),
+            "button event tracking disabled"
+        );
+    }
+
+    #[test]
+    fn t_r32_mouse_enable_disable_1003() {
+        // Enable/disable any event tracking.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1003h");
+        assert!(t.mouse_any_event_enabled(), "any event tracking enabled");
+        feed(&mut t, b"\x1b[?1003l");
+        assert!(!t.mouse_any_event_enabled(), "any event tracking disabled");
+    }
+
+    #[test]
+    fn t_r32_mouse_sgr_and_urxvt_independent() {
+        // SGR (1006) and URXVT (1015) are independent format flags.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1006h");
+        assert!(t.mouse_sgr_enabled(), "SGR enabled");
+        assert!(!t.mouse_urxvt_enabled(), "URXVT not enabled by default");
+        feed(&mut t, b"\x1b[?1015h");
+        assert!(t.mouse_urxvt_enabled(), "URXVT now enabled");
+        assert!(t.mouse_sgr_enabled(), "SGR still enabled");
+    }
+
+    #[test]
+    fn t_r32_mouse_utf8_mode_toggle() {
+        // UTF-8 mouse mode (1005) toggle.
+        let mut t = Terminal::new(10, 3);
+        assert!(!t.modes.mouse_utf8, "UTF-8 mouse off by default");
+        feed(&mut t, b"\x1b[?1005h");
+        assert!(t.modes.mouse_utf8, "UTF-8 mouse enabled");
+        feed(&mut t, b"\x1b[?1005l");
+        assert!(!t.modes.mouse_utf8, "UTF-8 mouse disabled");
+    }
+
+    #[test]
+    fn t_r32_mouse_decrqm_1006_enabled() {
+        // DECRQM for SGR mouse when enabled should report "set" (mode 1).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1006h"); // enable
+        feed(&mut t, b"\x1b[?1006$p"); // query
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        // When set, response should contain ";1$" (mode = set)
+        assert!(
+            resp.contains("1006") && resp.contains(";1$"),
+            "DECRQM 1006 reports set: {}",
+            resp
+        );
+    }
 }

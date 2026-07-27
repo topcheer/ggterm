@@ -519,4 +519,56 @@ mod tests {
     fn test_paste_source_default() {
         assert_eq!(PasteSource::default(), PasteSource::Clipboard);
     }
+
+    // ── Round 32-2: Bracketed paste mode edge cases ────────────────────
+
+    #[test]
+    fn t_r32_bracket_paste_empty_text() {
+        let result = bracket_paste("", true);
+        assert_eq!(result, b"\x1b[200~\x1b[201~");
+    }
+
+    #[test]
+    fn t_r32_bracket_paste_with_escape_sequences() {
+        // Escape sequences in pasted text should be passed through literally.
+        let text = "\x1b[31mred\x1b[0m";
+        let result = bracket_paste(text, true);
+        assert_eq!(result, b"\x1b[200~\x1b[31mred\x1b[0m\x1b[201~");
+    }
+
+    #[test]
+    fn t_r32_bracket_paste_multiline() {
+        let text = "line1\nline2\r\nline3";
+        let result = bracket_paste(text, true);
+        assert_eq!(result, b"\x1b[200~line1\nline2\r\nline3\x1b[201~");
+    }
+
+    #[test]
+    fn t_r32_bracket_paste_with_inner_bracket_markers() {
+        // Text that contains paste markers should still be wrapped.
+        let text = "\x1b[200~nested\x1b[201~";
+        let result = bracket_paste(text, true);
+        assert_eq!(result, b"\x1b[200~\x1b[200~nested\x1b[201~\x1b[201~");
+    }
+
+    #[test]
+    fn t_r32_bracket_paste_disabled_passthrough() {
+        // When bracketed=false, text passes through raw.
+        let text = "hello\x1bworld";
+        let result = bracket_paste(text, false);
+        assert_eq!(result, b"hello\x1bworld");
+    }
+
+    #[test]
+    fn t_r32_bracket_paste_unicode() {
+        let text = "héllo世界";
+        let result = bracket_paste(text, true);
+        let expected: Vec<u8> = b"\x1b[200~"
+            .to_vec()
+            .into_iter()
+            .chain(text.as_bytes().iter().copied())
+            .chain(b"\x1b[201~".iter().copied())
+            .collect();
+        assert_eq!(result, expected);
+    }
 }
