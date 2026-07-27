@@ -2530,19 +2530,18 @@ impl DesktopApp {
             let sgr_pixel = term.mouse_sgr_pixel_enabled();
             let urxvt = term.mouse_urxvt_enabled();
 
-            // For pixel mode, convert cell coords to pixel coords.
-            let (mx, my) = if sgr_pixel && let Some(ref renderer) = self.renderer {
-                (
-                    (col as u32 * renderer.cell_width()) as u16,
-                    (row as u32 * renderer.cell_height()) as u16,
-                )
-            } else {
-                (col, row)
-            };
+            // For pixel mode (1016), use actual pixel positions relative to
+            // the content area — NOT cell-aligned positions. Programs like
+            // kitty's image protocol need sub-cell precision. Converting
+            // cell coordinates back to pixels loses the within-cell offset.
+            let bounds = self.content_area_bounds();
+            let pixel_x = (self.cursor_pos.0 - bounds.x as f64) as u16;
+            let pixel_y = (self.cursor_pos.1 - bounds.y as f64) as u16;
+
             let mouse_ev = crate::mouse::MouseEvent {
                 button: mouse_button,
-                x: mx,
-                y: my,
+                x: if sgr_pixel { pixel_x } else { col },
+                y: if sgr_pixel { pixel_y } else { row },
                 mods,
             };
 
@@ -2550,7 +2549,7 @@ impl DesktopApp {
                 ElementState::Pressed => {
                     self.button_held = Some(mouse_button);
                     let bytes = if sgr_pixel {
-                        crate::mouse::encode_mouse_event_pixel(&mouse_ev, mx, my, true)
+                        crate::mouse::encode_mouse_event_pixel(&mouse_ev, pixel_x, pixel_y, true)
                     } else {
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, true)
                     };
@@ -2563,7 +2562,7 @@ impl DesktopApp {
                 ElementState::Released => {
                     self.button_held = None;
                     let bytes = if sgr_pixel {
-                        crate::mouse::encode_mouse_event_pixel(&mouse_ev, mx, my, false)
+                        crate::mouse::encode_mouse_event_pixel(&mouse_ev, pixel_x, pixel_y, false)
                     } else {
                         crate::mouse::encode_mouse_event(&mouse_ev, sgr, urxvt, false)
                     };
