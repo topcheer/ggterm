@@ -194,6 +194,11 @@ impl Grid {
             let mut current: Option<Row> = None; // accumulating a logical line
             for row in all_rows {
                 if let Some(ref mut acc) = current {
+                    // Trim trailing blanks from the accumulator before joining.
+                    // A soft-wrapped row may have trailing blank padding (e.g.
+                    // from DCH/ICH operations). Without trimming, these blanks
+                    // become gaps in the rejoined logical line when widening.
+                    trim_trailing_blanks(&mut acc.cells);
                     // Append this row's cells to the accumulator.
                     acc.cells.extend(row.cells.iter().cloned());
                     // Keep the wrap flag from the row being appended.
@@ -2810,5 +2815,37 @@ mod tests {
             g.scrollback_len()
         );
         assert_eq!(g.scrollback_len(), new_max);
+    }
+
+    #[test]
+    fn t_p146_reflow_trailing_blank_in_wrapped_row() {
+        // When a soft-wrapped row has trailing blanks (e.g. from DCH),
+        // reflow should NOT insert a gap when rejoining on widen.
+        let mut g = Grid::with_scrollback(5, 2, 100);
+        // Fill row 0 completely: ABCDE, then wrap to row 1: FG
+        for (i, ch) in ['A', 'B', 'C', 'D', 'E'].iter().enumerate() {
+            g.cell_mut(i, 0).unwrap().ch = *ch;
+        }
+        g.set_row_wrap(0, true);
+        for (i, ch) in ['F', 'G'].iter().enumerate() {
+            g.cell_mut(i, 1).unwrap().ch = *ch;
+        }
+        // Simulate DCH: delete char at col 3, creating trailing blanks
+        // in row 0 while wrap stays true.
+        g.cell_mut(3, 0).unwrap().clear();
+        g.cell_mut(4, 0).unwrap().clear();
+        // Row 0: A B C _ _ (wrap=true), Row 1: F G _ _ _ (wrap=false)
+        // Widen to 10: logical line should be "ABCFG" with no gap.
+        g.reflow_resize(10, 2);
+        // Row 0 should have A, B, C, F, G in sequence — no gap at col 3.
+        assert_eq!(g.cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(g.cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(g.cell(2, 0).unwrap().ch, 'C');
+        assert_eq!(
+            g.cell(3, 0).unwrap().ch,
+            'F',
+            "no gap from trailing blanks in wrapped row"
+        );
+        assert_eq!(g.cell(4, 0).unwrap().ch, 'G');
     }
 }
