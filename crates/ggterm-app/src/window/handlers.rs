@@ -3106,19 +3106,15 @@ impl DesktopApp {
                 };
                 if sgr || sgr_pixel {
                     let bytes = if sgr_pixel {
-                        // SGR-pixel uses cell coords converted to pixel coords.
-                        let (px, py) = if let Some(ref renderer) = self.renderer {
-                            (
-                                (col as u32 * renderer.cell_width()) as u16,
-                                (row as u32 * renderer.cell_height()) as u16,
-                            )
-                        } else {
-                            (col, row)
-                        };
+                        // SGR-pixel uses actual pixel positions relative to
+                        // the content area (not cell-aligned).
+                        let bounds = self.content_area_bounds();
+                        let pixel_x = (self.cursor_pos.0 - bounds.x as f64) as u16;
+                        let pixel_y = (self.cursor_pos.1 - bounds.y as f64) as u16;
                         let pixel_ev = crate::mouse::MouseEvent {
                             button,
-                            x: px,
-                            y: py,
+                            x: pixel_x,
+                            y: pixel_y,
                             mods,
                         };
                         crate::mouse::encode_sgr_motion(&pixel_ev, held)
@@ -3705,6 +3701,12 @@ impl DesktopApp {
             let sgr_pixel = term.mouse_sgr_pixel_enabled();
             let urxvt = term.mouse_urxvt_enabled();
 
+            // For pixel mode, compute actual pixel positions relative to
+            // the content area (not cell-aligned).
+            let bounds = self.content_area_bounds();
+            let pixel_x = (self.cursor_pos.0 - bounds.x as f64) as u16;
+            let pixel_y = (self.cursor_pos.1 - bounds.y as f64) as u16;
+
             let (dx, dy) = match delta {
                 winit::event::MouseScrollDelta::LineDelta(x, y) => (x as i32, -(y as i32)),
                 winit::event::MouseScrollDelta::PixelDelta(pos) => {
@@ -3722,21 +3724,13 @@ impl DesktopApp {
                     crate::mouse::MouseButton::WheelDown
                 };
                 let bytes = if sgr_pixel {
-                    let (px, py) = if let Some(ref renderer) = self.renderer {
-                        (
-                            (col as u32 * renderer.cell_width()) as u16,
-                            (row as u32 * renderer.cell_height()) as u16,
-                        )
-                    } else {
-                        (col, row)
-                    };
                     let ev = crate::mouse::MouseEvent {
                         button,
-                        x: px,
-                        y: py,
+                        x: pixel_x,
+                        y: pixel_y,
                         mods,
                     };
-                    crate::mouse::encode_mouse_event_pixel(&ev, px, py, true)
+                    crate::mouse::encode_mouse_event_pixel(&ev, pixel_x, pixel_y, true)
                 } else {
                     let ev = crate::mouse::MouseEvent {
                         button,
@@ -3760,21 +3754,13 @@ impl DesktopApp {
                     crate::mouse::MouseButton::WheelLeft
                 };
                 let bytes = if sgr_pixel {
-                    let (px, py) = if let Some(ref renderer) = self.renderer {
-                        (
-                            (col as u32 * renderer.cell_width()) as u16,
-                            (row as u32 * renderer.cell_height()) as u16,
-                        )
-                    } else {
-                        (col, row)
-                    };
                     let ev = crate::mouse::MouseEvent {
                         button,
-                        x: px,
-                        y: py,
+                        x: pixel_x,
+                        y: pixel_y,
                         mods,
                     };
-                    crate::mouse::encode_mouse_event_pixel(&ev, px, py, true)
+                    crate::mouse::encode_mouse_event_pixel(&ev, pixel_x, pixel_y, true)
                 } else {
                     let ev = crate::mouse::MouseEvent {
                         button,
