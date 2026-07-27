@@ -21093,4 +21093,268 @@ mod tests {
         // Should not panic
         assert!(t.modes.cursor_visible, "no crash from paramless DECRST");
     }
+
+    // ── Round 26: OSC 8 / DECSCUSR / modifyOtherKeys / Clipboard edges ──
+
+    #[test]
+    fn t_r26_osc_8_with_id_param() {
+        // OSC 8 with id parameter: OSC 8;id=XXX;URI ST
+        let mut t = Terminal::new(20, 3);
+        feed(
+            &mut t,
+            b"\x1b]8;id=123;https://example.com\x1b\\Link\x1b]8;;\x1b\\",
+        );
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().hyperlink.as_deref(),
+            Some("https://example.com"),
+            "hyperlink with id param stored"
+        );
+    }
+
+    #[test]
+    fn t_r26_osc_8_long_uri_capped() {
+        // OSC 8 URI should be capped at 2048 chars.
+        let mut t = Terminal::new(20, 3);
+        let long_uri = format!("https://example.com/{}", "x".repeat(3000));
+        let osc = format!("\x1b]8;{}\x1b\\", long_uri);
+        feed(&mut t, osc.as_bytes());
+        feed(&mut t, b"X");
+        let hl = t.grid().cell(0, 0).unwrap().hyperlink.as_ref();
+        assert!(
+            hl.unwrap().len() <= 2048,
+            "URI capped at 2048, got {}",
+            hl.unwrap().len()
+        );
+    }
+
+    #[test]
+    fn t_r26_osc_8_uri_with_special_chars() {
+        // OSC 8 with URI containing query params and fragments.
+        let mut t = Terminal::new(20, 3);
+        feed(
+            &mut t,
+            b"\x1b]8;;https://example.com/path?q=1&v=2#frag\x1b\\X",
+        );
+        let hl = t.grid().cell(0, 0).unwrap().hyperlink.as_deref();
+        assert_eq!(
+            hl,
+            Some("https://example.com/path?q=1&v=2#frag"),
+            "URI with query/fragment stored"
+        );
+    }
+
+    #[test]
+    fn t_r26_osc_8_nested_not_allowed() {
+        // OSC 8 open then another open — second should overwrite.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;https://a.com\x1b\\X");
+        feed(&mut t, b"\x1b]8;;https://b.com\x1b\\Y");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().hyperlink.as_deref(),
+            Some("https://a.com"),
+            "X has first link"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().hyperlink.as_deref(),
+            Some("https://b.com"),
+            "Y has second link"
+        );
+    }
+
+    #[test]
+    fn t_r26_osc_8_sgr_combined() {
+        // OSC 8 + SGR attributes — both should be applied to the cell.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1m\x1b]8;;https://example.com\x1b\\BoldLink");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD), "bold applied");
+        assert_eq!(
+            cell.hyperlink.as_deref(),
+            Some("https://example.com"),
+            "hyperlink applied"
+        );
+    }
+
+    #[test]
+    fn t_r26_decscusr_0_resets_to_default() {
+        // DECSCUSR 0 should reset to the terminal default (usually blinking block).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[3 q"); // set to BlinkUnderline
+        assert_eq!(t.cursor_style(), CursorStyle::BlinkUnderline);
+        feed(&mut t, b"\x1b[0 q"); // param 0 → default
+        assert_eq!(t.cursor_style(), CursorStyle::Default);
+    }
+
+    #[test]
+    fn t_r26_decscusr_7_ignored() {
+        // DECSCUSR with invalid param (7+) should be ignored.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[2 q"); // SteadyBlock
+        feed(&mut t, b"\x1b[7 q"); // invalid — should be ignored
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::SteadyBlock,
+            "invalid DECSCUSR param ignored"
+        );
+    }
+
+    #[test]
+    fn t_r26_decscusr_saved_by_decsc_restored_by_decrc() {
+        // DECSC should save cursor_style, DECRC should restore it.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[4 q"); // SteadyUnderline
+        feed(&mut t, b"\x1b7"); // DECSC — save
+        feed(&mut t, b"\x1b[1 q"); // change to BlinkBlock
+        assert_eq!(t.cursor_style(), CursorStyle::BlinkBlock);
+        feed(&mut t, b"\x1b8"); // DECRC — restore
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::SteadyUnderline,
+            "DECRC restores saved cursor style"
+        );
+    }
+
+    #[test]
+    fn t_r26_decscusr_ris_reset() {
+        // RIS should reset cursor style to default.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[6 q"); // SteadyBar
+        feed(&mut t, b"\x1bc"); // RIS
+        assert_eq!(
+            t.cursor_style(),
+            CursorStyle::Default,
+            "RIS resets cursor style"
+        );
+    }
+
+    #[test]
+    fn t_r26_decscusr_all_styles_distinct() {
+        // All 6 cursor styles should be settable and distinct.
+        let mut t = Terminal::new(10, 3);
+        let styles = [
+            ("1", CursorStyle::BlinkBlock),
+            ("2", CursorStyle::SteadyBlock),
+            ("3", CursorStyle::BlinkUnderline),
+            ("4", CursorStyle::SteadyUnderline),
+            ("5", CursorStyle::BlinkBar),
+            ("6", CursorStyle::SteadyBar),
+        ];
+        for (param, expected) in styles {
+            feed(&mut t, format!("\x1b[{} q", param).as_bytes());
+            assert_eq!(t.cursor_style(), expected, "DECSCUSR {} correct", param);
+        }
+    }
+
+    #[test]
+    fn t_r26_modify_other_keys_set_1() {
+        // modifyOtherKeys set to 1.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[>4;1h"); // set modifyOtherKeys = 1
+        assert_eq!(t.modes.modify_other_keys, 1);
+    }
+
+    #[test]
+    fn t_r26_modify_other_keys_set_2() {
+        // modifyOtherKeys set to 2.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[>4;2h"); // set modifyOtherKeys = 2
+        assert_eq!(t.modes.modify_other_keys, 2);
+    }
+
+    #[test]
+    fn t_r26_modify_other_keys_reset() {
+        // modifyOtherKeys reset to 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[>4;2h"); // set to 2
+        feed(&mut t, b"\x1b[>4l"); // reset
+        assert_eq!(t.modes.modify_other_keys, 0);
+    }
+
+    #[test]
+    fn t_r26_modify_other_keys_decrqm() {
+        // DECRQM query for modifyOtherKeys mode.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[>4$p"); // query
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("4"), "DECRQM for modifyOtherKeys: {}", s);
+    }
+
+    #[test]
+    fn t_r26_clipboard_set_basic() {
+        // OSC 52 set clipboard with base64 data.
+        let mut t = Terminal::new(10, 3);
+        // "Hi" in base64 = "SGk="
+        feed(&mut t, b"\x1b]52;c;SGk=\x1b\\");
+        let clip = t.take_pending_clipboard_set();
+        assert_eq!(
+            clip.as_deref(),
+            Some(b"Hi".as_ref()),
+            "clipboard set to 'Hi'"
+        );
+    }
+
+    #[test]
+    fn t_r26_clipboard_clear() {
+        // OSC 52 clear clipboard (empty data).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;\x1b\\"); // empty data = clear
+        let clip = t.take_pending_clipboard_set();
+        assert_eq!(clip.as_deref(), Some(b"".as_ref()), "clipboard cleared");
+    }
+
+    #[test]
+    fn t_r26_clipboard_query() {
+        // OSC 52 query (data = '?').
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;?\x1b\\"); // query
+        assert!(t.take_pending_clipboard_query(), "clipboard query detected");
+    }
+
+    #[test]
+    fn t_r26_clipboard_primary_selection() {
+        // OSC 52 with primary selection selector 'p'.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;p;SGk=\x1b\\"); // 'p' = primary selection
+        let clip = t.take_pending_clipboard_set();
+        assert_eq!(
+            clip.as_deref(),
+            Some(b"Hi".as_ref()),
+            "primary selection set"
+        );
+    }
+
+    #[test]
+    fn t_r26_title_push_pop_roundtrip() {
+        // OSC 22 (push title) / OSC 23 (pop title) round-trip.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;Original\x07");
+        feed(&mut t, b"\x1b[22;2t"); // push (CSI 22;2 t)
+        feed(&mut t, b"\x1b]0;Temporary\x07");
+        assert_eq!(t.title(), "Temporary");
+        feed(&mut t, b"\x1b[23;2t"); // pop
+        assert_eq!(t.title(), "Original", "title restored after pop");
+    }
+
+    #[test]
+    fn t_r26_title_push_pop_empty_stack() {
+        // Pop from empty title stack — should not crash.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;Title\x07");
+        feed(&mut t, b"\x1b[23;2t"); // pop from empty stack
+        assert_eq!(t.title(), "Title", "title unchanged after empty pop");
+    }
+
+    #[test]
+    fn t_r26_title_push_multiple_pop_one() {
+        // Push saves current title. Pop restores most recent pushed.
+        // set A → push(saves A) → set B → push(saves B) → set C → push(saves C)
+        // pop → restores C
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;A\x07\x1b[22;2t");
+        feed(&mut t, b"\x1b]0;B\x07\x1b[22;2t");
+        feed(&mut t, b"\x1b]0;C\x07\x1b[22;2t");
+        feed(&mut t, b"\x1b[23;2t"); // pop → restores C (most recent push)
+        assert_eq!(t.title(), "C", "pop restores most recent push");
+    }
 }
