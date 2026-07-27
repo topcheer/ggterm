@@ -3135,16 +3135,31 @@ impl Perform for Terminal {
                 if top <= bottom && left <= right {
                     // Collect SGR attribute params starting at index 4.
                     let sgr_vals: Vec<u16> = params.iter().skip(4).copied().collect();
-                    // Build the flag set to apply.
+                    // Build cumulative add/remove flag operations.
                     let mut clear_first = false;
                     let mut add_flags = CellFlags::empty();
+                    let mut remove_flags = CellFlags::empty();
                     for &v in &sgr_vals {
                         match v {
-                            0 => clear_first = true,
+                            0 => {
+                                // Ps1=0: clear all SGR-renderable attributes
+                                clear_first = true;
+                            }
                             1 => add_flags |= CellFlags::BOLD,
                             4 => add_flags |= CellFlags::UNDERLINE,
                             5 => add_flags |= CellFlags::BLINK,
                             7 => add_flags |= CellFlags::REVERSE,
+                            // Explicit "off" codes per VT510 spec
+                            22 => remove_flags |= CellFlags::BOLD | CellFlags::DIM,
+                            24 => {
+                                remove_flags |= CellFlags::UNDERLINE
+                                    | CellFlags::UNDERLINE_DOUBLE
+                                    | CellFlags::UNDERLINE_CURLY
+                                    | CellFlags::UNDERLINE_DOTTED
+                                    | CellFlags::UNDERLINE_DASHED;
+                            }
+                            25 => remove_flags |= CellFlags::BLINK,
+                            27 => remove_flags |= CellFlags::REVERSE,
                             _ => {}
                         }
                     }
@@ -3163,13 +3178,12 @@ impl Perform for Terminal {
                                     continue;
                                 }
                                 if clear_first {
-                                    // Clear SGR-renderable flags only, keep structural ones.
+                                    // Ps1=0: clear all SGR-renderable attributes.
                                     cell.flags &= CellFlags::WIDE_CHAR
                                         | CellFlags::WIDE_SPACER
-                                        | CellFlags::PROTECTED
-                                        | CellFlags::UNDERLINE_DOUBLE
-                                        | CellFlags::UNDERLINE_CURLY;
+                                        | CellFlags::PROTECTED;
                                 }
+                                cell.flags &= !remove_flags;
                                 cell.flags |= add_flags;
                             }
                         }
@@ -3180,7 +3194,8 @@ impl Perform for Terminal {
             }
             // DECRARA — Reverse Attributes in Rectangular Area (CSI Pt;Pl;Pb;Pr;Ps1;Ps2 $ t)
             // Toggle (flip) SGR attributes on non-blank cells within the rectangle.
-            // Only BOLD(1), UNDERLINE(4), BLINK(5), REVERSE(7) are honored.
+            // Ps=0: reverse all attributes (BOLD, UNDERLINE, BLINK, REVERSE).
+            // Ps=1/4/5/7: reverse individual attributes.
             b't' if intermediates.contains(&b'$') => {
                 let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
                 let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
@@ -3197,6 +3212,13 @@ impl Perform for Terminal {
                     let mut toggle_flags = CellFlags::empty();
                     for &v in &sgr_vals {
                         match v {
+                            0 => {
+                                // Ps=0: reverse all attributes per VT510 spec
+                                toggle_flags |= CellFlags::BOLD
+                                    | CellFlags::UNDERLINE
+                                    | CellFlags::BLINK
+                                    | CellFlags::REVERSE;
+                            }
                             1 => toggle_flags |= CellFlags::BOLD,
                             4 => toggle_flags |= CellFlags::UNDERLINE,
                             5 => toggle_flags |= CellFlags::BLINK,
@@ -10133,6 +10155,89 @@ mod tests {
         assert!(
             t.grid()[(3, 0)].flags.contains(CellFlags::BOLD),
             "C should gain BOLD"
+        );
+    }
+
+    #[test]
+    fn t_deccara_ps1_0_clears_all_renderable_attrs() {
+        // Ps1=0 should clear BOLD, UNDERLINE, BLINK, REVERSE but keep structural flags.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;4;5;7m"); // BOLD + UNDERLINE + BLINK + REVERSE
+        feed(&mut t, b"AB");
+        // DECCARA: clear all + set nothing → all renderable attrs removed
+        feed(&mut t, b"\x1b[1;1;1;5;0$r");
+        let cell = &t.grid()[(0, 0)];
+        assert!(
+            !cell.flags.contains(CellFlags::BOLD),
+            "BOLD should be cleared by Ps1=0"
+        );
+        assert!(
+            !cell.flags.contains(CellFlags::UNDERLINE),
+            "UNDERLINE should be cleared by Ps1=0"
+        );
+        assert!(
+            !cell.flags.contains(CellFlags::BLINK),
+            "BLINK should be cleared by Ps1=0"
+        );
+        assert!(
+            !cell.flags.contains(CellFlags::REVERSE),
+            "REVERSE should be cleared by Ps1=0"
+        );
+    }
+
+    #[test]
+    fn t_deccara_off_code_22_removes_bold() {
+        // Ps=22 explicitly removes BOLD (no-bold)
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1mAB"); // BOLD
+        assert!(t.grid()[(0, 0)].flags.contains(CellFlags::BOLD));
+        // Remove just BOLD
+        feed(&mut t, b"\x1b[1;1;1;5;22$r");
+        assert!(
+            !t.grid()[(0, 0)].flags.contains(CellFlags::BOLD),
+            "BOLD removed by Ps=22"
+        );
+    }
+
+    #[test]
+    fn t_deccara_off_code_24_removes_all_underlines() {
+        // Ps=24 removes all underline styles including curly/dotted/dashed
+        let mut t = Terminal::new(10, 3);
+        // Set curly underline via colon syntax
+        feed(&mut t, b"\x1b[4:3mAB");
+        assert!(t.grid()[(0, 0)].flags.contains(CellFlags::UNDERLINE_CURLY));
+        // Remove all underlines
+        feed(&mut t, b"\x1b[1;1;1;5;24$r");
+        assert!(
+            !t.grid()[(0, 0)].flags.contains(CellFlags::UNDERLINE_CURLY),
+            "UNDERLINE_CURLY removed by Ps=24"
+        );
+    }
+
+    #[test]
+    fn t_decrara_ps0_reverses_all() {
+        // Ps=0 reverses ALL attributes (BOLD, UNDERLINE, BLINK, REVERSE)
+        let mut t = Terminal::new(10, 3);
+        // Set BOLD + BLINK, no underline/reverse
+        feed(&mut t, b"\x1b[1;5mAB");
+        // DECRARA Ps=0: reverse all → BOLD off, BLINK off, UNDERLINE on, REVERSE on
+        feed(&mut t, b"\x1b[1;1;1;5;0$t");
+        let cell = &t.grid()[(0, 0)];
+        assert!(
+            !cell.flags.contains(CellFlags::BOLD),
+            "BOLD should be toggled off by Ps=0"
+        );
+        assert!(
+            !cell.flags.contains(CellFlags::BLINK),
+            "BLINK should be toggled off by Ps=0"
+        );
+        assert!(
+            cell.flags.contains(CellFlags::UNDERLINE),
+            "UNDERLINE should be toggled on by Ps=0"
+        );
+        assert!(
+            cell.flags.contains(CellFlags::REVERSE),
+            "REVERSE should be toggled on by Ps=0"
         );
     }
 
