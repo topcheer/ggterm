@@ -2092,6 +2092,14 @@ impl Perform for Terminal {
                 if self.cursor.x > 0 {
                     self.cursor.x -= 1;
                 }
+                // If cursor landed on a wide char spacer, back up to the lead.
+                // Matches CUB (CSI D) — cursor should never rest on a spacer.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
                 self.cursor.pending_wrap = false;
             }
             0x05 => {
@@ -11764,11 +11772,12 @@ mod tests {
         feed(&mut t, "你".as_bytes()); // cols 0-1, cursor at col 2
         assert_eq!(t.cursor().0, 2);
         feed(&mut t, b"\x08"); // BS
-        // BS should move to col 1, but since col 1 is a spacer, it should
-        // go to col 0 (the lead). Behavior may vary — test what we have.
-        assert!(
-            t.cursor().0 <= 1,
-            "BS after wide char should go to col 0 or 1"
+        // BS decrements to col 1, but col 1 is a spacer, so it backs up
+        // to col 0 (the lead cell) — matching CUB (CSI D) behavior.
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "BS after wide char should skip spacer to lead cell"
         );
     }
 
@@ -23806,12 +23815,26 @@ mod tests {
         // (skip the spacer), so the next char overwrites the wide char.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, "中".as_bytes()); // cols 0-1, cursor at col 2
-        feed(&mut t, b"\x08"); // BS → cursor should go to col 1 (spacer)
-        // Actually BS just decrements by 1 → col 1 (spacer position)
-        assert_eq!(t.cursor().0, 1, "BS after wide char at col 1");
-        // Another BS → col 0 (lead)
-        feed(&mut t, b"\x08");
-        assert_eq!(t.cursor().0, 0, "BS to col 0 (lead)");
+        feed(&mut t, b"\x08"); // BS → decrements to col 1 (spacer),
+        // then adjusts back to col 0 (the lead cell).
+        assert_eq!(t.cursor().0, 0, "BS after wide char skips spacer to lead");
+    }
+
+    #[test]
+    fn t_p142_bs_between_consecutive_wide_chars() {
+        // Two consecutive wide chars: 你(0-1) 好(2-3).
+        // BS from col 2 (lead of 好) should land on col 0 (lead of 你),
+        // NOT col 1 (spacer of 你). This matches CUB (CSI D) behavior.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你好".as_bytes()); // cols 0-1=你, 2-3=好, cursor at col 4
+        feed(&mut t, b"\x1b[3G"); // CUP to col 2 (0-based: lead of 好)
+        assert_eq!(t.cursor().0, 2);
+        feed(&mut t, b"\x08"); // BS → col 1 (spacer of 你) → adjust to col 0 (lead)
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "BS from wide lead should skip preceding spacer to its lead"
+        );
     }
 
     #[test]
