@@ -2971,12 +2971,21 @@ impl Perform for Terminal {
                     return;
                 }
                 let fill_char = char::from_u32(pch as u32).unwrap_or(' ');
-                let top = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let left = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let bottom = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let right = params.get(4).copied().unwrap_or(1).saturating_sub(1) as usize;
                 let width = self.grid.width();
                 let height = self.grid.height();
+                let top = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
+                // Missing/0 bottom and right default to screen extent (DEC STD 070).
+                let bottom = params
+                    .get(3)
+                    .filter(|&v| *v != 0)
+                    .map(|v| (*v as usize).saturating_sub(1))
+                    .unwrap_or(height.saturating_sub(1));
+                let right = params
+                    .get(4)
+                    .filter(|&v| *v != 0)
+                    .map(|v| (*v as usize).saturating_sub(1))
+                    .unwrap_or(width.saturating_sub(1));
                 let top = top.min(height.saturating_sub(1));
                 let bottom = bottom.min(height.saturating_sub(1));
                 let left = left.min(width.saturating_sub(1));
@@ -3008,12 +3017,21 @@ impl Perform for Terminal {
             // Coordinates are 1-based, clamped to screen bounds.
             // (Per DEC STD 070: DECERA ignores DECSCA protection.)
             b'z' if intermediates.contains(&b'$') => {
-                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
-                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
                 let width = self.grid.width();
                 let height = self.grid.height();
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                // Missing/0 bottom and right default to screen extent (DEC STD 070).
+                let bottom = params
+                    .get(2)
+                    .filter(|&v| *v != 0)
+                    .map(|v| (*v as usize).saturating_sub(1))
+                    .unwrap_or(height.saturating_sub(1));
+                let right = params
+                    .get(3)
+                    .filter(|&v| *v != 0)
+                    .map(|v| (*v as usize).saturating_sub(1))
+                    .unwrap_or(width.saturating_sub(1));
                 let top = top.min(height.saturating_sub(1));
                 let bottom = bottom.min(height.saturating_sub(1));
                 let left = left.min(width.saturating_sub(1));
@@ -3036,12 +3054,21 @@ impl Perform for Terminal {
             // Erase only non-protected cells in the rectangle.
             // DECSCA protected cells are preserved (same as DECSED/DECSEL).
             b'{' if intermediates.contains(&b'$') => {
-                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
-                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let bottom = params.get(2).copied().unwrap_or(1).saturating_sub(1) as usize;
-                let right = params.get(3).copied().unwrap_or(1).saturating_sub(1) as usize;
                 let width = self.grid.width();
                 let height = self.grid.height();
+                let top = params.first().copied().unwrap_or(1).saturating_sub(1) as usize;
+                let left = params.get(1).copied().unwrap_or(1).saturating_sub(1) as usize;
+                // Missing/0 bottom and right default to screen extent (DEC STD 070).
+                let bottom = params
+                    .get(2)
+                    .filter(|&v| *v != 0)
+                    .map(|v| (*v as usize).saturating_sub(1))
+                    .unwrap_or(height.saturating_sub(1));
+                let right = params
+                    .get(3)
+                    .filter(|&v| *v != 0)
+                    .map(|v| (*v as usize).saturating_sub(1))
+                    .unwrap_or(width.saturating_sub(1));
                 let top = top.min(height.saturating_sub(1));
                 let bottom = bottom.min(height.saturating_sub(1));
                 let left = left.min(width.saturating_sub(1));
@@ -25935,5 +25962,55 @@ mod tests {
         // The combining char should be on the lead cell (col 0)
         assert_eq!(t.grid().cell(0, 0).unwrap().combining.len(), 1);
         assert_eq!(t.grid().cell(0, 0).unwrap().combining[0], '\u{0301}');
+    }
+
+    #[test]
+    fn t_decera_missing_bottom_right_defaults_to_screen() {
+        // DECERA with only top;left should erase from (top,left) to screen extent.
+        // Per DEC STD 070: missing Pb defaults to height, Pr defaults to width.
+        let mut t = Terminal::new(5, 4);
+        // Fill entire screen with 'X'
+        feed(&mut t, b"\x1b[1;1H");
+        feed(&mut t, b"XXXXX\r\nXXXXX\r\nXXXXX\r\nXXXXX");
+        // DECERA: erase from row 2, col 2 to end (no bottom/right params)
+        // CSI 2;2 $ z  →  erase rows 1-3, cols 1-4 (0-based)
+        feed(&mut t, b"\x1b[2;2$z");
+        // Cell at (0,0) should still be 'X' (outside rect)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X');
+        // Cell at (1,1) should be blank (erased)
+        assert_eq!(t.grid().cell(1, 1).unwrap().ch, ' ');
+        // Cell at (4,3) should be blank (erased — bottom-right corner)
+        assert_eq!(t.grid().cell(4, 3).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_decfra_fills_rect_with_char() {
+        // DECFRA fills a rectangle with a given character.
+        let mut t = Terminal::new(6, 4);
+        // CSI 65;1;1;3;4 $ x  →  fill rows 0-2, cols 0-3 with 'A' (65)
+        feed(&mut t, b"\x1b[65;1;1;3;4$x");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(3, 2).unwrap().ch, 'A');
+        // Outside rect: should be blank
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ');
+        assert_eq!(t.grid().cell(0, 3).unwrap().ch, ' ');
+    }
+
+    #[test]
+    fn t_decfra_missing_coords_defaults_to_full_screen() {
+        // DECFRA with just Pch and no coordinates fills entire screen.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[66$x"); // fill entire screen with 'B' (66)
+        for r in 0..3 {
+            for c in 0..5 {
+                assert_eq!(
+                    t.grid().cell(c, r).unwrap().ch,
+                    'B',
+                    "cell ({},{}) should be B",
+                    c,
+                    r
+                );
+            }
+        }
     }
 }
