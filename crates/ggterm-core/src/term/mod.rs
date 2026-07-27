@@ -3663,9 +3663,9 @@ impl Perform for Terminal {
             }
             b'D' => self.index(),
             b'E' => {
+                // NEL — CR + LF (always moves to col 0 of next line, ignoring LNM).
                 self.cursor.x = 0;
-                self.line_feed();
-                self.cursor.pending_wrap = false;
+                self.index();
             }
             b'M' => self.reverse_line_feed(),
             b'H' if self.cursor.x < self.tab_stops.len() => {
