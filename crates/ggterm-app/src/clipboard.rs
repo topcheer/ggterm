@@ -123,6 +123,11 @@ pub fn set_clipboard_bytes(data: &[u8]) {
 /// When bracketed paste mode (DEC 2004) is active, the terminal wraps
 /// pasted text in `\x1b[200~` ... `\x1b[201~` markers so applications
 /// can distinguish pasted text from typed input.
+///
+/// For unbracketed paste, newlines (`\n`) are converted to carriage
+/// returns (`\r`) to match PTY input conventions: the Enter key sends
+/// `\r`, and pasted text should behave identically. This is the standard
+/// behavior in xterm, Alacritty, and iTerm2.
 pub fn bracket_paste(text: &str, bracketed: bool) -> Vec<u8> {
     if bracketed {
         let mut bytes = Vec::with_capacity(text.len() + 12);
@@ -131,7 +136,9 @@ pub fn bracket_paste(text: &str, bracketed: bool) -> Vec<u8> {
         bytes.extend_from_slice(b"\x1b[201~");
         bytes
     } else {
-        text.as_bytes().to_vec()
+        // Convert \n to \r for PTY input. The caller (paste_from_source)
+        // already normalized CRLF → LF, so all line endings are \n here.
+        text.replace('\n', "\r").into_bytes()
     }
 }
 
@@ -553,10 +560,26 @@ mod tests {
 
     #[test]
     fn t_r32_bracket_paste_disabled_passthrough() {
-        // When bracketed=false, text passes through raw.
+        // When bracketed=false, text passes through raw (no \n in this text).
         let text = "hello\x1bworld";
         let result = bracket_paste(text, false);
         assert_eq!(result, b"hello\x1bworld");
+    }
+
+    #[test]
+    fn test_unbracketed_paste_converts_newline_to_cr() {
+        // Unbracketed paste: \n must be converted to \r for PTY input.
+        // This matches Enter key behavior (Enter sends \r, not \n).
+        let text = "line1\nline2\nline3";
+        let result = bracket_paste(text, false);
+        assert_eq!(result, b"line1\rline2\rline3");
+    }
+
+    #[test]
+    fn test_unbracketed_paste_single_line_unchanged() {
+        // Single-line paste: no \n to convert.
+        let result = bracket_paste("hello world", false);
+        assert_eq!(result, b"hello world");
     }
 
     #[test]
