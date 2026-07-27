@@ -2623,6 +2623,11 @@ impl Perform for Terminal {
             b'u' => {
                 self.cursor = self.saved_cursor;
                 self.cursor.pending_wrap = false;
+                // Clamp to grid bounds (may have been resized since SCP).
+                let w = self.grid.width();
+                let h = self.grid.height();
+                self.cursor.x = self.cursor.x.min(w.saturating_sub(1));
+                self.cursor.y = self.cursor.y.min(h.saturating_sub(1));
             }
             // DECSCUSR — cursor style (CSI Ps SP q)
             b'q' if intermediates.contains(&b' ') => {
@@ -3419,6 +3424,19 @@ impl Perform for Terminal {
                     self.modes.origin = false;
                     self.protected_attr = false;
                 }
+                // Clamp cursor to current grid dimensions.
+                // If the terminal was resized between DECSC and DECRC,
+                // the restored cursor position could be out of bounds.
+                // pending_wrap is invalidated only if clamping changed the position.
+                let w = self.grid.width();
+                let h = self.grid.height();
+                let clamped_x = self.cursor.x.min(w.saturating_sub(1));
+                let clamped_y = self.cursor.y.min(h.saturating_sub(1));
+                if clamped_x != self.cursor.x || clamped_y != self.cursor.y {
+                    self.cursor.pending_wrap = false;
+                }
+                self.cursor.x = clamped_x;
+                self.cursor.y = clamped_y;
             }
             b'c' => {
                 let w = self.grid.width();
@@ -4787,6 +4805,41 @@ mod tests {
         // Restore — auto-wrap should be OFF again
         feed(&mut t, b"\x1b8");
         assert!(!t.modes.auto_wrap, "auto-wrap should be restored to off");
+    }
+
+    #[test]
+    fn t_decrc_clamps_cursor_after_resize() {
+        // DECRC should clamp cursor to current grid bounds.
+        // If the terminal was resized between DECSC and DECRC,
+        // the restored cursor position must not be out of bounds.
+        let mut t = Terminal::new(80, 24);
+        // Move cursor to col 70, row 20
+        feed(&mut t, b"\x1b[21;71H");
+        assert_eq!(t.cursor(), (70, 20));
+        // Save state (DECSC)
+        feed(&mut t, b"\x1b7");
+        // Resize smaller
+        t.resize(40, 10);
+        // Restore (DECRC) — cursor should be clamped to (39, 9)
+        feed(&mut t, b"\x1b8");
+        let (cx, cy) = t.cursor();
+        assert!(cx < 40, "cursor x should be clamped to width, got {cx}");
+        assert!(cy < 10, "cursor y should be clamped to height, got {cy}");
+    }
+
+    #[test]
+    fn t_rcp_clamps_cursor_after_resize() {
+        // CSI u (RCP) should also clamp cursor after resize.
+        let mut t = Terminal::new(80, 24);
+        // Move cursor and save (CSI s)
+        feed(&mut t, b"\x1b[21;71H\x1b[s");
+        // Resize smaller
+        t.resize(40, 10);
+        // Restore (CSI u) — cursor should be clamped
+        feed(&mut t, b"\x1b[u");
+        let (cx, cy) = t.cursor();
+        assert!(cx < 40, "cursor x should be clamped to width, got {cx}");
+        assert!(cy < 10, "cursor y should be clamped to height, got {cy}");
     }
 
     #[test]
