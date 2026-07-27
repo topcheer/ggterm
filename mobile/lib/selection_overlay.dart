@@ -35,7 +35,7 @@ class TerminalSelectionOverlay extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final lo = selStart < selEnd ? selStart : selEnd;
-    final hi = selStart < selEnd ? selEnd : lo;
+    final hi = selStart < selEnd ? selEnd : selStart;
     final paint = Paint()..color = Colors.blue.withValues(alpha: 0.25);
 
     final startRow = lo ~/ cols;

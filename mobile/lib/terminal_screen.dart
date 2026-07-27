@@ -902,7 +902,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     final start = _selStartIdx!.clamp(0, _screen.cells.length - 1);
     final end = _selEndIdx!.clamp(0, _screen.cells.length - 1);
     final lo = start < end ? start : end;
-    final hi = start < end ? end : lo;
+    final hi = start < end ? end : start;
     final buf = StringBuffer();
     for (var i = lo; i <= hi; i++) {
       // Insert newline at row boundaries so multi-line selections
