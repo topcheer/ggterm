@@ -274,18 +274,18 @@ impl InputEncoder {
 fn ctrl_char(ch: char) -> Option<u8> {
     match ch {
         // Punctuation → control chars
-        '[' => Some(0x1b),                   // ESC
-        '\\' => Some(0x1c),                  // FS
-        ']' => Some(0x1d),                   // GS
-        '^' | '6' => Some(0x1e),             // RS
-        '_' | '/' | '-' | '=' => Some(0x1f), // US
-        '?' => Some(0x7f),                   // DEL
-        '@' | '`' | '2' => Some(0x00),       // NUL
-        '3' => Some(0x1b),                   // ESC
-        '4' => Some(0x1c),                   // FS
-        '5' => Some(0x1d),                   // GS
-        '7' => Some(0x1f),                   // US
-        '8' => Some(0x7f),                   // DEL
+        '[' => Some(0x1b),             // ESC
+        '\\' => Some(0x1c),            // FS
+        ']' => Some(0x1d),             // GS
+        '^' | '6' => Some(0x1e),       // RS
+        '_' | '/' | '-' => Some(0x1f), // US
+        '?' => Some(0x7f),             // DEL
+        '@' | '`' | '2' => Some(0x00), // NUL
+        '3' => Some(0x1b),             // ESC
+        '4' => Some(0x1c),             // FS
+        '5' => Some(0x1d),             // GS
+        '7' => Some(0x1f),             // US
+        '8' => Some(0x7f),             // DEL
         _ => None,
     }
 }
@@ -905,7 +905,10 @@ mod tests {
     }
 
     #[test]
-    fn test_ctrl_equal_us() {
+    fn test_ctrl_equal_not_mapped() {
+        // Ctrl+= should NOT produce a control character.
+        // xterm does not map Ctrl+=; it sends the raw byte.
+        // Programs like tmux/vim use Ctrl+= for zoom/features.
         let enc = InputEncoder::new();
         let key = InputKey::char_mod(
             '=',
@@ -914,7 +917,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(enc.encode(&key), b"\x1f");
+        // No ctrl_char mapping → falls through to plain byte output.
+        assert_eq!(enc.encode(&key), b"=");
     }
 
     // ── Ctrl+digits (US keyboard) ──
