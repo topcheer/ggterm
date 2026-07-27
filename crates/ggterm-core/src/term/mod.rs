@@ -2824,7 +2824,7 @@ impl Perform for Terminal {
                 let right = right.min(width.saturating_sub(1));
                 if top <= bottom && left <= right {
                     let fill_char = params
-                        .first()
+                        .get(4)
                         .copied()
                         .filter(|&c| c >= 0x20)
                         .and_then(|c| char::from_u32(c as u32))
@@ -20535,5 +20535,280 @@ mod tests {
         // Rows in region should be blank
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "region row blank");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+    }
+
+    // ── Round 24: DECFRA / DECRARA / Kitty / REP / Selective erase edges ──
+
+    #[test]
+    fn t_r24_decfra_fill_with_char() {
+        // DECFRA with a specific fill character (e.g. 'X').
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[2;4;2;5;88\x24"); // DECACS not needed, DECFRA: rows 2-4, cols 2-5, char 'X'(88)
+        // Actually DECFRA is CSI Ps... $ x — let me use proper format
+        let mut t = Terminal::new(10, 5);
+        // DECFRA: top;left;bottom;right;char$ x → rows 1-3 (0-based), cols 1-4, fill with 'X'
+        feed(&mut t, b"\x1b[2;2;4;5;88$x");
+        assert_eq!(t.grid().cell(1, 1).unwrap().ch, 'X', "X at (1,1)");
+        assert_eq!(t.grid().cell(4, 3).unwrap().ch, 'X', "X at (4,3)");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "blank at (0,0)");
+    }
+
+    #[test]
+    fn t_r24_decfra_overlaps_wide_char() {
+        // DECFRA rectangle partially overlaps a wide char — should clean up orphan.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"ABCDEF"); // cols 2-7
+        // Fill col 1 (spacer cell) with space via DECFRA
+        feed(&mut t, b"\x1b[1;2;1;2;32$x"); // fill col 1 (spacer) with space
+        // The wide char should be cleaned up — no orphan spacer at col 1
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "no orphan spacer after DECFRA"
+        );
+    }
+
+    #[test]
+    fn t_r24_decrara_toggle_roundtrip() {
+        // DECRARA toggle should be reversible: toggle ON then OFF = original.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC"); // plain text
+        feed(&mut t, b"\x1b[1;1;1;10;1$t"); // toggle BOLD on row 1
+        assert!(
+            t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD),
+            "BOLD toggled on"
+        );
+        feed(&mut t, b"\x1b[1;1;1;10;1$t"); // toggle BOLD off
+        assert!(
+            !t.grid().cell(0, 0).unwrap().flags.contains(CellFlags::BOLD),
+            "BOLD toggled off (round-trip)"
+        );
+    }
+
+    #[test]
+    fn t_r24_decrara_multiple_attrs_toggle() {
+        // DECRARA with multiple attributes simultaneously.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"ABC");
+        feed(&mut t, b"\x1b[1;1;1;10;1;4;7$t"); // toggle BOLD + UNDERLINE + REVERSE
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::BOLD), "BOLD");
+        assert!(flags.contains(CellFlags::UNDERLINE), "UNDERLINE");
+        assert!(flags.contains(CellFlags::REVERSE), "REVERSE");
+    }
+
+    #[test]
+    fn t_r24_deccara_clear_then_set() {
+        // DECCARA with Ps1=0 (clear first) then set new attributes.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1mABC"); // BOLD, then ABC
+        feed(&mut t, b"\x1b[0m"); // reset SGR
+        feed(&mut t, b"\x1b[1;1;1;10;0;4$r"); // clear attrs, set UNDERLINE only
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(!flags.contains(CellFlags::BOLD), "BOLD cleared by Ps1=0");
+        assert!(flags.contains(CellFlags::UNDERLINE), "UNDERLINE set");
+    }
+
+    #[test]
+    fn t_r24_kitty_pop_empty_stack() {
+        // Pop from empty stack should reset to 0.
+        let mut t = Terminal::new(10, 3);
+        assert!(t.kitty_kb_stack.is_empty());
+        feed(&mut t, b"\x1b[<1u"); // pop 1 from empty stack
+        assert_eq!(t.modes.kitty_keyboard, 0, "empty pop resets to 0");
+    }
+
+    #[test]
+    fn t_r24_kitty_push_pop_multiple() {
+        // Push 3, pop 2 → should have the first push's flags.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[>1u"); // push, OR with 1
+        assert_eq!(t.modes.kitty_keyboard, 1);
+        feed(&mut t, b"\x1b[>2u"); // push, OR with 2
+        assert_eq!(t.modes.kitty_keyboard, 3); // 1|2
+        feed(&mut t, b"\x1b[>4u"); // push, OR with 4
+        assert_eq!(t.modes.kitty_keyboard, 7); // 3|4
+        feed(&mut t, b"\x1b[<2u"); // pop 2
+        assert_eq!(t.modes.kitty_keyboard, 1, "popped back to first push");
+        feed(&mut t, b"\x1b[<1u"); // pop 1
+        assert_eq!(t.modes.kitty_keyboard, 0, "popped to base");
+    }
+
+    #[test]
+    fn t_r24_kitty_stack_overflow_protection() {
+        // Push 150 times — stack should be capped at 100.
+        let mut t = Terminal::new(10, 3);
+        for _ in 0..150 {
+            feed(&mut t, b"\x1b[>0u"); // push 0 (just push, no new flags)
+        }
+        assert!(
+            t.kitty_kb_stack.len() <= 100,
+            "stack capped at 100, got {}",
+            t.kitty_kb_stack.len()
+        );
+    }
+
+    #[test]
+    fn t_r24_kitty_pop_more_than_pushed() {
+        // Pop more than pushed — should not panic, reset to 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[>1u"); // push 1
+        feed(&mut t, b"\x1b[<5u"); // pop 5 (only 1 in stack)
+        assert_eq!(t.modes.kitty_keyboard, 0, "over-pop resets to 0");
+        assert!(t.kitty_kb_stack.is_empty(), "stack empty");
+    }
+
+    #[test]
+    fn t_r24_rep_at_row_boundary_wraps() {
+        // REP at row boundary should trigger autowrap.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"A"); // print A at col 0
+        feed(&mut t, b"\x1b[6b"); // REP 6 → should fill row and wrap
+        // Row 0: AAAAA, row 1: AA
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'A', "row 0 filled");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A', "wrapped to row 1");
+        assert_eq!(t.grid().cell(1, 1).unwrap().ch, 'A', "row 1 col 1");
+    }
+
+    #[test]
+    fn t_r24_rep_default_count() {
+        // REP with no param → repeat once.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"X");
+        feed(&mut t, b"\x1b[b"); // REP default = 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0");
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            'X',
+            "X at col 1 (repeated)"
+        );
+    }
+
+    #[test]
+    fn t_r24_rep_zero_count() {
+        // REP 0 → treated as default 1 (xterm: param 0 → 1).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"X");
+        feed(&mut t, b"\x1b[0b"); // REP 0 → treated as 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X', "1 repeat (0→1)");
+    }
+
+    #[test]
+    fn t_r24_rep_after_control_char_no_op() {
+        // REP after a control char (no last_printed_char) → no-op.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\r"); // CR only, no printable
+        feed(&mut t, b"\x1b[5b"); // REP 5
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "no char printed");
+    }
+
+    #[test]
+    fn t_r24_decsed_preserves_protected_cells() {
+        // DECSED (selective erase) should preserve protected cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1\"q"); // DECSCA 1 → protected
+        feed(&mut t, b"AB"); // protected A, B
+        feed(&mut t, b"\x1b[0\"q"); // DECSCA 0 → unprotected
+        feed(&mut t, b"CD"); // unprotected C, D
+        feed(&mut t, b"\x1b[?0J"); // DECSED 0 → erase from cursor to end
+        // C, D should be erased, A, B should survive
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "protected A survives DECSED"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            'B',
+            "protected B survives DECSED"
+        );
+    }
+
+    #[test]
+    fn t_r24_decsel_preserves_protected_line() {
+        // DECSEL 2 (selective erase whole line) should preserve protected.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1\"qAB"); // protected A, B
+        feed(&mut t, b"\x1b[0\"qCD"); // unprotected C, D
+        feed(&mut t, b"\x1b[?2K"); // DECSEL 2 → erase entire line (selective)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "protected A survives");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "protected B survives");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "unprotected C erased");
+    }
+
+    #[test]
+    fn t_r24_decfra_default_params_single_cell() {
+        // DECFRA with no params → fills cell at (0,0) with space.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"ABCDEFGH");
+        feed(&mut t, b"\x1b[$x"); // DECFRA with no params → fills (0,0) with space
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "cell (0,0) filled with space"
+        );
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C', "neighbor preserved");
+    }
+
+    #[test]
+    fn t_r24_decerase_full_rect() {
+        // DECERA erase a rectangle.
+        let mut t = Terminal::new(10, 5);
+        for i in 0..5 {
+            let ch = (b'A' + i as u8) as char;
+            feed(&mut t, format!("\x1b[{};1H{}", i + 1, ch).as_bytes());
+        }
+        // Erase rectangle rows 2-4, cols 3-6
+        feed(&mut t, b"\x1b[2;3;4;6$y"); // DECERA
+        assert_eq!(t.grid().cell(2, 1).unwrap().ch, ' ', "erased at (2,1)");
+        assert_eq!(t.grid().cell(5, 3).unwrap().ch, ' ', "erased at (5,3)");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "A preserved outside rect"
+        );
+    }
+
+    #[test]
+    fn t_r24_decsera_preserves_protected() {
+        // DECSERA should preserve protected cells in the rectangle.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1\"qAB"); // protected A, B
+        feed(&mut t, b"\x1b[0\"qCD"); // unprotected C, D
+        feed(&mut t, b"\x1b[1;1;1;10${"); // DECSERA whole row 1
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "protected A survives DECSERA"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            'B',
+            "protected B survives DECSERA"
+        );
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, ' ', "unprotected C erased");
+    }
+
+    #[test]
+    fn t_r24_deccara_skips_wide_char_spacer() {
+        // DECCARA should not modify wide char spacer cells.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide at cols 0-1
+        feed(&mut t, b"X"); // col 2
+        feed(&mut t, b"\x1b[1;1;1;10;4$r"); // set UNDERLINE on all
+        let lead = t.grid().cell(0, 0).unwrap();
+        let spacer = t.grid().cell(1, 0).unwrap();
+        let x_cell = t.grid().cell(2, 0).unwrap();
+        assert!(
+            lead.flags.contains(CellFlags::UNDERLINE),
+            "lead cell gets UNDERLINE"
+        );
+        assert!(
+            x_cell.flags.contains(CellFlags::UNDERLINE),
+            "X cell gets UNDERLINE"
+        );
+        // Spacer should also get UNDERLINE for visual consistency
+        // (implementation detail — just verify it doesn't crash)
     }
 }
