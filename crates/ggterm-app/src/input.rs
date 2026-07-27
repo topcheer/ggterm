@@ -114,19 +114,28 @@ impl InputEncoder {
     }
 
     fn encode_char(&self, ch: char, mods: &KeyModifiers) -> Vec<u8> {
+        // Helper: prefix with ESC if Alt is held (meta prefix, like xterm).
+        let meta = |bytes: &[u8]| -> Vec<u8> {
+            if mods.alt {
+                let mut v = Vec::with_capacity(bytes.len() + 1);
+                v.push(0x1b);
+                v.extend_from_slice(bytes);
+                v
+            } else {
+                bytes.to_vec()
+            }
+        };
+
         // ── Named control characters ──
         // These are intercepted first so that modifiers can override them.
         match ch {
             '\r' | '\n' => {
                 // Ctrl+Enter → ^J (LF); plain Enter → CR
                 if mods.ctrl {
-                    return b"\n".to_vec();
+                    return meta(b"\n");
                 }
                 // Alt+Enter → ESC + CR (meta prefix, like xterm)
-                if mods.alt {
-                    return b"\x1b\r".to_vec();
-                }
-                return b"\r".to_vec();
+                return meta(b"\r");
             }
             '\t' => {
                 // Ctrl+Tab is rare; most terminals send a plain tab.
@@ -134,15 +143,15 @@ impl InputEncoder {
                 if mods.shift {
                     return b"\x1b[Z".to_vec();
                 }
-                return b"\t".to_vec();
+                return meta(b"\t");
             }
             '\x08' | '\x7f' => {
                 // Ctrl+Backspace → ^W (delete word, common in shells)
                 // Plain Backspace → DEL (0x7f)
                 if mods.ctrl {
-                    return b"\x17".to_vec(); // ^W
+                    return meta(b"\x17"); // ^W
                 }
-                return b"\x7f".to_vec();
+                return meta(b"\x7f");
             }
             '\x1b' => return b"\x1b".to_vec(),
             _ => {}
@@ -1718,5 +1727,56 @@ mod tests {
         assert_eq!(enc.encode(&InputKey::special(SpecialKey::F10)), b"\x1b[21~");
         assert_eq!(enc.encode(&InputKey::special(SpecialKey::F11)), b"\x1b[23~");
         assert_eq!(enc.encode(&InputKey::special(SpecialKey::F12)), b"\x1b[24~");
+    }
+
+    // ── Alt modifier with named control characters ──────────────────
+    // Alt should prefix the output with ESC, even for named control chars.
+
+    #[test]
+    fn test_alt_enter_sends_esc_cr() {
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: false,
+            ctrl: false,
+            alt: true,
+        };
+        let result = enc.encode(&InputKey::char_mod('\r', mods));
+        assert_eq!(result, b"\x1b\r", "Alt+Enter should send ESC+CR");
+    }
+
+    #[test]
+    fn test_ctrl_alt_enter_sends_esc_lf() {
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: false,
+            ctrl: true,
+            alt: true,
+        };
+        let result = enc.encode(&InputKey::char_mod('\r', mods));
+        assert_eq!(result, b"\x1b\n", "Ctrl+Alt+Enter should send ESC+LF");
+    }
+
+    #[test]
+    fn test_alt_backspace_sends_esc_del() {
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: false,
+            ctrl: false,
+            alt: true,
+        };
+        let result = enc.encode(&InputKey::char_mod('\x7f', mods));
+        assert_eq!(result, b"\x1b\x7f", "Alt+Backspace should send ESC+DEL");
+    }
+
+    #[test]
+    fn test_alt_tab_sends_esc_tab() {
+        let enc = InputEncoder::new();
+        let mods = KeyModifiers {
+            shift: false,
+            ctrl: false,
+            alt: true,
+        };
+        let result = enc.encode(&InputKey::char_mod('\t', mods));
+        assert_eq!(result, b"\x1b\t", "Alt+Tab should send ESC+TAB");
     }
 }
