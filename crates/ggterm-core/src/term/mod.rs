@@ -22478,4 +22478,274 @@ mod tests {
             "overline cleared by SGR 55"
         );
     }
+
+    // ── Round 31-1: Scroll region edge cases ───────────────────────────
+
+    #[test]
+    fn t_r31_stbm_reversed_params_ignored() {
+        // CSI 10;1r (top > bottom) — invalid, region is NOT changed.
+        // DECSTBM handler only sets region when top < bottom. Invalid params
+        // are silently ignored, but cursor still homes.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[2;8r"); // valid region first
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (1, 8));
+        feed(&mut t, b"\x1b[10;1r"); // reversed — ignored
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!(top2, 1, "reversed STBM ignored, top stays 1");
+        assert_eq!(bottom2, 8, "reversed STBM ignored, bottom stays 8");
+    }
+
+    #[test]
+    fn t_r31_stbm_single_row_region() {
+        // Single-row scroll region (CSI 5;5r → top=4, bottom=5).
+        // set_scroll_region checks top < bottom, so top=4 < bottom=5 is valid.
+        // But DECSTBM handler checks top < bottom in 1-based: 5 < 5 is false → no set.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[5;5r"); // 1-based: top=5, bottom=5
+        // In DECSTBM handler: top(5) < bottom(5) is false → region NOT set
+        // Cursor still homes.
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "single-row region not set, top stays 0");
+        assert_eq!(bottom, 10, "single-row region not set, bottom stays height");
+    }
+
+    #[test]
+    fn t_r31_ind_at_scroll_bottom_scrolls() {
+        // IND (ESC D) at scroll bottom scrolls within region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[4;1HAAA"); // row 3: AAA
+        feed(&mut t, b"\x1bD"); // IND at bottom of region
+        // Should scroll region up, cursor stays at row 3
+        assert_eq!(t.cursor().1, 3, "cursor at scroll bottom after IND");
+        // AAA should have scrolled up to row 2
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'A', "AAA scrolled up");
+        assert_eq!(
+            t.grid().cell(0, 3).unwrap().ch,
+            ' ',
+            "row 3 blank after scroll"
+        );
+    }
+
+    #[test]
+    fn t_r31_ri_at_scroll_top_scrolls_down() {
+        // RI (ESC M) at scroll top scrolls down within region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[1;1HAAA\r\n"); // row 0: AAA, cursor to row 1
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0 (top of region)
+        feed(&mut t, b"\x1bM"); // RI
+        // Should scroll region down, AAA moves to row 1
+        assert_eq!(t.cursor().1, 0, "cursor at top after RI");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            ' ',
+            "row 0 blank after RI scroll"
+        );
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A', "AAA scrolled down");
+    }
+
+    #[test]
+    fn t_r31_nel_at_scroll_bottom_scrolls() {
+        // NEL (ESC E) at scroll bottom scrolls + CR.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[4;3HABC"); // row 3, cols 2-4
+        feed(&mut t, b"\x1bE"); // NEL — scroll + CR + LF
+        assert_eq!(t.cursor().0, 0, "NEL does CR → x=0");
+        assert_eq!(t.cursor().1, 3, "cursor at scroll bottom after NEL");
+        assert_eq!(t.grid().cell(2, 2).unwrap().ch, 'A', "ABC scrolled up");
+    }
+
+    #[test]
+    fn t_r31_dl_confined_to_scroll_region() {
+        // DL within scroll region only affects region rows.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"\x1b[1;1HAAA\r\nBBB\r\nCCC"); // rows 0-2
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0
+        feed(&mut t, b"\x1b[M"); // DL at row 0
+        // BBB moves to row 0, CCC to row 1, row 2 blank
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'B',
+            "BBB at row 0 after DL"
+        );
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            'C',
+            "CCC at row 1 after DL"
+        );
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, ' ', "row 2 blank after DL");
+    }
+
+    #[test]
+    fn t_r31_il_confined_to_scroll_region() {
+        // IL within scroll region inserts blank rows.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"\x1b[1;1HAAA\r\nBBB"); // row 0: AAA, row 1: BBB
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0
+        feed(&mut t, b"\x1b[L"); // IL at row 0
+        // Row 0 blank, AAA moves to row 1, BBB to row 2
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "row 0 blank after IL");
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, 'A', "AAA at row 1");
+        assert_eq!(t.grid().cell(0, 2).unwrap().ch, 'B', "BBB at row 2");
+    }
+
+    #[test]
+    fn t_r31_stbm_reset_no_params() {
+        // CSI r with no params resets to full screen.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[2;4r"); // set region rows 1-3
+        feed(&mut t, b"\x1b[r"); // reset
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "reset: top = 0");
+        assert_eq!(bottom, 6, "reset: bottom = height");
+    }
+
+    // ── Round 31-2: Origin mode (DECOM) ────────────────────────────────
+
+    #[test]
+    fn t_r31_origin_mode_cup_relative() {
+        // CUP in origin mode is relative to scroll region top.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[?6h"); // enable origin mode
+        feed(&mut t, b"\x1b[2;3H"); // CUP row=2, col=3 → row=top+1=3, col=2
+        assert_eq!(t.cursor().1, 3, "CUP row 2 in origin = absolute row 3");
+        assert_eq!(t.cursor().0, 2, "col unaffected by origin");
+    }
+
+    #[test]
+    fn t_r31_origin_mode_homes_to_region() {
+        // Enabling origin mode homes cursor to region top.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[?6h"); // enable origin → home to region top
+        assert_eq!(t.cursor().1, 2, "origin homes to region top (row 2)");
+        assert_eq!(t.cursor().0, 0, "col 0");
+    }
+
+    #[test]
+    fn t_r31_origin_mode_cup_clamped_to_region() {
+        // CUP in origin mode with large row → clamped to region bottom.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[?6h");
+        feed(&mut t, b"\x1b[100;1H"); // row 100 → clamp to bottom-1 = 5
+        assert_eq!(t.cursor().1, 6, "origin CUP clamped to region bottom-1");
+    }
+
+    #[test]
+    fn t_r31_origin_mode_disable_restores_absolute() {
+        // Disabling origin mode restores absolute coordinates.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[?6l"); // origin off → home to 0,0
+        feed(&mut t, b"\x1b[1;1H"); // CUP 1,1 → absolute 0,0
+        assert_eq!(t.cursor().1, 0, "origin off: CUP is absolute");
+    }
+
+    #[test]
+    fn t_r31_origin_mode_vpa_relative() {
+        // VPA (CSI d) in origin mode is relative to scroll region.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[?6h"); // origin on
+        feed(&mut t, b"\x1b[2d"); // VPA row 2 → absolute row = top+1 = 3
+        assert_eq!(t.cursor().1, 3, "VPA row 2 in origin = absolute 3");
+    }
+
+    // ── Round 31-3: Wide char + DL/IL/backspace boundaries ─────────────
+
+    #[test]
+    fn t_r31_backspace_after_wide_skips_spacer() {
+        // After printing wide char, backspace should move to the lead cell
+        // (skip the spacer), so the next char overwrites the wide char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中".as_bytes()); // cols 0-1, cursor at col 2
+        feed(&mut t, b"\x08"); // BS → cursor should go to col 1 (spacer)
+        // Actually BS just decrements by 1 → col 1 (spacer position)
+        assert_eq!(t.cursor().0, 1, "BS after wide char at col 1");
+        // Another BS → col 0 (lead)
+        feed(&mut t, b"\x08");
+        assert_eq!(t.cursor().0, 0, "BS to col 0 (lead)");
+    }
+
+    #[test]
+    fn t_r31_dl_with_wide_char_row() {
+        // DL on a row with wide chars — no corruption.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, "中文A".as_bytes()); // row 0: 中(0-1) 文(2-3) A(4)
+        feed(&mut t, b"\r\nBCD"); // row 1: BCD
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0
+        feed(&mut t, b"\x1b[M"); // DL row 0
+        // Row 0 should now have BCD
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'B',
+            "row 0 has BCD after DL"
+        );
+    }
+
+    #[test]
+    fn t_r31_il_with_wide_char_row() {
+        // IL before a row with wide chars — no corruption.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, "中文A".as_bytes()); // row 0
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0
+        feed(&mut t, b"\x1b[L"); // IL at row 0
+        // Row 0 should be blank, 中文A moves to row 1
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "row 0 blank after IL");
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            '中',
+            "wide char moved to row 1"
+        );
+        assert!(
+            t.grid().cell(0, 1).unwrap().is_wide(),
+            "still wide at row 1"
+        );
+    }
+
+    #[test]
+    fn t_r31_wide_char_overwrite_preserves_adjacent() {
+        // Overwriting a wide char should not affect adjacent narrow chars.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中A文B".as_bytes()); // 中(0-1) A(2) 文(3-4) B(5)
+        feed(&mut t, b"\x1b[1;1H"); // cursor at col 0
+        feed(&mut t, b"X"); // overwrite 中's lead
+        // X at col 0, col 1 blanked (spacer), A at col 2 intact
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "spacer blanked");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'A', "A intact at col 2");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '文', "文 intact at col 3");
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'B', "B intact at col 5");
+    }
+
+    #[test]
+    fn t_r31_cuu_cud_within_scroll_region() {
+        // CUU/CUD should respect scroll region boundaries.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 2 (region top)
+        feed(&mut t, b"\x1b[5A"); // CUU 5 — should clamp at region top (row 2)
+        assert_eq!(t.cursor().1, 2, "CUU clamped at region top");
+        feed(&mut t, b"\x1b[3;7H"); // cursor at row 6 (region bottom-1)
+        feed(&mut t, b"\x1b[5B"); // CUD 5 — should clamp at region bottom-1
+        assert_eq!(t.cursor().1, 6, "CUD clamped at region bottom-1");
+    }
+
+    #[test]
+    fn t_r31_cuu_cud_outside_scroll_region() {
+        // CUU/CUD when cursor is OUTSIDE scroll region — no clamping.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // region rows 2-6
+        feed(&mut t, b"\x1b[9;1H"); // cursor at row 8 (below region)
+        feed(&mut t, b"\x1b[5A"); // CUU 5 — no clamping since outside region
+        assert_eq!(t.cursor().1, 3, "CUU outside region: row 8-5=3");
+    }
 }
