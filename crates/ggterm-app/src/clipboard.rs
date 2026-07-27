@@ -124,21 +124,22 @@ pub fn set_clipboard_bytes(data: &[u8]) {
 /// pasted text in `\x1b[200~` ... `\x1b[201~` markers so applications
 /// can distinguish pasted text from typed input.
 ///
-/// For unbracketed paste, newlines (`\n`) are converted to carriage
-/// returns (`\r`) to match PTY input conventions: the Enter key sends
-/// `\r`, and pasted text should behave identically. This is the standard
-/// behavior in xterm, Alacritty, and iTerm2.
+/// In both modes, newlines (`\n`) are converted to carriage returns (`\r`)
+/// to match PTY input conventions: the Enter key sends `\r`, and pasted
+/// text should behave identically. This is the standard behavior in xterm,
+/// Alacritty, and iTerm2.
 pub fn bracket_paste(text: &str, bracketed: bool) -> Vec<u8> {
+    // Convert \n to \r for PTY input. The caller (paste_from_source)
+    // already normalized CRLF → LF, so all line endings are \n here.
+    let converted = text.replace('\n', "\r");
     if bracketed {
-        let mut bytes = Vec::with_capacity(text.len() + 12);
+        let mut bytes = Vec::with_capacity(converted.len() + 12);
         bytes.extend_from_slice(b"\x1b[200~");
-        bytes.extend_from_slice(text.as_bytes());
+        bytes.extend_from_slice(converted.as_bytes());
         bytes.extend_from_slice(b"\x1b[201~");
         bytes
     } else {
-        // Convert \n to \r for PTY input. The caller (paste_from_source)
-        // already normalized CRLF → LF, so all line endings are \n here.
-        text.replace('\n', "\r").into_bytes()
+        converted.into_bytes()
     }
 }
 
@@ -545,9 +546,24 @@ mod tests {
 
     #[test]
     fn t_r32_bracket_paste_multiline() {
-        let text = "line1\nline2\r\nline3";
+        // \n is converted to \r in both bracketed and unbracketed paste.
+        // \r\n (CRLF) is first normalized to \n by the caller, then \n → \r.
+        let text = "line1\nline2";
         let result = bracket_paste(text, true);
-        assert_eq!(result, b"\x1b[200~line1\nline2\r\nline3\x1b[201~");
+        assert_eq!(result, b"\x1b[200~line1\rline2\x1b[201~");
+    }
+
+    #[test]
+    fn t_p146_bracketed_paste_converts_newline_to_cr() {
+        // Bracketed paste must convert \n to \r, same as unbracketed.
+        // Without this, multiline paste into shells that use bracketed
+        // paste (bash, zsh, fish) would not trigger line processing.
+        let text = "echo hello\necho world";
+        let result = bracket_paste(text, true);
+        assert_eq!(
+            result, b"\x1b[200~echo hello\recho world\x1b[201~",
+            "bracketed paste must convert \\n to \\r"
+        );
     }
 
     #[test]
