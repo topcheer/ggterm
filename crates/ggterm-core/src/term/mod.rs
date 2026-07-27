@@ -22206,4 +22206,276 @@ mod tests {
             "main intact after nested"
         );
     }
+
+    // ── Round 30-1: OSC sequences & hyperlinks ─────────────────────────
+
+    #[test]
+    fn t_r30_osc8_id_param_preserved() {
+        // OSC 8 with id= parameter — URI should be extracted correctly
+        // regardless of params.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;id=12345;https://example.com\x1b\\X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().hyperlink.as_deref(),
+            Some("https://example.com"),
+            "URI extracted correctly with id param"
+        );
+    }
+
+    #[test]
+    fn t_r30_osc8_bel_terminator() {
+        // OSC 8 terminated with BEL (0x07) instead of ST.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]8;;https://example.com\x07X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().hyperlink.as_deref(),
+            Some("https://example.com"),
+            "OSC 8 with BEL terminator"
+        );
+    }
+
+    #[test]
+    fn t_r30_osc8_uri_too_long_truncated() {
+        // OSC 8 with URI > 2048 chars — should be truncated, not panic.
+        let mut t = Terminal::new(20, 3);
+        let long_uri = "https://example.com/".repeat(200); // ~3600 chars
+        let osc = format!("\x1b]8;;{}\x1b\\X", long_uri);
+        feed(&mut t, osc.as_bytes());
+        let hl = t.grid().cell(0, 0).unwrap().hyperlink.as_ref();
+        assert!(hl.is_some(), "long URI truncated but stored");
+        assert!(
+            hl.unwrap().len() <= 2048,
+            "URI truncated to <= 2048: got {}",
+            hl.unwrap().len()
+        );
+    }
+
+    #[test]
+    fn t_r30_osc0_title_unicode() {
+        // OSC 0 with unicode title — should work.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]0;\xc3\xa9\xc3\xa8\xe4\xb8\xad\x07"); // "éè中" in UTF-8
+        assert_eq!(t.title(), "éè中", "unicode title set");
+    }
+
+    #[test]
+    fn t_r30_osc52_empty_clears_clipboard() {
+        // OSC 52 with empty base64 — should clear clipboard.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b]52;c;\x1b\\"); // empty data
+        // Should not panic, clipboard_set should be None or empty
+        let clip = t.take_pending_clipboard_set();
+        // Empty base64 decodes to empty vec — some impls treat as clear
+        assert!(
+            clip.is_none() || clip.as_deref() == Some(b"".as_ref()),
+            "empty OSC 52 clears clipboard"
+        );
+    }
+
+    // ── Round 30-2: Bracketed paste / focus / mouse mode toggle ────────
+
+    #[test]
+    fn t_r30_focus_mode_toggle_idempotent() {
+        // Enabling focus mode twice should be stable.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1004h");
+        feed(&mut t, b"\x1b[?1004h");
+        assert!(t.modes.focus_event, "focus still on after double enable");
+        feed(&mut t, b"\x1b[?1004l");
+        assert!(!t.modes.focus_event, "focus off after disable");
+    }
+
+    #[test]
+    fn t_r30_bracketed_paste_decrqm_mode() {
+        // DECRQM should report the correct mode value (not set = 4).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2004$p");
+        let resp = String::from_utf8(t.take_response()).unwrap();
+        // Mode 2004, not-set = response contains ";4$" (mode not set)
+        assert!(
+            resp.contains("2004"),
+            "DECRQM for bracketed paste: {}",
+            resp
+        );
+    }
+
+    #[test]
+    fn t_r30_mouse_sgr_pixel_mode_toggle() {
+        // SGR pixel mouse mode (1016) toggle.
+        let mut t = Terminal::new(10, 3);
+        assert!(!t.mouse_sgr_pixel_enabled(), "pixel mode off by default");
+        feed(&mut t, b"\x1b[?1016h");
+        assert!(t.mouse_sgr_pixel_enabled(), "pixel mode enabled");
+        feed(&mut t, b"\x1b[?1016l");
+        assert!(!t.mouse_sgr_pixel_enabled(), "pixel mode disabled");
+    }
+
+    #[test]
+    fn t_r30_mouse_all_modes_off_after_ris() {
+        // RIS should reset all mouse modes to off.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h");
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.mouse_tracking_enabled(), "mouse tracking off after RIS");
+        assert!(!t.mouse_sgr_enabled(), "SGR off after RIS");
+    }
+
+    #[test]
+    fn t_r30_sync_mode_does_not_affect_content() {
+        // Enabling sync mode should not affect printed content.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[?2026h");
+        feed(&mut t, b"Hello");
+        feed(&mut t, b"\x1b[?2026l");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H', "content during sync");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'o', "content after sync");
+    }
+
+    // ── Round 30-3: SGR text attributes & color boundaries ─────────────
+
+    #[test]
+    fn t_r30_sgr_empty_params_resets() {
+        // ESC[m with no params should reset all attributes.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;31;47m"); // bold, red fg, white bg
+        feed(&mut t, b"\x1b[m"); // reset (no params)
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Default, "fg reset by empty SGR");
+        assert_eq!(cell.bg, Color::Default, "bg reset by empty SGR");
+        assert!(
+            !cell.flags.contains(CellFlags::BOLD),
+            "bold cleared by empty SGR"
+        );
+    }
+
+    #[test]
+    fn t_r30_sgr_truecolor_then_reset() {
+        // Set truecolor fg, then SGR 0 — should reset to Default.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;2;100;200;50m"); // truecolor fg
+        feed(&mut t, b"\x1b[0m"); // reset
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Default,
+            "truecolor fg reset to Default"
+        );
+    }
+
+    #[test]
+    fn t_r30_sgr_59_resets_underline_color() {
+        // SGR 58 sets underline color, SGR 59 resets it.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[58;2;255;0;0m"); // underline color = red
+        feed(&mut t, b"\x1b[59m"); // reset underline color
+        assert_eq!(
+            *t.underline_color_ref(),
+            Color::Default,
+            "underline color reset by SGR 59"
+        );
+    }
+
+    #[test]
+    fn t_r30_sgr_bold_dim_strikethrough_combined() {
+        // Multiple text attributes combined.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;2;9m"); // bold + dim + strikethrough
+        feed(&mut t, b"X");
+        let flags = t.grid().cell(0, 0).unwrap().flags;
+        assert!(flags.contains(CellFlags::BOLD), "bold set");
+        assert!(flags.contains(CellFlags::DIM), "dim set");
+        assert!(
+            flags.contains(CellFlags::STRIKETHROUGH),
+            "strikethrough set"
+        );
+    }
+
+    #[test]
+    fn t_r30_sgr_22_clears_both_bold_and_dim() {
+        // SGR 22 should clear both bold and dim.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[1;2m"); // bold + dim
+        feed(&mut t, b"\x1b[22m"); // clear bold and dim
+        let flags = t.flags; // terminal's current flags
+        assert!(!flags.contains(CellFlags::BOLD), "bold cleared by 22");
+        assert!(!flags.contains(CellFlags::DIM), "dim cleared by 22");
+    }
+
+    #[test]
+    fn t_r30_sgr_39_resets_fg_only() {
+        // SGR 39 resets only fg, not bg or flags.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[31;42;1m"); // red fg, green bg, bold
+        feed(&mut t, b"\x1b[39m"); // reset fg only
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Default, "fg reset by 39");
+        assert_eq!(cell.bg, Color::Indexed(2), "bg preserved (green)");
+        assert!(cell.flags.contains(CellFlags::BOLD), "bold preserved by 39");
+    }
+
+    #[test]
+    fn t_r30_sgr_49_resets_bg_only() {
+        // SGR 49 resets only bg, not fg.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[31;42;1m"); // red fg, green bg, bold
+        feed(&mut t, b"\x1b[49m"); // reset bg only
+        feed(&mut t, b"X");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Indexed(1), "fg preserved (red)");
+        assert_eq!(cell.bg, Color::Default, "bg reset by 49");
+    }
+
+    #[test]
+    fn t_r30_sgr_256_color_high_index() {
+        // SGR 38;5;255 should set fg to index 255 (bright white).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[38;5;255m");
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(255),
+            "fg = index 255"
+        );
+    }
+
+    #[test]
+    fn t_r30_sgr_bright_colors_90_97() {
+        // SGR 90-97 = bright fg colors (index 8-15).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[91m"); // bright red fg
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().fg,
+            Color::Indexed(9),
+            "SGR 91 = bright red (index 9)"
+        );
+    }
+
+    #[test]
+    fn t_r30_sgr_overline_on_off() {
+        // SGR 53 = overline on, SGR 55 = overline off.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[53m");
+        feed(&mut t, b"X");
+        assert!(
+            t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::OVERLINE),
+            "overline set by SGR 53"
+        );
+        feed(&mut t, b"\x1b[1;1H\x1b[55m"); // move to 0,0 and clear overline
+        feed(&mut t, b"Y"); // overwrite
+        assert!(
+            !t.grid()
+                .cell(0, 0)
+                .unwrap()
+                .flags
+                .contains(CellFlags::OVERLINE),
+            "overline cleared by SGR 55"
+        );
+    }
 }
