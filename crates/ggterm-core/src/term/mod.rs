@@ -2413,7 +2413,6 @@ impl Perform for Terminal {
             }
             // REP — repeat preceding printable character N times
             b'b' => {
-                self.cursor.pending_wrap = false;
                 // Cap at terminal width to prevent CPU DoS from large REP counts.
                 let n = (Self::param(params, 0, 1) as usize).min(self.grid.width() * 2);
                 if let Some(ch) = self.last_printed_char {
@@ -7843,6 +7842,63 @@ mod tests {
             s.starts_with("\x1bP!|") && s.ends_with("\x1b\\"),
             "DA3 should respond with DCS format, got: {s}"
         );
+    }
+
+    // ── REP (Repeat, CSI Ps b) — pending_wrap regression tests ──
+
+    #[test]
+    fn t_rep_wraps_at_line_end() {
+        // Print chars to fill the line, then REP should wrap to next line.
+        // Terminal width = 5. Print 'A' 4 times (positions 0-3), then
+        // the 5th 'A' goes to position 4 with pending_wrap.
+        // REP 2 should wrap to next line and print 2 'A's there.
+        let mut t = Terminal::new(5, 24);
+        feed(&mut t, b"AAAAA\x1b[2b");
+        let row0 = t.grid().row_text(0).unwrap_or_default();
+        assert_eq!(row0.trim_end(), "AAAAA", "first line should be full");
+        let row1 = t.grid().row_text(1).unwrap_or_default();
+        assert_eq!(
+            row1.trim_end(),
+            "AA",
+            "REP should wrap and print on next line"
+        );
+    }
+
+    #[test]
+    fn t_rep_preserves_last_column_before_wrap() {
+        // Key regression test: REP must not overwrite the last column.
+        // Width = 5. Fill 5 chars: "ABCDE". Cursor at position 4
+        // with pending_wrap=true (E is at position 4).
+        // REP 1 should wrap first, then print 'E' on the next line.
+        // The original 'E' at position 4 should NOT be overwritten.
+        let mut t = Terminal::new(5, 24);
+        feed(&mut t, b"ABCDE\x1b[1b");
+        let row0 = t.grid().row_text(0).unwrap_or_default();
+        assert_eq!(row0.trim_end(), "ABCDE", "last column should still be 'E'");
+        let row1 = t.grid().row_text(1).unwrap_or_default();
+        assert_eq!(row1.trim_end(), "E", "REP should wrap to next line");
+    }
+
+    #[test]
+    fn t_rep_no_last_char() {
+        // REP with no preceding printable char should do nothing.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[5b");
+        let row = t.grid().row_text(0).unwrap_or_default();
+        assert!(
+            row.trim_end().is_empty(),
+            "REP with no last char should produce nothing"
+        );
+    }
+
+    #[test]
+    fn t_rep_after_control_sequence() {
+        // Control sequences do not set last_printed_char, so REP after
+        // a CSI sequence without any printable char should do nothing.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[1;31m\x1b[3b"); // SGR red, then REP
+        let row = t.grid().row_text(0).unwrap_or_default();
+        assert!(row.trim_end().is_empty());
     }
 
     #[test]
