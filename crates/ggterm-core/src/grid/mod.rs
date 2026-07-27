@@ -103,9 +103,9 @@ impl Grid {
                 self.rows.push(Row::new(width));
             }
         } else if height < self.rows.len() {
-            let excess = self.rows.len() - height;
-            for _ in 0..excess {
-                let row = self.rows.remove(0);
+            // Split off excess rows in O(n) instead of O(n²) with remove(0).
+            let overflow: Vec<Row> = self.rows.split_off(height);
+            for row in overflow {
                 self.push_scrollback(row);
             }
         }
