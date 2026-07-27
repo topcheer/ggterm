@@ -254,11 +254,11 @@ static DEC_SPECIAL_GRAPHICS: [char; 32] = [
     '\u{250c}', // 0x6C 'l' ┌
     '\u{2514}', // 0x6D 'm' └
     '\u{253c}', // 0x6E 'n' ┼
-    '\u{239e}', // 0x6F 'o'
-    '\u{239e}', // 0x70 'p'
-    '\u{2500}', // 0x71 'q' ─
-    '\u{23a0}', // 0x72 'r'
-    '\u{23a2}', // 0x73 's'
+    '\u{23ba}', // 0x6F 'o' ⎺ scan line 1
+    '\u{23bb}', // 0x70 'p' ⎻ scan line 3
+    '\u{2500}', // 0x71 'q' ─ scan line 5
+    '\u{23bc}', // 0x72 'r' ⎼ scan line 7
+    '\u{23bd}', // 0x73 's' ⎽ scan line 9
     '\u{251c}', // 0x74 't' ├
     '\u{2524}', // 0x75 'u' ┤
     '\u{2534}', // 0x76 'v' ┴
@@ -7299,6 +7299,20 @@ mod tests {
         feed(&mut t, b"\x1b(0q\x1b(Bq");
         assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}'); // ─
         assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'q');
+    }
+
+    #[test]
+    fn t_charset_dec_special_scan_lines() {
+        // The 'o','p','q','r','s' characters map to horizontal scan lines
+        // of varying vertical positions (scan 1, 3, 5, 7, 9).
+        // These are used by ncurses/htop for thin horizontal separators.
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b(0opqrs\x1b(B");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{23BA}'); // ⎺ scan 1
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{23BB}'); // ⎻ scan 3
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{2500}'); // ─ scan 5
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{23BC}'); // ⎼ scan 7
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{23BD}'); // ⎽ scan 9
     }
 
     #[test]

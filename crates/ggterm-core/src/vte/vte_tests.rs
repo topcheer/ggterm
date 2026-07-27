@@ -432,3 +432,48 @@ fn test_osc_abort_then_csi() {
         "no literal H should be printed after aborted OSC"
     );
 }
+
+#[test]
+fn test_osc_overflow_does_not_corrupt_content() {
+    // When OSC string exceeds the 64KB cap, the overflow handler should
+    // stop accumulating but NOT corrupt already-stored content (the pop()
+    // bug removed the last valid byte, then the next push replaced it).
+    // Verify that the first 65536 bytes of content survive intact.
+    let mut parser = Parser::new();
+    let mut p = MockPerform::new();
+
+    // Start OSC sequence.
+    parser.feed(b"\x1b]0;", &mut p);
+
+    // Feed exactly 65536 bytes of 'A' (fills buffer to cap).
+    let fill: Vec<u8> = vec![b'A'; 65536];
+    parser.feed(&fill, &mut p);
+
+    // Feed 100 more bytes of 'B' (overflow — should be discarded).
+    let overflow: Vec<u8> = vec![b'B'; 100];
+    parser.feed(&overflow, &mut p);
+
+    // Terminate with BEL.
+    parser.feed(b"\x07", &mut p);
+
+    // Should have exactly one OSC event.
+    assert_eq!(p.events.len(), 1, "should dispatch exactly one OSC");
+    if let Event::Osc(data) = &p.events[0] {
+        // The data should start with "0;" prefix.
+        assert!(data.starts_with(b"0;"), "OSC should have 0; prefix");
+        // The content after "0;" should be all 'A's.
+        let content = &data[2..];
+        assert!(
+            content.iter().all(|&b| b == b'A'),
+            "OSC content should be all A's, found a B"
+        );
+        // The buffer should not have lost its last 'A' due to pop().
+        assert!(
+            content.len() >= 65530,
+            "OSC content should retain ~65534 bytes (65536 minus 0; prefix), got {}",
+            content.len()
+        );
+    } else {
+        panic!("expected OSC event");
+    }
+}
