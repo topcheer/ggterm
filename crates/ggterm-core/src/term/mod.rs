@@ -1442,6 +1442,16 @@ impl Terminal {
     fn set_cursor(&mut self, x: usize, y: usize) {
         self.cursor.x = x.min(self.grid.width().saturating_sub(1));
         self.cursor.y = y.min(self.grid.height().saturating_sub(1));
+        // If the cursor landed on the spacer (right half) of a wide char,
+        // adjust it back to the lead cell. Per xterm behavior, cursor
+        // positioning commands should never rest on a spacer — the cursor
+        // belongs on the lead cell visually.
+        if self.cursor.x > 0
+            && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+            && c.is_wide_spacer()
+        {
+            self.cursor.x -= 1;
+        }
         self.cursor.pending_wrap = false;
     }
 
@@ -2133,11 +2143,25 @@ impl Perform for Terminal {
             b'C' => {
                 let n = Self::param(params, 0, 1) as usize;
                 self.cursor.x = (self.cursor.x + n).min(self.grid.width().saturating_sub(1));
+                // If cursor landed on a wide char spacer, back up to the lead.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
                 self.cursor.pending_wrap = false;
             }
             b'D' => {
                 let n = Self::param(params, 0, 1) as usize;
                 self.cursor.x = self.cursor.x.saturating_sub(n);
+                // If cursor landed on a wide char spacer, back up to the lead.
+                if self.cursor.x > 0
+                    && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+                    && c.is_wide_spacer()
+                {
+                    self.cursor.x -= 1;
+                }
                 self.cursor.pending_wrap = false;
             }
             b'E' => {
@@ -16191,14 +16215,19 @@ mod tests {
     #[test]
     fn t_r8_narrow_on_wide_spacer_clears_lead() {
         // Cursor lands on the spacer cell (col 1) of a wide char.
-        // Writing a narrow char there: the wide lead at col 0 should be cleared.
+        // Cursor positioning adjusts to the lead (col 0), then printing
+        // a narrow char there overwrites the lead position.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, "你".as_bytes()); // wide at cols 0-1, cursor now at col 2
-        feed(&mut t, b"\x1b[2G"); // go to col 2 (0-based: 1 = spacer)
-        feed(&mut t, b"X"); // write narrow on spacer
-        // The spacer position gets X, and the lead at col 0 is cleared.
-        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X', "col 1 = X");
-        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "col 0 lead cleared");
+        feed(&mut t, b"\x1b[2G"); // CHA col 2 → cursor.x=1 (spacer), adjusts to 0
+        feed(&mut t, b"X"); // write narrow at lead position
+        // The lead position gets X (cursor adjusted from spacer to lead).
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'X',
+            "col 0 = X (cursor adjusted to lead)"
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 cleared");
         assert!(
             !t.grid().cell(0, 0).unwrap().is_wide(),
             "no wide flag on col 0"
@@ -17922,14 +17951,18 @@ mod tests {
 
     #[test]
     fn t_r12_wide_char_overwrite_on_spacer_clears_lead() {
-        // Writing on the spacer cell should clear the lead.
+        // Cursor positioning adjusts to the lead cell, so printing
+        // overwrites at the lead position.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, "你".as_bytes()); // lead col 0, spacer col 1
-        feed(&mut t, b"\x1b[1;2H"); // cursor at col 1 (spacer)
-        feed(&mut t, b"X"); // overwrite spacer
-        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'X', "X at col 1");
-        assert!(!t.grid().cell(0, 0).unwrap().is_wide(), "old lead cleared");
-        assert_eq!(t.grid().cell(0, 0).unwrap().ch, ' ', "lead content cleared");
+        feed(&mut t, b"\x1b[1;2H"); // CUP to col 1 (spacer) → adjusts to col 0
+        feed(&mut t, b"X"); // overwrite at lead position
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at col 0 (lead)");
+        assert!(
+            !t.grid().cell(0, 0).unwrap().is_wide(),
+            "old wide flag cleared"
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 cleared");
     }
 
     #[test]
@@ -18048,6 +18081,45 @@ mod tests {
         assert_eq!(t.grid().cell(3, 0).unwrap().ch, 'B');
         assert_eq!(t.grid().cell(4, 0).unwrap().ch, '好');
         assert_eq!(t.grid().cell(6, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_cuf_lands_on_wide_spacer_adjusts_to_lead() {
+        // When CUF moves the cursor to a position that is the spacer
+        // (right half) of a wide character, the cursor should be
+        // adjusted back to the lead cell.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1, cursor at 2
+        feed(&mut t, b"A"); // A at col 2, cursor at 3
+        // CUF back to col 1 (spacer of wide char at 0-1)
+        feed(&mut t, b"\x1b[1;1H"); // CUP home → cursor at (0, 0)
+        feed(&mut t, b"\x1b[1C"); // CUF 1 → cursor.x = 1 (spacer!)
+        // Cursor should be adjusted to col 0 (lead), not col 1 (spacer).
+        assert_eq!(
+            t.cursor().0,
+            0,
+            "cursor should adjust to wide char lead, not spacer"
+        );
+    }
+
+    #[test]
+    fn t_cub_lands_on_wide_spacer_adjusts_to_lead() {
+        // When CUB moves the cursor to a spacer position, it should
+        // be adjusted to the lead.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1, cursor at 2
+        feed(&mut t, b"\x1b[3C"); // CUF 3 → cursor.x = 5
+        feed(&mut t, b"\x1b[4D"); // CUB 4 → cursor.x = 1 (spacer!)
+        assert_eq!(t.cursor().0, 0, "CUB should adjust to lead, not spacer");
+    }
+
+    #[test]
+    fn t_cha_lands_on_wide_spacer_adjusts_to_lead() {
+        // CHA (cursor horizontal absolute) should also adjust.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "你".as_bytes()); // wide char at cols 0-1
+        feed(&mut t, b"\x1b[2G"); // CHA col 2 → cursor.x = 1 (spacer!)
+        assert_eq!(t.cursor().0, 0, "CHA should adjust to lead, not spacer");
     }
 
     // ── Round 12-2: Bracketed Paste + Focus Reporting audits ───────────
@@ -22491,19 +22563,18 @@ mod tests {
 
     #[test]
     fn t_r29_wide_char_overwrite_spacer_with_narrow() {
-        // Print wide char, then move cursor to col 1 (spacer) and
-        // print narrow char there. The lead should be cleared.
+        // Print wide char, then move cursor to col 1 (spacer) — cursor
+        // adjusts to col 0 (lead). Print narrow char there.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, "中".as_bytes()); // cols 0-1
-        feed(&mut t, b"\x1b[1;2H"); // cursor at col 1 (spacer)
-        feed(&mut t, b"Y"); // overwrite spacer
-        // The lead at col 0 should be cleared (can't have orphaned spacer)
+        feed(&mut t, b"\x1b[1;2H"); // CUP col 1 (spacer) → adjusts to col 0
+        feed(&mut t, b"Y"); // overwrite at lead position
         assert_eq!(
             t.grid().cell(0, 0).unwrap().ch,
-            ' ',
-            "lead cleared when spacer overwritten"
+            'Y',
+            "Y at lead position (cursor adjusted from spacer)"
         );
-        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'Y', "Y at col 1");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, ' ', "col 1 cleared");
     }
 
     #[test]
@@ -24176,16 +24247,16 @@ mod tests {
 
     #[test]
     fn t_r36_wide_overwrite_spacer_clears_lead() {
-        // Overwriting the SPACER of a wide char with a narrow char must also
-        // clear the WIDE_CHAR lead to prevent orphaned lead.
+        // Cursor positioning to a spacer adjusts to the lead cell,
+        // so printing overwrites the lead position.
         let mut t = Terminal::new(10, 3);
         feed(&mut t, "中A".as_bytes()); // 中(0-1) A(2)
-        feed(&mut t, b"\x1b[1;2H"); // cursor at col 1 (spacer)
-        feed(&mut t, b"Y"); // overwrite spacer with Y
-        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'Y', "Y at spacer position");
+        feed(&mut t, b"\x1b[1;2H"); // CUP col 1 (spacer) → adjusts to col 0
+        feed(&mut t, b"Y"); // overwrite at lead position
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'Y', "Y at lead position");
         assert!(
             !t.grid().cell(0, 0).unwrap().is_wide(),
-            "lead cleared when spacer overwritten"
+            "old wide flag cleared"
         );
     }
 
