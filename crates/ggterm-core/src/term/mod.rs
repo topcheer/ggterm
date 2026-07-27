@@ -1735,6 +1735,7 @@ impl Terminal {
         if params.is_empty() {
             self.fg = Color::Default;
             self.bg = Color::Default;
+            self.underline_color = Color::Default;
             self.flags = CellFlags::empty();
             return;
         }
@@ -4417,6 +4418,27 @@ mod tests {
         let flags_after = t.grid().cell(1, 0).unwrap().flags;
         assert!(!flags_after.contains(CellFlags::UNDERLINE));
         assert!(!flags_after.contains(CellFlags::UNDERLINE_CURLY));
+    }
+
+    #[test]
+    fn t_sgr_empty_resets_underline_color() {
+        // CSI m (empty params) should be equivalent to CSI 0 m.
+        // It must reset underline_color, not just fg/bg/flags.
+        let mut t = Terminal::new(80, 24);
+        // Set a custom underline color via SGR 58;2 (semicolon form)
+        feed(&mut t, b"\x1b[58;2;100;150;200m");
+        assert_eq!(
+            t.underline_color,
+            Color::Rgb(100, 150, 200),
+            "underline color should be set"
+        );
+        // CSI m (empty params) should reset everything including underline_color
+        feed(&mut t, b"\x1b[m");
+        assert_eq!(
+            t.underline_color,
+            Color::Default,
+            "CSI m should reset underline_color (equivalent to CSI 0 m)"
+        );
     }
 
     #[test]
