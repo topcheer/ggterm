@@ -347,6 +347,11 @@ impl Grid {
         // the user is already viewing the latest output (offset == 0).
         let was_scrolled = self.display_offset > 0;
 
+        // Track whether rows were actually pushed to scrollback.
+        // Only full-screen scrolls push to scrollback; scroll-region scrolls
+        // rotate within the visible area and must NOT advance display_offset.
+        let mut pushed_to_scrollback = false;
+
         if self.scroll_top == 0 && self.scroll_bottom == self.height {
             // Full-screen scroll (most common case):
             // Drain first n rows → push to scrollback, then append n blanks.
@@ -356,6 +361,7 @@ impl Grid {
                 self.push_scrollback(row);
             }
             self.rows.extend((0..n).map(|_| Row::new(self.width)));
+            pushed_to_scrollback = true;
         } else {
             // Scroll region (DECSTBM): rotate region [T..B) left by n,
             // then fill the last n positions of the region with blank rows.
@@ -365,8 +371,11 @@ impl Grid {
             }
         }
 
-        if was_scrolled {
+        if was_scrolled && pushed_to_scrollback {
             // Keep the user at the same scrollback position by advancing offset.
+            // Only advance when rows were actually pushed to scrollback (full-screen
+            // scroll). Scroll-region scrolls don't add to scrollback, so advancing
+            // would incorrectly shift the viewport.
             self.display_offset = self.display_offset.saturating_add(n);
         }
         self.damage.mark_rows(self.scroll_top, region_height);
@@ -2640,6 +2649,44 @@ mod tests {
         g.reflow_resize(1, 4);
         // Just reaching here means the bug is fixed.
         assert_eq!(g.width(), 1);
+    }
+
+    #[test]
+    fn scroll_region_up_does_not_advance_display_offset() {
+        // When the user has scrolled up in scrollback (display_offset > 0)
+        // and content scrolls within a scroll REGION (not full screen),
+        // display_offset should NOT advance because no rows are pushed to
+        // scrollback. Advancing it would incorrectly shift the viewport.
+        let mut grid = Grid::with_scrollback(10, 5, 100);
+
+        // Fill rows with identifiable content.
+        for row in 0..5 {
+            for col in 0..10 {
+                grid[(col, row)] =
+                    Cell::with_char(char::from_u32(b'A' as u32 + row as u32).unwrap());
+            }
+        }
+
+        // Push some content to scrollback so we can scroll up.
+        grid.scroll_up(2); // rows A,B pushed to scrollback
+        assert_eq!(grid.scrollback_len(), 2);
+
+        // User scrolls up to view scrollback.
+        grid.scroll_up_viewport(2);
+        assert_eq!(grid.display_offset(), 2);
+
+        // Now set a scroll region (rows 0-3, leaving row 4 outside).
+        grid.set_scroll_region(0, 4);
+
+        // Scroll up within the region. This rotates [0..4) — no scrollback change.
+        grid.scroll_up(1);
+
+        // display_offset should NOT have changed — no rows were pushed to scrollback.
+        assert_eq!(
+            grid.display_offset(),
+            2,
+            "display_offset should not advance for scroll-region scroll"
+        );
     }
 
     #[test]
