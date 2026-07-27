@@ -3544,7 +3544,15 @@ impl Perform for Terminal {
                         }
                         _ => {}
                     }
-                    i += 2;
+                    // Skip past the entire colon-derived group, not just the
+                    // first two params. For 38:2:R:G:B, this skips all 5
+                    // params instead of just [38, 2], preventing the RGB
+                    // values (R, G, B) from being re-interpreted as SGR codes
+                    // (e.g. R=4, G=5 matching SGR 4:5 = dashed underline).
+                    i += 1; // skip root param
+                    while i < params.len() && subs.get(i).copied().unwrap_or(0) != 0 {
+                        i += 1; // skip colon-derived sub-params
+                    }
                 } else {
                     i += 1;
                 }
@@ -4920,6 +4928,26 @@ mod tests {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[48:2:0:128:255mX");
         assert_eq!(t.grid().cell(0, 0).unwrap().bg, Color::Rgb(0, 128, 255));
+    }
+
+    #[test]
+    fn t_sgr_colon_rgb_small_values_no_collision() {
+        // When RGB values in colon syntax are small (e.g. 4, 5), they
+        // should NOT be reinterpreted as SGR underline style codes.
+        // 38:2:4:5:6 should set fg=RGB(4,5,6) without setting DASHED
+        // underline (which would be SGR 4:5).
+        let mut t = Terminal::new(80, 24);
+        feed(&mut t, b"\x1b[38:2:4:5:6mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Rgb(4, 5, 6));
+        assert!(
+            !cell.flags.contains(CellFlags::UNDERLINE_DASHED),
+            "RGB values 4,5 should not trigger SGR 4:5 dashed underline"
+        );
+        assert!(
+            !cell.flags.contains(CellFlags::UNDERLINE),
+            "RGB values should not trigger underline"
+        );
     }
 
     #[test]

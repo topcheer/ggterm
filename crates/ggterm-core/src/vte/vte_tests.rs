@@ -405,7 +405,6 @@ fn test_dcs_overflow_consumes_until_terminator() {
 }
 
 #[test]
-#[test]
 fn test_osc_abort_then_csi() {
     let mut parser = Parser::new();
     let mut p = MockPerform::new();
