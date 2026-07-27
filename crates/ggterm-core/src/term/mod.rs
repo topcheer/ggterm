@@ -2217,15 +2217,24 @@ impl Perform for Terminal {
                 self.set_cursor(col.saturating_sub(1), self.cursor.y);
             }
             // VPR — Vertical Position Relative (CSI Ps e).
-            // Moves cursor down Ps rows, column unchanged. Like CUU but downward.
+            // Moves cursor down Ps rows, column unchanged. Like CUD.
             b'e' => {
                 let n = Self::param(params, 0, 1) as usize;
                 let (_, bottom) = self.grid.scroll_region();
-                let new_y = self
-                    .cursor
-                    .y
-                    .saturating_add(n)
-                    .min(bottom.saturating_sub(1));
+                // Same scroll region boundary behavior as CUD:
+                // cursor inside region → clamp to bottom-1;
+                // cursor below region → clamp to height-1.
+                let new_y = if self.cursor.y < bottom {
+                    self.cursor
+                        .y
+                        .saturating_add(n)
+                        .min(bottom.saturating_sub(1))
+                } else {
+                    self.cursor
+                        .y
+                        .saturating_add(n)
+                        .min(self.grid.height().saturating_sub(1))
+                };
                 self.set_cursor(self.cursor.x, new_y);
             }
             b'H' | b'f' => {
@@ -4317,6 +4326,36 @@ mod tests {
         feed(&mut t, b"\x1b[1E"); // CNL 1
         assert_eq!(t.cursor().1, 8, "CNL below scroll region should not clamp");
         assert_eq!(t.cursor().0, 0, "CNL should set column to 0");
+    }
+
+    #[test]
+    fn t_vpr_outside_scroll_region() {
+        // VPR (CSI Ps e) should match CUD scroll region behavior:
+        // cursor below the scroll region should NOT be clamped to scroll_bottom.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region top=0, bottom=3
+        feed(&mut t, b"\x1b[8;1H"); // cursor row 7 (below region)
+        feed(&mut t, b"\x1b[1e"); // VPR 1
+        assert_eq!(
+            t.cursor().1,
+            8,
+            "VPR below scroll region should not clamp to scroll_bottom"
+        );
+    }
+
+    #[test]
+    fn t_vpr_inside_scroll_region() {
+        // VPR inside scroll region should clamp to bottom-1.
+        // Scroll region 1;4r → top=0, bottom=4 (0-based), rows 0-3 inclusive.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region top=0, bottom=4
+        feed(&mut t, b"\x1b[3;1H"); // cursor row 2 (inside region, 0-based)
+        feed(&mut t, b"\x1b[5e"); // VPR 5 — clamp to row 3 (bottom-1=4-1=3)
+        assert_eq!(
+            t.cursor().1,
+            3,
+            "VPR inside scroll region should clamp to bottom-1"
+        );
     }
 
     #[test]
