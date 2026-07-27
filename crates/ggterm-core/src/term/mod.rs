@@ -1416,21 +1416,23 @@ impl Terminal {
         }
     }
 
-    fn line_feed(&mut self) {
+    /// Index — move cursor down one line, scrolling within region if needed.
+    /// Unlike `line_feed`, IND (ESC D) never performs a carriage return,
+    /// even when LNM (mode 20) is active. Only LF (0x0A) respects LNM.
+    fn index(&mut self) {
         let (top, bottom) = self.grid.scroll_region();
-        // Only scroll when cursor is at the bottom of the scroll region.
-        // If cursor is below the scroll region, just advance the row.
         if self.cursor.y >= top && self.cursor.y == bottom.saturating_sub(1) {
             self.grid.scroll_up(1);
         } else {
             self.cursor.y = (self.cursor.y + 1).min(self.grid.height().saturating_sub(1));
         }
-        // Always clear pending_wrap on line feed — the cursor has moved
-        // to a new line regardless of LNM mode. Without this, bare LF
-        // (without CR) when LNM is off would leave pending_wrap=true,
-        // causing the next printable char to wrap an extra line.
         self.cursor.pending_wrap = false;
+    }
+
+    fn line_feed(&mut self) {
+        self.index();
         // LNM (mode 20): LF also performs a carriage return.
+        // Only LF (0x0A) does this — IND (ESC D) does not.
         if self.modes.new_line_mode {
             self.cursor.x = 0;
         }
@@ -3659,7 +3661,7 @@ impl Perform for Terminal {
             b'c' => {
                 self.ris();
             }
-            b'D' => self.line_feed(),
+            b'D' => self.index(),
             b'E' => {
                 self.cursor.x = 0;
                 self.line_feed();
@@ -17920,6 +17922,29 @@ mod tests {
         feed(&mut t, b"\x1b[5;1H"); // cursor at row 5 (below region)
         feed(&mut t, b"\x1bD"); // IND
         assert_eq!(t.cursor().1, 5, "cursor stays at row 5 (last row)");
+    }
+
+    #[test]
+    fn t_p144_ind_does_not_cr_with_lnm_on() {
+        // IND (ESC D) should NOT perform CR even when LNM (mode 20) is on.
+        // Only LF (0x0A) should respect LNM. Per xterm: IND is purely a
+        // cursor-down operation without column change.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[20h"); // Enable LNM
+        feed(&mut t, b"ABC\x1bD"); // Print ABC at cols 0-2, then IND
+        // IND should move cursor down WITHOUT resetting column to 0.
+        assert_eq!(t.cursor().0, 3, "IND should not do CR even with LNM on");
+        assert_eq!(t.cursor().1, 1, "IND should move to next row");
+    }
+
+    #[test]
+    fn t_p144_lf_does_cr_with_lnm_on() {
+        // Contrast: LF (0x0A) SHOULD do CR when LNM is on.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[20h"); // Enable LNM
+        feed(&mut t, b"ABC\n"); // Print ABC, then LF
+        assert_eq!(t.cursor().0, 0, "LF should do CR when LNM is on");
+        assert_eq!(t.cursor().1, 1, "LF should move to next row");
     }
 
     #[test]
