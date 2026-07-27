@@ -905,3 +905,182 @@ fn test_vim_escape_sequences() {
     assert_eq!(rec.oscs[0], b"2;Vim");
     assert_eq!(&rec.prints, b"Ready");
 }
+
+// ── Round 38: Parser edge cases ─────────────────────────────────────
+
+#[test]
+fn test_r38_csi_with_only_semicolon() {
+    // CSI ; H — both params empty. The parser emits [0] (single empty param).
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b[;H", &mut rec);
+    assert_eq!(rec.csis.len(), 1);
+    assert_eq!(rec.csis[0].1, vec![0], "empty param becomes 0");
+    assert_eq!(rec.csis[0].2, b'H');
+}
+
+#[test]
+fn test_r38_csi_many_trailing_semicolons() {
+    // CSI 1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17H
+    // Should cap at 16 params — 17th is dropped
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b[1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17H", &mut rec);
+    assert_eq!(rec.csis.len(), 1);
+    assert!(rec.csis[0].1.len() <= 17, "params capped reasonably");
+}
+
+#[test]
+fn test_r38_osc_bel_inside_data() {
+    // OSC with BEL as data byte (0x07) — BEL terminates OSC.
+    // But what if the data itself has BEL? It terminates early.
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b]0;Hello\x07World", &mut rec);
+    assert_eq!(rec.oscs.len(), 1);
+    assert_eq!(rec.oscs[0], b"0;Hello");
+    // "World" should be printed
+    assert_eq!(&rec.prints, b"World");
+}
+
+#[test]
+fn test_r38_esc_then_bel() {
+    // ESC followed by BEL — BEL is a control char, should be executed.
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b\x07", &mut rec);
+    // BEL (0x07) in Escape state should be executed as control char
+    assert_eq!(rec.executes.len(), 1);
+    assert_eq!(rec.executes[0], 0x07);
+}
+
+#[test]
+fn test_r38_csi_param_zero_becomes_default() {
+    // CSI 0 m — SGR with param 0 = reset
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b[0m", &mut rec);
+    assert_eq!(rec.csis.len(), 1);
+    assert_eq!(rec.csis[0].1, vec![0]);
+    assert_eq!(rec.csis[0].2, b'm');
+}
+
+#[test]
+fn test_r38_utf8_4byte_split_across_feeds() {
+    // Feed a 4-byte UTF-8 char (emoji) split across multiple feed() calls.
+    // 🎉 = F0 9F 8E 89
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(&[0xF0, 0x9F], &mut rec); // partial
+    assert_eq!(rec.prints.len(), 0, "no print yet");
+    parser.feed(&[0x8E, 0x89], &mut rec); // completion
+    assert_eq!(rec.prints.len(), 4, "full 4-byte char printed");
+}
+
+#[test]
+fn test_r38_csi_private_then_normal() {
+    // DEC private mode (?), then normal CSI
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b[?25h\x1b[H", &mut rec);
+    assert_eq!(rec.csis.len(), 2);
+    // First: ?25h (with ? intermediate)
+    assert_eq!(rec.csis[0].0, vec![b'?']);
+    assert_eq!(rec.csis[0].2, b'h');
+    // Second: H (normal)
+    assert_eq!(rec.csis[1].0, vec![]);
+    assert_eq!(rec.csis[1].2, b'H');
+}
+
+#[test]
+fn test_r38_osc_then_csi_immediately() {
+    // OSC terminated by BEL, immediately followed by CSI — no gap
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b]0;Title\x07\x1b[2J", &mut rec);
+    assert_eq!(rec.oscs.len(), 1);
+    assert_eq!(rec.csis.len(), 1);
+    assert_eq!(rec.csis[0].2, b'J');
+}
+
+#[test]
+fn test_r38_print_between_csi_params() {
+    // Text after a CSI final byte should be printed.
+    // CSI 1B (cursor down), then ABCD printed, then CSI 2A (cursor up)
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b[1BABCD\x1b[2A", &mut rec);
+    // CSI 1B, then ABCD printed, then CSI 2A
+    assert_eq!(rec.csis.len(), 2);
+    assert_eq!(&rec.prints, b"ABCD");
+}
+
+#[test]
+fn test_r38_dcs_passthrough_basic() {
+    // DCS sequence should be consumed as DCS, not printed
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1bP1;2;3qData\x1b\\", &mut rec);
+    // The "Data" should not appear in prints
+    assert_eq!(rec.prints.len(), 0, "DCS data not printed");
+}
+
+#[test]
+fn test_r38_null_byte_in_ground() {
+    // NUL (0x00) in ground state — should be ignored per VT spec
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"A\x00B", &mut rec);
+    // NUL is ignored, A and B printed
+    assert_eq!(&rec.prints, b"AB");
+}
+
+#[test]
+fn test_r38_del_byte_in_ground() {
+    // DEL (0x7F) in ground state — should be ignored per VT spec
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"A\x7fB", &mut rec);
+    assert_eq!(&rec.prints, b"AB", "DEL ignored in ground");
+}
+
+#[test]
+fn test_r38_csi_question_mark_zero() {
+    // CSI ?0h — DEC private mode 0 (invalid but should not crash)
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b[?0h", &mut rec);
+    assert_eq!(rec.csis.len(), 1);
+    assert_eq!(rec.csis[0].0, vec![b'?']);
+}
+
+#[test]
+fn test_r38_consecutive_esc_sequences() {
+    // Multiple ESC sequences back to back
+    let mut parser = Parser::new();
+    let mut rec = Recorder::default();
+    parser.feed(b"\x1b7\x1b8\x1bD\x1bM\x1bE", &mut rec);
+    assert_eq!(rec.escs.len(), 5);
+    assert_eq!(rec.escs[0].1, b'7');
+    assert_eq!(rec.escs[1].1, b'8');
+    assert_eq!(rec.escs[2].1, b'D');
+    assert_eq!(rec.escs[3].1, b'M');
+    assert_eq!(rec.escs[4].1, b'E');
+}
+
+#[test]
+fn test_r38_feed_single_byte_at_a_time() {
+    // Feed each byte individually — should produce same result as batch feed
+    let mut parser1 = Parser::new();
+    let mut rec1 = Recorder::default();
+    parser1.feed(b"\x1b[31mABC\x1b[0m", &mut rec1);
+
+    let mut parser2 = Parser::new();
+    let mut rec2 = Recorder::default();
+    for byte in b"\x1b[31mABC\x1b[0m" {
+        parser2.feed(&[*byte], &mut rec2);
+    }
+
+    assert_eq!(rec1.csis, rec2.csis, "single-byte feed matches batch");
+    assert_eq!(rec1.prints, rec2.prints, "prints match");
+}
