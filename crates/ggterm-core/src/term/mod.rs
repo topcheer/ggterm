@@ -4175,6 +4175,10 @@ impl Perform for Terminal {
                         sgr_parts.push("9".into());
                         has_attr = true;
                     }
+                    if self.flags.contains(CellFlags::OVERLINE) {
+                        sgr_parts.push("53".into());
+                        has_attr = true;
+                    }
                     let sgr = if has_attr {
                         sgr_parts.join(";")
                     } else {
@@ -26133,6 +26137,20 @@ mod tests {
             *t.underline_color_ref(),
             Color::Rgb(255, 0, 255),
             "underline color should be set"
+        );
+    }
+
+    #[test]
+    fn t_p131_decrqss_sgr_overline() {
+        // DECRQSS for SGR should include overline (SGR 53) when set.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b[53m"); // overline on
+        feed(&mut t, b"\x1bP$qm\x1b\\"); // DECRQSS SGR
+        let resp_bytes = t.take_response();
+        let resp = String::from_utf8_lossy(&resp_bytes);
+        assert!(
+            resp.contains("53"),
+            "DECRQSS SGR with overline should contain 53, got: {resp}"
         );
     }
 }
