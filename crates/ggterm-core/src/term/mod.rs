@@ -3702,7 +3702,12 @@ impl Perform for Terminal {
                             format!("\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", cmd_num, r, g, b)
                         }
                         Color::Indexed(i) => {
-                            let (r, g, b) = color_for_index(*i);
+                            // Use palette override if set, otherwise built-in palette.
+                            let (r, g, b) = self
+                                .palette_overrides
+                                .get(i)
+                                .copied()
+                                .unwrap_or_else(|| color_for_index(*i));
                             format!("\x1b]{};rgb:{:02x}/{:02x}/{:02x}\x1b\\", cmd_num, r, g, b)
                         }
                         Color::Default => {
@@ -7108,6 +7113,29 @@ mod tests {
     }
 
     #[test]
+    fn t_osc10_query_uses_palette_override() {
+        // When a palette override is set via OSC 4, the OSC 10 query
+        // for an indexed foreground color should use the overridden value.
+        let mut t = Terminal::new(80, 24);
+        // Set fg to indexed color 1 (red = 0xcd0000)
+        feed(&mut t, b"\x1b[31m");
+        // Override palette entry 1 to pure green
+        feed(&mut t, b"\x1b]4;1;rgb:00/ff/00\x1b\\");
+        t.take_response(); // clear any pending response
+        // Query fg color — should use the override, not the built-in red
+        feed(&mut t, b"\x1b]10;?\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.contains("rgb:00/ff/00"),
+            "OSC 10 query should use palette override (green), got: {resp}"
+        );
+        assert!(
+            !resp.contains("rgb:cd/00/00"),
+            "OSC 10 query should NOT use built-in red, got: {resp}"
+        );
+    }
+
+    #[test]
     fn t_osc11_query_default_bg_is_black() {
         let mut t = Terminal::new(80, 24);
         // Query default bg color (no dynamic bg set)
@@ -8827,6 +8855,35 @@ mod tests {
         // Restore — should be enabled again
         feed(&mut t, b"\x1b8");
         assert!(t.protected_attr);
+    }
+
+    #[test]
+    fn t_decsc_independent_from_scp_rcp() {
+        // DECSC (ESC 7) and SCP (CSI s) should use separate save slots.
+        // Saving with one should not affect the other.
+        let mut t = Terminal::new(80, 24);
+        // Position 1: save via DECSC
+        feed(&mut t, b"\x1b[5;10H"); // row 5, col 10
+        feed(&mut t, b"\x1b7"); // DECSC
+        // Position 2: save via SCP
+        feed(&mut t, b"\x1b[15;20H"); // row 15, col 20
+        feed(&mut t, b"\x1b[s"); // SCP
+        // Move away
+        feed(&mut t, b"\x1b[1;1H");
+        // Restore via RCP (CSI u) — should go to position 2
+        feed(&mut t, b"\x1b[u");
+        assert_eq!(
+            (t.cursor().0, t.cursor().1),
+            (19, 14),
+            "RCP restores SCP position"
+        );
+        // Restore via DECRC (ESC 8) — should go to position 1
+        feed(&mut t, b"\x1b8");
+        assert_eq!(
+            (t.cursor().0, t.cursor().1),
+            (9, 4),
+            "DECRC restores DECSC position"
+        );
     }
 
     // ===== Robustness / edge case tests =====
