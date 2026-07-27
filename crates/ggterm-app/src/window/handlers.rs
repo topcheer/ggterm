@@ -3691,6 +3691,7 @@ impl DesktopApp {
         // Shift bypasses mouse tracking for normal scrollback scrolling.
         if term.mouse_tracking_enabled() && !self.mods.shift {
             let sgr = term.mouse_sgr_enabled();
+            let sgr_pixel = term.mouse_sgr_pixel_enabled();
             let urxvt = term.mouse_urxvt_enabled();
 
             let (dx, dy) = match delta {
@@ -3709,13 +3710,32 @@ impl DesktopApp {
                 } else {
                     crate::mouse::MouseButton::WheelDown
                 };
-                let ev = crate::mouse::MouseEvent {
-                    button,
-                    x: col,
-                    y: row,
-                    mods,
+                let bytes = if sgr_pixel {
+                    let (px, py) = if let Some(ref renderer) = self.renderer {
+                        (
+                            (col as u32 * renderer.cell_width()) as u16,
+                            (row as u32 * renderer.cell_height()) as u16,
+                        )
+                    } else {
+                        (col, row)
+                    };
+                    let ev = crate::mouse::MouseEvent {
+                        button,
+                        x: px,
+                        y: py,
+                        mods,
+                    };
+                    crate::mouse::encode_mouse_event_pixel(&ev, px, py, true)
+                } else {
+                    let ev = crate::mouse::MouseEvent {
+                        button,
+                        x: col,
+                        y: row,
+                        mods,
+                    };
+                    crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true)
                 };
-                if let Some(bytes) = crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true) {
+                if let Some(bytes) = bytes {
                     // Protocol response: write directly to PTY.
                     self.active_session_mut().write_to_pty(&bytes);
                 }
@@ -3728,13 +3748,32 @@ impl DesktopApp {
                 } else {
                     crate::mouse::MouseButton::WheelLeft
                 };
-                let ev = crate::mouse::MouseEvent {
-                    button,
-                    x: col,
-                    y: row,
-                    mods,
+                let bytes = if sgr_pixel {
+                    let (px, py) = if let Some(ref renderer) = self.renderer {
+                        (
+                            (col as u32 * renderer.cell_width()) as u16,
+                            (row as u32 * renderer.cell_height()) as u16,
+                        )
+                    } else {
+                        (col, row)
+                    };
+                    let ev = crate::mouse::MouseEvent {
+                        button,
+                        x: px,
+                        y: py,
+                        mods,
+                    };
+                    crate::mouse::encode_mouse_event_pixel(&ev, px, py, true)
+                } else {
+                    let ev = crate::mouse::MouseEvent {
+                        button,
+                        x: col,
+                        y: row,
+                        mods,
+                    };
+                    crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true)
                 };
-                if let Some(bytes) = crate::mouse::encode_mouse_event(&ev, sgr, urxvt, true) {
+                if let Some(bytes) = bytes {
                     self.active_session_mut().write_to_pty(&bytes);
                 }
             }
