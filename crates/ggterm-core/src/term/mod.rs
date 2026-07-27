@@ -4153,6 +4153,35 @@ impl Perform for Terminal {
                     } else {
                         "0".into()
                     };
+                    // Append foreground/background colors if non-default.
+                    // DECRQSS should report the full SGR state.
+                    let mut sgr = sgr;
+                    match self.fg {
+                        Color::Default => {}
+                        Color::Indexed(i) => {
+                            if (i as usize) < 8 {
+                                sgr.push_str(&format!(";{}", 30 + i));
+                            } else {
+                                sgr.push_str(&format!(";{}", 90 + (i - 8)));
+                            }
+                        }
+                        Color::Rgb(r, g, b) => {
+                            sgr.push_str(&format!(";38;2;{r};{g};{b}"));
+                        }
+                    }
+                    match self.bg {
+                        Color::Default => {}
+                        Color::Indexed(i) => {
+                            if (i as usize) < 8 {
+                                sgr.push_str(&format!(";{}", 40 + i));
+                            } else {
+                                sgr.push_str(&format!(";{}", 100 + (i - 8)));
+                            }
+                        }
+                        Color::Rgb(r, g, b) => {
+                            sgr.push_str(&format!(";48;2;{r};{g};{b}"));
+                        }
+                    }
                     format!("\x1bP1$r{sgr}m\x1b\\")
                 }
                 // DECSTBM — scroll region (top;bottom)
@@ -25496,5 +25525,47 @@ mod tests {
         assert_eq!(t.fg, Color::Default);
         assert_eq!(t.bg, Color::Default);
         assert_eq!(t.flags, CellFlags::empty());
+    }
+
+    #[test]
+    fn t_decrqss_sgr_includes_colors() {
+        // DECRQSS "m" should report the full SGR state including colors.
+        // Before the fix, it only reported text attributes (bold, italic, etc.)
+        // but omitted fg/bg colors.
+        let mut t = Terminal::new(20, 3);
+        // Set bold + red fg + blue bg
+        feed(&mut t, b"\x1b[1;31;44m");
+        // Query SGR state
+        t.take_response(); // clear any buffered responses
+        feed(&mut t, b"\x1bP$qm\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(resp.contains("1"), "bold should be reported: {resp}");
+        assert!(resp.contains("31"), "red fg should be reported: {resp}");
+        assert!(resp.contains("44"), "blue bg should be reported: {resp}");
+    }
+
+    #[test]
+    fn t_decrqss_sgr_includes_truecolor() {
+        // DECRQSS should report truecolor values in 38;2;R;G;B format.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38;2;255;128;0m");
+        t.take_response();
+        feed(&mut t, b"\x1bP$qm\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(
+            resp.contains("38;2;255;128;0"),
+            "truecolor fg should be reported: {resp}"
+        );
+    }
+
+    #[test]
+    fn t_decrqss_sgr_default_returns_zero() {
+        // With default SGR (no attributes, no colors), DECRQSS should
+        // respond with "0" (reset).
+        let mut t = Terminal::new(20, 3);
+        t.take_response();
+        feed(&mut t, b"\x1bP$qm\x1b\\");
+        let resp = String::from_utf8_lossy(t.response_buffer());
+        assert!(resp.contains("0m"), "default SGR should report 0: {resp}");
     }
 }
