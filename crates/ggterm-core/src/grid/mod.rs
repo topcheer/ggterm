@@ -224,6 +224,7 @@ impl Grid {
         // Enforce scrollback cap.
         while self.scrollback.len() > self.max_scrollback {
             self.scrollback.pop_front();
+            self.total_evicted += 1;
         }
 
         self.width = width;
@@ -799,10 +800,14 @@ impl Grid {
     }
 
     /// Update the scrollback capacity, evicting oldest rows if shrinking.
+    ///
+    /// Tracks evicted rows in `total_evicted` so that command marks
+    /// (OSC 133) referencing absolute scrollback rows can be adjusted.
     pub fn set_max_scrollback(&mut self, max: usize) {
         self.max_scrollback = max;
         while self.scrollback.len() > max {
             self.scrollback.pop_front();
+            self.total_evicted += 1;
         }
     }
 
@@ -1751,6 +1756,27 @@ mod tests {
             g.scroll_up(1);
         }
         assert_eq!(g.scrollback_len(), 3); // capped
+    }
+
+    #[test]
+    fn set_max_scrollback_tracks_eviction() {
+        // Reducing scrollback capacity should evict rows and update total_evicted.
+        let mut g = Grid::with_scrollback(3, 2, 5);
+        for i in 0..5u8 {
+            g[(0, 0)] = Cell::with_char((b'A' + i) as char);
+            g.scroll_up(1);
+        }
+        assert_eq!(g.scrollback_len(), 5);
+        assert_eq!(g.total_evicted(), 0);
+
+        // Reduce capacity to 3 — should evict 2 rows.
+        g.set_max_scrollback(3);
+        assert_eq!(g.scrollback_len(), 3);
+        assert_eq!(
+            g.total_evicted(),
+            2,
+            "set_max_scrollback should track evicted rows for mark adjustment"
+        );
     }
 
     // ── Viewport scrolling ───────────────────────────────────────────
