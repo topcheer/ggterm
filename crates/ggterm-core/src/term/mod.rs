@@ -4378,6 +4378,72 @@ mod tests {
     }
 
     #[test]
+    fn t_lf_below_scroll_region_no_scroll() {
+        // LF when cursor is below the scroll region should not scroll
+        // the region — it just moves the cursor down (clamped to bottom).
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3 (0-based: 0-3)
+        // Put cursor at row 2 (inside region) and write X
+        feed(&mut t, b"\x1b[3;1H"); // CUP to row 3 (0-based row 2)
+        feed(&mut t, b"X"); // write X at (0,2)
+        // Put cursor well below the region
+        feed(&mut t, b"\x1b[8;1H"); // CUP to row 8 (0-based row 7, below region)
+        // LF — cursor at row 7, should move to row 8 (no scroll)
+        feed(&mut t, b"\n");
+        // X at (0,2) should still be there
+        assert_eq!(
+            t.grid().cell(0, 2).unwrap().ch,
+            'X',
+            "LF below scroll region should not scroll content in region"
+        );
+    }
+
+    #[test]
+    fn t_lf_above_scroll_region_moves_down() {
+        // LF when cursor is above the scroll region should move cursor
+        // down normally, not scroll.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[5;8r"); // region rows 4-7
+        feed(&mut t, b"\x1b[1;1H"); // cursor row 0 (above region)
+        feed(&mut t, b"\n"); // LF
+        assert_eq!(
+            t.cursor().1,
+            1,
+            "LF above scroll region moves cursor down normally"
+        );
+    }
+
+    #[test]
+    fn t_r42_il_outside_scroll_region_is_noop() {
+        // IL when cursor is outside scroll region should be a no-op.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"ABCDEF"); // write to row 0
+        feed(&mut t, b"\x1b[8;1H"); // cursor row 7 (below region)
+        feed(&mut t, b"\x1b[L"); // IL — should be no-op
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "IL outside scroll region should not modify content"
+        );
+    }
+
+    #[test]
+    fn t_r42_dl_outside_scroll_region_is_noop() {
+        // DL when cursor is outside scroll region should be a no-op.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"ABCDEF"); // write to row 0
+        feed(&mut t, b"\x1b[8;1H"); // cursor row 7 (below region)
+        feed(&mut t, b"\x1b[M"); // DL — should be no-op
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "DL outside scroll region should not modify content"
+        );
+    }
+
+    #[test]
     fn t_csi_cha() {
         let mut t = Terminal::new(80, 24);
         feed(&mut t, b"\x1b[30G");
