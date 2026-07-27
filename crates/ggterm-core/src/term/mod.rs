@@ -1172,6 +1172,13 @@ impl Terminal {
         } else {
             self.grid.resize(width, height);
         }
+        // Always reset scroll region to full screen on resize, even when
+        // the dimensions didn't change (reflow_resize has an early return
+        // for same-size no-ops that skips the scroll region reset).
+        let (sr_top, sr_bottom) = self.grid.scroll_region();
+        if sr_top != 0 || sr_bottom != height {
+            self.grid.set_scroll_region(0, height);
+        }
         // Preserve existing custom tab stops across resize.
         // If wider, extend with default stops at every 8 columns in the new area.
         // If narrower, truncate (custom stops in the clipped area are lost).
@@ -1191,6 +1198,14 @@ impl Terminal {
         self.cursor.x = self.cursor.x.min(width.saturating_sub(1));
         self.cursor.y = self.cursor.y.min(height.saturating_sub(1));
         self.cursor.pending_wrap = false;
+        // Clamp saved cursors to new dimensions to prevent out-of-bounds
+        // writes on DECRC/SCORC after a shrink.
+        self.saved_cursor.x = self.saved_cursor.x.min(width.saturating_sub(1));
+        self.saved_cursor.y = self.saved_cursor.y.min(height.saturating_sub(1));
+        if let Some(ref mut state) = self.decsc_state {
+            state.cursor.x = state.cursor.x.min(width.saturating_sub(1));
+            state.cursor.y = state.cursor.y.min(height.saturating_sub(1));
+        }
         self.utf8_buf.clear();
     }
 
@@ -19432,5 +19447,246 @@ mod tests {
         feed(&mut t, b"\x1b[?6h"); // origin on
         feed(&mut t, b"\x1b[1d"); // VPA row 1 → absolute = region_top + 0 = 2
         assert_eq!(t.cursor().1, 2, "VPA row 1 in origin mode → abs row 2");
+    }
+
+    // ── Round 20-1: Resize / Reflow edge cases ─────────────────────────
+
+    #[test]
+    fn t_r20_resize_resets_scroll_region() {
+        // Resize should reset scroll region to full screen.
+        let mut t = Terminal::new(10, 8);
+        feed(&mut t, b"\x1b[3;6r"); // region rows 3-6
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!((top, bottom), (2, 6));
+        t.resize(10, 8); // same size — should still reset
+        let (top2, bottom2) = t.grid().scroll_region();
+        assert_eq!((top2, bottom2), (0, 8), "resize resets scroll region");
+    }
+
+    #[test]
+    fn t_r20_resize_shrink_then_grow_preserves_text_reflow() {
+        // With reflow on, shrink then grow should preserve text.
+        let mut t = Terminal::with_scrollback(20, 5, 100);
+        feed(&mut t, b"Hello World Test"); // 16 chars on 20-wide
+        t.resize(10, 5); // shrink — text reflows
+        t.resize(20, 5); // grow back
+        // Content should reflow back to original layout
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'H',
+            "first char preserved after roundtrip"
+        );
+    }
+
+    #[test]
+    fn t_r20_resize_preserves_scrollback_height_change() {
+        // Height change should pull from / push to scrollback.
+        let mut t = Terminal::with_scrollback(10, 4, 100);
+        for i in 0..6 {
+            let line = format!("L{}\r\n", i);
+            feed(&mut t, line.as_bytes());
+        }
+        let sb_before = t.grid().scrollback_len();
+        assert!(sb_before > 0, "scrollback has content");
+        t.resize(10, 2); // shrink height — more rows to scrollback
+        let sb_after_shrink = t.grid().scrollback_len();
+        assert!(sb_after_shrink >= sb_before, "scrollback grows on shrink");
+        t.resize(10, 4); // grow height — pull back from scrollback
+        let sb_after_grow = t.grid().scrollback_len();
+        assert!(
+            sb_after_grow <= sb_after_shrink,
+            "scrollback shrinks on grow"
+        );
+    }
+
+    #[test]
+    fn t_r20_resize_saved_cursor_clamped() {
+        // DECSC saves cursor, then resize clamps — DECRC should give valid pos.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[10;20H"); // cursor at (19, 9)
+        feed(&mut t, b"\x1b7"); // DECSC save
+        t.resize(5, 3); // shrink — saved cursor now out of bounds
+        feed(&mut t, b"\x1b8"); // DECRC restore
+        // The restored cursor should not cause out-of-bounds writes
+        feed(&mut t, b"X");
+        // Should not panic
+        assert!(t.cursor().0 < 5, "cursor x in bounds after resize+restore");
+        assert!(t.cursor().1 < 3, "cursor y in bounds after resize+restore");
+    }
+
+    #[test]
+    fn t_r20_resize_scosc_cursor_clamped() {
+        // SCOSC saves cursor, then resize — SCORC should not cause issues.
+        let mut t = Terminal::new(20, 10);
+        feed(&mut t, b"\x1b[10;20H"); // cursor at (19, 9)
+        feed(&mut t, b"\x1b[s"); // SCOSC save
+        t.resize(5, 3); // shrink
+        feed(&mut t, b"\x1b[u"); // SCORC restore
+        feed(&mut t, b"X");
+        assert!(t.cursor().0 < 5, "cursor x in bounds");
+    }
+
+    #[test]
+    fn t_r20_resize_no_reflow_alt_screen() {
+        // In alt screen, resize should NOT reflow content.
+        let mut t = Terminal::new(10, 4);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"ABCDEFGH"); // 8 chars on 10-wide
+        t.resize(5, 4); // shrink width
+        // In alt screen, content is truncated not reflowed
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+        // Content beyond new width is lost in alt screen (no reflow)
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            ' ',
+            "row 1 blank (no reflow)"
+        );
+    }
+
+    #[test]
+    fn t_r20_resize_reflow_merges_wrapped_lines() {
+        // When reflowing to wider width, soft-wrapped lines merge.
+        let mut t = Terminal::with_scrollback(5, 3, 100);
+        feed(&mut t, b"Hello"); // fills row 0, soft-wrapped
+        feed(&mut t, b"World"); // row 1
+        // Now reflow to wider width — the two rows should merge into one
+        t.resize(10, 3);
+        // After reflow, "HelloWorld" should be on a single row
+        let row0_text = t.grid().row_text(0).unwrap_or_default();
+        assert!(
+            row0_text.starts_with("HelloWorld"),
+            "reflow merges wrapped lines: got '{row0_text}'"
+        );
+    }
+
+    #[test]
+    fn t_r20_resize_cursor_at_bottom_preserved() {
+        // Cursor at bottom row should stay valid after height shrink.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[5;1H"); // cursor at row 4 (bottom)
+        t.resize(10, 3); // shrink
+        assert_eq!(t.cursor().1, 2, "cursor clamped to new bottom");
+    }
+
+    // ── Round 20-2: Bracketed paste / Focus events ─────────────────────
+
+    #[test]
+    fn t_r20_bracketed_paste_wraps_content() {
+        // When bracketed paste is on, pasted content should be wrapped.
+        let mut t = Terminal::new(40, 5);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        feed(&mut t, b"\x1b[200~hello\x1b[201~");
+        // The content between brackets should be printed
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'h',
+            "pasted content printed"
+        );
+        assert_eq!(
+            t.grid().cell(4, 0).unwrap().ch,
+            'o',
+            "pasted content printed"
+        );
+    }
+
+    #[test]
+    fn t_r20_bracketed_paste_no_wrap_when_disabled() {
+        // When bracketed paste is off, content should NOT be wrapped.
+        let mut t = Terminal::new(40, 5);
+        // paste markers should be treated as regular input (ignored or printed)
+        feed(&mut t, b"\x1b[200~hello\x1b[201~");
+        // Without bracketed paste mode, the CSI sequences are unknown
+        // and 'hello' should still be printed
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'h',
+            "content printed without brackets"
+        );
+    }
+
+    #[test]
+    fn t_r20_bracketed_paste_nested_markers() {
+        // Nested paste markers — inner markers should be treated as text.
+        let mut t = Terminal::new(40, 5);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        feed(&mut t, b"\x1b[200~A\x1b[200~B\x1b[201~C\x1b[201~");
+        // All content between outer markers should be printed
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+    }
+
+    #[test]
+    fn t_r20_bracketed_paste_reset_no_leak() {
+        // After disabling bracketed paste, subsequent paste markers should not wrap.
+        let mut t = Terminal::new(40, 5);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        feed(&mut t, b"\x1b[?2004l"); // disable
+        feed(&mut t, b"\x1b[200~hello\x1b[201~");
+        // 'hello' should still be printed (markers are just ignored CSI)
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'h');
+    }
+
+    #[test]
+    fn t_r20_focus_event_no_report_when_disabled() {
+        // Focus events should not be reported when disabled.
+        let mut t = Terminal::new(10, 5);
+        assert!(!t.modes.focus_event);
+        // No way to trigger focus in/out from terminal side (it's input-only)
+        // Just verify the mode is off and can be queried
+    }
+
+    #[test]
+    fn t_r20_focus_event_toggle_and_decstr() {
+        // Focus event mode toggle + DECSTR reset.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h"); // enable
+        assert!(t.modes.focus_event);
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.modes.focus_event, "DECSTR resets focus event");
+    }
+
+    #[test]
+    fn t_r20_synchronized_output_toggle() {
+        // DECSET 2026 — synchronized output mode.
+        let mut t = Terminal::new(10, 5);
+        assert!(!t.modes.synchronized_output);
+        feed(&mut t, b"\x1b[?2026h"); // enable
+        assert!(t.modes.synchronized_output);
+        feed(&mut t, b"\x1b[?2026l"); // disable
+        assert!(!t.modes.synchronized_output);
+    }
+
+    #[test]
+    fn t_r20_synchronized_output_decstr() {
+        // DECSTR should reset synchronized output.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2026h"); // enable
+        feed(&mut t, b"\x1b[!p"); // DECSTR
+        assert!(!t.modes.synchronized_output, "DECSTR resets sync output");
+    }
+
+    #[test]
+    fn t_r20_bracketed_paste_persists_through_resize() {
+        // Resize should not affect bracketed paste mode.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2004h"); // enable
+        t.resize(20, 10);
+        assert!(
+            t.modes.bracketed_paste,
+            "bracketed paste persists through resize"
+        );
+    }
+
+    #[test]
+    fn t_r20_mouse_mode_persists_through_resize() {
+        // Resize should not affect mouse tracking mode.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1000h"); // enable mouse
+        t.resize(20, 10);
+        assert!(
+            t.mouse_tracking_enabled(),
+            "mouse mode persists through resize"
+        );
     }
 }
