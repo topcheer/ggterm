@@ -23196,4 +23196,180 @@ mod tests {
             "bg reset by SGR 49"
         );
     }
+
+    // ── Round 34: Tab/scroll/alt integration scenarios ─────────────────
+
+    #[test]
+    fn t_r34_tab_then_lf_at_scroll_bottom() {
+        // Tab to a stop, then LF at scroll region bottom — scrolls correctly.
+        let mut t = Terminal::new(20, 6);
+        feed(&mut t, b"\x1b[1;4r"); // region rows 0-3
+        feed(&mut t, b"\x1b[4;1H"); // cursor at row 3 (bottom of region)
+        feed(&mut t, b"\t"); // tab to col 8
+        feed(&mut t, b"\n"); // LF at scroll bottom → scroll
+        assert_eq!(t.cursor().0, 8, "col preserved as 8 after LF scroll");
+        assert_eq!(t.cursor().1, 3, "cursor stays at scroll bottom");
+    }
+
+    #[test]
+    fn t_r34_tab_in_scroll_region_after_scroll() {
+        // After scroll within region, tab from new line should still work.
+        let mut t = Terminal::new(16, 6);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"\x1b[1;1HAB\r\nCD\r\nEF\r\n");
+        // EF was at row 2, LF scrolled CD→row0, EF→row1, blank→row2
+        feed(&mut t, b"\x1b[3;1H"); // cursor at row 2
+        feed(&mut t, b"\t"); // tab to col 8
+        assert_eq!(t.cursor().0, 8, "tab works after scroll in region");
+    }
+
+    #[test]
+    fn t_r34_hts_in_scroll_region_persists() {
+        // HTS set inside scroll region should persist after scrolling.
+        let mut t = Terminal::new(20, 6);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"\x1b[1;6H\x1bH"); // HTS at col 5
+        // Scroll the region
+        feed(&mut t, b"\x1b[3;1H\n"); // LF at bottom of region → scroll
+        // Tab stop at col 5 should still work
+        feed(&mut t, b"\x1b[1;1H\t"); // tab from col 0
+        assert_eq!(t.cursor().0, 5, "custom tab stop survives scroll");
+    }
+
+    #[test]
+    fn t_r34_alt_tab_custom_then_scroll_in_alt() {
+        // In alt screen: set custom tab, scroll, verify tab still works.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[3g"); // clear all stops
+        feed(&mut t, b"\x1b[1;8H\x1bH"); // HTS at col 7
+        // Fill and scroll
+        for _ in 0..6 {
+            feed(&mut t, b"X\r\n");
+        }
+        // Tab stop should persist in alt
+        feed(&mut t, b"\x1b[1;1H\t"); // tab from col 0
+        assert_eq!(t.cursor().0, 7, "custom tab stop in alt survives scroll");
+    }
+
+    #[test]
+    fn t_r34_tab_at_col0_with_stop_at_col0() {
+        // HTS at col 0, then tab from col 0 — should skip to next stop.
+        // Tab starts scanning from cursor.x + 1, so stop at col 0 is skipped.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[1;1H\x1bH"); // HTS at col 0
+        feed(&mut t, b"\x1b[1;9H\x1bH"); // HTS at col 8
+        feed(&mut t, b"\x1b[1;1H"); // cursor at col 0
+        feed(&mut t, b"\t"); // HT from col 0
+        // Tab scans from col 1, finds stop at col 8
+        assert_eq!(t.cursor().0, 8, "tab from col 0 skips stop at 0, goes to 8");
+    }
+
+    #[test]
+    fn t_r34_decstbm_top_param_zero() {
+        // CSI 0;5r — top param 0 should default to 1 (row 0).
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[0;5r");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "top param 0 → row 0");
+        assert_eq!(bottom, 5, "bottom = 5");
+    }
+
+    #[test]
+    fn t_r34_decstbm_only_bottom_param() {
+        // CSI ;5r — top defaults to 1, bottom = 5.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[;5r");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "top defaults to 0");
+        assert_eq!(bottom, 5, "bottom = 5");
+    }
+
+    #[test]
+    fn t_r34_scroll_region_el_at_boundary() {
+        // EL (erase line) at scroll region boundary — should erase regardless of region.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"ABCDEFGH"); // row 0: ABCDEFGH
+        feed(&mut t, b"\x1b[1;4H"); // cursor at col 3
+        feed(&mut t, b"\x1b[K"); // EL from cursor to end
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A', "A preserved");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, ' ', "erased from col 3");
+        assert_eq!(t.grid().cell(7, 0).unwrap().ch, ' ', "H erased");
+    }
+
+    #[test]
+    fn t_r34_alt_then_stbm_then_exit() {
+        // Set scroll region in alt, exit alt → main should have default region.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[2;8r"); // set region in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "main scroll region restored to full");
+        assert_eq!(bottom, 10, "main scroll bottom restored");
+    }
+
+    #[test]
+    fn t_r34_dch_at_scroll_region_boundary() {
+        // DCH (delete char) at scroll region boundary — should work normally.
+        let mut t = Terminal::new(10, 6);
+        feed(&mut t, b"\x1b[1;3r"); // region rows 0-2
+        feed(&mut t, b"ABCDEF"); // row 0: ABCDEF
+        feed(&mut t, b"\x1b[1;1H"); // cursor at col 0
+        feed(&mut t, b"\x1b[2P"); // DCH 2 — delete 2 chars
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'C', "C shifted left");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'D', "D shifted left");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, ' ', "blank at end");
+    }
+
+    #[test]
+    fn t_r34_tab_advances_past_wide_char_spacer() {
+        // Tab should skip past wide char spacer cells correctly.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, "中".as_bytes()); // cols 0-1, cursor at col 2
+        feed(&mut t, b"\t"); // tab from col 2
+        // Default stops at 8 — tab should land on col 8
+        assert_eq!(
+            t.cursor().0,
+            8,
+            "tab from col 2 (after wide char) goes to col 8"
+        );
+    }
+
+    #[test]
+    fn t_r34_alt_exit_restores_origin_mode() {
+        // Origin mode set in main, enter alt (which might change it),
+        // exit alt — origin mode should be restored.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // set scroll region
+        feed(&mut t, b"\x1b[?6h"); // enable origin
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"\x1b[?6l"); // disable origin in alt
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        // Origin mode should be restored to what it was in main
+        assert!(t.modes.origin, "origin mode restored after alt exit");
+    }
+
+    #[test]
+    fn t_r34_multiple_decstbm_cascade() {
+        // Set region, then set a smaller region within it.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[2;9r"); // region rows 1-8
+        feed(&mut t, b"\x1b[3;7r"); // smaller region rows 2-6
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 2, "nested region top = 2");
+        assert_eq!(bottom, 7, "nested region bottom = 7");
+    }
+
+    #[test]
+    fn t_r34_tab_no_wrap_at_last_col() {
+        // Tab at the last column should NOT cause a line wrap.
+        let mut t = Terminal::new(8, 3);
+        feed(&mut t, b"\x1b[1;8H"); // cursor at col 7 (last)
+        feed(&mut t, b"\t"); // tab
+        assert_eq!(t.cursor().0, 7, "tab at last col stays at last col");
+        assert_eq!(t.cursor().1, 0, "no line wrap from tab");
+    }
 }
