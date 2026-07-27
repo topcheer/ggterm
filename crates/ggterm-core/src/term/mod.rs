@@ -888,7 +888,12 @@ impl Terminal {
     pub fn ris(&mut self) {
         let w = self.grid.width();
         let h = self.grid.height();
-        *self = Terminal::new(w, h);
+        // Preserve terminal-emulator configuration that is NOT VT220 state.
+        // These are set by the app layer and should survive RIS:
+        let max_sb = self.grid.max_scrollback();
+        let cell_dims = self.cell_dimensions;
+        *self = Terminal::with_scrollback(w, h, max_sb);
+        self.cell_dimensions = cell_dims;
     }
 
     /// Return the dynamic foreground color if set via OSC 10 (P17-A).
@@ -3512,9 +3517,7 @@ impl Perform for Terminal {
                 self.cursor.y = clamped_y;
             }
             b'c' => {
-                let w = self.grid.width();
-                let h = self.grid.height();
-                *self = Terminal::new(w, h);
+                self.ris();
             }
             b'D' => self.line_feed(),
             b'E' => {
@@ -4974,6 +4977,36 @@ mod tests {
         assert!(t.palette_overrides().is_empty());
         assert!(!t.bracketed_paste());
         assert!(t.title().is_empty());
+    }
+
+    #[test]
+    fn t_ris_preserves_scrollback_limit() {
+        // RIS should preserve the user-configured scrollback limit.
+        // It should NOT reset it to the default (10000).
+        let mut t = Terminal::with_scrollback(80, 24, 50_000);
+        // RIS
+        feed(&mut t, b"\x1bc");
+        // Scrollback limit should still be 50_000, not reset to 10_000.
+        assert_eq!(
+            t.grid().max_scrollback(),
+            50_000,
+            "RIS must preserve user-configured scrollback limit"
+        );
+    }
+
+    #[test]
+    fn t_ris_preserves_cell_dimensions() {
+        // RIS should preserve cell dimensions (set by the window layer
+        // after font measurement). These are needed for pixel-size
+        // queries (CSI 14t/15t/16t).
+        let mut t = Terminal::new(80, 24);
+        t.set_cell_dimensions(9, 18);
+        feed(&mut t, b"\x1bc"); // RIS
+        assert_eq!(
+            t.cell_dimensions,
+            Some((9, 18)),
+            "RIS must preserve cell dimensions"
+        );
     }
 
     #[test]

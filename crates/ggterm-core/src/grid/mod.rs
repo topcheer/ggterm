@@ -811,6 +811,11 @@ impl Grid {
         }
     }
 
+    /// Return the current scrollback limit.
+    pub fn max_scrollback(&self) -> usize {
+        self.max_scrollback
+    }
+
     // ------------------------------------------------------------------
     //  Viewport scrolling (mouse wheel scrollback)
     // ------------------------------------------------------------------
