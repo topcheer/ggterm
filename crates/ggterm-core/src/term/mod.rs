@@ -2731,8 +2731,10 @@ impl Perform for Terminal {
                         if kind == 0 || kind == 2 || kind == 1 {
                             self.title_stack.push(self.title.clone());
                             // Prevent unbounded growth (malicious programs).
+                            // Drop oldest entries in bulk instead of O(n) remove(0).
                             if self.title_stack.len() > 100 {
-                                self.title_stack.remove(0);
+                                let excess = self.title_stack.len() - 100;
+                                self.title_stack.drain(0..excess);
                             }
                         }
                     }
