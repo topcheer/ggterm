@@ -1203,6 +1203,15 @@ impl Terminal {
         self.cursor.x = self.cursor.x.min(width.saturating_sub(1));
         self.cursor.y = self.cursor.y.min(height.saturating_sub(1));
         self.cursor.pending_wrap = false;
+        // If cursor landed on a wide char spacer after resize (e.g.
+        // shrinking placed a wide char pair at the clamped cursor col),
+        // adjust back to the lead cell.
+        if self.cursor.x > 0
+            && let Some(c) = self.grid.cell(self.cursor.x, self.cursor.y)
+            && c.is_wide_spacer()
+        {
+            self.cursor.x -= 1;
+        }
         // Clamp saved cursors to new dimensions to prevent out-of-bounds
         // writes on DECRC/SCORC after a shrink.
         self.saved_cursor.x = self.saved_cursor.x.min(width.saturating_sub(1));
@@ -18187,6 +18196,26 @@ mod tests {
     fn t_r12_focus_disabled_by_default() {
         let t = Terminal::new(10, 5);
         assert!(!t.focus_event_enabled(), "focus reporting default off");
+    }
+
+    #[test]
+    fn t_resize_cursor_lands_on_wide_spacer_adjusts_to_lead() {
+        // In alt screen (non-reflow), shrinking the terminal can leave
+        // the cursor on a wide char spacer. Verify it adjusts to lead.
+        let mut t = Terminal::new(4, 2);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt screen (no reflow)
+        feed(&mut t, b"A");
+        feed(&mut t, "中".as_bytes()); // wide at cols 1-2
+        feed(&mut t, b"B"); // B at col 3
+        assert_eq!(t.cursor().0, 3);
+        // Shrink to width 3: [A, 中_lead, 中_spacer], cursor clamped to 2
+        // Col 2 is the spacer — cursor should adjust to col 1 (lead).
+        t.resize(3, 2);
+        assert_eq!(
+            t.cursor().0,
+            1,
+            "cursor should adjust to wide char lead, not spacer"
+        );
     }
 
     #[test]
