@@ -25386,4 +25386,115 @@ mod tests {
             "SOS sequence should not leak OSC data"
         );
     }
+
+    // ── Alt screen scroll region leak ─────────────────────────────
+
+    #[test]
+    fn t_alt_screen_scroll_region_no_leak() {
+        // Setting a scroll region on the alt screen should not affect
+        // the main screen's scroll region after returning.
+        let mut t = Terminal::new(20, 20);
+        // Set scroll region 3-10 on main screen
+        feed(&mut t, b"\x1b[3;10r");
+        // Enter alt screen
+        feed(&mut t, b"\x1b[?1049h");
+        // Set a different scroll region on alt screen
+        feed(&mut t, b"\x1b[5;15r");
+        // Exit alt screen
+        feed(&mut t, b"\x1b[?1049l");
+        // Main screen scroll region should still be 3-10 (0-based: 2-10)
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 2, "scroll region top should be restored to row 2");
+        assert_eq!(
+            bottom, 10,
+            "scroll region bottom should be restored to row 10"
+        );
+    }
+
+    #[test]
+    fn t_alt_screen_scroll_region_leak_mode47() {
+        // Same test with mode 47 instead of 1049.
+        let mut t = Terminal::new(20, 20);
+        feed(&mut t, b"\x1b[3;10r");
+        feed(&mut t, b"\x1b[?47h");
+        feed(&mut t, b"\x1b[5;15r");
+        feed(&mut t, b"\x1b[?47l");
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 2, "scroll region top should be restored (mode 47)");
+        assert_eq!(
+            bottom, 10,
+            "scroll region bottom should be restored (mode 47)"
+        );
+    }
+
+    // ── SGR colon syntax edge cases ───────────────────────────────
+
+    #[test]
+    fn t_sgr_colon_38_5_then_semicolon_1() {
+        // Mixed colon and semicolon: 38:5:200;1m
+        // Should set fg=Indexed(200) AND bold.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[38:5:200;1mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.fg, Color::Indexed(200), "fg should be indexed 200");
+        assert!(
+            cell.flags.contains(CellFlags::BOLD),
+            "bold should be set from semicolon-separated param"
+        );
+    }
+
+    #[test]
+    fn t_r43_sgr_256_color_boundaries() {
+        // Test 256-color boundary values: 0, 15, 16, 231, 255
+        let mut t = Terminal::new(20, 5);
+        // n=0 (black)
+        feed(&mut t, b"\x1b[38;5;0m");
+        assert_eq!(t.fg, Color::Indexed(0));
+        // n=15 (white in standard range)
+        feed(&mut t, b"\x1b[38;5;15m");
+        assert_eq!(t.fg, Color::Indexed(15));
+        // n=16 (first of 6x6x6 cube)
+        feed(&mut t, b"\x1b[38;5;16m");
+        assert_eq!(t.fg, Color::Indexed(16));
+        // n=231 (last of 6x6x6 cube)
+        feed(&mut t, b"\x1b[38;5;231m");
+        assert_eq!(t.fg, Color::Indexed(231));
+        // n=255 (last grayscale)
+        feed(&mut t, b"\x1b[38;5;255m");
+        assert_eq!(t.fg, Color::Indexed(255));
+    }
+
+    #[test]
+    fn t_sgr_complex_mixed() {
+        // Complex: bold + fg + bg in one sequence
+        // CSI 1;31;48;5;232m
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;31;48;5;232mX");
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.flags.contains(CellFlags::BOLD), "bold");
+        assert_eq!(cell.fg, Color::Indexed(1), "fg=red(1)");
+        assert_eq!(cell.bg, Color::Indexed(232), "bg=indexed(232)");
+    }
+
+    #[test]
+    fn t_r43_sgr_reset_clears_all() {
+        // SGR 0 should reset EVERYTHING — bold, italic, colors, etc.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;3;4;5;7;9;31;44m"); // set everything
+        feed(&mut t, b"\x1b[0m");
+        assert_eq!(t.fg, Color::Default, "fg should be default");
+        assert_eq!(t.bg, Color::Default, "bg should be default");
+        assert_eq!(t.flags, CellFlags::empty(), "all flags should be cleared");
+    }
+
+    #[test]
+    fn t_sgr_reset_empty_param() {
+        // Empty SGR (CSI m with no params) should also reset all.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[1;31;44m");
+        feed(&mut t, b"\x1b[m");
+        assert_eq!(t.fg, Color::Default);
+        assert_eq!(t.bg, Color::Default);
+        assert_eq!(t.flags, CellFlags::empty());
+    }
 }
