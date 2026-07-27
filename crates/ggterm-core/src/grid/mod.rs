@@ -2432,7 +2432,7 @@ mod tests {
         let mut g = Grid::with_scrollback(5, 2, 100);
         // Fill visible area
         for r in 0..2 {
-            g.put_char(0, r, ('A' as u8 + r as u8) as char);
+            g.put_char(0, r, (b'A' + r as u8) as char);
         }
         // Create scrollback by scrolling up
         g.scroll_up(1);

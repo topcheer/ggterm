@@ -11785,7 +11785,7 @@ mod tests {
     #[test]
     fn t_decset_7_autowrap_default_on() {
         // DECAWM should be on by default.
-        let mut t = Terminal::new(4, 2);
+        let t = Terminal::new(4, 2);
         assert!(t.modes.auto_wrap, "autowrap should be on by default");
     }
 
@@ -12120,7 +12120,7 @@ mod tests {
 
     #[test]
     fn t_focus_report_disabled_when_off() {
-        let mut t = Terminal::new(10, 2);
+        let t = Terminal::new(10, 2);
         // Focus events default off
         assert!(t.focus_in_report().is_empty());
         assert!(t.focus_out_report().is_empty());
@@ -12402,7 +12402,7 @@ mod tests {
 
     #[test]
     fn t_bracketed_paste_default_off() {
-        let mut t = Terminal::new(10, 2);
+        let t = Terminal::new(10, 2);
         assert!(!t.bracketed_paste(), "bracketed paste should default off");
     }
 
@@ -13656,7 +13656,7 @@ mod tests {
         // Copy only col 0 (the lead) to col 3
         feed(&mut t, b"\x1b[1;1;1;1;1;4\x24v"); // src=1col x 1row, dst at col 4 (0-based 3)
         // Destination at col 3 should not have an orphaned WIDE_CHAR flag
-        let dst_cell = t.grid().cell(3, 0).unwrap();
+        let _dst_cell = t.grid().cell(3, 0).unwrap();
         // The lead was copied but its spacer wasn't — the destination cell
         // has WIDE_CHAR but col 4 is blank. This is technically incorrect
         // but let's verify the current behavior and document it.
@@ -13808,8 +13808,8 @@ mod tests {
         feed(&mut t, b"X");
         // Should not crash. Color::Indexed(0) = black.
         let cell = t.grid().cell(0, 0).unwrap();
-        if let Color::Indexed(idx) = cell.fg {
-            assert!(idx <= 255, "color index should be valid");
+        if let Color::Indexed(_) = cell.fg {
+            // idx is u8, always <= 255
         }
     }
 
@@ -14470,7 +14470,7 @@ mod tests {
         feed(&mut t, b"\x1b]9;Build complete!\x1b\\");
         let notif = t.take_pending_notification();
         assert!(notif.is_some(), "should have pending notification");
-        let (title, body) = notif.unwrap();
+        let (_title, body) = notif.unwrap();
         assert_eq!(body, "Build complete!");
     }
 
@@ -20375,7 +20375,7 @@ mod tests {
     #[test]
     fn t_r20_focus_event_no_report_when_disabled() {
         // Focus events should not be reported when disabled.
-        let mut t = Terminal::new(10, 5);
+        let t = Terminal::new(10, 5);
         assert!(!t.modes.focus_event);
         // No way to trigger focus in/out from terminal side (it's input-only)
         // Just verify the mode is off and can be queried
@@ -21543,7 +21543,7 @@ mod tests {
         feed(&mut t, b"X"); // col 2
         feed(&mut t, b"\x1b[1;1;1;10;4$r"); // set UNDERLINE on all
         let lead = t.grid().cell(0, 0).unwrap();
-        let spacer = t.grid().cell(1, 0).unwrap();
+        let _spacer = t.grid().cell(1, 0).unwrap();
         let x_cell = t.grid().cell(2, 0).unwrap();
         assert!(
             lead.flags.contains(CellFlags::UNDERLINE),
@@ -24748,10 +24748,11 @@ mod tests {
         let mut found_red = false;
         for r in 0..t.grid().height() {
             for c in 0..t.grid().width() {
-                if let Some(cell) = t.grid().cell(c, r) {
-                    if cell.ch == 'R' && cell.fg == Color::Indexed(1) {
-                        found_red = true;
-                    }
+                if let Some(cell) = t.grid().cell(c, r)
+                    && cell.ch == 'R'
+                    && cell.fg == Color::Indexed(1)
+                {
+                    found_red = true;
                 }
             }
         }
