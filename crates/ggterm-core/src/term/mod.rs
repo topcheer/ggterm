@@ -19689,4 +19689,266 @@ mod tests {
             "mouse mode persists through resize"
         );
     }
+
+    // ── Round 21-1: Tab stop edge cases ────────────────────────────────
+
+    #[test]
+    fn t_r21_hts_at_col_0() {
+        // HTS at col 0 should set a stop at col 0.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1bH"); // set stop at col 0
+        feed(&mut t, b"\x1b[1;10H"); // move to col 9
+        feed(&mut t, b"\t"); // tab backward? No, tab goes forward
+        // Only stop at col 0, so tab from col 9 goes to col 19
+        assert_eq!(t.cursor().0, 19, "tab to last col (only stop at 0)");
+    }
+
+    #[test]
+    fn t_r21_cht_default_1() {
+        // CHT with no param defaults to 1.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[I"); // CHT with no param → 1
+        assert_eq!(t.cursor().0, 8, "CHT default = 1 stop → col 8");
+    }
+
+    #[test]
+    fn t_r21_cbt_default_1() {
+        // CBT with no param defaults to 1.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[1;17H"); // col 16
+        feed(&mut t, b"\x1b[Z"); // CBT no param → 1
+        assert_eq!(t.cursor().0, 8, "CBT default = 1 stop → col 8");
+    }
+
+    #[test]
+    fn t_r21_cht_zero_param() {
+        // CHT 0 should behave like CHT 1.
+        let mut t = Terminal::new(40, 3);
+        feed(&mut t, b"\x1b[0I"); // CHT 0
+        assert_eq!(t.cursor().0, 8, "CHT 0 → col 8 (treated as 1)");
+    }
+
+    #[test]
+    fn t_r21_tab_through_custom_stops() {
+        // Set custom stops at 5, 10, 15 then tab through.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[1;6H\x1bH"); // stop at col 5
+        feed(&mut t, b"\x1b[1;11H\x1bH"); // stop at col 10
+        feed(&mut t, b"\x1b[1;16H\x1bH"); // stop at col 15
+        feed(&mut t, b"\x1b[1;1H"); // back to col 0
+        feed(&mut t, b"\t"); // → col 5
+        assert_eq!(t.cursor().0, 5, "tab to custom stop 5");
+        feed(&mut t, b"\t"); // → col 10
+        assert_eq!(t.cursor().0, 10, "tab to custom stop 10");
+        feed(&mut t, b"\t"); // → col 15
+        assert_eq!(t.cursor().0, 15, "tab to custom stop 15");
+    }
+
+    #[test]
+    fn t_r21_tab_stop_clear_all_then_tab() {
+        // After clearing all stops, tab should go to last col.
+        let mut t = Terminal::new(15, 3);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\t");
+        assert_eq!(t.cursor().0, 14, "tab to last col when no stops");
+    }
+
+    // ── Round 21-2: Charset edge cases ─────────────────────────────────
+
+    #[test]
+    fn t_r21_dec_special_block_char() {
+        // DEC Special Graphics: ASCII 'a' (0x61) → block '▒' (U+2592).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special
+        feed(&mut t, b"a"); // 'a' → block char
+        let ch = t.grid().cell(0, 0).unwrap().ch;
+        assert_eq!(ch, '\u{2592}', "DEC special 'a' → block char ▒");
+    }
+
+    #[test]
+    fn t_r21_dec_special_all_line_chars() {
+        // All DEC line drawing characters mapped correctly.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b(0");
+        feed(&mut t, b"q"); // ─ horizontal line
+        feed(&mut t, b"x"); // │ vertical line
+        feed(&mut t, b"l"); // ┌ upper-left
+        feed(&mut t, b"k"); // ┐ upper-right
+        feed(&mut t, b"m"); // ┘ lower-right
+        feed(&mut t, b"j"); // └ lower-left
+        feed(&mut t, b"\x1b(B"); // restore ASCII
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, '\u{2500}', "─");
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, '\u{2502}', "│");
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '\u{250C}', "┌");
+        assert_eq!(t.grid().cell(3, 0).unwrap().ch, '\u{2510}', "┐");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, '\u{2514}', "┘ flipped");
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, '\u{2518}', "└ flipped");
+    }
+
+    #[test]
+    fn t_r21_so_si_with_printable_ascii() {
+        // SO activates G1, SI activates G0.
+        // DEC Special Graphics only maps 0x60-0x7E range.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b)0"); // G1 = DEC Special
+        feed(&mut t, b"qq"); // G0 (ASCII) → 'q', 'q'
+        feed(&mut t, b"\x0e"); // SO → activate G1
+        feed(&mut t, b"qq"); // G1 (DEC Special) → ─, ─
+        feed(&mut t, b"\x0f"); // SI → activate G0
+        feed(&mut t, b"qq"); // G0 (ASCII) → 'q', 'q'
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'q', "G0 q");
+        assert_eq!(
+            t.grid().cell(2, 0).unwrap().ch,
+            '\u{2500}',
+            "G1 q → ─ (horizontal line)"
+        );
+        assert_eq!(
+            t.grid().cell(3, 0).unwrap().ch,
+            '\u{2500}',
+            "G1 q → ─ (horizontal line)"
+        );
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'q', "G0 q restored");
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, 'q', "G0 q restored");
+    }
+
+    #[test]
+    fn t_r21_charset_survives_cup() {
+        // Charset designation should survive cursor movement.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special
+        feed(&mut t, b"\x1b[2;1H"); // move cursor
+        feed(&mut t, b"q"); // print in DEC special mode
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            '\u{2500}',
+            "charset active after CUP"
+        );
+    }
+
+    #[test]
+    fn t_r21_charset_reset_by_ris() {
+        // RIS should reset charset to ASCII.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"\x1b(0"); // G0 = DEC Special
+        feed(&mut t, b"\x1bc"); // RIS
+        feed(&mut t, b"q"); // should be ASCII 'q'
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'q', "RIS resets charset");
+    }
+
+    #[test]
+    fn t_r21_so_at_col_boundary() {
+        // SO at column boundary should work correctly.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b)0"); // G1 = DEC Special
+        feed(&mut t, b"ABCDE"); // fill row 0 with ASCII
+        feed(&mut t, b"\x0e"); // SO → G1 active
+        feed(&mut t, b"q"); // first char on row 1
+        assert_eq!(
+            t.grid().cell(0, 1).unwrap().ch,
+            '\u{2500}',
+            "G1 active at row boundary"
+        );
+    }
+
+    // ── Round 21-3: Alt screen edge cases ──────────────────────────────
+
+    #[test]
+    fn t_r21_alt_double_1049h_no_double_save() {
+        // Two consecutive 1049h should not double-save.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"BASE");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt — saves state
+        feed(&mut t, b"\x1b[?1049h"); // enter again — should be no-op
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt — should restore BASE
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'B',
+            "base content restored"
+        );
+        assert_eq!(
+            t.grid().cell(1, 0).unwrap().ch,
+            'A',
+            "base content restored"
+        );
+    }
+
+    #[test]
+    fn t_r21_alt_1049h_then_1047l_mixed() {
+        // Enter with 1049h, exit with 1047l — should still work.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"MAIN");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt (save cursor)
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1047l"); // exit alt (may not restore cursor)
+        // Main content should be restored
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "main restored with mixed exit"
+        );
+    }
+
+    #[test]
+    fn t_r21_alt_screen_no_scrollback_on_scroll() {
+        // Scrolling in alt screen should not create scrollback.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        for _ in 0..10 {
+            feed(&mut t, b"X\n");
+        }
+        assert_eq!(
+            t.grid().scrollback_len(),
+            0,
+            "alt screen scrolling creates no scrollback"
+        );
+    }
+
+    #[test]
+    fn t_r21_alt_screen_content_cleared_on_enter() {
+        // Entering alt screen should clear it (1049 clears screen).
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        // Alt screen should be blank
+        for col in 0..10 {
+            assert_eq!(
+                t.grid().cell(col, 0).unwrap().ch,
+                ' ',
+                "alt screen blank at col {col}"
+            );
+        }
+    }
+
+    #[test]
+    fn t_r21_alt_47_then_47_then_1049l() {
+        // Enter with 47h, exit with 1049l — mixed modes.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"MAIN");
+        feed(&mut t, b"\x1b[?47h"); // enter alt (no cursor save)
+        feed(&mut t, b"ALT");
+        feed(&mut t, b"\x1b[?1049l"); // exit with 1049l
+        // Main content should be restored regardless
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'M',
+            "main restored with 47h→1049l"
+        );
+    }
+
+    #[test]
+    fn t_r21_alt_screen_tab_stops_preserved() {
+        // Custom tab stops should survive alt screen round-trip.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[3g"); // clear all
+        feed(&mut t, b"\x1b[1;5H\x1bH"); // stop at col 4
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        feed(&mut t, b"X");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        feed(&mut t, b"\x1b[1;1H"); // move to col 0
+        feed(&mut t, b"\t"); // tab from col 0
+        // Custom stop at col 4 should still exist
+        assert_eq!(t.cursor().0, 4, "custom tab stop preserved after alt");
+    }
 }
