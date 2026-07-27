@@ -1349,12 +1349,29 @@ impl Terminal {
         }
 
         // For wide chars (width 2), wrap to next line if not enough columns remain
-        if w == 2 && self.cursor.x + 1 >= grid_width && self.modes.auto_wrap {
-            // Mark the current row as soft-wrapped.
-            self.grid.set_row_wrap(self.cursor.y, true);
-            self.cursor.x = 0;
-            self.line_feed();
-            self.cursor.pending_wrap = false;
+        if w == 2 && self.cursor.x + 1 >= grid_width {
+            if self.modes.auto_wrap {
+                // Mark the current row as soft-wrapped.
+                self.grid.set_row_wrap(self.cursor.y, true);
+                self.cursor.x = 0;
+                self.line_feed();
+                self.cursor.pending_wrap = false;
+            } else {
+                // DECAWM is off and the wide char doesn't fit in the
+                // remaining columns. Per xterm behavior, replace it with
+                // a space to avoid creating an orphan WIDE_CHAR lead
+                // (a wide char without its spacer, which renders incorrectly).
+                // The cursor does not advance.
+                self.last_printed_char = Some(' ');
+                let consumed = self.grid.put_char(self.cursor.x, self.cursor.y, ' ');
+                if let Some(c) = self.grid.cell_mut(self.cursor.x, self.cursor.y) {
+                    c.fg = self.fg;
+                    c.bg = self.bg;
+                    c.flags |= self.flags;
+                }
+                let _ = consumed;
+                return;
+            }
         }
 
         // Insert mode: shift existing cells right to make room
@@ -24183,13 +24200,34 @@ mod tests {
     #[test]
     fn t_r33_wide_char_autowrap_off_no_wrap() {
         // With DECAWM off, wide char at boundary should NOT wrap.
-        // It should be placed at cursor position (overwriting if needed).
+        // Per xterm: the wide char is replaced with a space at the cursor
+        // position to avoid an orphan WIDE_CHAR lead without a spacer.
         let mut t = Terminal::new(3, 3);
         feed(&mut t, b"\x1b[?7l"); // autowrap off
         feed(&mut t, b"AB"); // cols 0-1, cursor at col 2 (last)
         feed(&mut t, "中".as_bytes()); // width=2, only 1 col, but no wrap
-        // Behavior: wide char at col 2 — only lead cell stored, spacer lost.
-        // Or it may just not print. Either way, no wrap to next line.
+        // No wrap to next line
+        assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no wrap to row 1");
+        // Col 2 should be a space, not an orphan wide lead
+        let cell = t.grid().cell(2, 0).unwrap();
+        assert_eq!(cell.ch, ' ', "wide char replaced with space at last col");
+        assert!(!cell.is_wide(), "no orphan WIDE_CHAR flag");
+    }
+
+    #[test]
+    fn t_p145_wide_char_decawm_off_no_orphan_lead() {
+        // With DECAWM off, a wide char at the last column should be
+        // replaced with a space, not create an orphan WIDE_CHAR lead.
+        // This prevents rendering corruption (wide char without spacer).
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"\x1b[?7l"); // autowrap off
+        feed(&mut t, b"ABCD"); // fill cols 0-3, cursor at col 4 (last)
+        feed(&mut t, "🎉".as_bytes()); // emoji width=2, only 1 col left
+        // Col 4 should be a space (replacement), not an emoji lead
+        let cell = t.grid().cell(4, 0).unwrap();
+        assert!(!cell.is_wide(), "no orphan WIDE_CHAR at last col");
+        assert_eq!(cell.ch, ' ', "replaced with space");
+        // No wrap
         assert_eq!(t.grid().cell(0, 1).unwrap().ch, ' ', "no wrap to row 1");
     }
 
