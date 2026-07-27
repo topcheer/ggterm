@@ -140,12 +140,15 @@ impl Grid {
                 // Growing: pull rows from scrollback into visible area.
                 let extra = height - self.height;
                 let take = extra.min(self.scrollback.len());
-                let mut pulled = Vec::with_capacity(extra);
+                // Collect in reverse order (pop_back yields newest-first),
+                // then reverse once. O(n) instead of O(n²) with insert(0).
+                let mut pulled: Vec<Row> = Vec::with_capacity(take);
                 for _ in 0..take {
                     if let Some(row) = self.scrollback.pop_back() {
-                        pulled.insert(0, row);
+                        pulled.push(row);
                     }
                 }
+                pulled.reverse();
                 pulled.append(&mut self.rows);
                 self.rows = pulled;
                 self.scrollback.shrink_to_fit();
