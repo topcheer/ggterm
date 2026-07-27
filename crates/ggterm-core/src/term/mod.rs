@@ -2739,13 +2739,13 @@ impl Perform for Terminal {
             b'p' if intermediates.contains(&b'$') && is_private => {
                 let mode = params.first().copied().unwrap_or(0);
                 let is_set = match mode {
-                    1 => self.modes.cursor_keys_app,        // DECCKM
-                    5 => self.modes.reverse_video,          // DECSCNM
-                    6 => self.modes.origin,                 // DECOM
-                    7 => self.modes.auto_wrap,              // DECAWM
-                    12 => self.modes.cursor_blink,          // Cursor blink
-                    25 => self.modes.cursor_visible,        // DECTCEM
-                    47 => self.modes.alt_screen,            // Alt screen (47)
+                    1 => self.modes.cursor_keys_app,       // DECCKM
+                    5 => self.modes.reverse_video,         // DECSCNM
+                    6 => self.modes.origin,                // DECOM
+                    7 => self.modes.auto_wrap,             // DECAWM
+                    12 => self.modes.cursor_blink,         // Cursor blink
+                    25 => self.modes.cursor_visible,       // DECTCEM
+                    47 => self.modes.alt_screen,           // Alt screen (47)
                     45 => false, // DECRIVM: reverse wraparound (not supported)
                     9 => self.modes.mouse_tracking, // X10 mouse tracking
                     1000 => self.modes.mouse_tracking, // Mouse tracking
@@ -2757,7 +2757,12 @@ impl Perform for Terminal {
                     1015 => self.modes.mouse_urxvt, // URXVT mouse
                     1016 => self.modes.mouse_sgr_pixel, // SGR-pixel mouse
                     1047 => self.modes.alt_screen, // Alt screen (1047)
-                    1048 => self.decsc_state.is_some(), // Cursor save (1048)
+                    // 1048 is a transient save/restore action, not a persistent
+                    // mode. xterm reports it as "reset" (status 2) in DECRQM.
+                    // Reporting based on decsc_state.is_some() would incorrectly
+                    // report "set" after any DECSC, misleading programs that
+                    // query mode state to detect alt-screen transition.
+                    1048 => false, // Always report reset (transient action)
                     1049 => self.modes.alt_screen, // Alt screen + cursor save (1049)
                     2004 => self.modes.bracketed_paste, // Bracketed paste
                     2026 => self.modes.synchronized_output, // Synchronized output
@@ -7978,6 +7983,25 @@ mod tests {
         assert!(
             resp_str.contains(";2$y"),
             "mode 25 should be reset (2), got: {}",
+            resp_str
+        );
+    }
+
+    #[test]
+    fn t_decrqm_mode_1048_reports_reset() {
+        // Mode 1048 is a transient save/restore action, not a persistent mode.
+        // Per xterm behavior, DECRQM should always report it as "reset" (2),
+        // even after DECSC has saved cursor state.
+        let mut t = Terminal::new(80, 24);
+        // Save cursor state (DECSC) — this would have made 1048 report "set"
+        // with the old buggy implementation.
+        feed(&mut t, b"\x1b7");
+        feed(&mut t, b"\x1b[?1048$p"); // Query mode 1048
+        let resp = t.take_response();
+        let resp_str = String::from_utf8_lossy(&resp);
+        assert!(
+            resp_str.contains(";2$y"),
+            "mode 1048 should be reset (2) — it's a transient action, got: {}",
             resp_str
         );
     }
