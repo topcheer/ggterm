@@ -198,7 +198,12 @@ impl Grid {
                 // If this row was NOT soft-wrapped, it's the end of a logical line.
                 if current.as_ref().is_some_and(|r| !r.wrap) {
                     // unwrap is safe: is_some_and guaranteed Some.
-                    let line = current.take().expect("checked Some above");
+                    let mut line = current.take().expect("checked Some above");
+                    // Trim trailing blank cells from non-wrapped lines.
+                    // Without this, a short line like "Hello" at width 80
+                    // would be split into 2 rows when shrinking to 40,
+                    // because blank padding cells are treated as content.
+                    trim_trailing_blanks(&mut line.cells);
                     reflow_line(&mut reflown, line, width);
                 }
             }
@@ -1028,6 +1033,15 @@ fn html_escape_char(ch: char) -> String {
 /// Each physical row except the last gets `wrap = true`.
 /// Wide char boundaries are respected: if a wide char would straddle
 /// a line boundary, it's pushed to the next line.
+/// Trim trailing blank cells from a cell vector, keeping at least 1 cell.
+/// This prevents blank padding from creating unnecessary rows during reflow.
+fn trim_trailing_blanks(cells: &mut Vec<Cell>) {
+    // Keep cells up to (and including) the last non-blank cell.
+    while cells.len() > 1 && cells.last().is_some_and(|c| c.is_blank()) {
+        cells.pop();
+    }
+}
+
 fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
     use crate::grid::cell::CellFlags;
 
@@ -2309,6 +2323,36 @@ mod tests {
             !(first_line.contains('A') && first_line.contains('B')),
             "A and B should NOT be merged when wrap=false"
         );
+    }
+
+    #[test]
+    fn reflow_short_nonwrapped_line_no_blank_split() {
+        // "Hello World" at width 80 → shrink to 40.
+        let mut g = Grid::new(80, 3);
+        for (i, ch) in "Hello World".chars().enumerate() {
+            g[(i, 0)] = Cell::with_char(ch);
+        }
+        // Verify content before reflow
+        assert_eq!(g[(0, 0)].ch, 'H', "content should be set before reflow");
+
+        g.reflow_resize(40, 3);
+
+        // After reflow: row 0 should have content, row 1 should be fresh blank
+        let r0 = g.row(0).unwrap();
+        let r1 = g.row(1).unwrap();
+        let r0_has_content = r0.cells.iter().any(|c| c.ch != ' ');
+        let r1_has_content = r1.cells.iter().any(|c| c.ch != ' ');
+        assert!(r0_has_content, "row 0 should have content after reflow");
+        // The bug: r1 has content (blank continuation cells from old row)
+        // Correct: r0 has content and wrap=false (fits in 40 cols)
+        // Bug: r0 has content with wrap=true, r1 is all-blank continuation
+        if r0.wrap {
+            // This is the bug — short line was unnecessarily split
+            panic!(
+                "short non-wrapped line was split: row0.wrap={}, row1_has_content={}",
+                r0.wrap, r1_has_content
+            );
+        }
     }
 
     #[test]
