@@ -19951,4 +19951,256 @@ mod tests {
         // Custom stop at col 4 should still exist
         assert_eq!(t.cursor().0, 4, "custom tab stop preserved after alt");
     }
+
+    // ── Round 22-1: OSC sequence edge cases ────────────────────────────
+
+    #[test]
+    fn t_r22_osc_unterminated_then_new_escape() {
+        // Unterminated OSC (no ST/BEL) followed by a new escape sequence.
+        // The new ESC should abort the OSC.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]2;Bad Title"); // unterminated OSC 2
+        feed(&mut t, b"\x1b[?25l"); // new escape — should abort OSC
+        // Title should NOT be set (OSC was aborted)
+        assert_ne!(t.title(), "Bad Title", "unterminated OSC not applied");
+        // The new sequence should work
+        assert!(
+            !t.modes.cursor_visible,
+            "cursor hidden by subsequent sequence"
+        );
+    }
+
+    #[test]
+    fn t_r22_osc_unterminated_then_text() {
+        // OSC terminated by BEL then text — text should print.
+        // (OSC and BEL must be in same feed since test helper creates new Parser.)
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]2;Bad\x07Hello");
+        assert_eq!(t.title(), "Bad", "title set by BEL");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'H',
+            "text printed after OSC"
+        );
+    }
+
+    #[test]
+    fn t_r22_osc_esc_then_non_backslash() {
+        // ESC inside OSC followed by non-backslash should abort OSC.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]2;Title"); // OSC start
+        feed(&mut t, b"\x1b[?25h"); // ESC [ — aborts OSC, enters CSI
+        assert_ne!(t.title(), "Title", "OSC aborted by ESC [");
+        assert!(t.modes.cursor_visible, "cursor visible set");
+    }
+
+    #[test]
+    fn t_r22_osc_12_cursor_color_query() {
+        // OSC 12 query for cursor color should respond.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]12;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(
+            s.starts_with("\x1b]12;rgb:"),
+            "OSC 12 query response format: {}",
+            s
+        );
+    }
+
+    #[test]
+    fn t_r22_osc_12_set_cursor_color() {
+        // OSC 12 set cursor color then query.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]12;rgb:ff/00/ff\x1b\\");
+        assert!(t.dynamic_cursor.is_some(), "dynamic cursor color set");
+        // Query in separate feed
+        feed(&mut t, b"\x1b]12;?\x1b\\");
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("ff/00/ff"), "query returns set color: {}", s);
+    }
+
+    #[test]
+    fn t_r22_osc_112_reset_cursor_color() {
+        // OSC 112 should reset cursor color.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b]12;rgb:ff/00/ff\x1b\\");
+        feed(&mut t, b"\x1b]112\x1b\\"); // reset
+        assert!(t.dynamic_cursor.is_none(), "cursor color reset");
+    }
+
+    #[test]
+    fn t_r22_osc_with_newline_in_payload() {
+        // OSC payload with newline (0x0A) — should be ignored (< 0x20).
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b]0;Hello\nWorld\x07");
+        // Newline (0x0A) is < 0x20, ignored by OSC parser
+        assert_eq!(t.title(), "HelloWorld", "newline stripped from OSC payload");
+    }
+
+    #[test]
+    fn t_r22_osc_followed_by_normal_text() {
+        // OSC sequence followed by normal printable text.
+        let mut t = Terminal::new(20, 3);
+        feed(&mut t, b"\x1b]0;Title\x07ABC");
+        assert_eq!(t.title(), "Title");
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'A');
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B');
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, 'C');
+    }
+
+    // ── Round 22-2: Mouse tracking edge cases ──────────────────────────
+
+    #[test]
+    fn t_r22_mouse_all_modes_default_off() {
+        // All mouse modes should be off by default.
+        let t = Terminal::new(10, 5);
+        assert!(!t.mouse_tracking_enabled());
+        assert!(!t.mouse_button_event_enabled());
+        assert!(!t.mouse_any_event_enabled());
+        assert!(!t.mouse_sgr_enabled());
+        assert!(!t.mouse_urxvt_enabled());
+        assert!(!t.mouse_sgr_pixel_enabled());
+    }
+
+    #[test]
+    fn t_r22_mouse_1005_utf8_mode_toggle() {
+        // DECSET 1005 — UTF-8 mouse coordinate encoding.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1005h");
+        assert!(t.modes.mouse_utf8, "mouse_utf8 mode on");
+        feed(&mut t, b"\x1b[?1005l");
+        assert!(!t.modes.mouse_utf8, "mouse_utf8 mode off");
+    }
+
+    #[test]
+    fn t_r22_mouse_1015_urxvt_toggle() {
+        // DECSET 1015 — URXVT mouse format toggle.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1015h");
+        assert!(t.mouse_urxvt_enabled(), "urxvt mouse on");
+        feed(&mut t, b"\x1b[?1015l");
+        assert!(!t.mouse_urxvt_enabled(), "urxvt mouse off");
+    }
+
+    #[test]
+    fn t_r22_mouse_1016_sgr_pixel_toggle() {
+        // DECSET 1016 — SGR pixel mouse format toggle.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1016h");
+        assert!(t.mouse_sgr_pixel_enabled(), "sgr pixel mouse on");
+        feed(&mut t, b"\x1b[?1016l");
+        assert!(!t.mouse_sgr_pixel_enabled(), "sgr pixel mouse off");
+    }
+
+    #[test]
+    fn t_r22_mouse_multiple_modes_independent() {
+        // Enabling multiple mouse modes simultaneously.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1000h\x1b[?1002h\x1b[?1006h");
+        assert!(t.mouse_tracking_enabled(), "tracking on");
+        assert!(t.mouse_button_event_enabled(), "button event on");
+        assert!(t.mouse_sgr_enabled(), "sgr on");
+    }
+
+    #[test]
+    fn t_r22_mouse_modes_persist_through_alt() {
+        // Mouse modes should persist through alt screen round-trip.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1000h\x1b[?1006h");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert!(t.mouse_tracking_enabled(), "tracking persists in alt");
+        assert!(t.mouse_sgr_enabled(), "sgr persists in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.mouse_tracking_enabled(), "tracking persists after alt");
+    }
+
+    // ── Round 22-3: Bracketed paste / Focus persistence ────────────────
+
+    #[test]
+    fn t_r22_bracketed_paste_disabled_in_alt() {
+        // Bracketed paste in alt screen — mode should be independent.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2004h"); // enable on main
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        // Bracketed paste mode should NOT be reset by alt screen entry
+        // (it's a global mode, not screen-specific)
+        assert!(
+            t.modes.bracketed_paste,
+            "bracketed paste persists in alt screen"
+        );
+    }
+
+    #[test]
+    fn t_r22_focus_event_persists_through_alt() {
+        // Focus event mode should persist through alt screen.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?1004h"); // enable
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert!(t.modes.focus_event, "focus event persists in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.modes.focus_event, "focus event persists after alt");
+    }
+
+    #[test]
+    fn t_r22_keypad_mode_persists_through_alt() {
+        // Keypad application mode should persist through alt screen.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b="); // DECPAM
+        assert!(t.modes.keypad_app);
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert!(t.modes.keypad_app, "keypad persists in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.modes.keypad_app, "keypad persists after alt");
+    }
+
+    // ── Round 22-4: Synchronized output ────────────────────────────────
+
+    #[test]
+    fn t_r22_synchronized_output_default_off() {
+        // Default should be off.
+        let t = Terminal::new(10, 5);
+        assert!(!t.is_synchronized(), "sync output off by default");
+    }
+
+    #[test]
+    fn t_r22_synchronized_output_is_accessor() {
+        // is_synchronized() should match modes.synchronized_output.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2026h");
+        assert_eq!(t.is_synchronized(), t.modes.synchronized_output);
+        feed(&mut t, b"\x1b[?2026l");
+        assert_eq!(t.is_synchronized(), t.modes.synchronized_output);
+    }
+
+    #[test]
+    fn t_r22_synchronized_output_decrqm() {
+        // DECRQM for mode 2026.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2026$p"); // query
+        let resp = t.take_response();
+        let s = String::from_utf8(resp).unwrap();
+        assert!(s.contains("2026"), "DECRQM response for 2026: {}", s);
+    }
+
+    #[test]
+    fn t_r22_synchronized_output_persists_alt() {
+        // Sync output should persist through alt screen.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2026h");
+        feed(&mut t, b"\x1b[?1049h"); // enter alt
+        assert!(t.is_synchronized(), "sync persists in alt");
+        feed(&mut t, b"\x1b[?1049l"); // exit alt
+        assert!(t.is_synchronized(), "sync persists after alt");
+    }
+
+    #[test]
+    fn t_r22_synchronized_output_ris_reset() {
+        // RIS should reset synchronized output.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"\x1b[?2026h");
+        feed(&mut t, b"\x1bc"); // RIS
+        assert!(!t.is_synchronized(), "RIS resets sync output");
+    }
 }
