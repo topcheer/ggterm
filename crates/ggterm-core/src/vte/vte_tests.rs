@@ -403,3 +403,32 @@ fn test_dcs_overflow_consumes_until_terminator() {
         "overflow DCS bytes must be consumed, not printed; got: {prints}"
     );
 }
+
+#[test]
+#[test]
+fn test_osc_abort_then_csi() {
+    let mut parser = Parser::new();
+    let mut p = MockPerform::new();
+    parser.feed(b"\x1b]0;title\x1b[H", &mut p);
+    let csi_events: Vec<_> = p
+        .events
+        .iter()
+        .filter(|e| matches!(e, Event::Csi(..)))
+        .collect();
+    assert!(
+        !csi_events.is_empty(),
+        "should have a CSI event after aborted OSC"
+    );
+    if let Some(Event::Csi(_, fb)) = csi_events.first() {
+        assert_eq!(*fb, b'H', "CSI final byte should be H (cursor home)");
+    }
+    let prints: Vec<_> = p
+        .events
+        .iter()
+        .filter(|e| matches!(e, Event::Print(b'H')))
+        .collect();
+    assert!(
+        prints.is_empty(),
+        "no literal H should be printed after aborted OSC"
+    );
+}

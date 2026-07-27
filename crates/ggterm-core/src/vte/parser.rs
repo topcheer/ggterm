@@ -84,10 +84,17 @@ impl Parser {
             State::OscEsc => {
                 if byte == b'\\' {
                     perform.osc(&self.string_buffer);
+                    self.state = State::Ground;
                 } else {
-                    // Unexpected byte after ESC in OSC context; abort OSC
+                    // Not ST — abort OSC without dispatching.
+                    // Re-enter escape state to process this byte as part of
+                    // a new escape sequence (e.g. ESC [ for CSI cursor home).
+                    // Previously this byte was silently dropped, causing
+                    // sequences like \e]0;title\e[H to lose the [ and print
+                    // 'H' as literal text.
+                    self.state = State::Escape;
+                    self.escape(byte, perform);
                 }
-                self.state = State::Ground;
             }
             State::Utf8Sequence => self.utf8_continue(byte, perform),
             State::DcsEntry => self.dcs_entry(byte, perform),
