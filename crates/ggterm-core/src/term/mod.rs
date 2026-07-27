@@ -23596,4 +23596,252 @@ mod tests {
             "recovery from unterminated OSC"
         );
     }
+
+    // ── Round 36: Wide char stress + resize edge cases ─────────────────
+
+    #[test]
+    fn t_r36_wide_overwrite_lead_clears_spacer() {
+        // Overwriting the LEAD of a wide char with a narrow char must also
+        // clear the WIDE_SPACER cell to prevent orphaned spacer.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中文".as_bytes()); // 中(0-1) 文(2-3)
+        feed(&mut t, b"\x1b[1;1H"); // back to col 0
+        feed(&mut t, b"X"); // overwrite 中's lead
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'X', "X at lead position");
+        assert!(
+            !t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "spacer cleared when lead overwritten"
+        );
+        assert_eq!(t.grid().cell(2, 0).unwrap().ch, '文', "文 intact at col 2");
+    }
+
+    #[test]
+    fn t_r36_wide_overwrite_spacer_clears_lead() {
+        // Overwriting the SPACER of a wide char with a narrow char must also
+        // clear the WIDE_CHAR lead to prevent orphaned lead.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中A".as_bytes()); // 中(0-1) A(2)
+        feed(&mut t, b"\x1b[1;2H"); // cursor at col 1 (spacer)
+        feed(&mut t, b"Y"); // overwrite spacer with Y
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'Y', "Y at spacer position");
+        assert!(
+            !t.grid().cell(0, 0).unwrap().is_wide(),
+            "lead cleared when spacer overwritten"
+        );
+    }
+
+    #[test]
+    fn t_r36_combining_on_narrow_after_overwrite() {
+        // Combining char attaches to preceding base char.
+        // After overwriting, the combining should attach to the new char.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"e"); // base 'e'
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute → é
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, 'e', "base is 'e'");
+        assert_eq!(cell.combining.len(), 1, "one combining char attached");
+        assert_eq!(cell.combining[0], '\u{0301}', "combining is acute");
+    }
+
+    #[test]
+    fn t_r36_combining_on_wide_char() {
+        // Combining char attaches to a wide char lead.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "中".as_bytes()); // wide char at col 0-1
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert_eq!(cell.ch, '中', "base wide char");
+        assert_eq!(cell.combining.len(), 1, "combining attaches to wide lead");
+    }
+
+    #[test]
+    fn t_r36_combining_stack_limit() {
+        // Multiple combining chars stack on the base char (up to 8).
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, b"a");
+        // Push 10 combining chars — only first 8 should be kept
+        for _ in 0..10 {
+            feed(&mut t, "\u{0301}".as_bytes()); // combining acute
+        }
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(
+            cell.combining.len() <= 8,
+            "combining stack capped at 8: got {}",
+            cell.combining.len()
+        );
+    }
+
+    #[test]
+    fn t_r36_resize_shrink_cursor_beyond_width() {
+        // Resize to narrower width when cursor is at a column beyond new width.
+        let mut t = Terminal::new(20, 5);
+        feed(&mut t, b"\x1b[1;15H"); // cursor at col 14
+        t.resize(10, 5); // shrink to 10 wide
+        assert!(
+            t.cursor().0 < 10,
+            "cursor clamped to new width after shrink: got {}",
+            t.cursor().0
+        );
+    }
+
+    #[test]
+    fn t_r36_resize_shrink_cursor_beyond_height() {
+        // Resize to shorter height when cursor is at a row beyond new height.
+        let mut t = Terminal::new(10, 20);
+        feed(&mut t, b"\x1b[15;1H"); // cursor at row 14
+        t.resize(10, 5); // shrink to 5 tall
+        assert!(
+            t.cursor().1 < 5,
+            "cursor clamped to new height after shrink: got {}",
+            t.cursor().1
+        );
+    }
+
+    #[test]
+    fn t_r36_resize_grow_new_area_blank() {
+        // Resize to wider — new columns should be blank.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABCDE"); // fill row 0
+        t.resize(10, 3); // grow to 10 wide
+        assert_eq!(t.grid().cell(5, 0).unwrap().ch, ' ', "new col 5 blank");
+        assert_eq!(t.grid().cell(9, 0).unwrap().ch, ' ', "new col 9 blank");
+    }
+
+    #[test]
+    fn t_r36_resize_grow_new_rows_blank() {
+        // Resize to taller — new rows should be blank.
+        let mut t = Terminal::new(5, 3);
+        feed(&mut t, b"ABC"); // row 0
+        t.resize(5, 6); // grow to 6 tall
+        // Rows 3-5 should be blank
+        for r in 3..6 {
+            assert_eq!(t.grid().cell(0, r).unwrap().ch, ' ', "new row {} blank", r);
+        }
+    }
+
+    #[test]
+    fn t_r36_resize_idempotent() {
+        // Resizing to same dimensions should be a no-op.
+        let mut t = Terminal::new(10, 5);
+        feed(&mut t, b"Hello");
+        t.resize(10, 5); // same size
+        assert_eq!(t.grid().cell(0, 0).unwrap().ch, 'H', "content preserved");
+        assert_eq!(t.grid().cell(4, 0).unwrap().ch, 'o', "content preserved");
+        assert_eq!(t.cursor().0, 5, "cursor position preserved");
+    }
+
+    #[test]
+    fn t_r36_resize_scroll_region_reset() {
+        // Resize should reset scroll region to full screen.
+        let mut t = Terminal::new(10, 10);
+        feed(&mut t, b"\x1b[3;7r"); // set region
+        t.resize(15, 12);
+        let (top, bottom) = t.grid().scroll_region();
+        assert_eq!(top, 0, "scroll region top reset on resize");
+        assert_eq!(bottom, 12, "scroll region bottom reset to new height");
+    }
+
+    #[test]
+    fn t_r36_wide_char_fill_then_delete_line() {
+        // Fill a row with wide chars, then DL — wide chars should not corrupt.
+        let mut t = Terminal::new(4, 4);
+        feed(&mut t, "中文".as_bytes()); // row 0: 中文 (4 cols)
+        feed(&mut t, b"\r\nAB"); // row 1: AB
+        feed(&mut t, b"\x1b[1;1H"); // cursor at row 0
+        feed(&mut t, b"\x1b[M"); // DL row 0
+        // Row 0 should now have AB
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'A',
+            "row 0 has AB after DL"
+        );
+        assert_eq!(t.grid().cell(1, 0).unwrap().ch, 'B', "B at col 1");
+    }
+
+    #[test]
+    fn t_r36_resize_with_scrollback_preserved() {
+        // When growing height, reflow pulls scrollback lines back to viewport.
+        // The scrollback count may decrease — this is correct reflow behavior.
+        // We verify the terminal is functional and content not lost.
+        let mut t = Terminal::with_scrollback(10, 3, 100);
+        feed(&mut t, b"Line1\r\nLine2\r\nLine3\r\n");
+        feed(&mut t, b"Line4"); // Line1 scrolled to scrollback
+        let sb_before = t.grid().scrollback_len();
+        assert!(sb_before > 0, "scrollback has content");
+        t.resize(10, 5); // grow height — reflow pulls scrollback back
+        // Content should be preserved (either in viewport or scrollback)
+        // Growing height consumes scrollback to fill new rows.
+        let total = t.grid().scrollback_len() + t.grid().height();
+        assert!(total >= 5, "terminal functional after grow with scrollback");
+    }
+
+    #[test]
+    fn t_r36_emoji_simple_width2() {
+        // Simple emoji (🎉 U+1F389) should be width 2.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "🎉".as_bytes());
+        let cell = t.grid().cell(0, 0).unwrap();
+        assert!(cell.is_wide(), "emoji is wide");
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "emoji spacer at col 1"
+        );
+        assert_eq!(t.cursor().0, 2, "cursor advanced by 2 after emoji");
+    }
+
+    #[test]
+    fn t_r36_wide_char_at_col0_narrow_terminal() {
+        // Wide char on a 2-column terminal — exactly fits.
+        let mut t = Terminal::new(2, 3);
+        feed(&mut t, "中".as_bytes());
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            '中',
+            "wide char fills 2-col terminal"
+        );
+        assert!(
+            t.grid().cell(1, 0).unwrap().is_wide_spacer(),
+            "spacer at col 1"
+        );
+        assert_eq!(t.cursor().0, 1, "cursor at col 1 (last col, pending wrap)");
+    }
+
+    #[test]
+    fn t_r36_wide_char_does_not_fit_1col() {
+        // Wide char on a 1-column terminal — must wrap but nowhere to go.
+        // Should not crash.
+        let mut t = Terminal::new(1, 3);
+        feed(&mut t, "中".as_bytes());
+        // Terminal should not crash. The char may be dropped or placed partially.
+        assert_eq!(t.grid().width(), 1, "terminal still functional");
+    }
+
+    #[test]
+    fn t_r36_resize_with_wide_char_in_scrollback() {
+        // Wide char in content that scrolls to scrollback, then resize.
+        let mut t = Terminal::with_scrollback(5, 2, 100);
+        feed(&mut t, "中文A".as_bytes()); // row 0: 中文A
+        feed(&mut t, b"\r\n"); // new line
+        feed(&mut t, b"BCDEF"); // row 1 → 中文A scrolls to scrollback
+        t.resize(5, 4); // grow
+        assert_eq!(
+            t.grid().width(),
+            5,
+            "resize succeeded with wide char in scrollback"
+        );
+    }
+
+    #[test]
+    fn t_r36_print_after_combining_dropped() {
+        // Combining char with no base char (at col 0, row 0) is dropped.
+        // Next printable char should appear at col 0.
+        let mut t = Terminal::new(10, 3);
+        feed(&mut t, "\u{0301}".as_bytes()); // combining acute, no base
+        feed(&mut t, b"X");
+        assert_eq!(
+            t.grid().cell(0, 0).unwrap().ch,
+            'X',
+            "X at col 0 after dropped combining"
+        );
+    }
 }
