@@ -1079,6 +1079,17 @@ fn reflow_line(out: &mut Vec<Row>, line: Row, width: usize) {
             }
             chunk.truncate(width);
         }
+        // If the last cell is a wide char lead without its spacer (can happen
+        // when width=1 or the force-advance fallback kicks in), blank it
+        // to avoid a dangling WIDE_CHAR flag.
+        if chunk
+            .last()
+            .is_some_and(|c| c.flags.contains(CellFlags::WIDE_CHAR))
+        {
+            if let Some(last) = chunk.last_mut() {
+                *last = Cell::blank();
+            }
+        }
 
         out.push(Row {
             cells: chunk,
@@ -2545,5 +2556,30 @@ mod tests {
         g.reflow_resize(1, 4);
         // Just reaching here means the bug is fixed.
         assert_eq!(g.width(), 1);
+    }
+
+    #[test]
+    fn reflow_no_dangling_wide_char_lead() {
+        // After reflow to width=1, the wide char lead that couldn't fit
+        // should be blanked, not left with a dangling WIDE_CHAR flag.
+        let mut g = Grid::new(4, 4);
+        g.put_char(0, 0, 'A');
+        g.put_char(1, 0, '\u{4E00}'); // wide char at cols 1-2
+        g.put_char(3, 0, 'B');
+        g.reflow_resize(1, 8);
+        // Check every cell in the first row — none should have WIDE_CHAR
+        // without a following WIDE_SPACER.
+        for col in 0..g.width() {
+            if let Some(c) = g.cell(col, 0)
+                && c.flags.contains(crate::grid::cell::CellFlags::WIDE_CHAR)
+            {
+                // If it's a wide lead, the next cell must be a spacer.
+                let next = g.cell(col + 1, 0);
+                assert!(
+                    next.is_some_and(|n| n.is_wide_spacer()),
+                    "dangling WIDE_CHAR at col {col} after reflow to width 1"
+                );
+            }
+        }
     }
 }
