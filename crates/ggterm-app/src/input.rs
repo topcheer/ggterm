@@ -194,28 +194,28 @@ impl InputEncoder {
             SpecialKey::Delete => self.csi_tilde("3", mods),
             SpecialKey::F1 => {
                 if has_mod(mods) {
-                    csi_modified("1", 'P', mods)
+                    self.csi_func_key('P', mods)
                 } else {
                     b"\x1bOP".to_vec()
                 }
             }
             SpecialKey::F2 => {
                 if has_mod(mods) {
-                    csi_modified("1", 'Q', mods)
+                    self.csi_func_key('Q', mods)
                 } else {
                     b"\x1bOQ".to_vec()
                 }
             }
             SpecialKey::F3 => {
                 if has_mod(mods) {
-                    csi_modified("1", 'R', mods)
+                    self.csi_func_key('R', mods)
                 } else {
                     b"\x1bOR".to_vec()
                 }
             }
             SpecialKey::F4 => {
                 if has_mod(mods) {
-                    csi_modified("1", 'S', mods)
+                    self.csi_func_key('S', mods)
                 } else {
                     b"\x1bOS".to_vec()
                 }
@@ -244,6 +244,15 @@ impl InputEncoder {
             return format!("\x1bO{}", suffix).into_bytes();
         }
         format!("\x1b[{}", suffix).into_bytes()
+    }
+
+    /// Encode a modified function key (F1-F4) with modifyOtherKeys awareness.
+    ///
+    /// These keys normally use SS3 (`\eO`) encoding. When modified, they switch
+    /// to CSI (`\e[1;{mod}{suffix}`). In modifyOtherKeys mode 2, the trailing
+    /// `;1` is appended, consistent with cursor keys and tilde keys.
+    fn csi_func_key(&self, suffix: char, mods: &KeyModifiers) -> Vec<u8> {
+        csi_modified_with_mode("1", suffix, mods, self.modify_other_keys)
     }
 
     /// Encode a tilde-key (PageUp/PageDown/Insert/Delete/F5-F12) with
@@ -306,10 +315,6 @@ fn mod_code(mods: &KeyModifiers) -> u8 {
         m += 4;
     }
     m
-}
-
-fn csi_modified(param: &str, suffix: char, mods: &KeyModifiers) -> Vec<u8> {
-    format!("\x1b[{};{}{}", param, mod_code(mods), suffix).into_bytes()
 }
 
 /// Encode a modified cursor key with modifyOtherKeys mode awareness.
@@ -653,6 +658,23 @@ mod tests {
             },
         );
         assert_eq!(enc.encode(&key), b"\x1b[1;5P");
+    }
+
+    #[test]
+    fn test_f1_modified_modify_other_keys_mode2() {
+        // In modifyOtherKeys mode 2, modified F1-F4 should include the
+        // trailing ;1, consistent with cursor keys and tilde keys.
+        let mut enc = InputEncoder::new();
+        enc.set_modify_other_keys(2);
+        let key = InputKey::special_mod(
+            SpecialKey::F1,
+            KeyModifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
+        // Mode 2: \e[1;5;1P (param;mod;1;suffix)
+        assert_eq!(enc.encode(&key), b"\x1b[1;5;1P");
     }
 
     // ── Helpers ────────────────────────────────────────────────
