@@ -775,9 +775,19 @@ impl DesktopApp {
 
             if sy == ey {
                 // Single-row selection.
+                // If the selection ends on a wide char lead, extend the
+                // highlight to cover its spacer cell as well.
+                let end_extra = if grid
+                    .display_cell(ex as usize, sy as usize)
+                    .is_some_and(|c| c.is_wide())
+                {
+                    cell_w
+                } else {
+                    0.0
+                };
                 let x = pane_offset_x + sx as f32 * cell_w;
                 let y = pane_offset_y + sy as f32 * cell_h;
-                let w = (ex - sx + 1) as f32 * cell_w;
+                let w = (ex - sx + 1) as f32 * cell_w + end_extra;
                 let h = cell_h;
                 ui_rects.push(ggterm_render_wgpu::UiRect {
                     x,
@@ -821,9 +831,18 @@ impl DesktopApp {
                 }
 
                 // Last row (start of line to end).
+                // Extend to cover wide char spacer if selection ends on a lead.
+                let end_extra = if grid
+                    .display_cell(ex as usize, ey as usize)
+                    .is_some_and(|c| c.is_wide())
+                {
+                    cell_w
+                } else {
+                    0.0
+                };
                 let x1 = pane_offset_x;
                 let y1 = pane_offset_y + ey as f32 * cell_h;
-                let w1 = (ex + 1) as f32 * cell_w;
+                let w1 = (ex + 1) as f32 * cell_w + end_extra;
                 ui_rects.push(ggterm_render_wgpu::UiRect {
                     x: x1,
                     y: y1,
